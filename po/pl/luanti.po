@@ -3,8 +3,8 @@ msgstr ""
 "Project-Id-Version: Polish (Minetest)\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
-"PO-Revision-Date: 2025-10-20 04:50+0000\n"
-"Last-Translator: Karol1165 <kutkarol1165@gmail.com>\n"
+"PO-Revision-Date: 2026-02-03 04:56+0000\n"
+"Last-Translator: Leszek Cimała <ernierasta@zori.cz>\n"
 "Language-Team: Polish <https://hosted.weblate.org/projects/minetest/minetest/"
 "pl/>\n"
 "Language: pl\n"
@@ -13,7 +13,7 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
 "|| n%100>=20) ? 1 : 2);\n"
-"X-Generator: Weblate 5.14-dev\n"
+"X-Generator: Weblate 5.16-dev\n"
 
 #: builtin/client/chatcommands.lua
 msgid "Clear the out chat queue"
@@ -331,7 +331,7 @@ msgstr "Automatyczny"
 #: builtin/mainmenu/content/dlg_contentdb.lua
 #: builtin/mainmenu/content/dlg_package.lua src/gui/guiVolumeChange.cpp
 msgid "Back"
-msgstr "Backspace"
+msgstr "Wstecz"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Buttons with crosshair"
@@ -425,9 +425,8 @@ msgid "Touchscreen layout"
 msgstr "Układ ekranu dotykowego"
 
 #: builtin/common/settings/dlg_settings.lua
-#, fuzzy
 msgid "Unavailable"
-msgstr "<niedostępne>"
+msgstr "Niedostępne"
 
 #: builtin/common/settings/settingtypes.lua
 msgid "Client Mods"
@@ -463,7 +462,7 @@ msgstr "Średnie"
 
 #: builtin/common/settings/shadows_component.lua
 msgid "Quality preset"
-msgstr ""
+msgstr "Profil jakości"
 
 #: builtin/common/settings/shadows_component.lua
 msgid "Very High"
@@ -818,7 +817,7 @@ msgstr ""
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "Find More Mods"
-msgstr "Znajdź więcej modyfikacji"
+msgstr "Pobierz mody"
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "Mod:"
@@ -865,13 +864,12 @@ msgid "Always show this dialog."
 msgstr ""
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
-#, fuzzy
 msgid "Are you sure you want to quit?"
-msgstr "Na pewno usunąć \"$1\"?"
+msgstr "Czy na pewno zakończyć Luanti?"
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 msgid "Quit"
-msgstr ""
+msgstr "Zakończ"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "A world named \"$1\" already exists"
@@ -883,11 +881,11 @@ msgstr "Dodatkowy teren"
 
 #: builtin/mainmenu/dlg_create_world.lua src/settings_translation_file.cpp
 msgid "Altitude chill"
-msgstr "Wysokość mrozu"
+msgstr "Spadek temperatury ze wzrostem wysokości"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Altitude dry"
-msgstr "Wysokość suchości"
+msgstr "Spadek wilgotności ze wzrostem wysokości"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Biome blending"
@@ -899,7 +897,7 @@ msgstr "Biomy"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Caverns"
-msgstr "jaskinie"
+msgstr "Duże jaskinie"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Caves"
@@ -955,7 +953,7 @@ msgstr "Wzgórza"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Humid rivers"
-msgstr "Wilgotne rzeki"
+msgstr "Okolice rzek bardziej wilgotne"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Increases humidity around rivers"
@@ -985,7 +983,7 @@ msgstr "Flagi generatora mapy"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Mapgen-specific flags"
-msgstr "Flagi specyficzne dla Mapgena"
+msgstr "Flagi specyficzne dla wybranego generatora"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Mountains"
@@ -1005,7 +1003,7 @@ msgstr "Nie wybrano gry"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Reduces heat with altitude"
-msgstr "Redukuje ciepło wraz z wysokością"
+msgstr "Redukuje ciepło wraz ze wzrostem wysokości"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Reduces humidity with altitude"
@@ -1057,7 +1055,7 @@ msgstr "Drzewa i trawa w dżungli"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Vary river depth"
-msgstr "Zmienna głębokość rzeki"
+msgstr "Zmienna głębokość rzek"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "Very large caverns deep in the underground"
@@ -1797,17 +1795,16 @@ msgstr "Nie można nasłuchiwać na %s, ponieważ IPv6 jest wyłączony"
 
 #: src/client/game.cpp
 msgid "Unlimited viewing range disabled"
-msgstr "Nieograniczony zasięg widoczności wyłączony"
+msgstr "Nieograniczony zasięg widzenia wyłączony"
 
 #: src/client/game.cpp
 msgid "Unlimited viewing range enabled"
-msgstr "Nieograniczony zasięg widoczności włączony"
+msgstr "Nieograniczony zasięg widzenia włączony"
 
 #: src/client/game.cpp
 msgid "Unlimited viewing range enabled, but forbidden by game or mod"
 msgstr ""
-"Nieograniczony zasięg widoczności włączony, ale niedozwolony przez grę lub "
-"moda"
+"Nieograniczony zasięg widzenia włączony, ale niedozwolony przez grę lub moda"
 
 #: src/client/game.cpp
 #, c-format
@@ -1824,25 +1821,25 @@ msgstr ""
 #: src/client/game.cpp
 #, c-format
 msgid "Viewing range changed to %d"
-msgstr "Zasięg widoczności zmieniony na %d"
+msgstr "Zasięg widzenia zmieniony na %d"
 
 #: src/client/game.cpp
 #, c-format
 msgid "Viewing range changed to %d (the maximum)"
-msgstr "Zmieniono zasięg widoczności na %d (maksymalny)"
+msgstr "Zmieniono zasięg widzenia na %d (maksymalny)"
 
 #: src/client/game.cpp
 #, c-format
 msgid ""
 "Viewing range changed to %d (the maximum), but limited to %d by game or mod"
 msgstr ""
-"Zasięg widoczności zmieniony na %d (maksimum), ale gra lub mod ogranicza go "
-"do %d"
+"Zasięg widzenia zmieniony na %d (maksimum), ale gra lub mod ogranicza go do "
+"%d"
 
 #: src/client/game.cpp
 #, c-format
 msgid "Viewing range changed to %d, but limited to %d by game or mod"
-msgstr "Zmieniono zasięg widoczności na %d, ale gra lub mod ogranicza go do %d"
+msgstr "Zmieniono zasięg widzenia na %d, ale gra lub mod ogranicza go do %d"
 
 #: src/client/game.cpp
 #, c-format
@@ -2412,7 +2409,7 @@ msgstr "Postaw/użyj"
 
 #: src/gui/touchscreenlayout.cpp
 msgid "Range select"
-msgstr "Zasięg widzenia"
+msgstr "Wybierz zasięg widzenia"
 
 #: src/gui/touchscreenlayout.cpp src/settings_translation_file.cpp
 msgid "Sneak"
@@ -2611,7 +2608,7 @@ msgstr "Szum 2D lokalizuje doliny i kanały rzeczne."
 
 #: src/settings_translation_file.cpp
 msgid "3D"
-msgstr "3D"
+msgstr "Tryb stereoskopowy 3D"
 
 #: src/settings_translation_file.cpp
 msgid "3D clouds"
@@ -2619,7 +2616,7 @@ msgstr "Chmury 3D"
 
 #: src/settings_translation_file.cpp
 msgid "3D mode"
-msgstr "Modele 3D"
+msgstr "Tryb 3D"
 
 #: src/settings_translation_file.cpp
 msgid "3D mode parallax strength"
@@ -2676,12 +2673,10 @@ msgid ""
 "-    sidebyside: split screen side-by-side\n"
 "-    crossview: cross-eyed 3D"
 msgstr ""
-"Wsparcie 3D.\n"
+"Tryb stereoskopii 3D (np. dla czerwono/niebieskich okularów).\n"
 "Aktualnie wspierane:\n"
-"-    none: bez wyjścia 3D\n"
+"-    none: bez stereoskopii 3D\n"
 "-    anaglyph: 3d poprzez kolory cyjan/magenta\n"
-"-    interlaced: wsparcie ekranów z parzystą/nieparzystą polaryzacją "
-"liniową\n"
 "-    topbottom: podzielony ekran góra/dół.\n"
 "-    sidebyside: podzielony ekran obok siebie.\n"
 "-    crossview: obuoczne 3D"
@@ -2941,8 +2936,8 @@ msgstr ""
 "W tej odległości serwer wykona prostsze i tańsze sprawdzenie przesłonięcia.\n"
 "Mniejsze wartości potencjalnie poprawiają wydajność, kosztem tymczasowych\n"
 "błędów renderowania (brakujące bloki).\n"
-"To jest szczególnie użyteczne przy bardzo dużych zasięgach widoczności "
-"(powyżej 500).\n"
+"To jest szczególnie użyteczne przy bardzo dużych zasięgach widzenia (powyżej "
+"500).\n"
 "Wyrażone w MapBlocks (16 nodes)."
 
 #: src/settings_translation_file.cpp
@@ -3023,7 +3018,7 @@ msgstr "Dystans optymalizacji wysyłanych bloków"
 
 #: src/settings_translation_file.cpp
 msgid "Bobbing"
-msgstr "Drgania głowy"
+msgstr "Kołysanie widoku"
 
 #: src/settings_translation_file.cpp
 msgid "Bold and italic font path"
@@ -3059,7 +3054,7 @@ msgstr "Wygładzanie kamery"
 
 #: src/settings_translation_file.cpp
 msgid "Camera smoothing in cinematic mode"
-msgstr "Wygładzanie kamery w trybie cinematic"
+msgstr "Wygładzanie kamery w trybie kinowym"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -3318,7 +3313,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Confirmation dialog before closing"
-msgstr ""
+msgstr "Wyświetl dialog potwierdzający (przycisk \"Esc\" w menu głównym)"
 
 #: src/settings_translation_file.cpp
 msgid "Connect glass"
@@ -3446,12 +3441,10 @@ msgid ""
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Decrease view range"
 msgstr "Zmniejsz pole widzenia"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Decrease volume"
 msgstr "Zmniejsz głośność"
 
@@ -3682,9 +3675,8 @@ msgid ""
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Drop item"
-msgstr "Klawisz wyrzucenia przedmiotu"
+msgstr "Wyrzuć przedmiot"
 
 #: src/settings_translation_file.cpp
 msgid "Dump the mapgen debug information."
@@ -3768,9 +3760,10 @@ msgid "Enable Raytraced Culling"
 msgstr "Włącz pomijanie przysłoniętych bloków oparte o śledzenie promieni"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Enable a confirmation dialog before closing."
-msgstr "Włącz animację inwentarza przedmiotów."
+msgstr ""
+"Włącz dialog proszący o potwierdzenie wyjścia z gry. Pojawi się po "
+"naciśnięciu przycisku klawisza \"Esc\" w menu głównym."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -3785,23 +3778,20 @@ msgstr ""
 "oka ludzkiego."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Enable colored shadows for transculent nodes.\n"
 "This is expensive."
 msgstr ""
-"Włącza kolorowe cienie. \n"
-"Jeśli aktywne, półprzezroczyste bloki rzucają kolorowe cienie. To zużywa "
-"dużo zasobów."
+"Włącza kolorowe cienie dla przeźroczystych nodów. \n"
+"Może zużywać dużo zasobów."
 
 #: src/settings_translation_file.cpp
 msgid "Enable console window"
 msgstr "Odblokuj okno konsoli"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Enable dynamic shadows"
-msgstr "Cienie dynamiczne"
+msgstr "Włącz dynamiczne cienie"
 
 #: src/settings_translation_file.cpp
 msgid "Enable joysticks"
@@ -3875,8 +3865,8 @@ msgid ""
 "Enable view bobbing and amount of view bobbing.\n"
 "For example: 0 for no view bobbing; 1.0 for normal; 2.0 for double."
 msgstr ""
-"Włącz drganie widoku i ilość tych drgań.\n"
-"Dla przykładu: 0 dla braku drgań; 1.0 dla normalnych; 2.0 dla podwójnych."
+"Włącz kołysanie widoku i określ siłę tego efektu.\n"
+"Na przykład: 0 - brak kołysania; 1.0 - normalne; 2.0 - podwójna intensywność."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -3893,14 +3883,13 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Enables animation of inventory items."
-msgstr "Włącz animację inwentarza przedmiotów."
+msgstr "Włącz animację przedmiotów w ekwipunku."
 
 #: src/settings_translation_file.cpp
 msgid "Enables debug and error-checking in the OpenGL driver."
 msgstr "Włącza debug i sprawdzanie błędów w sterowniku OpenGL."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Enables smooth scrolling."
 msgstr "Włącza płynne przewijanie."
 
@@ -3982,9 +3971,8 @@ msgid "Fallback font path"
 msgstr "Ścieżka czcionki zastępczej"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Fast approximate antialiasing"
-msgstr "Filtrowanie i antyaliasing"
+msgstr "Szybkie wygładzanie krawędzi (FXAA)"
 
 #: src/settings_translation_file.cpp
 msgid "Fast mode acceleration"
@@ -4022,7 +4010,7 @@ msgstr "Szum wypełnianej głębokości"
 
 #: src/settings_translation_file.cpp
 msgid "Filmic tone mapping"
-msgstr "Mapowanie Filmic tone"
+msgstr "Filmowe mapowanie kolorów"
 
 #: src/settings_translation_file.cpp
 msgid "Filtering and Antialiasing"
@@ -4586,14 +4574,12 @@ msgid "Hotbar: Invert mouse wheel direction"
 msgstr "Hotbar: Odwróć kierunek kółka myszy"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Hotbar: select next item"
-msgstr "Następny klawisz paska działań"
+msgstr "Hotbar: wybierz następny"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Hotbar: select previous item"
-msgstr "Poprzedni klawisz paska działań"
+msgstr "Hotbar: wybierz poprzedni"
 
 #: src/settings_translation_file.cpp
 msgid "How deep to make rivers."
@@ -4626,7 +4612,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "How wide to make rivers."
-msgstr "Jak mają być rzeki."
+msgstr "Jak szerokie mają być rzeki."
 
 #: src/settings_translation_file.cpp
 msgid "Humidity blend noise"
@@ -4726,12 +4712,16 @@ msgstr ""
 #: src/settings_translation_file.cpp
 msgid "If enabled, the \"Aux1\" key will toggle when pressed."
 msgstr ""
+"Jeżeli włączone przycisk \"Aux1\" działa jako przełącznik (naciśnięcie "
+"włącza/wyłącza)."
 
 #: src/settings_translation_file.cpp
 msgid ""
 "If enabled, the \"Sneak\" key will toggle when pressed.\n"
 "This functionality is ignored when fly is enabled."
 msgstr ""
+"Jeżeli włączone, klawisz skradania działa jako przełącznik.\n"
+"Ta funkcjonalność jest ignorowana jeżeli latanie jest włączone."
 
 #: src/settings_translation_file.cpp
 #, no-c-format
@@ -4812,12 +4802,10 @@ msgid "In-game chat console height, between 0.1 (10%) and 1.0 (100%)."
 msgstr "Przeźroczystość konsoli w grze (od 0.0 do 1.0)."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Increase view range"
 msgstr "Zwiększ pole widzenia"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Increase volume"
 msgstr "Zwiększ głośność"
 
@@ -5057,10 +5045,12 @@ msgstr ""
 #: src/settings_translation_file.cpp
 msgid "Key for toggling the display of mapblock boundaries."
 msgstr ""
+"Przycisk przełączający wyświetlanie granic mapbloków. Opcja dla programistów."
 
 #: src/settings_translation_file.cpp
 msgid "Key for toggling the display of the profiler. Used for development."
 msgstr ""
+"Przycisk przełączający wyświetlanie okna profilera. Opcja dla programistów."
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -5777,23 +5767,20 @@ msgid "Mouse sensitivity multiplier."
 msgstr "Mnożnik czułości myszy."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Move backward"
-msgstr "Tył"
+msgstr "Do tyłu"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Move forward"
-msgstr "Automatyczne chodzenie do przodu"
+msgstr "Do przodu"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Move left"
-msgstr "Poruszanie się"
+msgstr "W lewo"
 
 #: src/settings_translation_file.cpp
 msgid "Move right"
-msgstr ""
+msgstr "W prawo"
 
 #: src/settings_translation_file.cpp
 msgid "Movement threshold"
@@ -5914,7 +5901,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Occlusion Culler"
-msgstr "Occlusion Culler"
+msgstr "Metoda okluzji objektów"
 
 #: src/settings_translation_file.cpp
 msgid "Occlusion Culling"
@@ -5928,14 +5915,12 @@ msgstr ""
 "255."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Open chat"
-msgstr "Otwórz"
+msgstr "Otwórz chat"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Open inventory"
-msgstr "Ekwipunek"
+msgstr "Otwórz ekwipunek"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -5952,9 +5937,8 @@ msgid "OpenGL debug"
 msgstr "Debug OpenGL"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Optimize GUI for touchscreens"
-msgstr "Optymalizuj GUI dla ekranów dotykowych"
+msgstr "Dostosuj interfejs do ekranów dotykowych"
 
 #: src/settings_translation_file.cpp
 msgid "Optional override for chat weblink color."
@@ -6208,9 +6192,8 @@ msgstr ""
 "READ_PLAYERINFO: 32 (wyłącza wywoływanie get_player_names po stronie klienta)"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Return to Main Menu"
-msgstr "Wyjście do menu"
+msgstr "Wyjdź do głównego menu"
 
 #: src/settings_translation_file.cpp
 msgid "Ridge mountain spread noise"
@@ -6518,7 +6501,6 @@ msgid "Server port"
 msgstr "Port Serwera"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Server-side occlusion culling"
 msgstr "Pomijanie przesłoniętych bloków po stronie serwera"
 
@@ -6539,13 +6521,12 @@ msgid "Serverlist file"
 msgstr "Plik listy publicznych serwerów"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Set the default tilt of Sun/Moon orbit in degrees.\n"
 "Games may change orbit tilt via API.\n"
 "Value of 0 means no tilt / vertical orbit."
 msgstr ""
-"Ustaw nachylenie orbity Słońca/Księżyca w stopniach.\n"
+"Ustaw nachylenie orbity słońca/księżyca w stopniach.\n"
 "Gry mogą zmieniać nachylenie orbity poprzez API.\n"
 "Wartość 0 oznacza brak nachylenia / orbitę pionową."
 
@@ -6598,23 +6579,22 @@ msgstr ""
 "Minimalna wartość: 1.0; maksymalna wartość: 10.0"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Set to true to enable Shadow Mapping."
-msgstr "Ustaw wartość pozytywną, by włączyć odwzorowanie cieni."
+msgstr "Włącza mapowanie cieni."
 
 #: src/settings_translation_file.cpp
 msgid ""
 "Set to true to enable bloom effect.\n"
 "Bright colors will bleed over the neighboring objects."
 msgstr ""
-"Ustaw na prawda aby włączyć efekt bloom.\n"
+"Włącza efekt bloom.\n"
 "Jasne kolory będą rozmywać się na sąsiednich obiektach."
 
 #: src/settings_translation_file.cpp
 msgid "Set to true to enable volumetric lighting effect (a.k.a. \"Godrays\")."
 msgstr ""
-"Ustaw wartość pozytywną by włączyć efekt światła wolumetrycznego (znanego "
-"również jako \"Boskie promienie\")."
+"Włącza efekt światła wolumetrycznego (znanego również jako \"Boskie "
+"promienie\")."
 
 #: src/settings_translation_file.cpp
 msgid "Set to true to enable waving leaves."
@@ -6656,14 +6636,12 @@ msgid "Shader path"
 msgstr "Shadery"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Shadow filter quality"
-msgstr "Jakość filtru cienia"
+msgstr "Jakość filtrowania cieni"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Shadow map render distance"
-msgstr "Minimalna wielkość tekstury mapy cieni"
+msgstr "Odległość renderowania mapy cieni"
 
 #: src/settings_translation_file.cpp
 msgid "Shadow map texture in 32 bits"
@@ -6694,13 +6672,12 @@ msgid "Show entity selection boxes"
 msgstr "Pokazuj zaznaczenie wybranych obiektów"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Show entity selection boxes\n"
 "A restart is required after changing this."
 msgstr ""
-"Pokaż pola wyboru jednostki.\n"
-"Wymagany restart po zmianie ustawienia."
+"Pokazuj podświetlenie wybranych bloków.\n"
+"Wymaga restartu po zmianie ustawienia."
 
 #: src/settings_translation_file.cpp
 msgid "Show name tag backgrounds by default"
@@ -6783,10 +6760,9 @@ msgstr "Zmienność małej skali temperatury mieszanych biomów granicznych."
 
 #: src/settings_translation_file.cpp
 msgid "Smooth lighting"
-msgstr "Płynne oświetlenie"
+msgstr "Gładkie oświetlenie"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Smooth scrolling"
 msgstr "Płynne przewijanie"
 
@@ -6817,7 +6793,7 @@ msgstr "Prędkość skradania, w blokach na sekundę."
 
 #: src/settings_translation_file.cpp
 msgid "Soft clouds"
-msgstr "Łagodne chmury"
+msgstr "Wygładzone krawędzie chmur"
 
 #: src/settings_translation_file.cpp
 msgid "Soft shadow radius"
@@ -7250,9 +7226,8 @@ msgstr ""
 "górskich."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Threshold for long taps"
-msgstr "Próg długich stuknięć"
+msgstr "Próg długiego stuknięcia (ms)"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -7288,33 +7263,28 @@ msgstr ""
 "Określa to jak długo są spowalniane po postawieniu lub usunięciu bloku."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle Aux1 key"
-msgstr "Klawisz Aux1"
+msgstr "Aux1 jako przełącznik"
 
 #: src/settings_translation_file.cpp
 msgid "Toggle HUD"
 msgstr "Przełącz HUD"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle Sneak key"
-msgstr "Klawisz przełączania trybu widoku kamery"
+msgstr "Przycisk skradania jako przełącznik"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle automatic forward"
-msgstr "Klawisz automatycznego poruszania się do przodu"
+msgstr "Przełącz auto do przodu"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle block bounds"
-msgstr "Granice bloków"
+msgstr "Przełącz granice bloków"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle camera mode"
-msgstr "Klawisz przełączania trybu widoku kamery"
+msgstr "Przełącz tryb kamery"
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -7322,42 +7292,36 @@ msgid "Toggle camera update"
 msgstr "Klawisz przełączania trybu widoku kamery"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle cinematic mode"
-msgstr "Przełącz na tryb Cinematic"
+msgstr "Przełącz tryb kinowy"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle debug info"
-msgstr "Przełącz debugowanie"
+msgstr "Przełącz debug info"
 
 #: src/settings_translation_file.cpp
 msgid "Toggle fog"
 msgstr "Przełącz mgłę"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle fullscreen"
-msgstr "Przełącz tryb latania"
+msgstr "Przełącz pełny ekran"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle large chat console"
-msgstr "Klawisz wielkiej konsoli"
+msgstr "Wyświetl dużą konsolę"
 
 #: src/settings_translation_file.cpp
 msgid "Toggle pitchmove"
-msgstr "Przełączanie przemieszczania"
+msgstr "Przełączanie trybu ruchu"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle profiler"
-msgstr "Przełącz tryb latania"
+msgstr "Przełącz profiler"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle unlimited view range"
-msgstr "Wyłączono nieskończony zasięg widoczności"
+msgstr "Przełączaj nieograniczony zasięg widzenia"
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -7432,7 +7396,6 @@ msgid "Trusted mods"
 msgstr "Zaufane mody"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Type of occlusion_culler\n"
 "\n"
@@ -7441,12 +7404,13 @@ msgid ""
 "\n"
 "This setting should only be changed if you have performance problems."
 msgstr ""
-"Rodzaj occlusion_culler\n"
+"Rodzaj okluzji obiektów:\n"
+"(optymalizacja polegająca na ignorowaniu obiektów znajdujących się za innymi "
+"obiektami = niewidocznych)\n"
 "\n"
-"„loops” to przestarzały algorytm z zagnieżdżonymi pętlami i złożonością O "
-"(n³)\n"
-"„bfs” to nowy algorytm na podstawie przeszukiwania wszerz oraz bocznego "
-"usuwania przysłoniętych bloków\n"
+"„loops” to przestarzały algorytm z zagnieżdżonymi pętlami i złożonością O (n"
+"³),\n"
+"„bfs” to nowy algorytm (\"breadth-first-search\" oraz \"side culling\").\n"
 "\n"
 "To ustawienie powinno być zmieniane tylko wtedy, gdy masz problemy z "
 "wydajnością."
@@ -7551,9 +7515,8 @@ msgstr ""
 "siatek klienta w rozmiarach mniejszych niż bloki mapy 4x4x4."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Use smooth cloud shading."
-msgstr "Użyj gładkiego cieniowania chmur."
+msgstr "Użyj cieniowania krawędzi chmur (sprawia wrażenie zaokrąglenia)."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -7656,7 +7619,7 @@ msgstr "Sterownik graficzny"
 
 #: src/settings_translation_file.cpp
 msgid "View bobbing factor"
-msgstr "Skala drgań głowy podczas ruchu"
+msgstr "Skala kołysania widoku podczas ruchu"
 
 #: src/settings_translation_file.cpp
 msgid "View distance in nodes."
@@ -7664,7 +7627,7 @@ msgstr "Zasięg widzenia, wyrażany w blokach."
 
 #: src/settings_translation_file.cpp
 msgid "Viewing range"
-msgstr "Zasięg widoczności"
+msgstr "Zasięg widzenia"
 
 #: src/settings_translation_file.cpp
 msgid "Virtual joystick triggers Aux1 button"
@@ -7675,9 +7638,10 @@ msgid "Volume"
 msgstr "Głośność"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Volume multiplier when the window is unfocused."
-msgstr "Mnożnik głośności, gdy okno jest nieaktywne."
+msgstr ""
+"Mnożnik poziomu głośności, gdy okno jest nieaktywne.\n"
+"Na przykład: 0,3 = 30% głośności."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -7768,14 +7732,12 @@ msgid "When enabled, liquid reflections are simulated."
 msgstr "Gdy jest włączona, to odbicia cieczy są symulowane."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "When enabled, the GUI is optimized to be more usable on touchscreens.\n"
 "Whether this is enabled by default depends on your hardware form-factor."
 msgstr ""
-"Gdy włączona, to GUI jest optymalizowany, by być bardziej przydatnym na "
-"ekranach dotykowych.\n"
-"To czy jest włączona domyślnie, zależy od współczynnika kształtu sprzętu."
+"Gdy włączone, to interfejs gry jest optymalizowany dla ekranów dotykowych.\n"
+"Domyślnie ustawienie zależy od urządzenia."
 
 #: src/settings_translation_file.cpp
 msgid ""
