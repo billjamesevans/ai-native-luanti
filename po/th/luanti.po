@@ -3,8 +3,8 @@ msgstr ""
 "Project-Id-Version: Thai (Minetest)\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
-"PO-Revision-Date: 2022-03-18 01:05+0000\n"
-"Last-Translator: Thomas Wiegand <weblate.org@wiegand.info>\n"
+"PO-Revision-Date: 2026-02-03 04:56+0000\n"
+"Last-Translator: GeekSteak <lpdj@ik.me>\n"
 "Language-Team: Thai <https://hosted.weblate.org/projects/minetest/minetest/"
 "th/>\n"
 "Language: th\n"
@@ -12,7 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 4.12-dev\n"
+"X-Generator: Weblate 5.16-dev\n"
 
 #: builtin/client/chatcommands.lua
 msgid "Clear the out chat queue"
@@ -74,9 +74,8 @@ msgstr ""
 "ใช้ '.help <cmd>' เพื่อรับข้อมูลเพิ่มเติม หรือใช้ '.help all' เพื่อแสดงรายการคำสั่งทั้งหมด"
 
 #: builtin/common/chatcommands.lua
-#, fuzzy
 msgid "[all | <cmd>] [-t]"
-msgstr "[ทั้งหมด | <cmd>]"
+msgstr "[all | <cmd>] [-t]"
 
 #: builtin/common/settings/components.lua
 #, fuzzy

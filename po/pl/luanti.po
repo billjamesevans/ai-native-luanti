@@ -4,7 +4,7 @@ msgstr ""
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
 "PO-Revision-Date: 2026-02-03 04:56+0000\n"
-"Last-Translator: Leszek Cimała <ernierasta@zori.cz>\n"
+"Last-Translator: GeekSteak <lpdj@ik.me>\n"
 "Language-Team: Polish <https://hosted.weblate.org/projects/minetest/minetest/"
 "pl/>\n"
 "Language: pl\n"
@@ -76,7 +76,7 @@ msgstr ""
 
 #: builtin/common/chatcommands.lua
 msgid "[all | <cmd>] [-t]"
-msgstr "[wszystko | <cmd>] [-t]"
+msgstr "[all | <cmd>] [-t]"
 
 #: builtin/common/settings/components.lua
 #, fuzzy
