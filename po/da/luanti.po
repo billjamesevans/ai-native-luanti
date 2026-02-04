@@ -3,8 +3,8 @@ msgstr ""
 "Project-Id-Version: Danish (Minetest)\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
-"PO-Revision-Date: 2026-01-16 15:01+0000\n"
-"Last-Translator: Wuzzy <Wuzzy@disroot.org>\n"
+"PO-Revision-Date: 2026-02-06 09:01+0000\n"
+"Last-Translator: Peter Leth <peter@pluk.dk>\n"
 "Language-Team: Danish <https://hosted.weblate.org/projects/minetest/minetest/"
 "da/>\n"
 "Language: da\n"
@@ -12,7 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.15.2\n"
+"X-Generator: Weblate 5.16-dev\n"
 
 #: builtin/client/chatcommands.lua
 msgid "Clear the out chat queue"
@@ -78,9 +78,8 @@ msgid "[all | <cmd>] [-t]"
 msgstr "[all | <cmd>] [-t]"
 
 #: builtin/common/settings/components.lua
-#, fuzzy
 msgid "Add keybinding"
-msgstr "Tastebindinger."
+msgstr "Tilføj tastebinding"
 
 #: builtin/common/settings/components.lua
 msgid "Browse"
@@ -88,16 +87,15 @@ msgstr "Gennemse"
 
 #: builtin/common/settings/components.lua
 msgid "Conflicts with \"$1\""
-msgstr ""
+msgstr "Konflikter med \"$1\""
 
 #: builtin/common/settings/components.lua
 msgid "Edit"
 msgstr "Rediger"
 
 #: builtin/common/settings/components.lua
-#, fuzzy
 msgid "Remove keybinding"
-msgstr "Tastebindinger."
+msgstr "Fjern tastebinding"
 
 #: builtin/common/settings/components.lua
 msgid "Select directory"
@@ -130,11 +128,14 @@ msgid ""
 "2D noise: flag on.\n"
 "3D noise: flag off."
 msgstr ""
+"2D støj: flag on.\n"
+"3D støj: flag off."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Amplifies every octave by (amplitude of the previous octave * Persistence)."
 msgstr ""
+"Forstærker hver oktav med  (udsving af den forrige oktav  * Vedholdenhed)."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 #: builtin/mainmenu/content/dlg_install.lua
@@ -150,23 +151,27 @@ msgstr "Annuller"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Controls how many octaves (layers) the noise will have."
-msgstr ""
+msgstr "Kontrollerer hvor mange oktaver (lag) støjen skal have."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Each octave is a simple noise generator. Each one also adds more detail to "
 "the noise."
 msgstr ""
+"Hver oktav er en simpel støjgenerator. Hver af dem tilføjer også flere "
+"detaljer til støjen."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Finally, all of the octaves will be combined to generate the noise."
-msgstr ""
+msgstr "Til sidst biver alle oktaverne kombineret for at skabe støjen."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Having lots of octaves is not recommended because it increases terrain "
 "generation time."
 msgstr ""
+"Det kan ikke anbefales at have mange oktaver, da det også forlænger tiden, "
+"som det tager at skabe terrænnet."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Lacunarity"
@@ -177,24 +182,30 @@ msgid ""
 "Lower values make the terrain simple and higher values make the terrain "
 "rough."
 msgstr ""
+"Lavere værdier laver terrænnet mere simpelt og højere værdier gør terrænnet "
+"mere råt."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Lower values make the terrain smooth and higher values make the terrain have "
 "fine detail."
 msgstr ""
+"Lavere værdier gør terrænet glat og højere værdier giver terrænet flere fine "
+"detaljer."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Lower values will result in smoother noise and higher values will result in "
 "rougher noise."
 msgstr ""
+"Lavere værdier vil resultere i mere glathed og højere værdier vil resultere "
+"i mere råhed."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Making 3D noise eased is not recommended because it significantly increases "
 "the load."
-msgstr ""
+msgstr "Det frarådes at lave 3D støj, da det kraftigt forøger indlæsningen."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
@@ -248,11 +259,11 @@ msgstr "Seed"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Takes the absolute value of each octave while adding them together."
-msgstr ""
+msgstr "Tager den absolutte værdi for hver oktav og lægger dem sammen."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "The first octave is amplified by 1."
-msgstr ""
+msgstr "Den første oktav er forstærket med 1."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 #, fuzzy
@@ -693,7 +704,7 @@ msgstr "Donér"
 
 #: builtin/mainmenu/content/dlg_package.lua
 msgid "Error loading package information"
-msgstr ""
+msgstr "Fejl ved indlæsning af pakkeinformation"
 
 #: builtin/mainmenu/content/dlg_package.lua
 #, fuzzy
@@ -718,7 +729,7 @@ msgstr "Problemsporing"
 
 #: builtin/mainmenu/content/dlg_package.lua
 msgid "Reviews"
-msgstr ""
+msgstr "Anmeldelser"
 
 #: builtin/mainmenu/content/dlg_package.lua
 msgid "Source"
@@ -1102,9 +1113,8 @@ msgid "Close"
 msgstr ""
 
 #: builtin/mainmenu/dlg_rebind_keys.lua
-#, fuzzy
 msgid "Keybindings changed"
-msgstr "Tastebindinger."
+msgstr "Tastebindinger ændret"
 
 #: builtin/mainmenu/dlg_rebind_keys.lua
 #, fuzzy
@@ -1473,11 +1483,12 @@ msgid "Ping"
 msgstr "Ping"
 
 #: builtin/mainmenu/tab_online.lua
-#, fuzzy
 msgid ""
 "Players:\n"
 "$1"
-msgstr "Klient"
+msgstr ""
+"Spillere:\n"
+"$1"
 
 #: builtin/mainmenu/tab_online.lua
 msgid ""
@@ -1536,9 +1547,9 @@ msgid "Rebuilding shaders..."
 msgstr "Genbygger dybdeskabere ..."
 
 #: src/client/client.cpp src/util/screenshot.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Saved screenshot to \"%s\""
-msgstr "Skærmbillede"
+msgstr "Gemt screenshot på \"%s\""
 
 #: src/client/clientlauncher.cpp
 msgid "Could not find or load game: "
@@ -2357,9 +2368,8 @@ msgid "Add button"
 msgstr "Midterste knap"
 
 #: src/gui/touchscreeneditor.cpp
-#, fuzzy
 msgid "Done"
-msgstr "Færdig!"
+msgstr "Færdig"
 
 #: src/gui/touchscreeneditor.cpp
 #, fuzzy
@@ -2671,7 +2681,6 @@ msgid "3D noise that determines number of dungeons per mapchunk."
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "3D support.\n"
 "Currently supported:\n"
@@ -2683,13 +2692,13 @@ msgid ""
 msgstr ""
 "Understøttelse af 3D.\n"
 "Understøttet på nuværende tidspunkt:\n"
-"-    none: ingen 3d-udgang.\n"
-"-    anaglyph: cyan/magenta farve 3d.\n"
+"-    none: ingen 3D-udgang\n"
+"-    anaglyph: cyan/magenta farve 3D\n"
 "-    interlaced: ulige/lige linjebaseret polarisering for "
 "skærmunderstøttelsen\n"
-"-    topbottom: opdel skærm top/bund.\n"
-"-    sidebyside: opdel skærm side om side.\n"
-"-    pageflip: quadbuffer baseret 3d."
+"-    topbottom: opdel skærm top/bund\n"
+"-    sidebyside: opdel skærm side om side\n"
+"-    crossview: kryds-øjet 3D"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -2784,16 +2793,12 @@ msgid "Allows liquids to be translucent."
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Also used for climbing down and descending in water if aux1_descends is "
 "disabled."
 msgstr ""
-"Tast til snigning.\n"
-"Bruges også til at klatre ned og synke ned i vand hvis aux1_descends er "
-"deaktiveret.\n"
-"Se http://irrlicht.sourceforge.net/docu/"
-"namespaceirr.html#a54da2a0e231901735e3da1b0edf72eb3"
+"Bruges også til at klatre ned og sænke ned i vand, hvis aux1_descends er "
+"deaktiveret."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -2814,9 +2819,8 @@ msgid "Ambient occlusion gamma"
 msgstr "Ambient okklusiongamma"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Amplifies the valleys."
-msgstr "Forstærker dalene"
+msgstr "Forstærker dalene."
 
 #: src/settings_translation_file.cpp
 msgid "Anisotropic filtering"
@@ -2827,9 +2831,8 @@ msgid "Announce server"
 msgstr "Meddelelsesserver"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Announce to this serverlist."
-msgstr "Meddelelsesserver"
+msgstr "Meddel til denne serverliste."
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -2954,9 +2957,8 @@ msgid "Base ground level"
 msgstr "Jordoverfladen"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Base terrain height."
-msgstr "Baseterrænhøjde"
+msgstr "Baseterrænhøjde."
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -3763,9 +3765,8 @@ msgid "Enable joysticks. Requires a restart to take effect"
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Enable mod channels support."
-msgstr "Aktiver mod-sikkerhed"
+msgstr "Aktivér mod-kanalers sikkerhed."
 
 #: src/settings_translation_file.cpp
 msgid "Enable mod security"
@@ -3847,9 +3848,8 @@ msgid "Enables debug and error-checking in the OpenGL driver."
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Enables smooth scrolling."
-msgstr "Aktivér joysticks"
+msgstr "Aktivér smooth scrolling."
 
 #: src/settings_translation_file.cpp
 msgid "Enables the post processing pipeline."
@@ -4495,9 +4495,8 @@ msgid "Hotbar: select previous item"
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "How deep to make rivers."
-msgstr "Dybde for floder"
+msgstr "Dybde for floder."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -4522,9 +4521,8 @@ msgid ""
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "How wide to make rivers."
-msgstr "Hvor brede floder skal være"
+msgstr "Hvor brede floder skal være."
 
 #: src/settings_translation_file.cpp
 msgid "Humidity blend noise"
@@ -4934,9 +4932,8 @@ msgid "Key for toggling the display of the profiler. Used for development."
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Keybindings"
-msgstr "Tastebindinger."
+msgstr "Tastebindinger"
 
 #: src/settings_translation_file.cpp
 msgid "Keyboard and Mouse"
@@ -5005,27 +5002,25 @@ msgstr ""
 "netværket."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Length of liquid waves."
-msgstr "Bølgende blade"
+msgstr "Længden på flydende bølger."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Length of time between Active Block Modifier (ABM) execution cycles, stated "
 "in seconds."
-msgstr "Tidslængde mellem ABM-kørselscyklusser"
+msgstr ""
+"Tidslængde mellem Active Block Modifier (ABM)-kørselscyklusser, angivet i "
+"sekunder."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Length of time between NodeTimer execution cycles, stated in seconds."
-msgstr "Tidslængde mellem NodeTimer-kørselscyklusser"
+msgstr "Tidslængde mellem NodeTimer-kørselscyklusser, angivet i sekunder."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Length of time between active block management cycles, stated in seconds."
-msgstr "Tidslængde mellem ABM-kørselscyklusser"
+msgstr "Tidslængde mellem ABM-cyklusser, angivet i sekunder."
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -5109,7 +5104,7 @@ msgstr "Blødgøring af væskes evne til at flyde"
 
 #: src/settings_translation_file.cpp
 msgid "Liquid loop max"
-msgstr "Væskesløjfe maks."
+msgstr "Væskesløjfe maks"
 
 #: src/settings_translation_file.cpp
 msgid "Liquid queue purge time"
@@ -5160,9 +5155,8 @@ msgid "Lower Y limit of dungeons."
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Lower Y limit of floatlands."
-msgstr "Absolut begrænsning af fremkomstkøer"
+msgstr "Nedre Y-grænse for flydende områder."
 
 #: src/settings_translation_file.cpp
 msgid "Main menu script"
@@ -7090,9 +7084,8 @@ msgid "Upper Y limit of dungeons."
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Upper Y limit of floatlands."
-msgstr "Absolut begrænsning af fremkomstkøer"
+msgstr "Øvre Y-grænse for flydende områder."
 
 #: src/settings_translation_file.cpp
 msgid "Use a cloud animation for the main menu background."
@@ -7402,12 +7395,8 @@ msgid "Width of the selection box lines around nodes."
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Will also disable autoforward, when active."
-msgstr ""
-"Tast til at bevæge spilleren baglæns.\n"
-"Se http://irrlicht.sourceforge.net/docu/"
-"namespaceirr.html#a54da2a0e231901735e3da1b0edf72eb3"
+msgstr "Vil også deaktivere  automatisk videresendelse, når den er aktiv."
 
 #: src/settings_translation_file.cpp
 msgid "Window maximized"
@@ -7455,9 +7444,8 @@ msgid ""
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Y of upper limit of large caves."
-msgstr "Absolut begrænsning af fremkomstkøer"
+msgstr "Y af øvre grænse for store huler."
 
 #: src/settings_translation_file.cpp
 msgid "Y-distance over which caverns expand to full size."
@@ -7511,7 +7499,7 @@ msgstr ""
 #: src/util/screenshot.cpp
 #, c-format
 msgid "Failed to save screenshot to \"%s\""
-msgstr ""
+msgstr "Mislykkede at gemme skærmbillede til \"%s\""
 
 #~ msgid "Provided world path doesn't exist: "
 #~ msgstr "Angivne sti til verdenen findes ikke: "
