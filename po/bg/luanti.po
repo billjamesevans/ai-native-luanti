@@ -3,7 +3,7 @@ msgstr ""
 "Project-Id-Version: minetest\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
-"PO-Revision-Date: 2026-01-19 08:01+0000\n"
+"PO-Revision-Date: 2026-04-20 07:09+0000\n"
 "Last-Translator: 109247019824 <109247019824@users.noreply.hosted.weblate.org>"
 "\n"
 "Language-Team: Bulgarian <https://hosted.weblate.org/projects/minetest/"
@@ -13,7 +13,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.16-dev\n"
+"X-Generator: Weblate 5.17.1-dev\n"
 
 #: builtin/client/chatcommands.lua
 msgid "Clear the out chat queue"
@@ -127,6 +127,8 @@ msgid ""
 "2D noise: flag on.\n"
 "3D noise: flag off."
 msgstr ""
+"2D шум: флаг включен.\n"
+"3D шум: флаг включен."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
@@ -196,12 +198,16 @@ msgid ""
 "Making 3D noise eased is not recommended because it significantly increases "
 "the load."
 msgstr ""
+"Не се препоръчва да намалявате нивото на 3D шума, защото това значително "
+"увеличава натоварването."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Maps noise gradient values onto a quintic S-curve before performing "
 "interpolation."
 msgstr ""
+"Преди да бъде извършена интерполация стойностите на шумовия градиент биват "
+"нанесени върху S-крива от пета степен."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Octaves"
@@ -1221,7 +1227,7 @@ msgid ""
 msgstr ""
 "Инсталирано издание: $1\n"
 "Последно издание: $2\n"
-"За да разберете как да се сдобиете с последното издание и да поличите най-"
+"За да разберете как да се сдобиете с последното издание и да получите най-"
 "новите възможности и поправки, посетете $3."
 
 #: builtin/mainmenu/dlg_version_info.lua
