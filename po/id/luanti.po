@@ -3,8 +3,8 @@ msgstr ""
 "Project-Id-Version: Indonesian (Minetest)\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
-"PO-Revision-Date: 2026-02-03 04:56+0000\n"
-"Last-Translator: GeekSteak <lpdj@ik.me>\n"
+"PO-Revision-Date: 2026-02-27 14:09+0000\n"
+"Last-Translator: Arif Budiman <arifpedia@gmail.com>\n"
 "Language-Team: Indonesian <https://hosted.weblate.org/projects/minetest/"
 "minetest/id/>\n"
 "Language: id\n"
@@ -12,7 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
-"X-Generator: Weblate 5.16-dev\n"
+"X-Generator: Weblate 5.16.1-dev\n"
 
 #: builtin/client/chatcommands.lua
 msgid "Clear the out chat queue"
@@ -78,9 +78,8 @@ msgid "[all | <cmd>] [-t]"
 msgstr "[all | <perintah>] [-t]"
 
 #: builtin/common/settings/components.lua
-#, fuzzy
 msgid "Add keybinding"
-msgstr "Pengikatan tombol"
+msgstr "Tambahkan pintasan tombol"
 
 #: builtin/common/settings/components.lua
 msgid "Browse"
@@ -111,9 +110,8 @@ msgid "Set"
 msgstr "Atur"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
-#, fuzzy
 msgid "$1 spread"
-msgstr "Persebaran X"
+msgstr "Sebaran $1"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "(No description of setting given)"
@@ -128,11 +126,14 @@ msgid ""
 "2D noise: flag on.\n"
 "3D noise: flag off."
 msgstr ""
+"Noise 2D: tanda aktif.\n"
+"Noise 3D: tanda nonaktif."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Amplifies every octave by (amplitude of the previous octave * Persistence)."
 msgstr ""
+"Memperkuat setiap oktaf sebesar (amplitudo oktaf sebelumnya * Persistensi)."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 #: builtin/mainmenu/content/dlg_install.lua
@@ -148,23 +149,27 @@ msgstr "Batal"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Controls how many octaves (layers) the noise will have."
-msgstr ""
+msgstr "Mengontrol berapa banyak oktaf (lapisan) yang akan dimiliki noise."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Each octave is a simple noise generator. Each one also adds more detail to "
 "the noise."
 msgstr ""
+"Setiap oktaf adalah generator noise sederhana. Masing-masing juga "
+"menambahkan lebih banyak detail pada noise."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Finally, all of the octaves will be combined to generate the noise."
-msgstr ""
+msgstr "Akhirnya, semua oktaf akan digabungkan untuk menghasilkan noise."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Having lots of octaves is not recommended because it increases terrain "
 "generation time."
 msgstr ""
+"Memiliki banyak oktaf tidak disarankan karena meningkatkan waktu pembuatan "
+"medan."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Lacunarity"
@@ -175,30 +180,40 @@ msgid ""
 "Lower values make the terrain simple and higher values make the terrain "
 "rough."
 msgstr ""
+"Nilai lebih rendah membuat medan sederhana dan nilai lebih tinggi membuat "
+"medan kasar."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Lower values make the terrain smooth and higher values make the terrain have "
 "fine detail."
 msgstr ""
+"Nilai lebih rendah membuat medan halus dan nilai lebih tinggi membuat medan "
+"memiliki detail halus."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Lower values will result in smoother noise and higher values will result in "
 "rougher noise."
 msgstr ""
+"Nilai lebih rendah akan menghasilkan noise yang lebih halus dan nilai lebih "
+"tinggi akan menghasilkan noise yang lebih kasar."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Making 3D noise eased is not recommended because it significantly increases "
 "the load."
 msgstr ""
+"Membuat noise 3D menjadi eased tidak disarankan karena secara signifikan "
+"meningkatkan beban."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Maps noise gradient values onto a quintic S-curve before performing "
 "interpolation."
 msgstr ""
+"Memetakan nilai gradien noise ke kurva-S kuintik sebelum melakukan "
+"interpolasi."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Octaves"
@@ -211,11 +226,11 @@ msgstr "Pergeseran"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Offsets the final noise by this value."
-msgstr ""
+msgstr "Menggeser noise akhir sebesar nilai ini."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Overrides the 'eased' flag based on the noise type."
-msgstr ""
+msgstr "Menggantikan tanda 'eased' berdasarkan jenis noise."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Persistence"
@@ -234,10 +249,11 @@ msgstr "Skala"
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Scales every octave by (scale of the previous octave / Lacunarity)."
 msgstr ""
+"Menskalakan setiap oktaf sebesar (skala oktaf sebelumnya / Lakunaritas)."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Scales the noise in the $1 axis by this value."
-msgstr ""
+msgstr "Menskalakan noise pada sumbu $1 sebesar nilai ini."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 #: builtin/mainmenu/dlg_create_world.lua
@@ -246,38 +262,37 @@ msgstr "Seed"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Takes the absolute value of each octave while adding them together."
-msgstr ""
+msgstr "Mengambil nilai absolut dari setiap oktaf saat menggabungkannya."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "The first octave is amplified by 1."
-msgstr ""
+msgstr "Oktaf pertama diperkuat sebesar 1."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
-#, fuzzy
 msgid "The first octave is scaled by 1."
-msgstr "Perintah ini dilarang oleh server."
+msgstr "Oktaf pertama diskalakan sebesar 1."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "The multiplier for the noise before the offset is added."
-msgstr ""
+msgstr "Pengali untuk noise sebelum offset ditambahkan."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "The random seed for the noise. The same seed results in the same noise."
-msgstr ""
+msgstr "Benih acak untuk noise. Benih yang sama menghasilkan noise yang sama."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "This is also the scale of the largest structures in the $1 direction of the "
 "noise."
-msgstr ""
+msgstr "Ini juga merupakan skala struktur terbesar dalam arah $1 dari noise."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "This results in smooth noise instead of gridlike noise."
-msgstr ""
+msgstr "Ini menghasilkan noise yang halus alih-alih noise seperti kisi."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "This results in spiky noise."
-msgstr ""
+msgstr "Ini menghasilkan noise yang tajam/runcing."
 
 #. ~ "absvalue" is a noise parameter flag.
 #. It is short for "absolute value".
@@ -377,9 +392,8 @@ msgstr "Tidak ada hasil"
 
 #. ~ Indicates that the action does not have a corresponding keybinding.
 #: builtin/common/settings/dlg_settings.lua
-#, fuzzy
 msgid "Not bound"
-msgstr "Tidak ditemukan"
+msgstr "Tidak terikat"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Reset setting to default"
@@ -418,15 +432,16 @@ msgid ""
 "These settings are unavailable due to your platform, hardware or in "
 "combination with the current settings."
 msgstr ""
+"Pengaturan ini tidak tersedia karena platform, perangkat keras Anda, atau "
+"dalam kombinasi dengan pengaturan saat ini."
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Touchscreen layout"
 msgstr "Tata letak layar sentuh"
 
 #: builtin/common/settings/dlg_settings.lua
-#, fuzzy
 msgid "Unavailable"
-msgstr "<tidak ada yang tersedia>"
+msgstr "Tidak tersedia"
 
 #: builtin/common/settings/settingtypes.lua
 msgid "Client Mods"
@@ -462,7 +477,7 @@ msgstr "Menengah"
 
 #: builtin/common/settings/shadows_component.lua
 msgid "Quality preset"
-msgstr ""
+msgstr "Prasetel kualitas"
 
 #: builtin/common/settings/shadows_component.lua
 msgid "Very High"
@@ -734,9 +749,8 @@ msgid "Website"
 msgstr "Situs Web"
 
 #: builtin/mainmenu/content/dlg_package.lua
-#, fuzzy
 msgid "by $1"
-msgstr "$1 oleh $2"
+msgstr "oleh $1"
 
 #: builtin/mainmenu/content/dlg_package.lua
 msgid "by $1  —  $2 downloads  —  +$3 / $4 / -$5"
@@ -771,9 +785,8 @@ msgid "Unable to install a $1 as a texture pack"
 msgstr "Gagal memasang $1 sebagai paket tekstur"
 
 #: builtin/mainmenu/content/pkgmgr.lua
-#, fuzzy
 msgid "World mods"
-msgstr "Nama dunia"
+msgstr "Mod dunia"
 
 #: builtin/mainmenu/dlg_clients_list.lua
 msgid ""
@@ -825,7 +838,7 @@ msgstr "Mod:"
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "Mods located inside the world folder."
-msgstr ""
+msgstr "Mod yang terletak di dalam folder dunia."
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "No (optional) dependencies"
@@ -861,16 +874,15 @@ msgstr "dinyalakan"
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 msgid "Always show this dialog."
-msgstr ""
+msgstr "Selalu tampilkan dialog ini."
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
-#, fuzzy
 msgid "Are you sure you want to quit?"
-msgstr "Anda yakin ingin menghapus \"$1\"?"
+msgstr "Apakah Anda yakin ingin keluar?"
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 msgid "Quit"
-msgstr ""
+msgstr "Keluar"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "A world named \"$1\" already exists"
@@ -1227,7 +1239,7 @@ msgstr "Kunjungi situs web"
 
 #: builtin/mainmenu/init.lua
 msgid "Debug build, expect worse performance"
-msgstr ""
+msgstr "Build debug, performa mungkin lebih buruk"
 
 #: builtin/mainmenu/init.lua src/client/game_formspec.cpp
 msgid "Settings"
@@ -1520,9 +1532,9 @@ msgid "Rebuilding shaders..."
 msgstr "Membangun ulang shader..."
 
 #: src/client/client.cpp src/util/screenshot.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Saved screenshot to \"%s\""
-msgstr "Tangkapan Layar"
+msgstr "Tangkapan layar disimpan ke \"%s\""
 
 #: src/client/clientlauncher.cpp
 msgid "Could not find or load game: "
@@ -1550,7 +1562,7 @@ msgstr "Berkas kata sandi yang diberikan gagal dibuka: "
 
 #: src/client/clientlauncher.cpp
 msgid "World does not exist and no game selected to create one."
-msgstr ""
+msgstr "Dunia tidak ada dan tidak ada game yang dipilih untuk membuatnya."
 
 #: src/client/clientmedia.cpp src/client/game.cpp
 msgid "Media..."
@@ -2010,19 +2022,16 @@ msgid "Down Arrow"
 msgstr "Panah Bawah"
 
 #: src/client/keycode.cpp
-#, fuzzy
 msgid "End Key"
-msgstr "Alt"
+msgstr "Tombol End"
 
 #: src/client/keycode.cpp
-#, fuzzy
 msgid "Help Key"
-msgstr "Delete"
+msgstr "Tombol Bantuan"
 
 #: src/client/keycode.cpp
-#, fuzzy
 msgid "Home Key"
-msgstr "Zum"
+msgstr "Tombol Home"
 
 #: src/client/keycode.cpp
 msgid "Insert"
@@ -2033,9 +2042,8 @@ msgid "Left Arrow"
 msgstr "Panah Kiri"
 
 #: src/client/keycode.cpp
-#, fuzzy
 msgid "Left Click"
-msgstr "Ctrl Kiri"
+msgstr "Klik Kiri"
 
 #: src/client/keycode.cpp
 msgid "Left Control"
@@ -2060,15 +2068,15 @@ msgstr "Alt"
 
 #: src/client/keycode.cpp
 msgid "Middle Click"
-msgstr ""
+msgstr "Klik Tengah"
 
 #: src/client/keycode.cpp
 msgid "Mouse X1"
-msgstr ""
+msgstr "Mouse X1"
 
 #: src/client/keycode.cpp
 msgid "Mouse X2"
-msgstr ""
+msgstr "Mouse X2"
 
 #: src/client/keycode.cpp
 msgid "Num Lock"
@@ -2165,9 +2173,8 @@ msgid "Right Arrow"
 msgstr "Panah Kanan"
 
 #: src/client/keycode.cpp
-#, fuzzy
 msgid "Right Click"
-msgstr "Ctrl Kanan"
+msgstr "Klik Kanan"
 
 #: src/client/keycode.cpp
 msgid "Right Control"
@@ -2189,16 +2196,15 @@ msgstr "Windows Kanan"
 #: src/client/keycode.cpp
 #, c-format
 msgid "Scancode: %d"
-msgstr ""
+msgstr "Kode pindai: %d"
 
 #: src/client/keycode.cpp
 msgid "Scroll Lock"
 msgstr "Scroll Lock"
 
 #: src/client/keycode.cpp
-#, fuzzy
 msgid "Select Key"
-msgstr "Delete"
+msgstr "Pilih Tombol"
 
 #: src/client/keycode.cpp
 msgid "Shift Key"
@@ -2209,9 +2215,8 @@ msgid "Space"
 msgstr "Spasi"
 
 #: src/client/keycode.cpp
-#, fuzzy
 msgid "Tab Key"
-msgstr "Break"
+msgstr "Tombol Tab"
 
 #: src/client/keycode.cpp
 msgid "Up Arrow"
@@ -2238,7 +2243,7 @@ msgstr "Peta mini mode tekstur"
 #: src/client/render/pipeline.cpp
 #, c-format
 msgid "Failed to create the texture \"%s\" for the rendering pipeline."
-msgstr ""
+msgstr "Gagal membuat tekstur \"%s\" untuk pipeline rendering."
 
 #: src/client/shader.cpp
 #, c-format
@@ -2246,9 +2251,9 @@ msgid "Failed to compile the \"%s\" shader."
 msgstr "Gagal mengompilasi shader \"%s\"."
 
 #: src/client/shader.cpp
-#, fuzzy, c-format
+#, c-format
 msgid "Failed to find \"%s\" shader files."
-msgstr "Gagal mengompilasi shader \"%s\"."
+msgstr "Gagal menemukan file shader \"%s\"."
 
 #: src/client/shader.cpp
 msgid "GLSL is not supported by the driver"
@@ -2651,7 +2656,6 @@ msgid "3D noise that determines number of dungeons per mapchunk."
 msgstr "Noise 3D yang mengatur jumlah dungeon per potongan peta."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "3D support.\n"
 "Currently supported:\n"
@@ -2662,13 +2666,12 @@ msgid ""
 "-    crossview: cross-eyed 3D"
 msgstr ""
 "Dukungan 3D.\n"
-"Yang didukung saat ini:\n"
-"-    none: tidak ada keluaran 3d.\n"
-"-    anaglyph: 3d dengan warna sian/magenta.\n"
-"-    interlaced: garis ganjil/genap berdasarkan polarisasi layar.\n"
-"-    topbottom: pisahkan layar atas/bawah.\n"
-"-    sidebyside: pisahkan layar kiri/kanan.\n"
-"-    crossview: 3d dengan pandang silang"
+"Saat ini didukung:\n"
+"-    none: tidak ada keluaran 3D\n"
+"-  anaglyph: 3D warna cyan/magenta\n"
+"-    topbottom: layar terbagi atas/bawah\n"
+"-    sidebyside: layar terbagi berdampingan\n"
+"-    crossview: 3D mata menyilang"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -2769,14 +2772,12 @@ msgid "Allows liquids to be translucent."
 msgstr "Bolehkan cairan agak tembus pandang."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Also used for climbing down and descending in water if aux1_descends is "
 "disabled."
 msgstr ""
-"Tombol untuk mengendap-endap.\n"
-"Juga digunakan untuk turun dan menyelam di air jika aux1_descends "
-"dinonaktifkan."
+"Juga digunakan untuk memanjat turun dan menyelam dalam air jika "
+"aux1_descends dinonaktifkan."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -2851,6 +2852,10 @@ msgid ""
 "Provides balance between speed and image quality.\n"
 "fxaa can used in combination with the other anti-aliasing methods"
 msgstr ""
+"Menerapkan filter pasca-pemrosesan untuk mendeteksi dan menghaluskan tepi "
+"kontras tinggi.\n"
+"Memberikan keseimbangan antara kecepatan dan kualitas gambar.\n"
+"fxaa dapat digunakan dikombinasikan dengan metode anti-aliasing lainnya"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -2886,7 +2891,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Array texture max layers"
-msgstr ""
+msgstr "Lapisan maksimum tekstur array"
 
 #: src/settings_translation_file.cpp
 msgid "Ask to reconnect after crash"
@@ -3053,10 +3058,13 @@ msgid ""
 "Caps the maximum number of layers used with array textures (if supported).\n"
 "This is only useful for debugging."
 msgstr ""
+"Membatasi jumlah maksimum lapisan yang digunakan dengan tekstur array (jika "
+"didukung).\n"
+"Ini hanya berguna untuk debugging."
 
 #: src/settings_translation_file.cpp
 msgid "Capture Tracy zones"
-msgstr ""
+msgstr "Tangkap zona Tracy"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -3064,6 +3072,10 @@ msgid ""
 "You need to build with Tracy to use this, see doc/developing/profiling.md\n"
 "for details."
 msgstr ""
+"Tangkap zona Tracy dengan instrumentasi profiler.\n"
+"Anda perlu membangun dengan Tracy untuk menggunakannya, lihat doc/developing/"
+"profiling.md\n"
+"untuk detailnya."
 
 #: src/settings_translation_file.cpp
 msgid "Cave noise"
@@ -3154,9 +3166,8 @@ msgid "Chat weblinks"
 msgstr "Tautan web obrolan"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Choose theme colors for the main menu background."
-msgstr "Gunakan animasi awan untuk latar belakang menu utama."
+msgstr "Pilih warna tema untuk latar belakang menu utama."
 
 #: src/settings_translation_file.cpp
 msgid "Chunk size"
@@ -3307,7 +3318,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Confirmation dialog before closing"
-msgstr ""
+msgstr "Dialog konfirmasi sebelum menutup"
 
 #: src/settings_translation_file.cpp
 msgid "Connect glass"
@@ -3575,14 +3586,13 @@ msgid "Defines tree areas and tree density."
 msgstr "Menetapkan daerah pohon dan kepadatan pohon."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Delay between mesh updates on the client in ms. Increasing this will slow\n"
 "down the rate of mesh updates, which can help reduce jitter."
 msgstr ""
-"Jeda antarpembaruan mesh pada klien dalam milidetik. Menaikkan nilai ini "
-"akan\n"
-"memperlambat pembaruan mesh sehingga mengurangi jitter pada klien lambat."
+"Penundaan antara pembaruan mesh pada klien dalam ms. Meningkatkan nilai ini "
+"akan memperlambat\n"
+"laju pembaruan mesh, yang dapat membantu mengurangi jitter."
 
 #: src/settings_translation_file.cpp
 msgid "Delay in sending blocks after building"
@@ -3630,7 +3640,7 @@ msgstr "Pilihan Pengembang"
 
 #: src/settings_translation_file.cpp
 msgid "Disable if you only want to instrument with Tracy."
-msgstr ""
+msgstr "Nonaktifkan jika Anda hanya ingin melakukan instrumentasi dengan Tracy."
 
 #: src/settings_translation_file.cpp
 msgid "Disallow empty passwords"
@@ -3765,9 +3775,8 @@ msgid "Enable Raytraced Culling"
 msgstr "Nyalakan Raytraced Culling"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Enable a confirmation dialog before closing."
-msgstr "Jalankan animasi barang inventaris."
+msgstr "Aktifkan dialog konfirmasi sebelum menutup."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -3794,9 +3803,8 @@ msgid "Enable console window"
 msgstr "Gunakan jendela konsol"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Enable dynamic shadows"
-msgstr "Bayangan dinamis"
+msgstr "Aktifkan bayangan dinamis"
 
 #: src/settings_translation_file.cpp
 msgid "Enable joysticks"
@@ -3968,9 +3976,8 @@ msgid "Fallback font path"
 msgstr "Jalur fon cadangan"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Fast approximate antialiasing"
-msgstr "Pemfilteran dan Antialiasing"
+msgstr "Antialiasing perkiraan cepat"
 
 #: src/settings_translation_file.cpp
 msgid "Fast mode acceleration"
@@ -4635,14 +4642,15 @@ msgstr ""
 "Hanya nyalakan ini jika Anda tahu yang Anda lakukan."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "If enabled, node and inventory actions are recorded for rollback.\n"
 "This option is only read on server start. Note that the engine will not\n"
 "automatically clean old entries from the rollback database."
 msgstr ""
-"Jika dinyalakan, perilaku akan direkam untuk cadangan (rollback).\n"
-"Pilihan ini hanya dibaca saat server dimulai."
+"Jika diaktifkan, tindakan node dan inventaris dicatat untuk rollback.\n"
+"Opsi ini hanya dibaca saat server dimulai. Perhatikan bahwa mesin tidak "
+"akan\n"
+"secara otomatis membersihkan entri lama dari database rollback."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -5598,14 +5606,12 @@ msgid "Maximum users"
 msgstr "Jumlah pengguna maksimum"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Measure time samples"
-msgstr "Kuil gurun"
+msgstr "Ukur sampel waktu"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Menu theme"
-msgstr "Alt"
+msgstr "Tema menu"
 
 #: src/settings_translation_file.cpp
 msgid "Message of the day"
@@ -5668,6 +5674,8 @@ msgid ""
 "Modifier key bind for closing your world.\n"
 "Requires ESC + the selected key to work."
 msgstr ""
+"Tombol modifier untuk menutup dunia Anda.\n"
+"Memerlukan ESC + tombol yang dipilih untuk berfungsi."
 
 #: src/settings_translation_file.cpp
 msgid "Modifies the size of the HUD elements."
@@ -5814,6 +5822,13 @@ msgid ""
 "WARNING: There are known bugs in the default map generators (v6, v7, ...)\n"
 "when using more than 1 thread. The automatic choice will avoid this."
 msgstr ""
+"Jumlah utas emerge (bertanggung jawab untuk pembuatan dan pemuatan peta) "
+"yang akan digunakan.\n"
+"Jika 0, mesin akan otomatis memilih nilai yang sesuai tergantung\n"
+"pada perangkat keras dan jenis generator peta.\n"
+"PERINGATAN: Ada bug yang diketahui pada generator peta bawaan (v6, v7, ...)\n"
+"saat menggunakan lebih dari 1 utas. Pilihan otomatis akan menghindari hal "
+"ini."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -5831,15 +5846,13 @@ msgid "Number of messages a player may send per 10 seconds."
 msgstr "Jumlah pesan yang dapat dikirim pemain per 10 detik."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Number of threads to use for mesh generation.\n"
 "Value of 0 (default) will let Luanti automatically choose the number of "
 "threads."
 msgstr ""
-"Jumlah utas untuk pembuatan mesh.\n"
-"Nilai 0 (bawaan) akan membiarkan Luanti mendeteksi otomatis jumlah utas yang "
-"tersedia."
+"Jumlah utas yang digunakan untuk pembuatan mesh.\n"
+"Nilai 0 (default) akan membiarkan Luanti memilih jumlah utas secara otomatis."
 
 #: src/settings_translation_file.cpp
 msgid "Occlusion Culler"
@@ -5850,9 +5863,8 @@ msgid "Occlusion Culling"
 msgstr "Pemusnahan Oklusi"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Opaqueness (alpha) of the shadow behind the font."
-msgstr "Keburaman (alfa) bayangan di belakang fon bawaan, antara 0 dan 255."
+msgstr "Keburaman (alfa) dari bayangan di belakang font."
 
 #: src/settings_translation_file.cpp
 msgid "Open chat"
@@ -6126,9 +6138,8 @@ msgstr ""
 "READ_PLAYERINFO: 32 (cegah pemanggilan get_player_names sisi klien)"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Return to Main Menu"
-msgstr "Kembali ke menu utama"
+msgstr "Kembali ke Menu Utama"
 
 #: src/settings_translation_file.cpp
 msgid "Ridge mountain spread noise"
@@ -6195,7 +6206,6 @@ msgid "Save the map received by the client on disk."
 msgstr "Simpan peta yang diterima klien pada diska."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Save window size automatically when modified.\n"
 "If true, screen size is saved in screen_w and screen_h, and whether the "
@@ -6203,10 +6213,9 @@ msgid ""
 "is maximized is stored in window_maximized."
 msgstr ""
 "Simpan ukuran jendela secara otomatis saat diubah.\n"
-"Jika dinyalakan, ukuran layar disimpan dalam screen_w dan screen_h dan\n"
-"keadaan jendela maksimal disimpan dalam window_maximized.\n"
-"(Penyimpanan otomatis window_maximized hanya bekerja jika dikompilasi dengan "
-"SDL.)"
+"Jika true, ukuran layar disimpan di screen_w dan screen_h, dan apakah "
+"jendela\n"
+"dimaksimalkan disimpan di window_maximized."
 
 #: src/settings_translation_file.cpp
 msgid "Saving map received from server"
@@ -6286,7 +6295,6 @@ msgid "See https://www.sqlite.org/pragma.html#pragma_synchronous"
 msgstr "Lihat https://www.sqlite.org/pragma.html#pragma_synchronous"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Select the antialiasing method to apply.\n"
 "\n"
@@ -6306,26 +6314,21 @@ msgid ""
 msgstr ""
 "Pilih metode antialiasing yang akan diterapkan.\n"
 "\n"
-"* Tidak ada - Tidak ada antialiasing (default)\n"
+"* None - Tidak ada antialiasing (default)\n"
 "\n"
-"* FSAA - Antialiasing layar penuh yang disediakan oleh perangkat keras\n"
-"Alias: antialiasing multi-sample (MSAA)\n"
-"Menghaluskan tepi blok tetapi tidak mempengaruhi bagian dalam tekstur.\n"
+"* FSAA - Antialiasing layar penuh dari perangkat keras\n"
+"A.K.A antialiasing multi-sampel (MSAA)\n"
+"Menghaluskan tepi blok tetapi tidak memengaruhi bagian dalam tekstur.\n"
 "\n"
-"Jika Pemrosesan Pasca dinonaktifkan, mengubah FSAA memerlukan restart.\n"
-"Selain itu, jika Pemrosesan Pasca dinonaktifkan, FSAA tidak akan berfungsi "
+"Jika Post Processing dinonaktifkan, mengubah FSAA memerlukan restart.\n"
+"Selain itu, jika Post Processing dinonaktifkan, FSAA tidak akan berfungsi "
 "bersama dengan\n"
-"undersampling atau pengaturan \"3d_mode\" yang tidak default.\n"
-"\n"
-"* FXAA - Antialiasing perkiraan cepat\n"
-"Menerapkan filter pemrosesan pasca untuk mendeteksi dan menghaluskan tepi "
-"dengan kontras tinggi.\n"
-"Memberikan keseimbangan antara kecepatan dan kualitas gambar.\n"
+"undersampling atau pengaturan \"3d_mode\" non-default.\n"
 "\n"
 "* SSAA - Antialiasing super-sampling\n"
-"Menghasilkan gambar dengan resolusi lebih tinggi dari adegan, kemudian "
-"mengurangi skala untuk mengurangi\n"
-"efek aliasing. Ini adalah metode yang paling lambat dan paling akurat."
+"Merender gambar resolusi lebih tinggi dari scene, lalu memperkecil untuk "
+"mengurangi\n"
+"efek aliasing. Ini adalah metode paling lambat dan paling akurat."
 
 #: src/settings_translation_file.cpp
 msgid "Selection box border color (R,G,B)."
@@ -6570,9 +6573,8 @@ msgid "Shadow filter quality"
 msgstr "Kualitas filter bayangan"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Shadow map render distance"
-msgstr "Ukuran tekstur peta bayangan"
+msgstr "Jarak render peta bayangan"
 
 #: src/settings_translation_file.cpp
 msgid "Shadow map texture in 32 bits"
@@ -6583,12 +6585,11 @@ msgid "Shadow map texture size"
 msgstr "Ukuran tekstur peta bayangan"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Shadow offset (in pixels) for all fonts. If 0, then no shadow will be drawn."
 msgstr ""
-"Pergeseran bayangan fon bawaan dalam piksel. Jika 0, bayangan tidak akan "
-"digambar."
+"Offset bayangan (dalam piksel) untuk semua font. Jika 0, maka tidak ada "
+"bayangan yang akan digambar."
 
 #: src/settings_translation_file.cpp
 msgid "Shadow strength gamma"
@@ -7055,15 +7056,14 @@ msgstr ""
 "Ini harus diatur bersama dengan active_object_range."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "The rendering back-end.\n"
 "Note: A restart is required after changing this!\n"
 "By default OpenGL3 is preferred on desktop, or OGLES2 on Android."
 msgstr ""
-"Backend perenderan.\n"
-"Catatan: Diperlukan pemulaian ulang setelah mengubah ini!\n"
-"OpenGL merupakan bawaan untuk desktop, dan OGLES2 untuk Android."
+"Back-end rendering.\n"
+"Catatan: Diperlukan restart setelah mengubah ini!\n"
+"Secara default OpenGL3 lebih disukai di desktop, atau OGLES2 di Android."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -7165,16 +7165,15 @@ msgstr ""
 "memori dalam detik."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "To save bandwidth, block transfers are slowed down when a player is building "
 "something.\n"
 "This determines how long the throttling lasts after placing a node."
 msgstr ""
-"Untuk mengurangi lag, pengiriman blok diperlambat saat pemain sedang "
-"membangun.\n"
-"Ini menentukan seberapa lama mereka diperlambat setelah menaruh atau "
-"mencopot nodus."
+"Untuk menghemat bandwidth, transfer blok diperlambat saat pemain sedang "
+"membangun sesuatu.\n"
+"Ini menentukan berapa lama throttling berlangsung setelah menempatkan sebuah "
+"node."
 
 #: src/settings_translation_file.cpp
 msgid "Toggle Aux1 key"
@@ -7221,9 +7220,8 @@ msgid "Toggle fullscreen"
 msgstr "Tombol alih layar penuh"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle large chat console"
-msgstr "Konsol obrolan besar"
+msgstr "Alihkan konsol obrolan besar"
 
 #: src/settings_translation_file.cpp
 msgid "Toggle pitchmove"
@@ -7234,9 +7232,8 @@ msgid "Toggle profiler"
 msgstr "Tombol alih profiler"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle unlimited view range"
-msgstr "Tombol untuk mematikan jarak pandang tak terbatas."
+msgstr "Alihkan jangkauan pandang tak terbatas"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -7509,14 +7506,14 @@ msgid "Vertical climbing speed, in nodes per second."
 msgstr "Kelajuan vertikal memanjat dalam nodus per detik."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Vertical screen synchronization.\n"
 "Note: A restart is required after changing this!\n"
 "Your system may still force VSync and ignore this setting."
 msgstr ""
-"Penyinkronan layar vertikal. Sistem Anda mungkin tetap memaksa VSync nyala "
-"walau ini dimatikan."
+"Sinkronisasi layar vertikal.\n"
+"Catatan: Diperlukan restart setelah mengubah ini!\n"
+"Sistem Anda mungkin tetap memaksa VSync dan mengabaikan pengaturan ini."
 
 #: src/settings_translation_file.cpp
 msgid "Video driver"
@@ -7735,11 +7732,8 @@ msgid "Width of the selection box lines around nodes."
 msgstr "Lebar garis kotak pilihan di sekeliling nodus."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Will also disable autoforward, when active."
-msgstr ""
-"Tombol untuk bergerak mundur.\n"
-"Akan menonaktifkan maju otomatis, saat aktif."
+msgstr "Juga akan menonaktifkan maju otomatis, saat aktif."
 
 #: src/settings_translation_file.cpp
 msgid "Window maximized"
@@ -7860,7 +7854,7 @@ msgstr "cURL: batas jumlah paralel"
 #: src/util/screenshot.cpp
 #, c-format
 msgid "Failed to save screenshot to \"%s\""
-msgstr ""
+msgstr "Gagal menyimpan tangkapan layar ke \"%s\""
 
 #~ msgid ""
 #~ "Number of emerge threads to use.\n"
