@@ -3,8 +3,8 @@ msgstr ""
 "Project-Id-Version: Esperanto (Minetest)\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
-"PO-Revision-Date: 2026-01-27 03:14+0000\n"
-"Last-Translator: Exo <exoticalexo@asia.com>\n"
+"PO-Revision-Date: 2026-04-08 22:09+0000\n"
+"Last-Translator: Tirifto <tirifto@posteo.cz>\n"
 "Language-Team: Esperanto <https://hosted.weblate.org/projects/minetest/"
 "minetest/eo/>\n"
 "Language: eo\n"
@@ -12,7 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.16-dev\n"
+"X-Generator: Weblate 5.17-dev\n"
 
 #: builtin/client/chatcommands.lua
 msgid "Clear the out chat queue"
@@ -155,16 +155,20 @@ msgid ""
 "Each octave is a simple noise generator. Each one also adds more detail to "
 "the noise."
 msgstr ""
+"Ĉiu oktavo estas simpla estigilo de bruo. Ĉiu ankaŭ aldonas pliajn detalojn "
+"al la bruo."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Finally, all of the octaves will be combined to generate the noise."
-msgstr ""
+msgstr "Fine, ĉiuj oktavoj unuiĝos por estigi la bruon."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Having lots of octaves is not recommended because it increases terrain "
 "generation time."
 msgstr ""
+"Havi multajn oktavojn ne estas rekomendate, ĉar tio pliigas tempon de tereno-"
+"estigo."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Lacunarity"
@@ -174,25 +178,30 @@ msgstr "Interspacoj"
 msgid ""
 "Lower values make the terrain simple and higher values make the terrain "
 "rough."
-msgstr ""
+msgstr "Malaltaj valoroj simpligas terenon, kaj altaj ĝin malsimpligas."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Lower values make the terrain smooth and higher values make the terrain have "
 "fine detail."
 msgstr ""
+"Malaltaj valoroj simpligas la terenon, kaj altaj donas al ĝi subtilan "
+"detalon."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Lower values will result in smoother noise and higher values will result in "
 "rougher noise."
 msgstr ""
+"Malaltaj valoroj rezultigas pli glatan bruon, kaj altaj valoroj rezultigas "
+"pli malglatan."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "Making 3D noise eased is not recommended because it significantly increases "
 "the load."
 msgstr ""
+"Faciligo de 3D-a bruo ne estas rekomendata, ĉar ĝi grave altigas la ŝarĝon."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
@@ -211,7 +220,7 @@ msgstr "Deŝovo"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Offsets the final noise by this value."
-msgstr ""
+msgstr "Deŝovi la finan bruon je tiu ĉi valoro."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Overrides the 'eased' flag based on the noise type."
@@ -233,11 +242,11 @@ msgstr "Skalo"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Scales every octave by (scale of the previous octave / Lacunarity)."
-msgstr ""
+msgstr "Skalas ĉiun oktavon laŭ (skalo de antaŭa oktavo / malpleneco)."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Scales the noise in the $1 axis by this value."
-msgstr ""
+msgstr "Skalas la bruon laŭ akso $1 je tiu ĉi valoro."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 #: builtin/mainmenu/dlg_create_world.lua
@@ -246,38 +255,39 @@ msgstr "Fontnombro"
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "Takes the absolute value of each octave while adding them together."
-msgstr ""
+msgstr "Prenas absolutajn valorojn de ĉiuj oktavoj kaj sumas ilin."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "The first octave is amplified by 1."
-msgstr ""
+msgstr "La unua oktavo plifortiĝas je 1."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
-#, fuzzy
 msgid "The first octave is scaled by 1."
-msgstr "Ĉi tiun komandon malŝaltis servilo."
+msgstr "La unua oktavo skaliĝas je 1."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "The multiplier for the noise before the offset is added."
-msgstr ""
+msgstr "La obligilo por bruo aldoniĝas antaŭ deŝovo."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "The random seed for the noise. The same seed results in the same noise."
-msgstr ""
+msgstr "La hazarda semo por la bruo. La sama semo rezultigas la saman bruon."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
 "This is also the scale of the largest structures in the $1 direction of the "
 "noise."
 msgstr ""
+"Ĉi tio ankaŭ estas la skalo de la plej grandaj konstruaĵoj laŭ direkto $1 de "
+"la bruo."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "This results in smooth noise instead of gridlike noise."
-msgstr ""
+msgstr "Ĉi tio rezultigas glatan bruon anstataŭ kradeca bruo."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid "This results in spiky noise."
-msgstr ""
+msgstr "Ĉi tio rezultigas pintecan bruon."
 
 #. ~ "absvalue" is a noise parameter flag.
 #. It is short for "absolute value".
@@ -377,9 +387,8 @@ msgstr "Neniuj rezultoj"
 
 #. ~ Indicates that the action does not have a corresponding keybinding.
 #: builtin/common/settings/dlg_settings.lua
-#, fuzzy
 msgid "Not bound"
-msgstr "Ne trovita"
+msgstr "Sen klavo"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Reset setting to default"
@@ -418,15 +427,16 @@ msgid ""
 "These settings are unavailable due to your platform, hardware or in "
 "combination with the current settings."
 msgstr ""
+"Tiuj ĉi agordoj ne haveblas pro via operaciumo, aparataro, aŭ aliaj nunaj "
+"agordoj."
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Touchscreen layout"
 msgstr "Aranĝo de tuŝekrano"
 
 #: builtin/common/settings/dlg_settings.lua
-#, fuzzy
 msgid "Unavailable"
-msgstr "<neniu disponebla>"
+msgstr "Nehavebla"
 
 #: builtin/common/settings/settingtypes.lua
 msgid "Client Mods"
@@ -462,7 +472,7 @@ msgstr "Mezalta"
 
 #: builtin/common/settings/shadows_component.lua
 msgid "Quality preset"
-msgstr ""
+msgstr "Agordaro laŭ kvalito"
 
 #: builtin/common/settings/shadows_component.lua
 msgid "Very High"
@@ -770,9 +780,8 @@ msgid "Unable to install a $1 as a texture pack"
 msgstr "Malsukcesis instali $1 kiel teksturaron"
 
 #: builtin/mainmenu/content/pkgmgr.lua
-#, fuzzy
 msgid "World mods"
-msgstr "Nomo de mondo"
+msgstr "Modifaĵoj de mondo"
 
 #: builtin/mainmenu/dlg_clients_list.lua
 msgid ""
@@ -824,7 +833,7 @@ msgstr "Modifaĵo:"
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "Mods located inside the world folder."
-msgstr ""
+msgstr "Modifaĵoj troveblaj en la monda dosierujo."
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "No (optional) dependencies"
@@ -860,16 +869,15 @@ msgstr "ŝaltita"
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 msgid "Always show this dialog."
-msgstr ""
+msgstr "Ĉiam montri tiun ĉi interagujon."
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
-#, fuzzy
 msgid "Are you sure you want to quit?"
-msgstr "Ĉu vi certe volas forigi «$1»?"
+msgstr "Ĉu vi certe volas eliri?"
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 msgid "Quit"
-msgstr ""
+msgstr "Eliri"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "A world named \"$1\" already exists"
@@ -2873,7 +2881,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Array texture max layers"
-msgstr ""
+msgstr "Maksimuma nombro de tavoloj de araj teksturoj"
 
 #: src/settings_translation_file.cpp
 msgid "Ask to reconnect after crash"
@@ -3037,6 +3045,9 @@ msgid ""
 "Caps the maximum number of layers used with array textures (if supported).\n"
 "This is only useful for debugging."
 msgstr ""
+"Limigas la maksimuman nombron de tavoloj uzotaj por araj teksturoj (laŭeble)"
+".\n"
+"Ĉi tio utilas nur por erarserĉado."
 
 #: src/settings_translation_file.cpp
 msgid "Capture Tracy zones"
@@ -3139,9 +3150,8 @@ msgid "Chat weblinks"
 msgstr "Retligiloj en babilo"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Choose theme colors for the main menu background."
-msgstr "Uzi moviĝantajn nubojn por la fono de la ĉefmenuo."
+msgstr "Elektu kolorojn de haŭto por fono de la ĉefmenuo."
 
 #: src/settings_translation_file.cpp
 msgid "Chunk size"
@@ -3205,7 +3215,7 @@ msgstr "Nuboj en ĉefmenuo"
 
 #: src/settings_translation_file.cpp
 msgid "Color depth for post-processing texture"
-msgstr ""
+msgstr "Kolora profundeco por posttrakta teksturo"
 
 #: src/settings_translation_file.cpp
 msgid "Colored fog"
@@ -3289,7 +3299,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Confirmation dialog before closing"
-msgstr ""
+msgstr "Konfirma interagujo antaŭ fermo"
 
 #: src/settings_translation_file.cpp
 msgid "Connect glass"
@@ -3414,6 +3424,10 @@ msgid ""
 "Reducing this can improve performance, but some effects (e.g. debanding)\n"
 "require more than 8 bits to work."
 msgstr ""
+"Decidas koloran profundecon de la teksturo uzota por la posttrakta "
+"ĉenstablo.\n"
+"Malpliigo povas helpi efikecon, sed iuj efektoj (ekz. senzonigo) bezonas\n"
+"pli ol 8 bitojn por funkcii."
 
 #: src/settings_translation_file.cpp
 msgid "Decrease view range"
@@ -3536,6 +3550,9 @@ msgid ""
 "methods.\n"
 "Value of 2 means taking 2x2 = 4 samples."
 msgstr ""
+"Difinas grandecon de la specimena krado por metodoj de glatigo FSAA kaj "
+"SSAA.\n"
+"Valoro 2 signifas preni 2×2 = 4 specimenojn."
 
 #: src/settings_translation_file.cpp
 msgid "Defines the width of the river channel."
@@ -3620,6 +3637,9 @@ msgid ""
 "Use this to limit the performance impact of transparency depth sorting.\n"
 "Set to 0 to disable it entirely."
 msgstr ""
+"Distanco en monderoj, je kiuj efikas laŭprofunda ordigado de travidebleco.\n"
+"Uzu ĉi tion por helpi efikecon de laŭprofunda ordigado de travidebleco.\n"
+"Agordu je 0 por tute malŝalti."
 
 #: src/settings_translation_file.cpp
 msgid "Domain name of server, to be displayed in the serverlist."
@@ -4562,13 +4582,12 @@ msgstr ""
 "por ne malŝpari vane potencon de procesoro."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "If disabled, \"Aux1\" key is used to fly fast if both fly and fast mode are\n"
 "enabled."
 msgstr ""
-"Malŝaltite, postulas uzon de la «speciala» klavo se ambaŭ la fluga kaj\n"
-"la rapida reĝimoj estas ŝaltitaj."
+"Malŝaltite, postulas uzon de klavo «Help1» por rapida flugado, se ambaŭ \n"
+"la fluga kaj la rapida reĝimoj estas ŝaltitaj."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -4581,13 +4600,12 @@ msgstr ""
 "por kontroli disponeblajn ĝisdatigojn post malfermo de la ĉefmenuo."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "If enabled, \"Aux1\" key instead of \"Sneak\" key is used for climbing down "
 "and\n"
 "descending."
 msgstr ""
-"Ŝaltite, klavo «uzi» estas uzata anstataŭ klavo «kaŝiri» por malsupreniro."
+"Ŝaltite, klavo «help1» estas uzata anstataŭ klavo «kaŝiri» por malsupreniro."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -4626,7 +4644,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "If enabled, the \"Aux1\" key will toggle when pressed."
-msgstr ""
+msgstr "Ŝaltite, baskuligas klavon «help1» je premo."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -4907,7 +4925,7 @@ msgstr "Salta rapido"
 
 #: src/settings_translation_file.cpp
 msgid "Key for decrementing the selected value in Quicktune."
-msgstr ""
+msgstr "Klavo por malpliigo de la elektita valoro en [Quicktune]."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -4919,7 +4937,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Key for incrementing the selected value in Quicktune."
-msgstr ""
+msgstr "Klavo por pliigo de la elektita valoro en [Quicktune]."
 
 #: src/settings_translation_file.cpp
 msgid "Key for moving fast in fast mode."
@@ -4943,11 +4961,11 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Key for switching to the next entry in Quicktune."
-msgstr ""
+msgstr "Klavo por elekto de sekvonta listero en [Quicktune]."
 
 #: src/settings_translation_file.cpp
 msgid "Key for switching to the previous entry in Quicktune."
-msgstr ""
+msgstr "Klavo por elekto de pasinta listero en [Quicktune]."
 
 #: src/settings_translation_file.cpp
 msgid "Key for toggling the camera update. Only usable with 'debug' privilege."
@@ -5144,9 +5162,8 @@ msgid "Liquid queue purge time"
 msgstr "Tempo antaŭ vakigo de fluaĵa atendovico"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Liquid reflections"
-msgstr "Flueco de fluaĵoj"
+msgstr "Spegulaĵoj sur fluaĵoj"
 
 #: src/settings_translation_file.cpp
 msgid "Liquid sinking"
@@ -5256,7 +5273,6 @@ msgid "Map generation attributes specific to Mapgen v5."
 msgstr "Mapestigaj ecoj speciale por Mapestigilo v5."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Map generation attributes specific to Mapgen v6.\n"
 "The 'snowbiomes' flag enables the new 5 biome system.\n"
@@ -5265,10 +5281,12 @@ msgid ""
 "The 'temples' flag disables generation of desert temples. Normal dungeons "
 "will appear instead."
 msgstr ""
-"Mondestigaj ecoj apartaj al Mondestigilo v6.\n"
-"La flago «snowbiomes» ŝaltas la novan 5-klimatan sistemon.\n"
-"Kiam la flago «snowbiomes» estas ŝaltita, ĝangaloj estas memage ŝaltitaj\n"
-"kaj la flago «jungles» estas malatentata."
+"Mondestigaj ecoj apartaj al Mondestigilo v6. \n"
+"La flago «snowbiomes» ŝaltas la novan 5-klimatan sistemon. \n"
+"Kiam la flago «snowbiomes» estas ŝaltita, ĝangaloj estas memage ŝaltitaj \n"
+"kaj la flago «jungles» estas malatentata. \n"
+"La flago «temples» malŝaltas estigon de dezertaj sanktejoj, cede al "
+"ordinaraj forgeskeloj."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -5808,7 +5826,7 @@ msgstr "Elfiltrilo de postkaŝitoj"
 
 #: src/settings_translation_file.cpp
 msgid "Occlusion Culling"
-msgstr "Servilflanka elfiltrado de postkaŝitoj"
+msgstr "Elfiltrado de postkaŝitoj"
 
 #: src/settings_translation_file.cpp
 msgid "Opaqueness (alpha) of the shadow behind the font."
@@ -5987,19 +6005,19 @@ msgstr "Gesto de frapo"
 
 #: src/settings_translation_file.cpp
 msgid "Quicktune: decrement value"
-msgstr ""
+msgstr "[Quicktune]: malpliigi valoron"
 
 #: src/settings_translation_file.cpp
 msgid "Quicktune: increment value"
-msgstr ""
+msgstr "[Quicktune]: pliigi valoron"
 
 #: src/settings_translation_file.cpp
 msgid "Quicktune: select next entry"
-msgstr ""
+msgstr "[Quicktune]: elekti sekvontan listeron"
 
 #: src/settings_translation_file.cpp
 msgid "Quicktune: select previous entry"
-msgstr ""
+msgstr "[Quicktune]: elekti pasintan listeron"
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -6372,9 +6390,8 @@ msgid "Server port"
 msgstr "Pordo de servilo"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Server-side occlusion culling"
-msgstr "Servilflanka elektado de postkaŝitoj"
+msgstr "Servilflanka elfiltrado de postkaŝitoj"
 
 #: src/settings_translation_file.cpp
 msgid "Server/Env Performance"
@@ -6442,11 +6459,8 @@ msgstr ""
 "Minimuma valoro: 1.0; maksimuma valoro: 15.0"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Set to true to enable Shadow Mapping."
-msgstr ""
-"Ŝaltu por ebligi ondantajn foliojn.\n"
-"Bezonas ombrigilojn."
+msgstr "Ŝaltu por ebligi Ombroĵetadon."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -6505,25 +6519,23 @@ msgid "Shadow filter quality"
 msgstr "Kvalito de ombra filtrilo"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Shadow map render distance"
-msgstr "Minimuma grandeco de teksturoj"
+msgstr "Distanco de bildigo de ombra mapo"
 
 #: src/settings_translation_file.cpp
 msgid "Shadow map texture in 32 bits"
 msgstr "Ombromapa teksturo en 32 bitoj"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Shadow map texture size"
-msgstr "Minimuma grandeco de teksturoj"
+msgstr "Grandeco de teksturoj de ombraj mapoj"
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Shadow offset (in pixels) for all fonts. If 0, then no shadow will be drawn."
 msgstr ""
-"Deŝovo de ombro de la norma tiparo. Se ĝi estas 0, la ombro ne desegniĝos."
+"Deŝovo de ombro (en bilderoj) por ĉiuj tiparo. Se ĝi estas 0, la ombro ne "
+"desegniĝos."
 
 #: src/settings_translation_file.cpp
 msgid "Shadow strength gamma"
@@ -6546,7 +6558,6 @@ msgstr ""
 "Rerulo necesas post la ŝanĝo."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Show name tag backgrounds by default"
 msgstr "Implicite montri fonojn de nometikedoj"
 
@@ -6562,13 +6573,19 @@ msgid ""
 "draw calls, benefiting especially high-end GPUs.\n"
 "Systems with a low-end GPU (or no GPU) would benefit from smaller values."
 msgstr ""
+"Longeco de randoj de kubo da mondopecoj, kiujn la kliento konsideros kune \n"
+"estigante maŝojn. \n"
+"Pli larĝaj valoroj altigos uzon de bildotraktilo per malpliigo de desegnado, "
+"\n"
+"kio helpos precipe potencajn bildotraktilojn. \n"
+"Sistemoj kun malforta (aŭ neniu) bildotraktilo profitus de malgrandaj "
+"valoroj."
 
 #: src/settings_translation_file.cpp
 msgid "Simulate translucency when looking at foliage in the sunlight."
-msgstr ""
+msgstr "Imiti tralumeblecon, kiam oni rigardas foliojn en sunlumo."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "Size of mapchunks generated by mapgen, stated in mapblocks (16 nodes).\n"
 "WARNING: There is no benefit, and there are several dangers, in\n"
@@ -6586,7 +6603,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Sky Body Orbit Tilt"
-msgstr ""
+msgstr "Kliniĝo de ĉirkaŭvojo de astroj"
 
 #: src/settings_translation_file.cpp
 msgid "Slice w"
@@ -6868,11 +6885,9 @@ msgstr ""
 "kiel tuŝeto."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "The file path relative to your world path in which profiles will be saved to."
-msgstr ""
-"La dosierindiko relativa al via mondoindiko, kien konserviĝos profiloj."
+msgstr "La dosierindiko relativa al via mondoindiko, kien konserviĝos profiloj."
 
 #: src/settings_translation_file.cpp
 msgid ""
@@ -7097,21 +7112,19 @@ msgstr ""
 "sekundoj."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "To save bandwidth, block transfers are slowed down when a player is building "
 "something.\n"
 "This determines how long the throttling lasts after placing a node."
 msgstr ""
-"Por malpliigi retprokraston, transsendoj de menderoj malrapidiĝas kiam "
-"ludanto ion\n"
+"Por ŝpari retkonekton, transsendoj de monderoj malrapidiĝas kiam ludanto "
+"ion\n"
 "konstruas. Ĉi tio decidas, kiom longe ili malrapidos post meto aŭ forigo de "
 "mondero."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid "Toggle Aux1 key"
-msgstr "Salta klavo"
+msgstr "Baskuligi klavon «Help1»"
 
 #: src/settings_translation_file.cpp
 msgid "Toggle HUD"
