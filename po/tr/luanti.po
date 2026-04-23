@@ -3,8 +3,8 @@ msgstr ""
 "Project-Id-Version: Turkish (Minetest)\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2026-01-06 23:13+0100\n"
-"PO-Revision-Date: 2026-01-16 15:02+0000\n"
-"Last-Translator: Wuzzy <Wuzzy@disroot.org>\n"
+"PO-Revision-Date: 2026-04-24 18:09+0000\n"
+"Last-Translator: Barkın ZORLU <barkin.zorlu.bz@gmail.com>\n"
 "Language-Team: Turkish <https://hosted.weblate.org/projects/minetest/"
 "minetest/tr/>\n"
 "Language: tr\n"
@@ -12,7 +12,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.15.2\n"
+"X-Generator: Weblate 5.17.1-dev\n"
 
 #: builtin/client/chatcommands.lua
 msgid "Clear the out chat queue"
@@ -89,7 +89,7 @@ msgstr "Gözat"
 
 #: builtin/common/settings/components.lua
 msgid "Conflicts with \"$1\""
-msgstr ""
+msgstr "\"$1\" ile çakışıyor"
 
 #: builtin/common/settings/components.lua
 msgid "Edit"
@@ -130,6 +130,8 @@ msgid ""
 "2D noise: flag on.\n"
 "3D noise: flag off."
 msgstr ""
+"2D gürültü: bayrağı açık.\n"
+"3D gürültü: bayrağı kapalı."
 
 #: builtin/common/settings/dlg_change_mapgen_flags.lua
 msgid ""
@@ -369,7 +371,7 @@ msgstr "Genel"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Long tap"
-msgstr ""
+msgstr "Uzun tıklama"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Movement"
@@ -400,7 +402,7 @@ msgstr "Ara"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Short tap"
-msgstr ""
+msgstr "Kısa tıklama"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Show advanced settings"
@@ -417,13 +419,14 @@ msgstr "Tab"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid "Tap with crosshair"
-msgstr ""
+msgstr "Nişangah ile tıklama"
 
 #: builtin/common/settings/dlg_settings.lua
 msgid ""
 "These settings are unavailable due to your platform, hardware or in "
 "combination with the current settings."
 msgstr ""
+"Bu ayarlar, platform, donanım veya mevcut ayar kombinasyonu ile uyumsuz."
 
 #: builtin/common/settings/dlg_settings.lua
 #, fuzzy
@@ -469,7 +472,7 @@ msgstr "Orta"
 
 #: builtin/common/settings/shadows_component.lua
 msgid "Quality preset"
-msgstr ""
+msgstr "Kalite önayarı"
 
 #: builtin/common/settings/shadows_component.lua
 #, fuzzy
@@ -697,7 +700,7 @@ msgstr "Bağış Yap"
 
 #: builtin/mainmenu/content/dlg_package.lua
 msgid "Error loading package information"
-msgstr ""
+msgstr "Paket bilgisini yüklerken hata oldu"
 
 #: builtin/mainmenu/content/dlg_package.lua
 #, fuzzy
@@ -723,7 +726,7 @@ msgstr "Sorun Gözlemcisi"
 
 #: builtin/mainmenu/content/dlg_package.lua
 msgid "Reviews"
-msgstr ""
+msgstr "Yorumlar"
 
 #: builtin/mainmenu/content/dlg_package.lua
 msgid "Source"
@@ -837,7 +840,7 @@ msgstr "Mod:"
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "Mods located inside the world folder."
-msgstr ""
+msgstr "Dünya dosyası içindekli mod'lar."
 
 #: builtin/mainmenu/dlg_config_world.lua
 msgid "No (optional) dependencies"
@@ -873,7 +876,7 @@ msgstr "etkin"
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 msgid "Always show this dialog."
-msgstr ""
+msgstr "Bu diyaloğu her zaman göster."
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 #, fuzzy
@@ -882,7 +885,7 @@ msgstr "\"$1\" 'i silmek istediğinizden emin misiniz?"
 
 #: builtin/mainmenu/dlg_confirm_exit.lua
 msgid "Quit"
-msgstr ""
+msgstr "Çık"
 
 #: builtin/mainmenu/dlg_create_world.lua
 msgid "A world named \"$1\" already exists"
@@ -1099,15 +1102,15 @@ msgstr "\"$1\" dünyasını sil?"
 
 #: builtin/mainmenu/dlg_rebind_keys.lua
 msgid "As a result, your keybindings may have been changed."
-msgstr ""
+msgstr "Sonucunda, tuş atamaların değişmiş olabilir."
 
 #: builtin/mainmenu/dlg_rebind_keys.lua
 msgid "Check out the key settings or refer to the documentation:"
-msgstr ""
+msgstr "Tuş ayarlarını kontrol edin veya dökümantasyona danışın:"
 
 #: builtin/mainmenu/dlg_rebind_keys.lua
 msgid "Close"
-msgstr ""
+msgstr "Kapa"
 
 #: builtin/mainmenu/dlg_rebind_keys.lua
 #, fuzzy
@@ -1121,7 +1124,7 @@ msgstr "Ayarlar"
 
 #: builtin/mainmenu/dlg_rebind_keys.lua
 msgid "The input handling system was reworked in Luanti 5.12.0."
-msgstr ""
+msgstr "Girdi işleme sistemi Luanti 5.12.0'de değiştirildi."
 
 #: builtin/mainmenu/dlg_register.lua src/gui/guiPasswordChange.cpp
 msgid "Confirm Password"
@@ -1246,7 +1249,7 @@ msgstr "Siteyi ziyaret et"
 
 #: builtin/mainmenu/init.lua
 msgid "Debug build, expect worse performance"
-msgstr ""
+msgstr "Hata ayıklama yapısı, daha kötü performans bekleyin"
 
 #: builtin/mainmenu/init.lua src/client/game_formspec.cpp
 msgid "Settings"
@@ -1571,7 +1574,7 @@ msgstr "Sağlanan parola dosyası açılamadı: "
 
 #: src/client/clientlauncher.cpp
 msgid "World does not exist and no game selected to create one."
-msgstr ""
+msgstr "Dünya mevcut değil ve yaratmak için oyun seçili değil."
 
 #: src/client/clientmedia.cpp src/client/game.cpp
 msgid "Media..."
@@ -2087,7 +2090,7 @@ msgstr "Menü Tuşu"
 
 #: src/client/keycode.cpp
 msgid "Middle Click"
-msgstr ""
+msgstr "Orta tuş"
 
 #: src/client/keycode.cpp
 msgid "Mouse X1"
@@ -2405,7 +2408,7 @@ msgstr "Kamera değiştir"
 
 #: src/gui/touchscreenlayout.cpp src/settings_translation_file.cpp
 msgid "Dig/punch/use"
-msgstr ""
+msgstr "Kaz/vur/kullan"
 
 #: src/gui/touchscreenlayout.cpp
 msgid "Drop"
@@ -2926,7 +2929,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Array texture max layers"
-msgstr ""
+msgstr "Doku dizini maksimum katmanları"
 
 #: src/settings_translation_file.cpp
 msgid "Ask to reconnect after crash"
@@ -3353,7 +3356,7 @@ msgstr ""
 
 #: src/settings_translation_file.cpp
 msgid "Confirmation dialog before closing"
-msgstr ""
+msgstr "Kapamadan önceki onaylama diyaloğu"
 
 #: src/settings_translation_file.cpp
 msgid "Connect glass"
@@ -3742,7 +3745,7 @@ msgstr "Grafik Efektleri"
 
 #: src/settings_translation_file.cpp
 msgid "Enable Automatic Exposure"
-msgstr ""
+msgstr "Kendiliğinden pozlamayı aç"
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -7100,19 +7103,15 @@ msgstr ""
 "Bu active_object_send_range_blocks ile birlikte ayarlanmalıdır."
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "The rendering back-end.\n"
 "Note: A restart is required after changing this!\n"
 "By default OpenGL3 is preferred on desktop, or OGLES2 on Android."
 msgstr ""
-"İşleme arka ucu.\n"
-"Bunu değiştirdikten sonra yeniden başlatma gerekir.\n"
-"Not: Android'de, emin değilseniz OGLES1 kullanın! Başka türlü, uygulama "
-"başlayamayabilir.\n"
-"Diğer platformlarda, OpenGL önerilir.\n"
-"Gölgelendiriciler OpenGL (yalnızca masaüstü) ve OGLES2 (deneysel) tarafından "
-"desteklenmektedir"
+"Görselleştirme arka ucu.\n"
+"Not: Bunu değiştirdikten sonra yeniden başlatmak gerekir.\n"
+"Varsayılan olarak, masaüstü için OpenGL3 veya Android için OGLES2 tercih "
+"edilir."
 
 #: src/settings_translation_file.cpp
 #, fuzzy
@@ -7386,12 +7385,13 @@ msgid ""
 msgstr ""
 
 #: src/settings_translation_file.cpp
-#, fuzzy
 msgid ""
 "URL to JSON file which provides information about the newest Luanti "
 "release.\n"
 "If this is empty the engine will never check for updates."
-msgstr "En yeni Minetest sürümü hakkında bilgi sağlayan JSON dosyasının URL'si"
+msgstr ""
+"En yeni Luanti sürümü hakkında bilgi sağlayan JSON dosyasının URL'si.\n"
+"Bu boş ise motor güncellemeleri kontrol etmez."
 
 #: src/settings_translation_file.cpp
 msgid "URL to the server list displayed in the Multiplayer Tab."
@@ -7429,7 +7429,7 @@ msgstr "Kullanılmayan sunucu verilerini boşalt"
 
 #: src/settings_translation_file.cpp
 msgid "Update information URL"
-msgstr ""
+msgstr "Bilgi URL'sini güncelle"
 
 #: src/settings_translation_file.cpp
 msgid "Upper Y limit of dungeons."
