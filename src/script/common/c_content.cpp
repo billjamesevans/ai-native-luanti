@@ -790,7 +790,7 @@ void read_content_features(lua_State *L, ContentFeatures &f, int index)
 	// special_tiles = {}
 	lua_getfield(L, index, "special_tiles");
 	if (lua_istable(L, -1)) {
-		for (int i = 0; LuaHelper::geti(L, index, i); ++i, lua_pop(L, 1)) {
+		for (int i = 0; LuaHelper::geti(L, -1, i); ++i, lua_pop(L, 1)) {
 			if (i >= CF_SPECIAL_COUNT) {
 				script_log_unique(L, "Ignoring extraneous special_tiles", warningstream);
 				lua_pop(L, 1);
