@@ -279,6 +279,168 @@ local function get_test_node(pos)
 	})
 end
 
+local rollback_capture_pos = test_pos(4090)
+set_test_node(rollback_capture_pos, {
+	name = "ai_runtime_test:stone",
+	param1 = 12,
+	param2 = 34,
+})
+local persisted_rollback_records = {}
+local rollback_record_result = core.write_ai_rollback_record({
+	record_id = "rollback:test:capture",
+	policy = "snapshot",
+	world_id = "test-world",
+	task_id = "task:rollback-capture",
+	agent_id = "nova:emma",
+	owner_ref = "emma",
+	operation_label = "repair.remove_hazard",
+	mutation_class = "repair",
+	bounds = {
+		min = test_pos(4080),
+		max = test_pos(4100),
+	},
+	positions = {
+		rollback_capture_pos,
+	},
+	get_node = get_test_node,
+	persist_record = function(record)
+		persisted_rollback_records[#persisted_rollback_records + 1] = record
+		return {
+			ok = true,
+			storage_ref = "rollback-store:" .. record.record_id,
+		}
+	end,
+	private_payload = {
+		prompt = "must not be retained",
+		asset_payload = "must not be retained",
+	},
+})
+assert(rollback_record_result.ok == true)
+assert(rollback_record_result.status == "success")
+assert(rollback_record_result.operation == "ai_rollback.write_record")
+assert(rollback_record_result.rollback_record_id == "rollback:test:capture")
+assert(rollback_record_result.rollback_storage_ref == "rollback-store:rollback:test:capture")
+assert(#persisted_rollback_records == 1)
+local rollback_record = persisted_rollback_records[1]
+assert(rollback_record.schema_version == 1)
+assert(rollback_record.record_id == "rollback:test:capture")
+assert(rollback_record.policy == "snapshot")
+assert(rollback_record.world_id == "test-world")
+assert(rollback_record.task_id == "task:rollback-capture")
+assert(rollback_record.agent_id == "nova:emma")
+assert(rollback_record.owner_ref == "emma")
+assert(rollback_record.operation_label == "repair.remove_hazard")
+assert(rollback_record.mutation_class == "repair")
+assert(rollback_record.changed_positions[1].x == rollback_capture_pos.x)
+assert(rollback_record.previous_nodes[1].pos.x == rollback_capture_pos.x)
+assert(rollback_record.previous_nodes[1].node.name == "ai_runtime_test:stone")
+assert(rollback_record.previous_nodes[1].node.param1 == 12)
+assert(rollback_record.previous_nodes[1].node.param2 == 34)
+assert(rollback_record.chunk.chunk_index == 0)
+assert(rollback_record.chunk.chunk_count == 1)
+assert(rollback_record.chunk.first_position_index == 0)
+assert(rollback_record.chunk.position_count == 1)
+assert(type(rollback_record.created_at) == "string")
+assert(rollback_record.private_payload == nil)
+assert(rollback_record.asset_payload == nil)
+
+local rollback_blocked_pos = test_pos(4091)
+set_test_node(rollback_blocked_pos, { name = "air" })
+local rollback_mutation_writes = 0
+local rollback_blocked = core.run_ai_world_mutation_with_rollback({
+	record_id = "rollback:test:blocked",
+	policy = "snapshot",
+	world_id = "test-world",
+	task_id = "task:rollback-blocked",
+	agent_id = "nova:emma",
+	owner_ref = "emma",
+	operation_label = "build.marker",
+	mutation_class = "build",
+	bounds = {
+		min = test_pos(4080),
+		max = test_pos(4100),
+	},
+	positions = {
+		rollback_blocked_pos,
+	},
+	get_node = get_test_node,
+}, function()
+	rollback_mutation_writes = rollback_mutation_writes + 1
+	set_test_node(rollback_blocked_pos, { name = "ai_runtime_test:stone" })
+	return {
+		ok = true,
+		status = "success",
+		changed = 1,
+	}
+end)
+assert(rollback_blocked.ok == false)
+assert(rollback_blocked.status == "blocked")
+assert(rollback_blocked.operation == "ai_rollback.write_record")
+assert(rollback_blocked.reason == "rollback_metadata_unavailable")
+assert(rollback_blocked.changed == 0)
+assert(rollback_mutation_writes == 0)
+assert(get_test_node(rollback_blocked_pos).name == "air")
+
+local rollback_guarded_pos = test_pos(4092)
+set_test_node(rollback_guarded_pos, { name = "air" })
+local rollback_guarded_writes = 0
+local rollback_guarded = core.run_ai_world_mutation_with_rollback({
+	record_id = "rollback:test:guarded",
+	policy = "snapshot",
+	world_id = "test-world",
+	task_id = "task:rollback-guarded",
+	agent_id = "nova:emma",
+	owner_ref = "emma",
+	operation_label = "build.marker",
+	mutation_class = "build",
+	bounds = {
+		min = test_pos(4080),
+		max = test_pos(4100),
+	},
+	positions = {
+		rollback_guarded_pos,
+	},
+	get_node = get_test_node,
+	persist_record = function(record)
+		return "rollback-store:" .. record.record_id
+	end,
+}, function(ctx)
+	assert(ctx.rollback_record.record_id == "rollback:test:guarded")
+	assert(ctx.rollback_storage_ref == "rollback-store:rollback:test:guarded")
+	rollback_guarded_writes = rollback_guarded_writes + 1
+	return core.ai_world_ops.place_node(rollback_guarded_pos,
+		"ai_runtime_test:stone", {
+			agent_id = ctx.agent_id,
+			task_id = ctx.task_id,
+			owner = "emma",
+			get_node = get_test_node,
+			set_node = set_test_node,
+		})
+end)
+assert(rollback_guarded.ok == true)
+assert(rollback_guarded.status == "success")
+assert(rollback_guarded.rollback_record_id == "rollback:test:guarded")
+assert(rollback_guarded.rollback_storage_ref == "rollback-store:rollback:test:guarded")
+assert(rollback_guarded.changed == 1)
+assert(rollback_guarded_writes == 1)
+assert(get_test_node(rollback_guarded_pos).name == "ai_runtime_test:stone")
+
+local rollback_audit = core.get_ai_runtime_audit({ limit = 10 })
+local rollback_audit_record = nil
+for _, record in ipairs(rollback_audit) do
+	if record.event_type == "rollback.record"
+			and record.rollback_record_id == "rollback:test:guarded" then
+		rollback_audit_record = record
+	end
+end
+assert(rollback_audit_record ~= nil)
+assert(rollback_audit_record.event_type == "rollback.record")
+assert(rollback_audit_record.rollback_record_id == "rollback:test:guarded")
+assert(rollback_audit_record.rollback_storage_ref == "rollback-store:rollback:test:guarded")
+assert(rollback_audit_record.mutation_class == "build")
+assert(rollback_audit_record.private_payload == nil)
+assert(rollback_audit_record.payload_retained == false)
+
 local safe_options = {
 	agent_id = "nova:emma",
 	task_id = "task:safe-world",
@@ -437,6 +599,8 @@ assert(metrics.active_tasks == 0)
 assert(metrics.node_writes >= 4)
 assert(metrics.skipped_operations >= 6)
 assert(metrics.unsafe_operations >= 1)
+assert(metrics.rollback_records_written >= 2)
+assert(metrics.rollback_record_failures >= 1)
 assert(metrics.audit_records >= 1)
 assert(type(metrics.entities_by_type) == "table")
 

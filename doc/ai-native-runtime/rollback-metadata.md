@@ -6,7 +6,7 @@ Status: contract slice for issue #33
 
 Repair, build, and compatibility-import tasks must not mutate a world until they can record enough rollback metadata to reverse or audit the change. This contract defines the minimum rollback record needed before later issues add mutating repair or build execution.
 
-This issue does not add world-mutating plugin work.
+Issue #42 adds a rollback writer helper, but does not add new world-mutating plugin behavior by itself.
 
 ## Schema And Examples
 
@@ -39,6 +39,37 @@ Each rollback record includes:
 - `created_at`
 
 `previous_nodes` stores the prior node name and param data for every changed position in the record chunk. Node metadata should be referenced by hash or storage reference unless exact metadata is required for a reviewed rollback implementation.
+
+## Runtime Writer API
+
+`core.write_ai_rollback_record(def)` prepares and persists one rollback record before a matching mutation step runs.
+
+Required fields:
+
+- `policy`: `manifest`, `snapshot`, or `chunked`
+- `world_id`
+- `task_id`
+- `agent_id`
+- `owner_ref`
+- `operation_label`
+- `mutation_class`: `repair`, `build`, or `compat_import`
+- `positions`: changed positions planned for the next mutation batch
+- `get_node`: optional injected node reader; defaults to Luanti node APIs
+- `persist_record(record)`: callback that must persist the record and return a storage reference or `{ ok = true, storage_ref = "..." }`
+
+Optional fields:
+
+- `record_id`
+- `bounds`; when omitted, bounds are derived from `positions`
+- `chunk`
+- `created_at`
+
+The helper captures `previous_nodes` before persistence and returns an action result:
+
+- success: `status = "success"`, `reason = "rollback_record_written"`, `rollback_record_id`, `rollback_storage_ref`, and `record`
+- failure: `status = "blocked"`, `reason = "rollback_metadata_unavailable"`, and `changed = 0`
+
+`core.run_ai_world_mutation_with_rollback(def, mutate)` wraps the same write path around a mutation callback. If rollback metadata cannot be prepared and persisted, the callback is not called. If the rollback record succeeds, the callback receives `rollback_record`, `rollback_record_id`, `rollback_storage_ref`, `task_id`, `agent_id`, and `owner_ref`; the returned action result is annotated with the rollback references.
 
 ## Chunking
 
@@ -95,3 +126,5 @@ Future repair and build mutation issues must depend on this contract and add tes
 - audit events reference rollback records without copying private payloads
 
 Until those tests exist, `repair_agent` remains read-only and `build_agent` work should stay at task-definition or no-mutation planning level.
+
+Issue #42 supplies the shared writer and guarded-mutation helper. Issues #43 and #44 must still add plugin-specific tests before repair or build tasks rely on rollback-backed mutation.

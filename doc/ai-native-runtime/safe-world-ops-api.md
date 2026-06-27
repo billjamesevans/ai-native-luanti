@@ -72,7 +72,7 @@ The first slice checks:
 ## Current Limits
 
 - The implementation is Lua-level, not a C++ map-edit transaction system.
-- Rollback metadata is not recorded yet.
+- Rollback metadata is not recorded automatically by raw safe-world operations. Mutating AI plugins should wrap safe-world calls with `core.run_ai_world_mutation_with_rollback` before they enable repair, build, or compatibility-import writes.
 - Protection and player-proximity checks use current runtime hooks only.
 - Hazard detection is conservative and group-based.
 - Batch operations are sequential and stop only through their write budget.
