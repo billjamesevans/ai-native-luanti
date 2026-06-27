@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "fixture_id": "generic_demo_entity:benchmark:v1",
+  "entity_name": "ai_demo_benchmark:helper",
+  "provenance": {
+    "source_category": "code-only",
+    "assets_included": false,
+    "media_review_required": false,
+    "license": "project-code",
+    "review_status": "no-media-required"
+  },
+  "mutation": {
+    "node_mutation_enabled": false,
+    "node_writes_allowed": 0
+  },
+  "scenarios": [
+    {
+      "scenario_id": "entity_count_small",
+      "status": "success",
+      "changed": 0,
+      "examined": 4,
+      "skipped": 0,
+      "metrics": {
+        "entity_count": 4,
+        "spawned": 4,
+        "active_peak": 4,
+        "movement_steps": 1,
+        "distance_moved": 0,
+        "collision_checks": 0,
+        "collision_events": 0,
+        "cleaned_up": 4,
+        "remaining_entities": 0,
+        "avg_step_ms": 0.1,
+        "p95_step_ms": 0.1,
+        "max_lag_ms": 0.1,
+        "node_writes": 0,
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
+      "scenario_id": "movement_patrol",
+      "status": "success",
+      "changed": 0,
+      "examined": 20,
+      "skipped": 0,
+      "metrics": {
+        "entity_count": 4,
+        "spawned": 4,
+        "active_peak": 4,
+        "movement_steps": 5,
+        "distance_moved": 20,
+        "collision_checks": 0,
+        "collision_events": 0,
+        "cleaned_up": 4,
+        "remaining_entities": 0,
+        "avg_step_ms": 0.2,
+        "p95_step_ms": 0.3,
+        "max_lag_ms": 0.4,
+        "node_writes": 0,
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
+      "scenario_id": "collision_wall_contact",
+      "status": "success",
+      "changed": 0,
+      "examined": 10,
+      "skipped": 0,
+      "metrics": {
+        "entity_count": 2,
+        "spawned": 2,
+        "active_peak": 2,
+        "movement_steps": 5,
+        "distance_moved": 10,
+        "collision_checks": 10,
+        "collision_events": 4,
+        "cleaned_up": 2,
+        "remaining_entities": 0,
+        "avg_step_ms": 0.2,
+        "p95_step_ms": 0.3,
+        "max_lag_ms": 0.4,
+        "node_writes": 0,
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
+      "scenario_id": "cleanup_despawn",
+      "status": "success",
+      "changed": 0,
+      "examined": 4,
+      "skipped": 0,
+      "metrics": {
+        "entity_count": 4,
+        "spawned": 4,
+        "active_peak": 4,
+        "movement_steps": 1,
+        "distance_moved": 0,
+        "collision_checks": 0,
+        "collision_events": 0,
+        "cleaned_up": 4,
+        "remaining_entities": 0,
+        "avg_step_ms": 0.1,
+        "p95_step_ms": 0.1,
+        "max_lag_ms": 0.1,
+        "node_writes": 0,
+        "warnings": [],
+        "errors": []
+      }
+    }
+  ]
+}

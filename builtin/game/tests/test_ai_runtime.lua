@@ -635,6 +635,50 @@ assert(operator_metrics.task_status_counts.completed >= 2)
 assert(operator_metrics.task_status_counts.cancelled >= 2)
 assert(operator_metrics.task_status_counts.unsafe >= 1)
 
+assert(core.demo_entity_benchmark ~= nil)
+local demo_fixture = core.demo_entity_benchmark.get_fixture()
+assert(demo_fixture.fixture_id == "generic_demo_entity:benchmark:v1")
+assert(demo_fixture.entity_name == "ai_demo_benchmark:helper")
+assert(demo_fixture.provenance.source_category == "code-only")
+assert(demo_fixture.provenance.assets_included == false)
+assert(demo_fixture.mutation.node_mutation_enabled == false)
+
+local demo_report = core.demo_entity_benchmark.run_suite({
+	owner_ref = "owner:synthetic-operator",
+	entity_count = 4,
+	movement_steps = 5,
+})
+assert(demo_report.operation == "demo_entity_benchmark.run_suite")
+assert(demo_report.fixture_id == demo_fixture.fixture_id)
+assert(demo_report.entity_name == demo_fixture.entity_name)
+assert(demo_report.provenance.assets_included == false)
+assert(demo_report.mutation.node_mutation_enabled == false)
+assert(#demo_report.scenarios == 4)
+
+local demo_scenarios = {}
+for _, scenario in ipairs(demo_report.scenarios) do
+	demo_scenarios[scenario.scenario_id] = scenario
+	assert(scenario.status == "success")
+	assert(scenario.changed == 0)
+	assert(scenario.metrics.node_writes == 0)
+	assert(scenario.metrics.remaining_entities == 0)
+	assert(scenario.metrics.cleaned_up == scenario.metrics.spawned)
+	assert(scenario.metrics.avg_step_ms >= 0)
+	assert(scenario.metrics.p95_step_ms >= scenario.metrics.avg_step_ms)
+	assert(scenario.metrics.max_lag_ms >= scenario.metrics.p95_step_ms)
+	assert(#scenario.metrics.warnings == 0)
+	assert(#scenario.metrics.errors == 0)
+end
+
+assert(demo_scenarios.entity_count_small.metrics.entity_count == 4)
+assert(demo_scenarios.movement_patrol.metrics.movement_steps == 5)
+assert(demo_scenarios.movement_patrol.metrics.distance_moved > 0)
+assert(demo_scenarios.collision_wall_contact.metrics.collision_checks > 0)
+assert(demo_scenarios.collision_wall_contact.metrics.collision_events > 0)
+assert(demo_scenarios.cleanup_despawn.metrics.cleaned_up == 4)
+local post_demo_metrics = core.get_ai_runtime_metrics()
+assert(post_demo_metrics.entities_by_type["ai_demo_benchmark:helper"] == 0)
+
 assert(core.registered_chatcommands.ai_runtime ~= nil)
 local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
 assert(command_ok == true)
