@@ -29,6 +29,11 @@ The first implementation is Lua-level and intentionally avoids retaining private
 - `blocked_operations`
 - `pending_model_requests`
 - `pending_http_requests`
+- `model_adapter_requests`
+- `model_adapter_successes`
+- `model_adapter_failures`
+- `model_adapter_timeouts`
+- `model_adapter_latency_buckets`
 - `audit_records`
 - `entities_by_type`
 
@@ -41,15 +46,18 @@ First-party plugins can report external work without depending on a metrics stac
 - `core.set_ai_runtime_pending_requests("model", count)`
 - `core.set_ai_runtime_pending_requests("http", count)`
 - `core.set_ai_runtime_entity_count(entity_type, count)`
+- `core.record_ai_model_adapter_result(record)`
 
 These values are exposed through `core.get_ai_runtime_metrics()`.
+
+`core.record_ai_model_adapter_result(record)` accepts `success`, `failure`, and `timeout` outcomes. Records include adapter name, agent id, owner ref, optional task id, reason, and elapsed time. They do not include prompt text, response bodies, secrets, or private world content.
 
 ## Operator Command
 
 `/ai_runtime` exposes a bounded server-privileged summary for local operators:
 
 ```text
-AI runtime: queue=0 tasks=completed=2,cancelled=2,unsafe=1 writes=total=4,world=4,reported=5 unsafe=1 audit=12 model=0
+AI runtime: queue=0 tasks=completed=2,cancelled=2,unsafe=1 writes=total=4,world=4,reported=5 unsafe=1 audit=12 model=pending=0,requests=3,ok=1,fail=1,timeout=1
 ```
 
 The command uses:
@@ -57,7 +65,7 @@ The command uses:
 - `core.get_ai_runtime_operator_metrics()` for the snapshot.
 - `core.format_ai_runtime_metrics(metrics)` for deterministic output.
 
-The output includes queue length, task status counts, node-write counters, unsafe operation count, audit record count, and pending model requests. It intentionally omits agent ids, player names, prompts, payloads, source paths, and individual task labels.
+The output includes queue length, task status counts, node-write counters, unsafe operation count, audit record count, pending model requests, and model-adapter outcome counters. It intentionally omits agent ids, player names, prompts, payloads, source paths, and individual task labels.
 
 ## Audit Records
 
@@ -72,6 +80,8 @@ The output includes queue length, task status counts, node-write counters, unsaf
 - `status`
 - `reason`
 - `message`
+- `adapter_name`
+- `elapsed_us`
 - `changed`
 - `examined`
 - `skipped`
@@ -87,6 +97,7 @@ Built-in audit events currently include:
 - `task.blocked`
 - `task.unsafe`
 - `world.unsafe`
+- `model.adapter`
 
 Plugins may add their own event with `core.record_ai_runtime_audit(record)`.
 
