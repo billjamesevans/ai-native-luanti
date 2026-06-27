@@ -12,6 +12,7 @@ sys.path.insert(0, str(UTIL_DIR))
 
 from ai_native_compat_dry_run import (
     build_apply_plan,
+    build_apply_task_definitions,
     build_report,
     main,
     validate_apply_summary,
@@ -175,6 +176,73 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 "metadata_required": True,
             },
         }
+
+    def synthetic_planned_action(self, action, status="partial"):
+        return {
+            "action": action,
+            "status": status,
+            "description": f"Synthetic {action} action.",
+            "required_capabilities": ["import.assets"],
+            "mutation_cost": {
+                "node_writes": 0,
+                "media_files": 1 if action in {"map_texture", "map_sound"} else 0,
+                "entity_definitions": 1 if action == "register_entity_stub" else 0,
+                "manual_review_items": 1 if action == "skip_feature" else 0,
+            },
+        }
+
+    def test_task_definition_mapping_covers_approved_compatibility_actions(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        report["planned_actions"] = [
+            self.synthetic_planned_action("map_texture"),
+            self.synthetic_planned_action("map_sound"),
+            self.synthetic_planned_action("register_entity_stub"),
+            self.synthetic_planned_action("register_node_alias"),
+            self.synthetic_planned_action("import_structure"),
+            self.synthetic_planned_action("skip_feature", status="skipped"),
+        ]
+        request = self.build_apply_request(
+            report,
+            action_indexes=range(len(report["planned_actions"])),
+        )
+
+        task_definitions = build_apply_task_definitions(report, request)
+
+        expected = {
+            "map_texture": ("compat.media.texture", "metadata_only", False),
+            "map_sound": ("compat.media.sound", "metadata_only", False),
+            "register_entity_stub": ("compat.entity.stub", "metadata_only", False),
+            "register_node_alias": ("compat.node.alias", "metadata_only", False),
+            "import_structure": ("compat.structure.place", "world_mutating", True),
+            "skip_feature": ("compat.feature.skip", "none", False),
+        }
+        self.assertEqual(len(task_definitions), len(expected))
+        for index, definition in enumerate(task_definitions):
+            action = report["planned_actions"][index]["action"]
+            label, mutation_class, requires_safe_world_ops = expected[action]
+            with self.subTest(action=action):
+                self.assertEqual(definition["task_id"], f"compat:synthetic-report:{index}")
+                self.assertEqual(definition["agent_id"], "compat_import:server")
+                self.assertEqual(definition["owner"], "server")
+                self.assertEqual(definition["label"], label)
+                self.assertEqual(definition["mutation_class"], mutation_class)
+                self.assertEqual(definition["requires_safe_world_ops"], requires_safe_world_ops)
+                self.assertEqual(definition["source_action"]["action_index"], index)
+                self.assertEqual(definition["source_action"]["action"], action)
+                self.assertEqual(definition["source_action"]["status"], report["planned_actions"][index]["status"])
+                self.assertIn("import.assets", definition["required_capabilities"])
+                self.assertEqual(definition["budget"]["max_steps_per_step"], 1)
+                for budget_key, budget_value in request["budget"].items():
+                    self.assertEqual(definition["budget"][budget_key], budget_value)
+                self.assertEqual(definition["rollback"]["policy"], "no_world_mutation")
+                self.assertTrue(definition["rollback"]["required"])
+                self.assertTrue(definition["rollback"]["metadata_required"])
+                self.assertEqual(definition["rollback"]["world_mutating"], requires_safe_world_ops)
+                self.assertTrue(definition["inert"])
+                self.assertEqual(definition["queue_state"], "not_queued")
+                self.assertNotIn("steps", definition)
+
+        self.assertNotIn("payload", json.dumps(task_definitions).lower())
 
     def test_apply_plan_builds_no_mutation_summary(self):
         report = build_report(self.fixture_root / "bedrock_pack")
