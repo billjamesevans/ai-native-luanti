@@ -30,6 +30,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Safe world operations API](safe-world-ops-api.md)
 - [Runtime metrics and audit API](metrics-audit-api.md)
 - [First-party agent plugin](first-party-agent-plugin.md)
+- [Family prototype plugin boundaries](family-prototype-plugin-boundaries.md)
 - [Compatibility import dry-run reports](compatibility-import-dry-run.md)
 - [Compatibility apply phase](compatibility-apply-phase.md)
 - [Benchmark plan](benchmark-plan.md)
