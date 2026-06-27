@@ -679,6 +679,37 @@ assert(demo_scenarios.cleanup_despawn.metrics.cleaned_up == 4)
 local post_demo_metrics = core.get_ai_runtime_metrics()
 assert(post_demo_metrics.entities_by_type["ai_demo_benchmark:helper"] == 0)
 
+local demo_command_report = core.demo_entity_benchmark.run_report({
+	owner_ref = "owner:synthetic-operator",
+	entity_count = 3,
+	movement_steps = 2,
+	hardware_class = "local-mac",
+	luanti_commit = "test-commit",
+})
+assert(demo_command_report.schema_version == 1)
+assert(demo_command_report.fixture_id == demo_fixture.fixture_id)
+assert(demo_command_report.hardware_class == "local-mac")
+assert(demo_command_report.luanti_commit == "test-commit")
+assert(demo_command_report.run_context.requires_private_world == false)
+assert(demo_command_report.run_context.requires_private_assets == false)
+assert(demo_command_report.run_context.requires_live_pi == false)
+assert(demo_command_report.runtime_counters.entities_by_type["ai_demo_benchmark:helper"] == 0)
+assert(#demo_command_report.scenarios == 4)
+
+assert(core.registered_chatcommands.ai_demo_entity_benchmark ~= nil)
+local demo_command_ok, demo_command_message =
+	core.registered_chatcommands.ai_demo_entity_benchmark.func(
+		"admin",
+		"count=3 steps=2 commit=test-commit hardware=local-mac")
+assert(demo_command_ok == true)
+assert(demo_command_message:find("\"fixture_id\":\"generic_demo_entity:benchmark:v1\"", 1, true))
+assert(demo_command_message:find("\"hardware_class\":\"local-mac\"", 1, true))
+assert(demo_command_message:find("\"luanti_commit\":\"test-commit\"", 1, true))
+assert(demo_command_message:find("\"runtime_counters\"", 1, true))
+assert(#demo_command_message < 12000)
+local post_demo_command_metrics = core.get_ai_runtime_metrics()
+assert(post_demo_command_metrics.entities_by_type["ai_demo_benchmark:helper"] == 0)
+
 assert(core.registered_chatcommands.ai_runtime ~= nil)
 local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
 assert(command_ok == true)
