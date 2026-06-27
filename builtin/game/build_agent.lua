@@ -44,6 +44,14 @@ local function add_placement(placements, pos, node_name)
 	}
 end
 
+local function placement_positions(placements)
+	local positions = {}
+	for _, placement in ipairs(placements) do
+		positions[#positions + 1] = copy_pos(placement.pos)
+	end
+	return positions
+end
+
 local function light_placements(origin, options)
 	local placements = {}
 	local count = clamp_count(positive_int(options.count, 1))
@@ -152,15 +160,30 @@ function build_agent.define_task(options)
 		},
 		steps = {
 			function(ctx)
-				return core.ai_world_ops.batch_place(placements, {
-					agent_id = ctx.agent_id,
-					owner = ctx.owner,
+				return core.run_ai_world_mutation_with_rollback({
+					record_id = options.rollback_record_id,
+					policy = options.rollback_policy or "snapshot",
+					world_id = options.world_id,
 					task_id = ctx.task_id,
+					agent_id = ctx.agent_id,
+					owner_ref = ctx.owner,
+					operation_label = options.operation_label or "build_agent.execute",
+					mutation_class = "build",
+					bounds = options.bounds,
+					positions = placement_positions(placements),
 					get_node = options.get_node,
-					set_node = options.set_node,
-					max_changes = placement_count,
-					sample_limit = options.sample_limit or settings.sample_limit,
-				})
+					persist_record = options.persist_record or options.persist_rollback_record,
+				}, function()
+					return core.ai_world_ops.batch_place(placements, {
+						agent_id = ctx.agent_id,
+						owner = ctx.owner,
+						task_id = ctx.task_id,
+						get_node = options.get_node,
+						set_node = options.set_node,
+						max_changes = placement_count,
+						sample_limit = options.sample_limit or settings.sample_limit,
+					})
+				end)
 			end,
 		},
 	}

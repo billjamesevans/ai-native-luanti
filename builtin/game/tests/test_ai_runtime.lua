@@ -1222,7 +1222,54 @@ assert(queued_build_definition.status == "queued")
 assert(build_writes == 0)
 core.step_ai_tasks()
 local completed_build_definition = core.get_ai_task(platform_definition.task_id)
-assert(completed_build_definition.status == "completed")
-assert(completed_build_definition.last_result.operation == "ai_world.batch_place")
-assert(completed_build_definition.last_result.changed == 4)
-assert(build_writes == 4)
+assert(completed_build_definition.status == "blocked")
+assert(completed_build_definition.last_result.operation == "ai_rollback.write_record")
+assert(completed_build_definition.last_result.reason == "rollback_metadata_unavailable")
+assert(completed_build_definition.last_result.changed == 0)
+assert(build_writes == 0)
+
+local persisted_build_records = {}
+local build_success_writes_before = build_writes
+local build_success_origin = test_pos(4320)
+for index, entry in ipairs(build_definitions) do
+	local definition_options = table.copy(entry.options)
+	definition_options.kind = entry.kind
+	definition_options.task_id = "build-agent:rollback:" .. entry.kind
+	definition_options.agent_id = plugin_agent.agent_id
+	definition_options.owner = "builder"
+	definition_options.world_id = "test-world"
+	definition_options.origin = vector.add(build_success_origin, { x = index * 8, y = 0, z = 0 })
+	definition_options.get_node = get_test_node
+	definition_options.set_node = counting_build_set_node
+	definition_options.max_node_writes_per_step = 8
+	definition_options.persist_record = function(record)
+		persisted_build_records[#persisted_build_records + 1] = record
+		return "build-store:" .. record.record_id
+	end
+	local writes_before_definition = build_writes
+	local definition = core.build_agent.define_task(definition_options)
+	assert(build_writes == writes_before_definition)
+	core.queue_ai_task(definition)
+	core.step_ai_tasks()
+	local completed_build = core.get_ai_task(definition.task_id)
+	assert(completed_build.status == "completed")
+	assert(completed_build.last_result.operation == "ai_world.batch_place")
+	assert(completed_build.last_result.changed == entry.expected_count)
+	assert(completed_build.last_result.rollback_record_id ~= nil)
+	assert(completed_build.last_result.rollback_storage_ref ~= nil)
+	assert(completed_build.last_result.metrics.node_writes == entry.expected_count)
+end
+
+local expected_build_writes = 0
+for _, entry in ipairs(build_definitions) do
+	expected_build_writes = expected_build_writes + entry.expected_count
+end
+assert(build_writes == build_success_writes_before + expected_build_writes)
+assert(#persisted_build_records == #build_definitions)
+for _, record in ipairs(persisted_build_records) do
+	assert(record.mutation_class == "build")
+	assert(record.operation_label == "build_agent.execute")
+	assert(#record.changed_positions == #record.previous_nodes)
+	assert(record.private_payload == nil)
+	assert(record.asset_payload == nil)
+end
