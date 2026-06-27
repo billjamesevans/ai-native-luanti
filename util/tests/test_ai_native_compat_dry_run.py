@@ -10,7 +10,13 @@ import unittest
 UTIL_DIR = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(UTIL_DIR))
 
-from ai_native_compat_dry_run import build_report, main, validate_report
+from ai_native_compat_dry_run import (
+    build_apply_plan,
+    build_report,
+    main,
+    validate_apply_summary,
+    validate_report,
+)
 
 
 class CompatibilityDryRunTests(unittest.TestCase):
@@ -128,6 +134,172 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 continue
             self.assertLess(path.stat().st_size, 4096, path)
             self.assertIn(path.suffix, {".json", ".js", ".mcmeta", ".md"})
+
+    def build_apply_request(self, report, action_indexes=(0,)):
+        inventory_hash = report["source"]["content_hashes"][0]["value"]
+        approved_actions = []
+        for action_index in action_indexes:
+            action = report["planned_actions"][action_index]
+            approved_actions.append({
+                "action_index": action_index,
+                "action": action["action"],
+                "status": action["status"],
+            })
+        return {
+            "request_version": 1,
+            "mode": "apply_plan",
+            "report_id": "synthetic-report",
+            "report_version": report["report_version"],
+            "source_reference": {
+                "reference_type": "mounted_fixture",
+                "redacted_id": report["source"]["source_id"],
+                "inventory_hash": inventory_hash,
+            },
+            "approved_actions": approved_actions,
+            "target_world": {
+                "world_id": "staging-world",
+                "staging": True,
+            },
+            "operator": "server",
+            "agent_id": "compat_import:server",
+            "budget": {
+                "max_media_files": 10,
+                "max_entity_definitions": 5,
+                "max_node_writes_total": 0,
+                "max_node_writes_per_step": 0,
+                "max_manual_review_items": 10,
+                "max_wall_time_ms": 5000,
+            },
+            "rollback_policy": {
+                "policy": "no_world_mutation",
+                "metadata_required": True,
+            },
+        }
+
+    def test_apply_plan_builds_no_mutation_summary(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        request = self.build_apply_request(report, action_indexes=(0, 1))
+
+        summary = build_apply_plan(report, request)
+
+        self.assertEqual(summary["status"], "planned")
+        self.assertEqual(summary["report_id"], "synthetic-report")
+        self.assertEqual(validate_apply_summary(summary), [])
+        self.assertEqual(summary["queued_tasks"], [])
+        self.assertEqual(summary["completed_tasks"], [])
+        self.assertEqual(summary["blocked_tasks"], [])
+        self.assertEqual(summary["mutation_cost_actual"]["node_writes"], 0)
+        self.assertEqual(summary["mutation_cost_actual"]["media_files"], 0)
+        self.assertEqual(summary["mutation_cost_actual"]["entity_definitions"], 0)
+        self.assertEqual(summary["safety"]["world_mutation_executed"], False)
+        self.assertEqual(summary["safety"]["assets_remain_operator_supplied"], True)
+        self.assertEqual(summary["safety"]["dry_run_report_unchanged"], True)
+        self.assertNotIn("payload", json.dumps(summary).lower())
+
+    def test_apply_plan_rejects_missing_approval_budget_and_rollback(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        request = self.build_apply_request(report)
+        del request["approved_actions"]
+        del request["budget"]
+        del request["rollback_policy"]
+
+        with self.assertRaisesRegex(ValueError, "approved_actions is required"):
+            build_apply_plan(report, request)
+
+    def test_apply_plan_rejects_unknown_planned_action_reference(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        request = self.build_apply_request(report)
+        request["approved_actions"][0]["action_index"] = len(report["planned_actions"]) + 10
+
+        with self.assertRaisesRegex(ValueError, "approved action index"):
+            build_apply_plan(report, request)
+
+    def test_apply_plan_cli_writes_summary_and_preserves_report(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        request = self.build_apply_request(report, action_indexes=(0, 1))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            report_path = tmpdir / "dry-run.json"
+            request_path = tmpdir / "apply-request.json"
+            summary_path = tmpdir / "apply-summary.json"
+            report_payload = json.dumps(report, indent=2, sort_keys=True) + "\n"
+            report_path.write_text(report_payload, encoding="utf-8")
+            request_path.write_text(json.dumps(request, indent=2, sort_keys=True), encoding="utf-8")
+
+            exit_code = main([
+                "--apply-plan", str(report_path),
+                "--approval", str(request_path),
+                "--output", str(summary_path),
+            ])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(report_path.read_text(encoding="utf-8"), report_payload)
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(validate_apply_summary(summary), [])
+            self.assertEqual(summary["status"], "planned")
+            self.assertEqual(summary["safety"]["world_mutation_executed"], False)
+            self.assertEqual(
+                sorted(path.name for path in tmpdir.iterdir()),
+                ["apply-request.json", "apply-summary.json", "dry-run.json"],
+            )
+
+    def test_apply_plan_cli_rejects_missing_approval_file(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            report_path = pathlib.Path(tmpdir) / "dry-run.json"
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                exit_code = main(["--apply-plan", str(report_path)])
+
+            self.assertNotEqual(exit_code, 0)
+            self.assertIn("--approval is required", stderr.getvalue())
+
+    def test_apply_plan_cli_rejects_missing_budget_and_rollback(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        request = self.build_apply_request(report)
+        for removed_field in ("budget", "rollback_policy"):
+            with self.subTest(removed_field=removed_field):
+                broken_request = json.loads(json.dumps(request))
+                del broken_request[removed_field]
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    tmpdir = pathlib.Path(tmpdir)
+                    report_path = tmpdir / "dry-run.json"
+                    request_path = tmpdir / "apply-request.json"
+                    report_path.write_text(json.dumps(report), encoding="utf-8")
+                    request_path.write_text(json.dumps(broken_request), encoding="utf-8")
+                    stderr = io.StringIO()
+
+                    with contextlib.redirect_stderr(stderr):
+                        exit_code = main([
+                            "--apply-plan", str(report_path),
+                            "--approval", str(request_path),
+                        ])
+
+                    self.assertNotEqual(exit_code, 0)
+                    self.assertIn(f"{removed_field} is required", stderr.getvalue())
+
+    def test_apply_plan_cli_rejects_missing_planned_action_reference(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        request = self.build_apply_request(report)
+        request["approved_actions"][0]["action_index"] = len(report["planned_actions"]) + 1
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            report_path = tmpdir / "dry-run.json"
+            request_path = tmpdir / "apply-request.json"
+            report_path.write_text(json.dumps(report), encoding="utf-8")
+            request_path.write_text(json.dumps(request), encoding="utf-8")
+            stderr = io.StringIO()
+
+            with contextlib.redirect_stderr(stderr):
+                exit_code = main([
+                    "--apply-plan", str(report_path),
+                    "--approval", str(request_path),
+                ])
+
+            self.assertNotEqual(exit_code, 0)
+            self.assertIn("approved action index", stderr.getvalue())
 
 
 if __name__ == "__main__":

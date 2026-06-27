@@ -199,3 +199,26 @@ This summary is separate from the dry-run report so the dry-run artifact remains
 5. Add structure placement only after rollback metadata and safe world operations are covered by tests.
 
 This order keeps compatibility import aligned with the fork strategy: AI-native runtime first, compatibility automation second, world mutation last.
+
+## Current Apply-Plan Command
+
+The first implementation is a no-mutation planning command in `util/ai_native_compat_dry_run.py`:
+
+```bash
+python3 util/ai_native_compat_dry_run.py \
+	--apply-plan /path/to/dry-run-report.json \
+	--approval /path/to/apply-request.json \
+	--output /path/to/apply-summary.json
+```
+
+This command:
+
+- Validates the dry-run report.
+- Requires explicit approval request JSON.
+- Rejects missing approval actions, budgets, rollback policy, and unknown planned action references.
+- Verifies the approved action list against the dry-run report.
+- Emits an apply summary with `status = planned`.
+- Leaves the dry-run report unchanged.
+- Copies no assets and performs no world mutation.
+
+The command is intentionally not an apply executor. It prepares the next implementation step: mapping approved actions to inert AI task definition records.

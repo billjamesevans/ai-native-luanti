@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Dry-run compatibility reporter for user-owned Minecraft-like packs."""
+"""Dry-run compatibility reporter and no-mutation apply planner."""
 
 from __future__ import annotations
 
@@ -13,6 +13,8 @@ import zipfile
 
 
 REPORT_VERSION = 1
+APPLY_REQUEST_VERSION = 1
+APPLY_SUMMARY_VERSION = 1
 TOP_LEVEL_REQUIRED = (
     "report_version",
     "mode",
@@ -56,6 +58,50 @@ SAFETY_REQUIRED_TRUE = (
     "no_world_mutation",
     "source_paths_redacted",
     "user_rights_required",
+)
+APPLY_REQUEST_REQUIRED = (
+    "request_version",
+    "mode",
+    "report_id",
+    "report_version",
+    "source_reference",
+    "approved_actions",
+    "target_world",
+    "operator",
+    "agent_id",
+    "budget",
+    "rollback_policy",
+)
+SOURCE_REFERENCE_REQUIRED = ("reference_type", "redacted_id", "inventory_hash")
+APPROVED_ACTION_REQUIRED = ("action_index", "action", "status")
+APPLY_BUDGET_REQUIRED = (
+    "max_media_files",
+    "max_entity_definitions",
+    "max_node_writes_total",
+    "max_node_writes_per_step",
+    "max_manual_review_items",
+    "max_wall_time_ms",
+)
+ROLLBACK_POLICY_REQUIRED = ("policy", "metadata_required")
+APPLY_SUMMARY_REQUIRED = (
+    "summary_version",
+    "apply_id",
+    "report_id",
+    "status",
+    "approved_actions",
+    "queued_tasks",
+    "completed_tasks",
+    "blocked_tasks",
+    "mutation_cost_actual",
+    "rollback_records",
+    "audit_record_count",
+    "operator_next_actions",
+    "safety",
+)
+APPLY_SUMMARY_SAFETY_REQUIRED = (
+    "assets_remain_operator_supplied",
+    "dry_run_report_unchanged",
+    "world_mutation_executed",
 )
 
 
@@ -485,6 +531,163 @@ def validate_report(report, expected_unsupported_features=None):
     return errors
 
 
+def _validate_number_fields(errors, mapping, path, keys):
+    if not isinstance(mapping, dict):
+        return
+    for key in keys:
+        if key in mapping and (not isinstance(mapping[key], int) or mapping[key] < 0):
+            errors.append(f"{path}.{key} must be a non-negative integer")
+
+
+def validate_apply_request(request):
+    """Return validation errors for an apply-plan request."""
+    errors = []
+    _require_keys(errors, request, "request", APPLY_REQUEST_REQUIRED)
+    if errors:
+        return errors
+
+    if request.get("request_version") != APPLY_REQUEST_VERSION:
+        errors.append(f"request.request_version must be {APPLY_REQUEST_VERSION}")
+    if request.get("mode") != "apply_plan":
+        errors.append("request.mode must be apply_plan")
+
+    _require_keys(errors, request.get("source_reference"), "source_reference", SOURCE_REFERENCE_REQUIRED)
+
+    approved_actions = request.get("approved_actions")
+    if _require_sequence(errors, approved_actions, "approved_actions"):
+        if not approved_actions:
+            errors.append("approved_actions must contain at least one action")
+        for index, action in enumerate(approved_actions):
+            _require_keys(errors, action, f"approved_actions[{index}]", APPROVED_ACTION_REQUIRED)
+
+    _require_keys(errors, request.get("budget"), "budget", APPLY_BUDGET_REQUIRED)
+    _validate_number_fields(errors, request.get("budget"), "budget", APPLY_BUDGET_REQUIRED)
+
+    _require_keys(errors, request.get("rollback_policy"), "rollback_policy", ROLLBACK_POLICY_REQUIRED)
+    rollback_policy = request.get("rollback_policy")
+    if isinstance(rollback_policy, dict):
+        if rollback_policy.get("metadata_required") is not True:
+            errors.append("rollback_policy.metadata_required must be true")
+        if rollback_policy.get("policy") != "no_world_mutation":
+            errors.append("rollback_policy.policy must be no_world_mutation for apply_plan")
+
+    return errors
+
+
+def validate_apply_summary(summary):
+    """Return validation errors for a no-mutation apply summary."""
+    errors = []
+    _require_keys(errors, summary, "summary", APPLY_SUMMARY_REQUIRED)
+    if errors:
+        return errors
+
+    if summary.get("summary_version") != APPLY_SUMMARY_VERSION:
+        errors.append(f"summary.summary_version must be {APPLY_SUMMARY_VERSION}")
+    if summary.get("status") != "planned":
+        errors.append("summary.status must be planned")
+
+    for field in ("approved_actions", "queued_tasks", "completed_tasks", "blocked_tasks",
+            "rollback_records", "operator_next_actions"):
+        _require_sequence(errors, summary.get(field), field)
+
+    _validate_mutation_cost(errors, summary.get("mutation_cost_actual"), "mutation_cost_actual")
+    _require_keys(errors, summary.get("safety"), "safety", APPLY_SUMMARY_SAFETY_REQUIRED)
+    safety = summary.get("safety")
+    if isinstance(safety, dict):
+        if safety.get("assets_remain_operator_supplied") is not True:
+            errors.append("safety.assets_remain_operator_supplied must be true")
+        if safety.get("dry_run_report_unchanged") is not True:
+            errors.append("safety.dry_run_report_unchanged must be true")
+        if safety.get("world_mutation_executed") is not False:
+            errors.append("safety.world_mutation_executed must be false")
+
+    mutation_cost = summary.get("mutation_cost_actual")
+    if isinstance(mutation_cost, dict) and mutation_cost.get("node_writes") != 0:
+        errors.append("mutation_cost_actual.node_writes must be 0 for apply_plan")
+    if summary.get("queued_tasks") != []:
+        errors.append("queued_tasks must be empty for apply_plan")
+    return errors
+
+
+def _report_inventory_hash(report):
+    hashes = report.get("source", {}).get("content_hashes", [])
+    if not hashes:
+        return None
+    return hashes[0].get("value")
+
+
+def _planned_action_by_index(report, index):
+    actions = report.get("planned_actions", [])
+    if not isinstance(index, int) or index < 0 or index >= len(actions):
+        raise ValueError(f"approved action index {index} is not present in dry-run report")
+    return actions[index]
+
+
+def build_apply_plan(report, request):
+    """Build a no-mutation apply summary from a dry-run report and approval request."""
+    report_errors = validate_report(report)
+    if report_errors:
+        raise ValueError(report_errors[0])
+
+    request_errors = validate_apply_request(request)
+    if request_errors:
+        raise ValueError(request_errors[0])
+
+    if request["report_version"] != report["report_version"]:
+        raise ValueError("request.report_version does not match dry-run report")
+
+    expected_hash = _report_inventory_hash(report)
+    supplied_hash = request["source_reference"]["inventory_hash"]
+    if expected_hash and supplied_hash != expected_hash:
+        raise ValueError("source_reference.inventory_hash does not match dry-run report")
+
+    approved_actions = []
+    for requested in request["approved_actions"]:
+        planned = _planned_action_by_index(report, requested["action_index"])
+        if requested["action"] != planned["action"]:
+            raise ValueError(f"approved action index {requested['action_index']} action mismatch")
+        approved_actions.append({
+            "action_index": requested["action_index"],
+            "action": requested["action"],
+        })
+
+    summary = {
+        "summary_version": APPLY_SUMMARY_VERSION,
+        "apply_id": "apply-plan:" + request["report_id"],
+        "report_id": request["report_id"],
+        "status": "planned",
+        "approved_actions": approved_actions,
+        "queued_tasks": [],
+        "completed_tasks": [],
+        "blocked_tasks": [],
+        "mutation_cost_actual": {
+            "node_writes": 0,
+            "media_files": 0,
+            "entity_definitions": 0,
+            "manual_review_items": 0,
+        },
+        "rollback_records": [{
+            "record_id": "apply-plan:" + request["report_id"] + ":no-world-mutation",
+            "policy": request["rollback_policy"]["policy"],
+            "world_mutating": False,
+        }],
+        "audit_record_count": 0,
+        "operator_next_actions": [
+            "Review generated task definitions before enabling apply mode.",
+        ],
+        "safety": {
+            "assets_remain_operator_supplied": True,
+            "dry_run_report_unchanged": True,
+            "world_mutation_executed": False,
+        },
+    }
+
+    summary_errors = validate_apply_summary(summary)
+    if summary_errors:
+        raise ValueError(summary_errors[0])
+    return summary
+
+
 def _print_summary(report):
     summary = report["summary"]
     print(
@@ -502,20 +705,35 @@ def _print_summary(report):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("source", help="User-owned pack, structure, or world source to inspect.")
+    parser.add_argument("source", nargs="?", help="User-owned pack, structure, or world source to inspect.")
+    parser.add_argument("--apply-plan", help="Dry-run report JSON to plan for apply without mutation.")
+    parser.add_argument("--approval", help="Apply request JSON containing explicit operator approvals.")
     parser.add_argument("--output", help="Write machine-readable JSON report to this path.")
     parser.add_argument("--summary", action="store_true", help="Print a concise human-readable summary.")
     args = parser.parse_args(argv)
 
-    report = build_report(args.source)
-    payload = json.dumps(report, indent=2, sort_keys=True) + "\n"
-    if args.output:
-        pathlib.Path(args.output).write_text(payload, encoding="utf-8")
-    else:
-        sys.stdout.write(payload)
-    if args.summary:
-        _print_summary(report)
-    return 0
+    try:
+        if args.apply_plan:
+            if not args.approval:
+                raise ValueError("--approval is required with --apply-plan")
+            report = _read_json(pathlib.Path(args.apply_plan))
+            request = _read_json(pathlib.Path(args.approval))
+            payload_obj = build_apply_plan(report, request)
+        else:
+            if not args.source:
+                raise ValueError("source is required unless --apply-plan is used")
+            payload_obj = build_report(args.source)
+        payload = json.dumps(payload_obj, indent=2, sort_keys=True) + "\n"
+        if args.output:
+            pathlib.Path(args.output).write_text(payload, encoding="utf-8")
+        else:
+            sys.stdout.write(payload)
+        if args.summary and not args.apply_plan:
+            _print_summary(payload_obj)
+        return 0
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
