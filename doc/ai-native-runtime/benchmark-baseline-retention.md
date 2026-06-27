@@ -78,6 +78,20 @@ The `accepted-baseline-manifest.json` stores only the commit label, hardware cla
 
 You must not promote a capture when either report has `warnings`, `errors`, `requires_private_world`, `requires_private_assets`, `requires_live_pi`, or a mismatched hardware class. Low-power-server captures remain backup-first and should not be promoted unless the same backup-first review has been completed for the source capture.
 
+## Running The Branch Gate
+
+After promotion, use `util/ai_native_benchmark_gate.py` for the normal promotion -> branch gate loop:
+
+```sh
+python3 util/ai_native_benchmark_gate.py \
+  --hardware-class local-mac \
+  --luanti-commit "$(git rev-parse --short HEAD)"
+```
+
+The gate finds the accepted reports under `local/benchmarks/<hardware-class>/accepted/`, runs a fresh local capture for the branch, compares both benchmark report families, and writes `benchmark-gate-manifest.json` next to the branch reports. It exits `0` when all comparisons pass and will exit nonzero when a required comparison fails or the accepted baseline is missing.
+
+The default gate path requires no live server. It must not depend on private worlds, copied assets, provider prompts, player-private data, local absolute paths, or live Raspberry Pi state. Low-power-server gates stay backup-first and require explicit operator confirmation before they are used.
+
 Mutation benchmark reports and generic demo entity benchmark reports both use `scenarios[*].metrics`, so they can use the same comparator:
 
 ```sh
