@@ -142,3 +142,6 @@ lib/irrlichtmt
 
 # Generated mod storage database
 client/mod_storage.sqlite
+
+# Local AI-native benchmark evidence
+/local/benchmarks/
