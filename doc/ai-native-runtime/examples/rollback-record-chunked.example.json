@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "record_id": "rollback:build-plan-example:0002:chunk:1",
+  "policy": "chunked",
+  "world_id": "world:synthetic-staging",
+  "task_id": "build-agent:task:0002",
+  "agent_id": "build_agent:server",
+  "owner_ref": "owner:synthetic-operator",
+  "operation_label": "build_agent.apply_platform",
+  "mutation_class": "build",
+  "bounds": {
+    "min": {
+      "x": 10,
+      "y": 64,
+      "z": 10
+    },
+    "max": {
+      "x": 11,
+      "y": 64,
+      "z": 10
+    }
+  },
+  "changed_positions": [
+    {
+      "x": 10,
+      "y": 64,
+      "z": 10
+    },
+    {
+      "x": 11,
+      "y": 64,
+      "z": 10
+    }
+  ],
+  "previous_nodes": [
+    {
+      "pos": {
+        "x": 10,
+        "y": 64,
+        "z": 10
+      },
+      "node": {
+        "name": "air",
+        "param1": 0,
+        "param2": 0
+      }
+    },
+    {
+      "pos": {
+        "x": 11,
+        "y": 64,
+        "z": 10
+      },
+      "node": {
+        "name": "example:surface",
+        "param1": 0,
+        "param2": 0,
+        "metadata_hash": "sha256:synthetic-node-metadata"
+      }
+    }
+  ],
+  "chunk": {
+    "chunk_index": 1,
+    "chunk_count": 2,
+    "first_position_index": 2,
+    "position_count": 2
+  },
+  "created_at": "2026-06-27T00:00:00Z",
+  "storage_ref": "rollback://synthetic/build-plan-example/0002/chunk/1",
+  "audit_ref": "audit:build-plan-example:0002"
+}
