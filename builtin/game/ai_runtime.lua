@@ -2,6 +2,7 @@ core.registered_ai_agents = {}
 core.registered_ai_tasks = {}
 core.ai_world_ops = {}
 core.ai_entity_ops = {}
+core.ai_rollback_storage = {}
 
 local ai_task_queue = {}
 local ai_task_queue_paused = false
@@ -996,10 +997,133 @@ local function rollback_id_part(value)
 	return tostring(value):gsub("[^%w._:-]", "_")
 end
 
+local function rollback_filename_part(value)
+	return tostring(value):gsub("[^%w._-]", "_")
+end
+
 local function next_rollback_record_id(task_id, operation_label)
 	ai_rollback_record_counter = ai_rollback_record_counter + 1
 	return "rollback:" .. rollback_id_part(task_id) .. ":"
 		.. rollback_id_part(operation_label) .. ":" .. ai_rollback_record_counter
+end
+
+local ai_rollback_storage_options = {
+	enabled = false,
+}
+
+function core.ai_rollback_storage.configure(options)
+	if options == nil then
+		ai_rollback_storage_options = {
+			enabled = false,
+		}
+		return {
+			ok = true,
+			status = "success",
+			reason = "rollback_storage_disabled",
+		}
+	end
+	assert(type(options) == "table", "Rollback storage options must be a table")
+	if options.persist_record ~= nil then
+		assert(type(options.persist_record) == "function",
+			"Rollback storage persist_record must be a function")
+	end
+	if options.inspect_record ~= nil then
+		assert(type(options.inspect_record) == "function",
+			"Rollback storage inspect_record must be a function")
+	end
+	if options.prune_records ~= nil then
+		assert(type(options.prune_records) == "function",
+			"Rollback storage prune_records must be a function")
+	end
+	ai_rollback_storage_options = {
+		enabled = options.enabled ~= false,
+		persist_record = options.persist_record,
+		inspect_record = options.inspect_record,
+		prune_records = options.prune_records,
+	}
+	return {
+		ok = true,
+		status = "success",
+		reason = ai_rollback_storage_options.enabled
+			and "rollback_storage_enabled" or "rollback_storage_disabled",
+	}
+end
+
+local function default_rollback_storage_ref(record)
+	return "rollback://world/" .. record.record_id
+end
+
+local function default_rollback_storage_path(record)
+	if not core.get_worldpath then
+		return nil
+	end
+	local worldpath = core.get_worldpath()
+	if not worldpath or worldpath == "" then
+		return nil
+	end
+	return worldpath .. DIR_DELIM .. "ai_rollback_"
+		.. rollback_filename_part(record.record_id) .. ".json"
+end
+
+local function default_persist_rollback_record(record)
+	if not core.safe_file_write or not core.write_json then
+		return nil
+	end
+	local path = default_rollback_storage_path(record)
+	if not path then
+		return nil
+	end
+	local payload = core.write_json(record, true)
+	if not payload then
+		return nil
+	end
+	local ok = core.safe_file_write(path, payload)
+	if ok == false then
+		return nil
+	end
+	return {
+		ok = true,
+		storage_ref = default_rollback_storage_ref(record),
+	}
+end
+
+local function configured_rollback_persist(record)
+	if ai_rollback_storage_options.persist_record then
+		return ai_rollback_storage_options.persist_record(record)
+	end
+	return default_persist_rollback_record(record)
+end
+
+local function active_configured_rollback_persist()
+	if not ai_rollback_storage_options.enabled then
+		return nil
+	end
+	return configured_rollback_persist
+end
+
+function core.ai_rollback_storage.inspect(storage_ref)
+	if not ai_rollback_storage_options.enabled
+			or not ai_rollback_storage_options.inspect_record then
+		return nil
+	end
+	return ai_rollback_storage_options.inspect_record(storage_ref)
+end
+
+function core.ai_rollback_storage.prune(options)
+	if not ai_rollback_storage_options.enabled
+			or not ai_rollback_storage_options.prune_records then
+		return {
+			removed = 0,
+			reason = "rollback_storage_prune_unavailable",
+		}
+	end
+	local result = ai_rollback_storage_options.prune_records(options or {})
+	if type(result) == "table" then
+		return result
+	end
+	return {
+		removed = result or 0,
+	}
 end
 
 local function make_rollback_result(def, position_count)
@@ -1044,7 +1168,9 @@ function core.write_ai_rollback_record(def)
 	assert(type(def) == "table", "Rollback record definition must be a table")
 	local raw_positions = def.positions or def.changed_positions
 	local positions = normalize_rollback_positions(raw_positions)
-	if type(def.persist_record) ~= "function" then
+	local persist_record = def.persist_record or def.persist_rollback_record
+		or active_configured_rollback_persist()
+	if type(persist_record) ~= "function" then
 		return rollback_unavailable(def, #positions,
 			"Rollback persistence callback is required before mutation.")
 	end
@@ -1091,7 +1217,7 @@ function core.write_ai_rollback_record(def)
 	}
 	check_string(record.record_id, "record_id")
 
-	local ok, persisted = pcall(def.persist_record, record)
+	local ok, persisted = pcall(persist_record, record)
 	if not ok or persisted == nil or persisted == false
 			or (type(persisted) == "table" and persisted.ok == false) then
 		return rollback_unavailable(def, #positions,

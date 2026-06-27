@@ -381,6 +381,161 @@ assert(rollback_blocked.changed == 0)
 assert(rollback_mutation_writes == 0)
 assert(get_test_node(rollback_blocked_pos).name == "air")
 
+assert(core.ai_rollback_storage ~= nil)
+local durable_records = {}
+core.ai_rollback_storage.configure({
+	enabled = true,
+	persist_record = function(record)
+		durable_records[record.record_id] = record
+		return {
+			ok = true,
+			storage_ref = "rollback://test/" .. record.record_id,
+		}
+	end,
+	inspect_record = function(storage_ref)
+		local record_id = storage_ref:match("^rollback://test/(.+)$")
+		return durable_records[record_id]
+	end,
+	prune_records = function()
+		local removed = 0
+		for record_id in pairs(durable_records) do
+			durable_records[record_id] = nil
+			removed = removed + 1
+		end
+		return removed
+	end,
+})
+
+local durable_pos = test_pos(4093)
+set_test_node(durable_pos, {
+	name = "ai_runtime_test:stone",
+	param1 = 4,
+	param2 = 5,
+})
+local durable_write = core.write_ai_rollback_record({
+	record_id = "rollback:test:durable",
+	policy = "chunked",
+	world_id = "test-world",
+	task_id = "task:rollback-durable",
+	agent_id = "nova:emma",
+	owner_ref = "emma",
+	operation_label = "repair.default_storage",
+	mutation_class = "repair",
+	positions = {
+		durable_pos,
+	},
+	get_node = get_test_node,
+	chunk = {
+		chunk_index = 1,
+		chunk_count = 3,
+		first_position_index = 16,
+		position_count = 1,
+	},
+})
+assert(durable_write.ok == true)
+assert(durable_write.status == "success")
+assert(durable_write.rollback_storage_ref == "rollback://test/rollback:test:durable")
+assert(durable_records["rollback:test:durable"].chunk.chunk_index == 1)
+assert(durable_records["rollback:test:durable"].chunk.chunk_count == 3)
+assert(durable_records["rollback:test:durable"].chunk.first_position_index == 16)
+assert(durable_records["rollback:test:durable"].chunk.position_count == 1)
+local inspected_durable_record =
+	core.ai_rollback_storage.inspect(durable_write.rollback_storage_ref)
+assert(inspected_durable_record.record_id == "rollback:test:durable")
+assert(inspected_durable_record.private_payload == nil)
+assert(core.ai_rollback_storage.prune({ world_id = "test-world" }).removed == 1)
+assert(core.ai_rollback_storage.inspect(durable_write.rollback_storage_ref) == nil)
+core.ai_rollback_storage.configure(nil)
+
+local old_get_worldpath = core.get_worldpath
+local old_safe_file_write = core.safe_file_write
+local old_write_json = core.write_json
+local default_storage_write = nil
+core.get_worldpath = function()
+	return "/tmp/ai-runtime-test-world"
+end
+core.safe_file_write = function(path, payload)
+	default_storage_write = {
+		path = path,
+		payload = payload,
+	}
+	return true
+end
+core.write_json = function(record)
+	assert(record.record_id == "rollback:test:world-default")
+	return "{\"record_id\":\"" .. record.record_id .. "\"}"
+end
+core.ai_rollback_storage.configure({
+	enabled = true,
+})
+local default_file_pos = test_pos(4095)
+set_test_node(default_file_pos, { name = "ai_runtime_test:stone" })
+local default_file_write = core.write_ai_rollback_record({
+	record_id = "rollback:test:world-default",
+	policy = "snapshot",
+	world_id = "test-world",
+	task_id = "task:rollback-world-default",
+	agent_id = "nova:emma",
+	owner_ref = "emma",
+	operation_label = "build.default_world_storage",
+	mutation_class = "build",
+	positions = {
+		default_file_pos,
+	},
+	get_node = get_test_node,
+})
+assert(default_file_write.ok == true)
+assert(default_file_write.rollback_storage_ref
+	== "rollback://world/rollback:test:world-default")
+assert(default_storage_write.path
+	== "/tmp/ai-runtime-test-world/ai_rollback_rollback_test_world-default.json")
+assert(default_storage_write.payload:find("rollback:test:world-default", 1, true))
+core.ai_rollback_storage.configure(nil)
+core.get_worldpath = old_get_worldpath
+core.safe_file_write = old_safe_file_write
+core.write_json = old_write_json
+
+core.ai_rollback_storage.configure({
+	enabled = true,
+	persist_record = function()
+		return false
+	end,
+})
+local storage_failure_pos = test_pos(4094)
+set_test_node(storage_failure_pos, { name = "air" })
+local storage_failure_writes = 0
+local storage_failure = core.run_ai_world_mutation_with_rollback({
+	record_id = "rollback:test:storage-failure",
+	policy = "snapshot",
+	world_id = "test-world",
+	task_id = "task:rollback-storage-failure",
+	agent_id = "nova:emma",
+	owner_ref = "emma",
+	operation_label = "build.default_storage_failure",
+	mutation_class = "build",
+	positions = {
+		storage_failure_pos,
+	},
+	get_node = get_test_node,
+}, function()
+	storage_failure_writes = storage_failure_writes + 1
+	return core.ai_world_ops.place_node(storage_failure_pos,
+		"ai_runtime_test:stone", {
+			agent_id = "nova:emma",
+			task_id = "task:rollback-storage-failure",
+			owner = "emma",
+			get_node = get_test_node,
+			set_node = set_test_node,
+		})
+end)
+assert(storage_failure.ok == false)
+assert(storage_failure.status == "blocked")
+assert(storage_failure.reason == "rollback_metadata_unavailable")
+assert(storage_failure.changed == 0)
+assert(storage_failure_writes == 0)
+assert(get_test_node(storage_failure_pos).name == "air")
+core.ai_rollback_storage.configure(nil)
+
 local rollback_guarded_pos = test_pos(4092)
 set_test_node(rollback_guarded_pos, { name = "air" })
 local rollback_guarded_writes = 0
@@ -1411,6 +1566,48 @@ assert(completed_repair_apply.last_result.changed == 1)
 assert(completed_repair_apply.last_result.rollback_record_id ~= nil)
 assert(get_test_node(queued_apply_pos).name == "air")
 
+local default_storage_repair_pos = test_pos(4270)
+set_test_node(default_storage_repair_pos, { name = "ai_runtime_test:hazard" })
+local default_storage_repair_plan = core.repair_agent.plan_area(default_storage_repair_pos, {
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	task_id = "repair-default-storage:plan",
+	radius = 0,
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	sample_limit = 8,
+})
+local default_storage_records = {}
+core.ai_rollback_storage.configure({
+	enabled = true,
+	persist_record = function(record)
+		default_storage_records[#default_storage_records + 1] = record
+		return {
+			ok = true,
+			storage_ref = "rollback://default/" .. record.record_id,
+		}
+	end,
+})
+local default_storage_repair = core.repair_agent.apply_plan(default_storage_repair_plan, {
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	task_id = "repair-default-storage:apply",
+	world_id = "test-world",
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	allow_mutation = true,
+	allow_hazards = true,
+	max_node_writes = 1,
+})
+assert(default_storage_repair.ok == true)
+assert(default_storage_repair.changed == 1)
+assert(default_storage_repair.rollback_storage_ref ~= nil)
+assert(default_storage_repair.rollback_storage_ref:find("rollback://default/", 1, true))
+assert(#default_storage_records == 1)
+assert(default_storage_records[1].mutation_class == "repair")
+assert(get_test_node(default_storage_repair_pos).name == "air")
+core.ai_rollback_storage.configure(nil)
+
 assert(core.build_agent ~= nil)
 core.build_agent.configure({
 	light_node = "ai_runtime_test:stone",
@@ -1502,6 +1699,44 @@ assert(completed_build_definition.last_result.operation == "ai_rollback.write_re
 assert(completed_build_definition.last_result.reason == "rollback_metadata_unavailable")
 assert(completed_build_definition.last_result.changed == 0)
 assert(build_writes == 0)
+
+local default_storage_build_records = {}
+core.ai_rollback_storage.configure({
+	enabled = true,
+	persist_record = function(record)
+		default_storage_build_records[#default_storage_build_records + 1] = record
+		return {
+			ok = true,
+			storage_ref = "rollback://default/" .. record.record_id,
+		}
+	end,
+})
+local default_storage_build_pos = test_pos(4310)
+set_test_node(default_storage_build_pos, { name = "air" })
+local default_storage_build_definition = core.build_agent.define_task({
+	kind = "marker",
+	task_id = "build-agent:default-storage",
+	agent_id = plugin_agent.agent_id,
+	owner = "builder",
+	world_id = "test-world",
+	origin = default_storage_build_pos,
+	get_node = get_test_node,
+	set_node = counting_build_set_node,
+	max_node_writes_per_step = 1,
+})
+core.queue_ai_task(default_storage_build_definition)
+core.step_ai_tasks()
+local completed_default_storage_build =
+	core.get_ai_task("build-agent:default-storage")
+assert(completed_default_storage_build.status == "completed")
+assert(completed_default_storage_build.last_result.changed == 1)
+assert(completed_default_storage_build.last_result.rollback_storage_ref ~= nil)
+assert(completed_default_storage_build.last_result.rollback_storage_ref:find(
+	"rollback://default/", 1, true))
+assert(#default_storage_build_records == 1)
+assert(default_storage_build_records[1].mutation_class == "build")
+assert(get_test_node(default_storage_build_pos).name == "ai_runtime_test:stone")
+core.ai_rollback_storage.configure(nil)
 
 local persisted_build_records = {}
 local build_success_writes_before = build_writes
