@@ -1,6 +1,6 @@
 # Compatibility Apply Phase
 
-Status: phase-two design slice for issue #19
+Status: phase-two design and planning implementation through issue #24
 
 ## Purpose
 
@@ -221,4 +221,19 @@ This command:
 - Leaves the dry-run report unchanged.
 - Copies no assets and performs no world mutation.
 
-The command is intentionally not an apply executor. It prepares the next implementation step: mapping approved actions to inert AI task definition records.
+The command is intentionally not an apply executor.
+
+## Current Task Definition Mapper
+
+`build_apply_task_definitions(report, request)` maps approved dry-run planned actions to reviewable task definition records. The records are inert: they are not queued through `core.queue_ai_task`, they contain no executable steps, and they do not copy assets or write to a world.
+
+Each generated task definition includes:
+
+- `task_id`, `agent_id`, `owner`, and mapped task `label`.
+- `required_capabilities`, including `import.assets`.
+- Operator-supplied task budget values plus `max_steps_per_step = 1`.
+- `mutation_class` and `requires_safe_world_ops`.
+- Rollback policy and metadata requirements.
+- Source planned-action metadata for review.
+
+`import_structure` maps to `compat.structure.place`, has `mutation_class = world_mutating`, and sets `requires_safe_world_ops = true`. It remains a definition only until safe-world-op execution and rollback metadata are implemented in a later issue.

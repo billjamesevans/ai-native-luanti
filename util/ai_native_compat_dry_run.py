@@ -103,6 +103,43 @@ APPLY_SUMMARY_SAFETY_REQUIRED = (
     "dry_run_report_unchanged",
     "world_mutation_executed",
 )
+PLANNED_ACTION_TASK_MAPPINGS = {
+    "copy_asset_reference": {
+        "label": "compat.asset.reference",
+        "mutation_class": "metadata_only",
+        "requires_safe_world_ops": False,
+    },
+    "map_texture": {
+        "label": "compat.media.texture",
+        "mutation_class": "metadata_only",
+        "requires_safe_world_ops": False,
+    },
+    "map_sound": {
+        "label": "compat.media.sound",
+        "mutation_class": "metadata_only",
+        "requires_safe_world_ops": False,
+    },
+    "register_node_alias": {
+        "label": "compat.node.alias",
+        "mutation_class": "metadata_only",
+        "requires_safe_world_ops": False,
+    },
+    "register_entity_stub": {
+        "label": "compat.entity.stub",
+        "mutation_class": "metadata_only",
+        "requires_safe_world_ops": False,
+    },
+    "import_structure": {
+        "label": "compat.structure.place",
+        "mutation_class": "world_mutating",
+        "requires_safe_world_ops": True,
+    },
+    "skip_feature": {
+        "label": "compat.feature.skip",
+        "mutation_class": "none",
+        "requires_safe_world_ops": False,
+    },
+}
 
 
 def _utc_now():
@@ -623,8 +660,7 @@ def _planned_action_by_index(report, index):
     return actions[index]
 
 
-def build_apply_plan(report, request):
-    """Build a no-mutation apply summary from a dry-run report and approval request."""
+def _validated_approved_actions(report, request):
     report_errors = validate_report(report)
     if report_errors:
         raise ValueError(report_errors[0])
@@ -646,8 +682,63 @@ def build_apply_plan(report, request):
         planned = _planned_action_by_index(report, requested["action_index"])
         if requested["action"] != planned["action"]:
             raise ValueError(f"approved action index {requested['action_index']} action mismatch")
+        approved_actions.append((requested["action_index"], requested, planned))
+    return approved_actions
+
+
+def build_apply_task_definitions(report, request):
+    """Map approved compatibility actions to inert AI task definition records."""
+    task_definitions = []
+    for action_index, _requested, planned in _validated_approved_actions(report, request):
+        mapping = PLANNED_ACTION_TASK_MAPPINGS.get(planned["action"])
+        if mapping is None:
+            raise ValueError(f"planned action {planned['action']} cannot be mapped to a task definition")
+        task_definitions.append({
+            "task_id": f"compat:{request['report_id']}:{action_index}",
+            "agent_id": request["agent_id"],
+            "owner": request["operator"],
+            "label": mapping["label"],
+            "status": "defined",
+            "inert": True,
+            "queue_state": "not_queued",
+            "required_capabilities": sorted({
+                "import.assets",
+                *planned.get("required_capabilities", []),
+            }),
+            "mutation_class": mapping["mutation_class"],
+            "requires_safe_world_ops": mapping["requires_safe_world_ops"],
+            "budget": {
+                "max_steps_per_step": 1,
+                "max_media_files": request["budget"]["max_media_files"],
+                "max_entity_definitions": request["budget"]["max_entity_definitions"],
+                "max_node_writes_total": request["budget"]["max_node_writes_total"],
+                "max_node_writes_per_step": request["budget"]["max_node_writes_per_step"],
+                "max_manual_review_items": request["budget"]["max_manual_review_items"],
+                "max_wall_time_ms": request["budget"]["max_wall_time_ms"],
+            },
+            "rollback": {
+                "required": True,
+                "policy": request["rollback_policy"]["policy"],
+                "metadata_required": request["rollback_policy"]["metadata_required"],
+                "world_mutating": mapping["requires_safe_world_ops"],
+            },
+            "source_action": {
+                "action_index": action_index,
+                "action": planned["action"],
+                "status": planned["status"],
+                "description": planned["description"],
+                "mutation_cost": planned["mutation_cost"],
+            },
+        })
+    return task_definitions
+
+
+def build_apply_plan(report, request):
+    """Build a no-mutation apply summary from a dry-run report and approval request."""
+    approved_actions = []
+    for action_index, requested, _planned in _validated_approved_actions(report, request):
         approved_actions.append({
-            "action_index": requested["action_index"],
+            "action_index": action_index,
             "action": requested["action"],
         })
 
