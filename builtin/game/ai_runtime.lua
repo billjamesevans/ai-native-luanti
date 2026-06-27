@@ -156,6 +156,15 @@ local ai_runtime_metrics = {
 	blocked_operations = 0,
 	pending_model_requests = 0,
 	pending_http_requests = 0,
+	model_adapter_requests = 0,
+	model_adapter_successes = 0,
+	model_adapter_failures = 0,
+	model_adapter_timeouts = 0,
+	model_adapter_latency_buckets = {
+		under_100ms = 0,
+		under_1000ms = 0,
+		over_1000ms = 0,
+	},
 	entities_by_type = {},
 }
 local ai_task_status_order = {
@@ -218,6 +227,8 @@ function core.record_ai_runtime_audit(record)
 		status = record.status,
 		reason = record.reason,
 		message = record.message,
+		adapter_name = record.adapter_name,
+		elapsed_us = record.elapsed_us,
 		changed = record.changed,
 		examined = record.examined,
 		skipped = record.skipped,
@@ -266,6 +277,54 @@ function core.set_ai_runtime_pending_requests(kind, count)
 	end
 end
 
+local function increment_model_latency_bucket(elapsed_us)
+	if elapsed_us < 100000 then
+		ai_runtime_metrics.model_adapter_latency_buckets.under_100ms =
+			ai_runtime_metrics.model_adapter_latency_buckets.under_100ms + 1
+	elseif elapsed_us < 1000000 then
+		ai_runtime_metrics.model_adapter_latency_buckets.under_1000ms =
+			ai_runtime_metrics.model_adapter_latency_buckets.under_1000ms + 1
+	else
+		ai_runtime_metrics.model_adapter_latency_buckets.over_1000ms =
+			ai_runtime_metrics.model_adapter_latency_buckets.over_1000ms + 1
+	end
+end
+
+function core.record_ai_model_adapter_result(record)
+	assert(type(record) == "table", "Model adapter metric record must be a table")
+	local status = record.status
+	assert(status == "success" or status == "failure" or status == "timeout",
+		"Model adapter status must be success, failure, or timeout")
+	local elapsed_us = record.elapsed_us or 0
+	assert(type(elapsed_us) == "number" and elapsed_us >= 0,
+		"Model adapter elapsed_us must be a non-negative number")
+	local adapter_name = record.adapter_name or "model_adapter"
+	check_string(adapter_name, "adapter_name")
+
+	increment_metric("model_adapter_requests")
+	if status == "success" then
+		increment_metric("model_adapter_successes")
+	elseif status == "timeout" then
+		increment_metric("model_adapter_timeouts")
+	else
+		increment_metric("model_adapter_failures")
+	end
+	increment_model_latency_bucket(elapsed_us)
+
+	return core.record_ai_runtime_audit({
+		event_type = "model.adapter",
+		agent_id = record.agent_id,
+		task_id = record.task_id,
+		actor = record.owner_ref,
+		operation = "model.adapter",
+		status = status,
+		reason = record.reason,
+		message = "Model adapter " .. status .. ".",
+		adapter_name = adapter_name,
+		elapsed_us = elapsed_us,
+	})
+end
+
 function core.set_ai_runtime_entity_count(entity_type, count)
 	check_string(entity_type, "entity_type")
 	assert(type(count) == "number" and count >= 0, "Entity count must be non-negative")
@@ -278,6 +337,8 @@ function core.get_ai_runtime_metrics()
 	metrics.queue_length = metrics.active_tasks
 	metrics.audit_records = #ai_runtime_audit
 	metrics.entities_by_type = table.copy(ai_runtime_metrics.entities_by_type)
+	metrics.model_adapter_latency_buckets =
+		table.copy(ai_runtime_metrics.model_adapter_latency_buckets)
 	return metrics
 end
 
@@ -329,7 +390,11 @@ function core.format_ai_runtime_metrics(metrics)
 		.. ",reported=" .. metric_number(metrics, "task_reported_node_writes")
 		.. " unsafe=" .. metric_number(metrics, "unsafe_operations")
 		.. " audit=" .. metric_number(metrics, "audit_records")
-		.. " model=" .. metric_number(metrics, "pending_model_requests")
+		.. " model=pending=" .. metric_number(metrics, "pending_model_requests")
+		.. ",requests=" .. metric_number(metrics, "model_adapter_requests")
+		.. ",ok=" .. metric_number(metrics, "model_adapter_successes")
+		.. ",fail=" .. metric_number(metrics, "model_adapter_failures")
+		.. ",timeout=" .. metric_number(metrics, "model_adapter_timeouts")
 end
 
 local function record_task_audit(event_type, task, extra)

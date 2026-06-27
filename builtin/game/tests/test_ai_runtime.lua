@@ -454,10 +454,15 @@ local formatted_metrics = core.format_ai_runtime_metrics({
 	unsafe_operations = 3,
 	audit_records = 9,
 	pending_model_requests = 4,
+	model_adapter_requests = 6,
+	model_adapter_successes = 3,
+	model_adapter_failures = 2,
+	model_adapter_timeouts = 1,
 })
 assert(formatted_metrics ==
 	"AI runtime: queue=2 tasks=queued=1,running=1,completed=4,unsafe=1 "
-	.. "writes=total=7,world=5,reported=2 unsafe=3 audit=9 model=4")
+	.. "writes=total=7,world=5,reported=2 unsafe=3 audit=9 "
+	.. "model=pending=4,requests=6,ok=3,fail=2,timeout=1")
 assert(not formatted_metrics:find("nova:emma", 1, true))
 
 local operator_metrics = core.get_ai_runtime_operator_metrics()
@@ -605,16 +610,19 @@ assert(tasks_reply.action == "tasks")
 assert(#tasks_reply.tasks >= 1)
 
 local adapter_calls = {}
+local before_model_metrics = core.get_ai_runtime_metrics()
 core.ai_agent_plugin.set_model_adapter(function(request)
 	table.insert(adapter_calls, request)
 	return {
 		ok = true,
 		message = "mock adapter response",
+		adapter_name = "mock-success",
+		elapsed_us = 50000,
 	}
 end)
 
 local model_reply = core.ai_agent_plugin.handle_command("Wills", "what should we explore next?", {
-	private_prompt = "do not store this model prompt",
+	private_prompt = "synthetic model prompt",
 })
 assert(model_reply.ok == true)
 assert(model_reply.action == "model")
@@ -623,11 +631,79 @@ assert(#adapter_calls == 1)
 assert(adapter_calls[1].agent_id == plugin_agent.agent_id)
 
 local plugin_audit = core.get_ai_runtime_audit({ limit = 10 })
-local model_record = plugin_audit[#plugin_audit]
+local model_record = plugin_audit[#plugin_audit - 1]
 assert(model_record.event_type == "model.request")
 assert(model_record.agent_id == plugin_agent.agent_id)
 assert(model_record.private_payload == nil)
 assert(model_record.payload_retained == false)
+local model_result_record = plugin_audit[#plugin_audit]
+assert(model_result_record.event_type == "model.adapter")
+assert(model_result_record.agent_id == plugin_agent.agent_id)
+assert(model_result_record.adapter_name == "mock-success")
+assert(model_result_record.status == "success")
+assert(model_result_record.private_payload == nil)
+assert(model_result_record.payload_retained == false)
+
+local after_success_metrics = core.get_ai_runtime_metrics()
+assert(after_success_metrics.model_adapter_requests == before_model_metrics.model_adapter_requests + 1)
+assert(after_success_metrics.model_adapter_successes == before_model_metrics.model_adapter_successes + 1)
+assert(after_success_metrics.model_adapter_failures == before_model_metrics.model_adapter_failures)
+assert(after_success_metrics.model_adapter_timeouts == before_model_metrics.model_adapter_timeouts)
+assert(after_success_metrics.model_adapter_latency_buckets.under_100ms
+	== before_model_metrics.model_adapter_latency_buckets.under_100ms + 1)
+
+local before_failure_metrics = core.get_ai_runtime_metrics()
+core.ai_agent_plugin.set_model_adapter(function()
+	return {
+		ok = false,
+		message = "mock adapter failure",
+		reason = "mock_failure",
+		adapter_name = "mock-failure",
+		elapsed_us = 250000,
+	}
+end)
+local failure_reply = core.ai_agent_plugin.handle_command("Wills", "adapter failure test", {
+	private_prompt = "synthetic failure prompt",
+})
+assert(failure_reply.ok == false)
+assert(failure_reply.action == "model")
+local after_failure_metrics = core.get_ai_runtime_metrics()
+assert(after_failure_metrics.model_adapter_requests == before_failure_metrics.model_adapter_requests + 1)
+assert(after_failure_metrics.model_adapter_failures == before_failure_metrics.model_adapter_failures + 1)
+assert(after_failure_metrics.model_adapter_successes == before_failure_metrics.model_adapter_successes)
+assert(after_failure_metrics.model_adapter_latency_buckets.under_1000ms
+	== before_failure_metrics.model_adapter_latency_buckets.under_1000ms + 1)
+
+local before_timeout_metrics = core.get_ai_runtime_metrics()
+core.ai_agent_plugin.set_model_adapter(function()
+	return {
+		ok = false,
+		timeout = true,
+		message = "mock adapter timeout",
+		reason = "timeout",
+		adapter_name = "mock-timeout",
+		elapsed_us = 1500000,
+	}
+end)
+local timeout_reply = core.ai_agent_plugin.handle_command("Wills", "adapter timeout test", {
+	private_prompt = "synthetic timeout prompt",
+})
+assert(timeout_reply.ok == false)
+assert(timeout_reply.action == "model")
+local after_timeout_metrics = core.get_ai_runtime_metrics()
+assert(after_timeout_metrics.model_adapter_requests == before_timeout_metrics.model_adapter_requests + 1)
+assert(after_timeout_metrics.model_adapter_timeouts == before_timeout_metrics.model_adapter_timeouts + 1)
+assert(after_timeout_metrics.model_adapter_failures == before_timeout_metrics.model_adapter_failures)
+assert(after_timeout_metrics.model_adapter_latency_buckets.over_1000ms
+	== before_timeout_metrics.model_adapter_latency_buckets.over_1000ms + 1)
+
+local adapter_audit = core.get_ai_runtime_audit({ limit = 12 })
+local timeout_record = adapter_audit[#adapter_audit]
+assert(timeout_record.event_type == "model.adapter")
+assert(timeout_record.adapter_name == "mock-timeout")
+assert(timeout_record.status == "timeout")
+assert(timeout_record.private_payload == nil)
+assert(timeout_record.payload_retained == false)
 
 assert(core.repair_agent ~= nil)
 core.repair_agent.configure({
