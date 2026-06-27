@@ -1,6 +1,7 @@
 core.registered_ai_agents = {}
 core.registered_ai_tasks = {}
 core.ai_world_ops = {}
+core.ai_entity_ops = {}
 
 local ai_task_queue = {}
 local ai_task_queue_paused = false
@@ -167,6 +168,9 @@ local ai_runtime_metrics = {
 	},
 	rollback_records_written = 0,
 	rollback_record_failures = 0,
+	entity_spawns = 0,
+	entity_moves = 0,
+	entity_cleanups = 0,
 	entities_by_type = {},
 }
 local ai_task_status_order = {
@@ -537,6 +541,356 @@ local function world_set_node(pos, node, options)
 		return options.set_node(pos, node)
 	end
 	return core.set_node(pos, node)
+end
+
+local ai_owned_entities = {}
+local ai_entity_counter = 0
+
+local function entity_id_part(value)
+	return tostring(value):gsub("[^%w._:-]", "_")
+end
+
+local function next_entity_id(agent_id, entity_name)
+	ai_entity_counter = ai_entity_counter + 1
+	return "entity:" .. entity_id_part(agent_id) .. ":"
+		.. entity_id_part(entity_name) .. ":" .. ai_entity_counter
+end
+
+local function entity_distance(a, b)
+	local dx = (a.x or 0) - (b.x or 0)
+	local dy = (a.y or 0) - (b.y or 0)
+	local dz = (a.z or 0) - (b.z or 0)
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+local function entity_ref_pos(ref, fallback)
+	if ref and ref.get_pos then
+		local ok, pos = pcall(ref.get_pos, ref)
+		if ok and pos then
+			return check_pos(pos, "entity.pos")
+		end
+	end
+	return copy_pos(fallback)
+end
+
+local function count_owned_entities(entity_name, agent_id, owner)
+	local count = 0
+	for _, record in pairs(ai_owned_entities) do
+		if (not entity_name or record.entity_name == entity_name)
+				and (not agent_id or record.agent_id == agent_id)
+				and (not owner or record.owner == owner) then
+			count = count + 1
+		end
+	end
+	return count
+end
+
+local function refresh_entity_count(entity_name)
+	core.set_ai_runtime_entity_count(entity_name, count_owned_entities(entity_name))
+end
+
+local function public_entity(record)
+	if not record then
+		return nil
+	end
+	return {
+		entity_id = record.entity_id,
+		entity_name = record.entity_name,
+		agent_id = record.agent_id,
+		owner = record.owner,
+		pos = entity_ref_pos(record.ref, record.pos),
+	}
+end
+
+local function make_entity_result(operation, options)
+	local result = make_action_result(operation, options)
+	result.metrics.entity_count = 0
+	result.metrics.distance = 0
+	return result
+end
+
+local function entity_event_type(operation)
+	if operation == "ai_entity.cleanup_owned" then
+		return "entity.cleanup"
+	end
+	return operation:gsub("^ai_entity%.", "entity.")
+end
+
+local function finish_entity_result(result, status, reason, message)
+	core.record_ai_runtime_audit({
+		event_type = entity_event_type(result.operation),
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		operation = result.operation,
+		status = status,
+		reason = reason,
+		message = message,
+		changed = result.changed,
+		examined = result.examined,
+		skipped = result.skipped,
+	})
+	return finish_action_result(result, status, reason, message)
+end
+
+local function entity_options(options, operation)
+	assert(type(options) == "table", "Entity operation options must be a table")
+	check_string(options.agent_id, "agent_id")
+	local agent = core.get_ai_agent(options.agent_id)
+	local owner = options.owner or options.owner_ref or agent and agent.owner
+	if owner then
+		check_string(owner, "owner")
+	end
+	return agent, owner, make_entity_result(operation, options)
+end
+
+local function entity_capability(options, operation, capability)
+	local result = make_entity_result(operation, options)
+	local capability_result = core.check_agent_capability(options.agent_id, capability)
+	if capability_result.ok then
+		return nil
+	end
+	result.skipped = 1
+	return finish_entity_result(result, capability_result.status,
+		capability_result.reason, capability_result.message)
+end
+
+local function entity_owner_check(record, owner, result)
+	if not record then
+		result.skipped = 1
+		return finish_entity_result(result, "not_found", "unknown_entity",
+			"Owned entity was not found.")
+	end
+	if record.owner ~= owner then
+		result.skipped = 1
+		return finish_entity_result(result, "blocked", "owner_mismatch",
+			"Owned entity belongs to another owner.")
+	end
+	return nil
+end
+
+local function entity_limit(agent, options)
+	local limit = options.max_entities or agent and agent.limits and agent.limits.max_entities
+	if limit == nil then
+		return nil
+	end
+	assert(type(limit) == "number" and limit >= 0, "Entity limit must be non-negative")
+	return math.floor(limit)
+end
+
+local function entity_move_limit(agent, options)
+	local limit = options.max_distance or agent and agent.limits
+		and agent.limits.max_entity_move_distance
+	if limit == nil then
+		return nil
+	end
+	assert(type(limit) == "number" and limit >= 0,
+		"Entity movement limit must be non-negative")
+	return limit
+end
+
+function core.ai_entity_ops.spawn(entity_name, pos, options)
+	check_string(entity_name, "entity_name")
+	local spawn_pos = check_pos(pos, "pos")
+	options = options or {}
+	local agent, owner, result = entity_options(options, "ai_entity.spawn")
+	local denied = entity_capability(options, "ai_entity.spawn", "entity.spawn")
+	if denied then
+		return denied
+	end
+	if not core.registered_entities[entity_name] then
+		result.skipped = 1
+		return finish_entity_result(result, "not_found", "unknown_entity_type",
+			"Entity type is not registered.")
+	end
+	if not owner or not agent or agent.owner ~= owner then
+		result.skipped = 1
+		return finish_entity_result(result, "blocked", "owner_mismatch",
+			"Agent owner does not match requested entity owner.")
+	end
+
+	local limit = entity_limit(agent, options)
+	if limit and count_owned_entities(nil, options.agent_id, owner) >= limit then
+		result.skipped = 1
+		result.metrics.entity_count = count_owned_entities(entity_name)
+		return finish_entity_result(result, "blocked", "entity_limit_exceeded",
+			"Agent-owned entity limit was reached.")
+	end
+
+	local entity_id = options.entity_id or next_entity_id(options.agent_id, entity_name)
+	check_string(entity_id, "entity_id")
+	if ai_owned_entities[entity_id] then
+		result.skipped = 1
+		return finish_entity_result(result, "blocked", "duplicate_entity_id",
+			"Owned entity id already exists.")
+	end
+
+	local spawn = options.spawn_entity or function(spawn_pos_arg, entity_name_arg, staticdata)
+		if core.add_entity then
+			return core.add_entity(spawn_pos_arg, entity_name_arg, staticdata)
+		end
+		return nil
+	end
+	local ok, ref = pcall(spawn, spawn_pos, entity_name, owner)
+	if not ok or not ref then
+		result.skipped = 1
+		return finish_entity_result(result, "blocked", "entity_spawn_failed",
+			"Entity could not be spawned.")
+	end
+
+	local record = {
+		entity_id = entity_id,
+		entity_name = entity_name,
+		agent_id = options.agent_id,
+		owner = owner,
+		pos = spawn_pos,
+		ref = ref,
+	}
+	ai_owned_entities[entity_id] = record
+	refresh_entity_count(entity_name)
+	increment_metric("entity_spawns")
+
+	result.changed = 1
+	result.examined = 1
+	result.entity = public_entity(record)
+	result.metrics.entity_count = count_owned_entities(entity_name)
+	return finish_entity_result(result, "success", "entity_spawned",
+		"Owned entity was spawned.")
+end
+
+function core.ai_entity_ops.inspect(entity_id, options)
+	check_string(entity_id, "entity_id")
+	options = options or {}
+	local _, owner, result = entity_options(options, "ai_entity.inspect")
+	local denied = entity_capability(options, "ai_entity.inspect", "entity.control")
+	if denied then
+		return denied
+	end
+	local record = ai_owned_entities[entity_id]
+	local owner_error = entity_owner_check(record, owner, result)
+	if owner_error then
+		return owner_error
+	end
+	record.pos = entity_ref_pos(record.ref, record.pos)
+	result.examined = 1
+	result.entity = public_entity(record)
+	result.metrics.entity_count = count_owned_entities(record.entity_name)
+	return finish_entity_result(result, "success", "entity_inspected",
+		"Owned entity was inspected.")
+end
+
+function core.ai_entity_ops.move(entity_id, pos, options)
+	check_string(entity_id, "entity_id")
+	local target_pos = check_pos(pos, "pos")
+	options = options or {}
+	local agent, owner, result = entity_options(options, "ai_entity.move")
+	local denied = entity_capability(options, "ai_entity.move", "entity.control")
+	if denied then
+		return denied
+	end
+	local record = ai_owned_entities[entity_id]
+	local owner_error = entity_owner_check(record, owner, result)
+	if owner_error then
+		return owner_error
+	end
+
+	local current_pos = entity_ref_pos(record.ref, record.pos)
+	local distance = entity_distance(current_pos, target_pos)
+	local limit = entity_move_limit(agent, options)
+	if limit and distance > limit then
+		result.skipped = 1
+		result.metrics.distance = distance
+		result.metrics.entity_count = count_owned_entities(record.entity_name)
+		return finish_entity_result(result, "blocked", "movement_limit_exceeded",
+			"Entity movement distance exceeded the configured limit.")
+	end
+
+	local ok, moved = true, true
+	if record.ref and record.ref.set_pos then
+		ok, moved = pcall(record.ref.set_pos, record.ref, target_pos)
+	end
+	if not ok or moved == false then
+		result.skipped = 1
+		return finish_entity_result(result, "blocked", "entity_move_failed",
+			"Owned entity could not be moved.")
+	end
+
+	record.pos = target_pos
+	result.changed = 1
+	result.examined = 1
+	result.entity = public_entity(record)
+	result.metrics.distance = distance
+	result.metrics.entity_count = count_owned_entities(record.entity_name)
+	increment_metric("entity_moves")
+	return finish_entity_result(result, "success", "entity_moved",
+		"Owned entity was moved.")
+end
+
+local function remove_entity_record(record)
+	if record.ref and record.ref.remove then
+		pcall(record.ref.remove, record.ref)
+	end
+	ai_owned_entities[record.entity_id] = nil
+	refresh_entity_count(record.entity_name)
+end
+
+function core.ai_entity_ops.cleanup(entity_id, options)
+	check_string(entity_id, "entity_id")
+	options = options or {}
+	local _, owner, result = entity_options(options, "ai_entity.cleanup")
+	local denied = entity_capability(options, "ai_entity.cleanup", "entity.control")
+	if denied then
+		return denied
+	end
+	local record = ai_owned_entities[entity_id]
+	local owner_error = entity_owner_check(record, owner, result)
+	if owner_error then
+		return owner_error
+	end
+	remove_entity_record(record)
+	result.changed = 1
+	result.examined = 1
+	result.metrics.entity_count = count_owned_entities(record.entity_name)
+	increment_metric("entity_cleanups")
+	return finish_entity_result(result, "success", "entity_cleaned_up",
+		"Owned entity was cleaned up.")
+end
+
+function core.ai_entity_ops.cleanup_owned(options)
+	options = options or {}
+	local _, owner, result = entity_options(options, "ai_entity.cleanup_owned")
+	local denied = entity_capability(options, "ai_entity.cleanup_owned", "entity.control")
+	if denied then
+		return denied
+	end
+	local removed_by_type = {}
+	local to_remove = {}
+	for entity_id, record in pairs(ai_owned_entities) do
+		if record.agent_id == options.agent_id and record.owner == owner
+				and (not options.entity_name or record.entity_name == options.entity_name) then
+			to_remove[#to_remove + 1] = entity_id
+		end
+	end
+	for _, entity_id in ipairs(to_remove) do
+		local record = ai_owned_entities[entity_id]
+		if record then
+			removed_by_type[record.entity_name] = true
+			remove_entity_record(record)
+			result.changed = result.changed + 1
+			result.examined = result.examined + 1
+		end
+	end
+	for entity_name in pairs(removed_by_type) do
+		refresh_entity_count(entity_name)
+	end
+	result.metrics.entity_count = options.entity_name and count_owned_entities(options.entity_name)
+		or count_owned_entities()
+	if result.changed == 0 then
+		return finish_entity_result(result, "success", "no_owned_entities",
+			"No owned entities matched cleanup.")
+	end
+	increment_metric("entity_cleanups", result.changed)
+	return finish_entity_result(result, "success", "owned_entities_cleaned_up",
+		"Owned entities were cleaned up.")
 end
 
 local ai_rollback_record_counter = 0
