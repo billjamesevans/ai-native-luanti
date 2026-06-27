@@ -44,6 +44,21 @@ First-party plugins can report external work without depending on a metrics stac
 
 These values are exposed through `core.get_ai_runtime_metrics()`.
 
+## Operator Command
+
+`/ai_runtime` exposes a bounded server-privileged summary for local operators:
+
+```text
+AI runtime: queue=0 tasks=completed=2,cancelled=2,unsafe=1 writes=total=4,world=4,reported=5 unsafe=1 audit=12 model=0
+```
+
+The command uses:
+
+- `core.get_ai_runtime_operator_metrics()` for the snapshot.
+- `core.format_ai_runtime_metrics(metrics)` for deterministic output.
+
+The output includes queue length, task status counts, node-write counters, unsafe operation count, audit record count, and pending model requests. It intentionally omits agent ids, player names, prompts, payloads, source paths, and individual task labels.
+
 ## Audit Records
 
 `core.get_ai_runtime_audit({ limit = n })` returns the newest `n` records in chronological order. Records are bounded in memory and include concise fields:
@@ -117,4 +132,14 @@ Local status for this fork:
 - `src/CMakeLists.txt` requires `prometheus/counter.h`, `prometheus-cpp-pull`, and `prometheus-cpp-core`.
 - When compiled with `ENABLE_PROMETHEUS=ON` and the dependencies are found, Luanti serves metrics at the configured `prometheus_listener_address`; the default is `127.0.0.1:30000`.
 
-This PR does not bridge Lua AI-runtime counters into the C++ metrics backend yet. The next metrics hardening step is to expose these counters either through a Lua polling endpoint, a server command, or a C++ bridge to `MetricsBackend`.
+The lightweight `/ai_runtime` command is enough while the fork is validating local behavior on a small server or in tests.
+
+A C++ `MetricsBackend` bridge becomes necessary when:
+
+- Operators need time-series scraping instead of point-in-time chat output.
+- CI or benchmark jobs need machine-collected AI-runtime counters.
+- Multiple worlds or servers need comparable dashboards.
+- Alerting needs to watch queue length, unsafe operations, or model backlog without a logged-in operator.
+- The runtime needs metrics with lower overhead than Lua command polling.
+
+Until those needs are real, the command remains the safer first operator surface.

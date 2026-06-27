@@ -440,6 +440,43 @@ assert(metrics.unsafe_operations >= 1)
 assert(metrics.audit_records >= 1)
 assert(type(metrics.entities_by_type) == "table")
 
+local formatted_metrics = core.format_ai_runtime_metrics({
+	queue_length = 2,
+	task_status_counts = {
+		queued = 1,
+		running = 1,
+		completed = 4,
+		unsafe = 1,
+	},
+	node_writes = 7,
+	world_node_writes = 5,
+	task_reported_node_writes = 2,
+	unsafe_operations = 3,
+	audit_records = 9,
+	pending_model_requests = 4,
+})
+assert(formatted_metrics ==
+	"AI runtime: queue=2 tasks=queued=1,running=1,completed=4,unsafe=1 "
+	.. "writes=total=7,world=5,reported=2 unsafe=3 audit=9 model=4")
+assert(not formatted_metrics:find("nova:emma", 1, true))
+
+local operator_metrics = core.get_ai_runtime_operator_metrics()
+assert(type(operator_metrics.task_status_counts) == "table")
+assert(operator_metrics.task_status_counts.completed >= 2)
+assert(operator_metrics.task_status_counts.cancelled >= 2)
+assert(operator_metrics.task_status_counts.unsafe >= 1)
+
+assert(core.registered_chatcommands.ai_runtime ~= nil)
+local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
+assert(command_ok == true)
+assert(command_message:find("AI runtime: queue=", 1, true))
+assert(command_message:find("tasks=", 1, true))
+assert(command_message:find("writes=", 1, true))
+assert(command_message:find("audit=", 1, true))
+assert(command_message:find("model=", 1, true))
+assert(not command_message:find("do not retain this prompt", 1, true))
+assert(#command_message < 240)
+
 local audit = core.get_ai_runtime_audit({ limit = 100 })
 assert(type(audit) == "table")
 

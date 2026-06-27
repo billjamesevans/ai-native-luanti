@@ -158,6 +158,16 @@ local ai_runtime_metrics = {
 	pending_http_requests = 0,
 	entities_by_type = {},
 }
+local ai_task_status_order = {
+	"queued",
+	"running",
+	"paused",
+	"completed",
+	"cancelled",
+	"failed",
+	"blocked",
+	"unsafe",
+}
 
 local function increment_metric(name, amount)
 	ai_runtime_metrics[name] = (ai_runtime_metrics[name] or 0) + (amount or 1)
@@ -269,6 +279,57 @@ function core.get_ai_runtime_metrics()
 	metrics.audit_records = #ai_runtime_audit
 	metrics.entities_by_type = table.copy(ai_runtime_metrics.entities_by_type)
 	return metrics
+end
+
+local function count_task_statuses()
+	local counts = {}
+	for _, status in ipairs(ai_task_status_order) do
+		counts[status] = 0
+	end
+	for _, task in pairs(core.registered_ai_tasks) do
+		counts[task.status] = (counts[task.status] or 0) + 1
+	end
+	return counts
+end
+
+function core.get_ai_runtime_operator_metrics()
+	local metrics = core.get_ai_runtime_metrics()
+	metrics.task_status_counts = count_task_statuses()
+	return metrics
+end
+
+local function format_task_status_counts(counts)
+	local parts = {}
+	for _, status in ipairs(ai_task_status_order) do
+		local count = counts and counts[status] or 0
+		if count and count > 0 then
+			parts[#parts + 1] = status .. "=" .. count
+		end
+	end
+	if #parts == 0 then
+		return "none"
+	end
+	return table.concat(parts, ",")
+end
+
+local function metric_number(metrics, name)
+	local value = metrics and metrics[name] or 0
+	if type(value) ~= "number" then
+		return 0
+	end
+	return value
+end
+
+function core.format_ai_runtime_metrics(metrics)
+	metrics = metrics or core.get_ai_runtime_operator_metrics()
+	return "AI runtime: queue=" .. metric_number(metrics, "queue_length")
+		.. " tasks=" .. format_task_status_counts(metrics.task_status_counts)
+		.. " writes=total=" .. metric_number(metrics, "node_writes")
+		.. ",world=" .. metric_number(metrics, "world_node_writes")
+		.. ",reported=" .. metric_number(metrics, "task_reported_node_writes")
+		.. " unsafe=" .. metric_number(metrics, "unsafe_operations")
+		.. " audit=" .. metric_number(metrics, "audit_records")
+		.. " model=" .. metric_number(metrics, "pending_model_requests")
 end
 
 local function record_task_audit(event_type, task, extra)
