@@ -3,6 +3,7 @@
 // Copyright (C) 2023 Minetest Authors
 
 #include "catch.h"
+#include "dummygamedef.h"
 #include "mapblock.h"
 #include <vector>
 
@@ -10,9 +11,10 @@ typedef std::vector<MapBlock*> MBContainer;
 
 static void allocateSome(MBContainer &vec, u32 n)
 {
+	static DummyGameDef gamedef;
 	vec.reserve(vec.size() + n);
 	for (u32 i = 0; i < n; i++) {
-		auto *mb = new MapBlock(v3s16(i & 0xff, 0, (i >> 8) & S16_MAX), nullptr);
+		auto *mb = new MapBlock(v3s16(i & 0xff, 0, (i >> 8) & S16_MAX), &gamedef);
 		vec.push_back(mb);
 	}
 }
