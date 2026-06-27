@@ -69,6 +69,11 @@ class RollbackMetadataContractTests(unittest.TestCase):
         for phrase in (
             "abort before mutation",
             "rollback_metadata_unavailable",
+            "core.ai_rollback_storage.configure",
+            "default storage adapter",
+            "world path",
+            "inspect",
+            "prune",
             "private prompts",
             "asset payload bytes",
             "chunk_index",
