@@ -1,0 +1,393 @@
+#!/usr/bin/env python3
+"""Dry-run compatibility reporter for user-owned Minecraft-like packs."""
+
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import hashlib
+import json
+import pathlib
+import sys
+import zipfile
+
+
+REPORT_VERSION = 1
+
+
+def _utc_now():
+    return dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _read_json(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _normalized_relpath(path):
+    return pathlib.PurePosixPath(path).as_posix()
+
+
+def _directory_entries(source):
+    entries = []
+    for path in sorted(p for p in source.rglob("*") if p.is_file()):
+        relpath = _normalized_relpath(path.relative_to(source))
+        entries.append({
+            "path": relpath,
+            "size": path.stat().st_size,
+        })
+    return entries
+
+
+def _zip_entries(source):
+    entries = []
+    with zipfile.ZipFile(source) as archive:
+        for info in sorted(archive.infolist(), key=lambda item: item.filename):
+            if info.is_dir():
+                continue
+            entries.append({
+                "path": _normalized_relpath(info.filename),
+                "size": info.file_size,
+            })
+    return entries
+
+
+def _entries_for(source):
+    if source.is_dir():
+        return _directory_entries(source)
+    if source.suffix.lower() in {".mcpack", ".mcworld", ".zip"} and zipfile.is_zipfile(source):
+        return _zip_entries(source)
+    return [{
+        "path": source.name,
+        "size": source.stat().st_size,
+    }]
+
+
+def _read_zip_json(source, filename):
+    with zipfile.ZipFile(source) as archive:
+        with archive.open(filename) as handle:
+            return json.loads(handle.read().decode("utf-8"))
+
+
+def _metadata_for(source, entries):
+    names = {entry["path"] for entry in entries}
+    if source.is_dir() and (source / "pack.mcmeta").is_file():
+        metadata = _read_json(source / "pack.mcmeta").get("pack", {})
+        return "java_resource_pack", {
+            "pack_format": str(metadata.get("pack_format", "")),
+            "description": str(metadata.get("description", "")),
+        }
+
+    manifest_name = next((name for name in names if name.endswith("manifest.json")), None)
+    if manifest_name:
+        if source.is_dir():
+            manifest = _read_json(source / manifest_name)
+        else:
+            manifest = _read_zip_json(source, manifest_name)
+        module_types = [module.get("type", "") for module in manifest.get("modules", [])]
+        if "resources" in module_types:
+            source_class = "bedrock_resource_pack"
+        elif "data" in module_types:
+            source_class = "bedrock_behavior_pack"
+        else:
+            source_class = "unknown"
+        return source_class, {
+            "manifest_format_version": str(manifest.get("format_version", "")),
+            "pack_name": str(manifest.get("header", {}).get("name", "")),
+            "module_types": ",".join(sorted(t for t in module_types if t)),
+        }
+
+    suffix = source.suffix.lower()
+    if suffix in {".schem", ".schematic", ".mcstructure"}:
+        return "structure", {}
+    if suffix == ".mcworld":
+        return "world", {}
+    return "unknown", {}
+
+
+def _inventory_hash(entries):
+    digest = hashlib.sha256()
+    for entry in entries:
+        digest.update(entry["path"].encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(str(entry["size"]).encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _category_counts(entries):
+    counts = {
+        "metadata": 0,
+        "textures": 0,
+        "sounds": 0,
+        "models": 0,
+        "entities": 0,
+        "behaviors": 0,
+        "structures": 0,
+        "world": 0,
+    }
+    for entry in entries:
+        path = entry["path"].lower()
+        suffix = pathlib.PurePosixPath(path).suffix
+        if path.endswith("pack.mcmeta") or path.endswith("manifest.json"):
+            counts["metadata"] += 1
+        if "/textures/" in f"/{path}" or suffix in {".png", ".jpg", ".jpeg"}:
+            counts["textures"] += 1
+        if "/sounds/" in f"/{path}" or suffix in {".ogg", ".wav"}:
+            counts["sounds"] += 1
+        if "/models/" in f"/{path}" or "models" in path:
+            counts["models"] += 1
+        if "/entities/" in f"/{path}" or ".entity.json" in path:
+            counts["entities"] += 1
+        if "/scripts/" in f"/{path}" or suffix == ".js" or "behavior" in path:
+            counts["behaviors"] += 1
+        if suffix in {".schem", ".schematic", ".mcstructure"}:
+            counts["structures"] += 1
+        if path.endswith("level.dat") or suffix == ".mcworld":
+            counts["world"] += 1
+    return counts
+
+
+def _section_status(name, count, unsupported_count):
+    if count == 0:
+        return "skipped"
+    if name in {"metadata"}:
+        return "supported"
+    if name in {"behaviors"} and unsupported_count:
+        return "unsupported"
+    return "partial"
+
+
+def _sections(counts, unsupported_features):
+    sections = []
+    unsupported_by_name = {
+        "entities": sum(1 for item in unsupported_features if item["feature"] == "entity.ai_goal"),
+        "behaviors": sum(1 for item in unsupported_features if item["feature"] == "entity.behavior_script"),
+    }
+    for name in ("metadata", "textures", "sounds", "models", "entities", "behaviors", "structures", "world"):
+        count = counts[name]
+        if count == 0:
+            continue
+        status = _section_status(name, count, unsupported_by_name.get(name, 0))
+        sections.append({
+            "name": name,
+            "items_total": count,
+            "status": status,
+            "message": _section_message(name, status),
+            "counts": {
+                "items": count,
+            },
+        })
+    if not sections:
+        sections.append({
+            "name": "metadata",
+            "items_total": 0,
+            "status": "unknown",
+            "message": "No recognized metadata was found.",
+            "counts": {
+                "items": 0,
+            },
+        })
+    return sections
+
+
+def _section_message(name, status):
+    if name == "metadata" and status == "supported":
+        return "Pack metadata can be parsed without copying source assets."
+    if name == "behaviors":
+        return "Behavior scripts are reported but not executed or translated."
+    if name == "entities":
+        return "Entity descriptors can create placeholder stubs; behavior AI needs manual mapping."
+    if name == "models":
+        return "Model references are inventoried for manual mapping."
+    if name == "textures":
+        return "Texture files can be referenced by later import steps after rights are confirmed."
+    if name == "sounds":
+        return "Sound files can be referenced by later import steps after rights are confirmed."
+    if name == "structures":
+        return "Structure files require an apply-phase placement review."
+    if name == "world":
+        return "World metadata requires an apply-phase conversion review."
+    return "Items were detected but need importer support."
+
+
+def _unsupported_features(entries, source_class):
+    features = []
+    for entry in entries:
+        path = entry["path"]
+        lower = path.lower()
+        suffix = pathlib.PurePosixPath(lower).suffix
+        if "/scripts/" in f"/{lower}" or suffix == ".js" or "behavior" in lower:
+            features.append({
+                "feature": "entity.behavior_script",
+                "source_path": path,
+                "status": "unsupported",
+                "reason": "behavior_script_not_supported",
+                "severity": "warning",
+                "message": "Behavior scripts are not translated or executed by dry-run compatibility reports.",
+                "recommendation": "Create a manual Luanti behavior or keep the entity as a static stub.",
+            })
+        if "/entities/" in f"/{lower}" or ".entity.json" in lower:
+            features.append({
+                "feature": "entity.ai_goal",
+                "source_path": path,
+                "status": "unsupported",
+                "reason": "entity_ai_not_supported",
+                "severity": "warning",
+                "message": "Source entity AI goals do not have a Luanti mapping yet.",
+                "recommendation": "Map the entity to a first-party agent or manually authored mob definition.",
+            })
+    if source_class == "unknown":
+        features.append({
+            "feature": "source.format",
+            "source_path": "",
+            "status": "unknown",
+            "reason": "unsupported_format",
+            "severity": "error",
+            "message": "The source format could not be classified safely.",
+            "recommendation": "Provide a Java pack.mcmeta, Bedrock manifest.json, or known structure file.",
+        })
+    return features
+
+
+def _mutation_cost(counts, unsupported_count):
+    return {
+        "node_writes": 0,
+        "media_files": counts["textures"] + counts["sounds"] + counts["models"],
+        "entity_definitions": counts["entities"],
+        "manual_review_items": unsupported_count + counts["models"],
+    }
+
+
+def _planned_actions(counts, unsupported_features):
+    actions = []
+    if counts["textures"]:
+        actions.append(_action("map_texture", "partial", "Map user-owned texture references after rights are confirmed.", counts, 0))
+    if counts["sounds"]:
+        actions.append(_action("map_sound", "partial", "Map user-owned sound references after rights are confirmed.", counts, 0))
+    if counts["models"]:
+        actions.append(_action("copy_asset_reference", "partial", "Reference model metadata for manual Luanti mapping.", counts, 1))
+    if counts["entities"]:
+        actions.append(_action("register_entity_stub", "partial", "Create placeholder entity definitions without imported behavior AI.", counts, 1))
+    if counts["structures"]:
+        actions.append(_action("import_structure", "partial", "Estimate structure placement for a later apply phase.", counts, 1))
+    if unsupported_features:
+        actions.append(_action("skip_feature", "skipped", "Record unsupported features without importing them.", counts, len(unsupported_features)))
+    if not actions:
+        actions.append(_action("skip_feature", "skipped", "No importable content was detected.", counts, 0))
+    return actions
+
+
+def _action(action, status, description, counts, manual_review_items):
+    return {
+        "action": action,
+        "status": status,
+        "description": description,
+        "required_capabilities": ["import.assets"],
+        "mutation_cost": {
+            "node_writes": 0,
+            "media_files": counts["textures"] + counts["sounds"] + counts["models"],
+            "entity_definitions": counts["entities"] if action == "register_entity_stub" else 0,
+            "manual_review_items": manual_review_items,
+        },
+    }
+
+
+def _risk_level(source_class, counts, unsupported_count):
+    if source_class in {"world", "structure"} or counts["structures"] or counts["world"]:
+        return "high"
+    if unsupported_count or counts["entities"] or counts["behaviors"]:
+        return "medium"
+    return "low"
+
+
+def build_report(source):
+    source = pathlib.Path(source)
+    if not source.exists():
+        raise FileNotFoundError(source)
+
+    entries = _entries_for(source)
+    source_class, metadata = _metadata_for(source, entries)
+    counts = _category_counts(entries)
+    unsupported_features = _unsupported_features(entries, source_class)
+    unsupported_count = len(unsupported_features)
+    partial_count = sum(1 for value in counts.values() if value > 0) - (1 if counts["metadata"] else 0)
+    supported_count = 1 if counts["metadata"] else 0
+    skipped_count = 1 if unsupported_features else 0
+
+    return {
+        "report_version": REPORT_VERSION,
+        "mode": "dry_run",
+        "generated_at": _utc_now(),
+        "source": {
+            "source_id": source.name,
+            "source_class": source_class,
+            "path_policy": "external_reference",
+            "license_status": "user_supplied",
+            "metadata": metadata,
+            "content_hashes": [{
+                "algorithm": "sha256",
+                "value": _inventory_hash(entries),
+                "purpose": "inventory path and size hash",
+            }],
+        },
+        "summary": {
+            "risk_level": _risk_level(source_class, counts, unsupported_count),
+            "items_total": len(entries),
+            "supported": supported_count,
+            "partial": max(0, partial_count),
+            "unsupported": unsupported_count,
+            "skipped": skipped_count,
+            "unknown": 1 if source_class == "unknown" else 0,
+            "estimated_world_mutations": _mutation_cost(counts, unsupported_count),
+        },
+        "sections": _sections(counts, unsupported_features),
+        "unsupported_features": unsupported_features,
+        "planned_actions": _planned_actions(counts, unsupported_features),
+        "safety": {
+            "no_assets_copied": True,
+            "no_world_mutation": True,
+            "source_paths_redacted": True,
+            "user_rights_required": True,
+            "notes": [
+                "Dry run inventories metadata and paths only.",
+                "Apply-phase work must run through reviewed import tasks.",
+            ],
+        },
+    }
+
+
+def _print_summary(report):
+    summary = report["summary"]
+    print(
+        "source={source} class={source_class} risk={risk} "
+        "items={items} unsupported={unsupported} partial={partial}".format(
+            source=report["source"]["source_id"],
+            source_class=report["source"]["source_class"],
+            risk=summary["risk_level"],
+            items=summary["items_total"],
+            unsupported=summary["unsupported"],
+            partial=summary["partial"],
+        )
+    )
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("source", help="User-owned pack, structure, or world source to inspect.")
+    parser.add_argument("--output", help="Write machine-readable JSON report to this path.")
+    parser.add_argument("--summary", action="store_true", help="Print a concise human-readable summary.")
+    args = parser.parse_args(argv)
+
+    report = build_report(args.source)
+    payload = json.dumps(report, indent=2, sort_keys=True) + "\n"
+    if args.output:
+        pathlib.Path(args.output).write_text(payload, encoding="utf-8")
+    else:
+        sys.stdout.write(payload)
+    if args.summary:
+        _print_summary(report)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
