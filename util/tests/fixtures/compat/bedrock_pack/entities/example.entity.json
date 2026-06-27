@@ -1,0 +1,8 @@
+{
+  "format_version": "1.20.0",
+  "minecraft:client_entity": {
+    "description": {
+      "identifier": "synthetic:example"
+    }
+  }
+}
