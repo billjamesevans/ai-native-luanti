@@ -628,3 +628,101 @@ assert(model_record.event_type == "model.request")
 assert(model_record.agent_id == plugin_agent.agent_id)
 assert(model_record.private_payload == nil)
 assert(model_record.payload_retained == false)
+
+assert(core.repair_agent ~= nil)
+core.repair_agent.configure({
+	repair_nodes = {
+		["ai_runtime_test:hazard"] = {
+			planned_action = "remove_node",
+			replacement = "air",
+			family = "hazard",
+		},
+	},
+	sample_limit = 8,
+})
+
+local repair_plan_center = test_pos(4240)
+local protected_repair_pos = vector.add(repair_plan_center, { x = 1, y = 0, z = 0 })
+set_test_node(repair_plan_center, { name = "ai_runtime_test:hazard" })
+set_test_node(protected_repair_pos, { name = "ai_runtime_test:hazard" })
+local repair_plan_writes = 0
+local function forbidden_repair_set_node(pos, node)
+	repair_plan_writes = repair_plan_writes + 1
+	return set_test_node(pos, node)
+end
+
+old_is_protected = core.is_protected
+core.is_protected = function(pos, name)
+	return name == "Wills" and pos.x == protected_repair_pos.x
+end
+
+local repair_plan = core.repair_agent.plan_area(repair_plan_center, {
+	agent_id = plugin_agent.agent_id,
+	owner = "Wills",
+	task_id = "repair-plan:direct",
+	radius = 1,
+	get_node = get_test_node,
+	set_node = forbidden_repair_set_node,
+	sample_limit = 8,
+})
+assert(repair_plan.ok == true)
+assert(repair_plan.status == "partial")
+assert(repair_plan.operation == "repair_agent.plan_area")
+assert(repair_plan.agent_id == plugin_agent.agent_id)
+assert(repair_plan.task_id == "repair-plan:direct")
+assert(repair_plan.changed == 0)
+assert(repair_plan.examined == 27)
+assert(repair_plan.skipped >= 1)
+assert(repair_plan.metrics.node_writes == 0)
+assert(repair_plan.metrics.candidate_count == 1)
+assert(#repair_plan.candidates == 1)
+assert(repair_plan.candidates[1].node_name == "ai_runtime_test:hazard")
+assert(repair_plan.candidates[1].planned_action == "remove_node")
+assert(repair_plan.candidates[1].replacement == "air")
+assert(repair_plan.candidates[1].pos.x == repair_plan_center.x)
+assert(repair_plan_writes == 0)
+assert(get_test_node(repair_plan_center).name == "ai_runtime_test:hazard")
+assert(get_test_node(protected_repair_pos).name == "ai_runtime_test:hazard")
+
+local saw_protected_skip = false
+for _, sample in ipairs(repair_plan.samples) do
+	if sample.reason == "protected_area" then
+		saw_protected_skip = true
+	end
+end
+assert(saw_protected_skip == true)
+
+core.is_protected = old_is_protected
+
+local empty_repair_plan = core.repair_agent.plan_area(test_pos(4260), {
+	agent_id = plugin_agent.agent_id,
+	owner = "Wills",
+	radius = 0,
+	get_node = get_test_node,
+	set_node = forbidden_repair_set_node,
+})
+assert(empty_repair_plan.ok == true)
+assert(empty_repair_plan.status == "success")
+assert(empty_repair_plan.reason == "no_repair_candidates")
+assert(empty_repair_plan.changed == 0)
+assert(#empty_repair_plan.candidates == 0)
+assert(repair_plan_writes == 0)
+
+local queued_repair_plan = core.repair_agent.queue_plan_task({
+	task_id = "repair-plan:queued",
+	agent_id = plugin_agent.agent_id,
+	owner = "Wills",
+	center = repair_plan_center,
+	radius = 0,
+	get_node = get_test_node,
+	set_node = forbidden_repair_set_node,
+})
+assert(queued_repair_plan.status == "queued")
+assert(queued_repair_plan.task_id == "repair-plan:queued")
+assert(core.get_ai_task("repair-plan:queued").status == "queued")
+core.step_ai_tasks()
+local completed_repair_plan = core.get_ai_task("repair-plan:queued")
+assert(completed_repair_plan.status == "completed")
+assert(completed_repair_plan.last_result.operation == "repair_agent.plan_area")
+assert(completed_repair_plan.last_result.changed == 0)
+assert(repair_plan_writes == 0)
