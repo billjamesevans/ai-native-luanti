@@ -165,6 +165,8 @@ local ai_runtime_metrics = {
 		under_1000ms = 0,
 		over_1000ms = 0,
 	},
+	rollback_records_written = 0,
+	rollback_record_failures = 0,
 	entities_by_type = {},
 }
 local ai_task_status_order = {
@@ -229,6 +231,11 @@ function core.record_ai_runtime_audit(record)
 		message = record.message,
 		adapter_name = record.adapter_name,
 		elapsed_us = record.elapsed_us,
+		rollback_record_id = record.rollback_record_id,
+		rollback_storage_ref = record.rollback_storage_ref,
+		mutation_class = record.mutation_class,
+		chunk_index = record.chunk_index,
+		chunk_count = record.chunk_count,
 		changed = record.changed,
 		examined = record.examined,
 		skipped = record.skipped,
@@ -530,6 +537,265 @@ local function world_set_node(pos, node, options)
 		return options.set_node(pos, node)
 	end
 	return core.set_node(pos, node)
+end
+
+local ai_rollback_record_counter = 0
+local rollback_policies = {
+	manifest = true,
+	snapshot = true,
+	chunked = true,
+}
+local rollback_mutation_classes = {
+	repair = true,
+	build = true,
+	compat_import = true,
+}
+
+local function rollback_pos(pos, field)
+	local copied = check_pos(pos, field)
+	return {
+		x = math.floor(copied.x),
+		y = math.floor(copied.y),
+		z = math.floor(copied.z),
+	}
+end
+
+local function normalize_rollback_positions(value)
+	assert(type(value) == "table" and #value > 0,
+		"Field 'positions' must be a non-empty table")
+	local positions = {}
+	for i, pos in ipairs(value) do
+		positions[i] = rollback_pos(pos, "positions[" .. i .. "]")
+	end
+	return positions
+end
+
+local function rollback_bounds_from_positions(positions)
+	local minp = table.copy(positions[1])
+	local maxp = table.copy(positions[1])
+	for _, pos in ipairs(positions) do
+		minp.x = math.min(minp.x, pos.x)
+		minp.y = math.min(minp.y, pos.y)
+		minp.z = math.min(minp.z, pos.z)
+		maxp.x = math.max(maxp.x, pos.x)
+		maxp.y = math.max(maxp.y, pos.y)
+		maxp.z = math.max(maxp.z, pos.z)
+	end
+	return {
+		min = minp,
+		max = maxp,
+	}
+end
+
+local function normalize_rollback_bounds(bounds, positions)
+	bounds = bounds or rollback_bounds_from_positions(positions)
+	assert(type(bounds) == "table", "Field 'bounds' must be a table")
+	return {
+		min = rollback_pos(bounds.min, "bounds.min"),
+		max = rollback_pos(bounds.max, "bounds.max"),
+	}
+end
+
+local function normalize_rollback_chunk(chunk, position_count)
+	chunk = chunk or {}
+	local result = {
+		chunk_index = chunk.chunk_index or 0,
+		chunk_count = chunk.chunk_count or 1,
+		first_position_index = chunk.first_position_index or 0,
+		position_count = chunk.position_count or position_count,
+	}
+	for key, value in pairs(result) do
+		assert(type(value) == "number" and value >= 0,
+			"Field 'chunk." .. key .. "' must be a non-negative number")
+		result[key] = math.floor(value)
+	end
+	assert(result.chunk_count >= 1, "Field 'chunk.chunk_count' must be at least 1")
+	assert(result.position_count >= 1, "Field 'chunk.position_count' must be at least 1")
+	return result
+end
+
+local function rollback_node(node)
+	node = node or {
+		name = "air",
+		param1 = 0,
+		param2 = 0,
+	}
+	local result = {
+		name = node.name or "air",
+		param1 = node.param1 or 0,
+		param2 = node.param2 or 0,
+	}
+	if node.metadata_hash then
+		result.metadata_hash = node.metadata_hash
+	end
+	return result
+end
+
+local function rollback_timestamp()
+	if os and os.date then
+		return os.date("!%Y-%m-%dT%H:%M:%SZ")
+	end
+	return tostring(audit_timestamp())
+end
+
+local function rollback_id_part(value)
+	return tostring(value):gsub("[^%w._:-]", "_")
+end
+
+local function next_rollback_record_id(task_id, operation_label)
+	ai_rollback_record_counter = ai_rollback_record_counter + 1
+	return "rollback:" .. rollback_id_part(task_id) .. ":"
+		.. rollback_id_part(operation_label) .. ":" .. ai_rollback_record_counter
+end
+
+local function make_rollback_result(def, position_count)
+	local result = make_action_result("ai_rollback.write_record", {
+		agent_id = def and def.agent_id or nil,
+		task_id = def and def.task_id or nil,
+	})
+	result.examined = position_count or 0
+	return result
+end
+
+local function record_rollback_audit(def, status, reason, message, record, storage_ref)
+	local chunk = record and record.chunk or def and def.chunk or {}
+	core.record_ai_runtime_audit({
+		event_type = "rollback.record",
+		agent_id = def and def.agent_id or nil,
+		task_id = def and def.task_id or nil,
+		actor = def and (def.owner_ref or def.owner) or nil,
+		operation = def and def.operation_label or nil,
+		status = status,
+		reason = reason,
+		message = message,
+		rollback_record_id = record and record.record_id or def and def.record_id or nil,
+		rollback_storage_ref = storage_ref,
+		mutation_class = def and def.mutation_class or nil,
+		chunk_index = chunk.chunk_index,
+		chunk_count = chunk.chunk_count,
+		changed = record and #(record.changed_positions or {}) or 0,
+	})
+end
+
+local function rollback_unavailable(def, position_count, message)
+	increment_metric("rollback_record_failures")
+	record_rollback_audit(def, "blocked", "rollback_metadata_unavailable",
+		message or "Rollback metadata is unavailable.", nil, nil)
+	return finish_action_result(make_rollback_result(def, position_count),
+		"blocked", "rollback_metadata_unavailable",
+		message or "Rollback metadata is unavailable.")
+end
+
+function core.write_ai_rollback_record(def)
+	assert(type(def) == "table", "Rollback record definition must be a table")
+	local raw_positions = def.positions or def.changed_positions
+	local positions = normalize_rollback_positions(raw_positions)
+	if type(def.persist_record) ~= "function" then
+		return rollback_unavailable(def, #positions,
+			"Rollback persistence callback is required before mutation.")
+	end
+
+	local policy = def.policy or "snapshot"
+	assert(rollback_policies[policy], "Rollback policy must be manifest, snapshot, or chunked")
+	check_string(def.world_id, "world_id")
+	check_string(def.task_id, "task_id")
+	check_string(def.agent_id, "agent_id")
+	local owner_ref = def.owner_ref or def.owner
+	check_string(owner_ref, "owner_ref")
+	check_string(def.operation_label, "operation_label")
+	assert(rollback_mutation_classes[def.mutation_class],
+		"Rollback mutation_class must be repair, build, or compat_import")
+
+	local previous_nodes = {}
+	for i, pos in ipairs(positions) do
+		local ok, node = pcall(world_get_node, pos, def)
+		if not ok or not node then
+			return rollback_unavailable(def, #positions,
+				"Previous node state could not be captured.")
+		end
+		previous_nodes[i] = {
+			pos = table.copy(pos),
+			node = rollback_node(node),
+		}
+	end
+
+	local record = {
+		schema_version = 1,
+		record_id = def.record_id or next_rollback_record_id(def.task_id, def.operation_label),
+		policy = policy,
+		world_id = def.world_id,
+		task_id = def.task_id,
+		agent_id = def.agent_id,
+		owner_ref = owner_ref,
+		operation_label = def.operation_label,
+		mutation_class = def.mutation_class,
+		bounds = normalize_rollback_bounds(def.bounds, positions),
+		changed_positions = positions,
+		previous_nodes = previous_nodes,
+		chunk = normalize_rollback_chunk(def.chunk, #positions),
+		created_at = def.created_at or rollback_timestamp(),
+	}
+	check_string(record.record_id, "record_id")
+
+	local ok, persisted = pcall(def.persist_record, record)
+	if not ok or persisted == nil or persisted == false
+			or (type(persisted) == "table" and persisted.ok == false) then
+		return rollback_unavailable(def, #positions,
+			"Rollback metadata could not be persisted.")
+	end
+
+	local storage_ref
+	if type(persisted) == "table" then
+		storage_ref = persisted.storage_ref or persisted.ref or persisted.record_id
+	else
+		storage_ref = persisted
+	end
+	if storage_ref ~= nil then
+		storage_ref = tostring(storage_ref)
+		record.storage_ref = storage_ref
+	end
+
+	increment_metric("rollback_records_written")
+	record_rollback_audit(def, "success", "rollback_record_written",
+		"Rollback record was written.", record, storage_ref)
+
+	local result = make_rollback_result(def, #positions)
+	result.rollback_record_id = record.record_id
+	result.rollback_storage_ref = storage_ref
+	result.record = record
+	return finish_action_result(result, "success", "rollback_record_written",
+		"Rollback record was written.")
+end
+
+function core.run_ai_world_mutation_with_rollback(def, mutate)
+	assert(type(mutate) == "function", "Mutation callback must be a function")
+	local rollback = core.write_ai_rollback_record(def)
+	if not rollback.ok then
+		return rollback
+	end
+	local ok, result = pcall(mutate, {
+		task_id = def.task_id,
+		agent_id = def.agent_id,
+		owner_ref = def.owner_ref or def.owner,
+		rollback_record = rollback.record,
+		rollback_record_id = rollback.rollback_record_id,
+		rollback_storage_ref = rollback.rollback_storage_ref,
+	})
+	if not ok then
+		local failed = make_action_result("ai_rollback.mutation", def)
+		failed.rollback_record_id = rollback.rollback_record_id
+		failed.rollback_storage_ref = rollback.rollback_storage_ref
+		return finish_action_result(failed, "failed", "mutation_error", tostring(result))
+	end
+	if type(result) ~= "table" then
+		result = {
+			ok = true,
+			status = "success",
+		}
+	end
+	result.rollback_record_id = rollback.rollback_record_id
+	result.rollback_storage_ref = rollback.rollback_storage_ref
+	return result
 end
 
 local function registered_node(node_name)
