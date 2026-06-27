@@ -463,3 +463,131 @@ local last_audit = audit[#audit]
 assert(last_audit.event_type == "model.request")
 assert(last_audit.private_payload == nil)
 assert(last_audit.payload_retained == false)
+
+core.ai_agent_plugin.configure({
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	repair_nodes = {
+		["ai_runtime_test:hazard"] = true,
+	},
+	max_lights = 3,
+})
+
+local plugin_agent = core.ai_agent_plugin.ensure_player_agent("Wills")
+assert(plugin_agent.agent_id == "nova_agent:Wills")
+assert(plugin_agent.owner == "Wills")
+assert(plugin_agent.plugin == "ai_agent_plugin")
+assert(core.agent_has_capability(plugin_agent.agent_id, "world.read") == true)
+assert(core.agent_has_capability(plugin_agent.agent_id, "world.place") == true)
+
+local same_agent = core.ai_agent_plugin.ensure_player_agent("Wills")
+assert(same_agent.agent_id == plugin_agent.agent_id)
+
+assert(core.registered_chatcommands.bot ~= nil)
+assert(core.registered_chatcommands.nova ~= nil)
+assert(core.registered_chatcommands.aibot ~= nil)
+
+local plugin_base = test_pos(4200)
+set_test_node(vector.add(plugin_base, { x = 0, y = 1, z = 0 }), { name = "air" })
+local light_reply = core.ai_agent_plugin.handle_command("Wills", "place 2 lights", {
+	pos = plugin_base,
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(light_reply.ok == true)
+assert(light_reply.status == "queued")
+assert(light_reply.action == "light")
+assert(light_reply.agent_id == plugin_agent.agent_id)
+assert(light_reply.task_id ~= nil)
+assert(get_test_node(vector.add(plugin_base, { x = 0, y = 1, z = 0 })).name == "air")
+
+local task_view = core.get_ai_task(light_reply.task_id)
+assert(task_view.status == "queued")
+assert(task_view.owner == "Wills")
+
+core.step_ai_tasks()
+assert(core.get_ai_task(light_reply.task_id).status == "completed")
+assert(get_test_node(vector.add(plugin_base, { x = 0, y = 1, z = 0 })).name
+	== "ai_runtime_test:stone")
+
+local follow_reply = core.ai_agent_plugin.handle_command("Wills", "follow me", {
+	pos = plugin_base,
+})
+assert(follow_reply.ok == true)
+assert(follow_reply.action == "follow")
+assert(core.ai_agent_plugin.get_player_state("Wills").mode == "follow")
+
+local come_reply = core.ai_agent_plugin.handle_command("Wills", "come", {
+	pos = vector.add(plugin_base, { x = 3, y = 0, z = 0 }),
+})
+assert(come_reply.ok == true)
+assert(come_reply.action == "come")
+assert(core.ai_agent_plugin.get_player_state("Wills").target_pos.x == plugin_base.x + 3)
+
+local build_pos = test_pos(4210)
+set_test_node(build_pos, { name = "air" })
+local build_reply = core.ai_agent_plugin.handle_command("Wills", "build marker", {
+	pos = build_pos,
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(build_reply.ok == true)
+assert(build_reply.action == "build")
+assert(core.get_ai_task(build_reply.task_id).status == "queued")
+assert(get_test_node(build_pos).name == "air")
+core.step_ai_tasks()
+assert(get_test_node(build_pos).name == "ai_runtime_test:stone")
+
+local repair_pos = test_pos(4220)
+set_test_node(repair_pos, { name = "ai_runtime_test:hazard" })
+local repair_reply = core.ai_agent_plugin.handle_command("Wills", "repair", {
+	pos = repair_pos,
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(repair_reply.ok == true)
+assert(repair_reply.action == "repair")
+assert(get_test_node(repair_pos).name == "ai_runtime_test:hazard")
+core.step_ai_tasks()
+assert(get_test_node(repair_pos).name == "air")
+
+local cancel_reply = core.ai_agent_plugin.handle_command("Wills", "light", {
+	pos = test_pos(4230),
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(cancel_reply.status == "queued")
+local cancel_done = core.ai_agent_plugin.handle_command("Wills", "cancel", {})
+assert(cancel_done.ok == true)
+assert(cancel_done.action == "cancel")
+assert(core.get_ai_task(cancel_reply.task_id).status == "cancelled")
+
+local tasks_reply = core.ai_agent_plugin.handle_command("Wills", "tasks", {})
+assert(tasks_reply.ok == true)
+assert(tasks_reply.action == "tasks")
+assert(#tasks_reply.tasks >= 1)
+
+local adapter_calls = {}
+core.ai_agent_plugin.set_model_adapter(function(request)
+	table.insert(adapter_calls, request)
+	return {
+		ok = true,
+		message = "mock adapter response",
+	}
+end)
+
+local model_reply = core.ai_agent_plugin.handle_command("Wills", "what should we explore next?", {
+	private_prompt = "do not store this model prompt",
+})
+assert(model_reply.ok == true)
+assert(model_reply.action == "model")
+assert(model_reply.message == "mock adapter response")
+assert(#adapter_calls == 1)
+assert(adapter_calls[1].agent_id == plugin_agent.agent_id)
+
+local plugin_audit = core.get_ai_runtime_audit({ limit = 10 })
+local model_record = plugin_audit[#plugin_audit]
+assert(model_record.event_type == "model.request")
+assert(model_record.agent_id == plugin_agent.agent_id)
+assert(model_record.private_payload == nil)
+assert(model_record.payload_retained == false)
