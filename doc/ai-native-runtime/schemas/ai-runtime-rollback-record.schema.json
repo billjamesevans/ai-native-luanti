@@ -1,0 +1,210 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billjamesevans/ai-native-luanti/doc/ai-native-runtime/schemas/ai-runtime-rollback-record.schema.json",
+  "title": "AI-Native Luanti Rollback Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "record_id",
+    "policy",
+    "world_id",
+    "task_id",
+    "agent_id",
+    "owner_ref",
+    "operation_label",
+    "mutation_class",
+    "bounds",
+    "changed_positions",
+    "previous_nodes",
+    "chunk",
+    "created_at"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "record_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "policy": {
+      "enum": [
+        "manifest",
+        "snapshot",
+        "chunked"
+      ]
+    },
+    "world_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "operation_label": {
+      "type": "string",
+      "minLength": 1
+    },
+    "mutation_class": {
+      "enum": [
+        "repair",
+        "build",
+        "compat_import"
+      ]
+    },
+    "bounds": {
+      "$ref": "#/$defs/bounds"
+    },
+    "changed_positions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/position"
+      }
+    },
+    "previous_nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/previous_node"
+      }
+    },
+    "chunk": {
+      "$ref": "#/$defs/chunk"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "storage_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "audit_ref": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "$defs": {
+    "position": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        },
+        "z": {
+          "type": "integer"
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "min",
+        "max"
+      ],
+      "properties": {
+        "min": {
+          "$ref": "#/$defs/position"
+        },
+        "max": {
+          "$ref": "#/$defs/position"
+        }
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "param1",
+        "param2"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "param1": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "param2": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 255
+        },
+        "metadata_hash": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "previous_node": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pos",
+        "node"
+      ],
+      "properties": {
+        "pos": {
+          "$ref": "#/$defs/position"
+        },
+        "node": {
+          "$ref": "#/$defs/node"
+        }
+      }
+    },
+    "chunk": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "chunk_index",
+        "chunk_count",
+        "first_position_index",
+        "position_count"
+      ],
+      "properties": {
+        "chunk_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "chunk_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "first_position_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "position_count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    }
+  }
+}
