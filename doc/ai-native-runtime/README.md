@@ -32,6 +32,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [First-party agent plugin](first-party-agent-plugin.md)
 - [Family prototype plugin boundaries](family-prototype-plugin-boundaries.md)
 - [Repair agent plugin](repair-agent-plugin.md)
+- [Build agent plugin](build-agent-plugin.md)
 - [Rollback metadata](rollback-metadata.md)
 - [Compatibility import dry-run reports](compatibility-import-dry-run.md)
 - [Compatibility apply phase](compatibility-apply-phase.md)

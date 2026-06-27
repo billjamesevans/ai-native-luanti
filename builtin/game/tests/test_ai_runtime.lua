@@ -726,3 +726,94 @@ assert(completed_repair_plan.status == "completed")
 assert(completed_repair_plan.last_result.operation == "repair_agent.plan_area")
 assert(completed_repair_plan.last_result.changed == 0)
 assert(repair_plan_writes == 0)
+
+assert(core.build_agent ~= nil)
+core.build_agent.configure({
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	platform_node = "ai_runtime_test:stone",
+	path_node = "ai_runtime_test:stone",
+	max_nodes_per_task = 16,
+})
+
+local build_origin = test_pos(4280)
+local build_writes = 0
+local function counting_build_set_node(pos, node)
+	build_writes = build_writes + 1
+	return set_test_node(pos, node)
+end
+
+local build_definitions = {
+	{
+		kind = "lights",
+		expected_label = "build lights",
+		expected_count = 2,
+		options = {
+			count = 2,
+		},
+	},
+	{
+		kind = "marker",
+		expected_label = "build marker",
+		expected_count = 1,
+		options = {},
+	},
+	{
+		kind = "platform",
+		expected_label = "build platform",
+		expected_count = 4,
+		options = {
+			width = 2,
+			depth = 2,
+		},
+	},
+	{
+		kind = "path",
+		expected_label = "build path",
+		expected_count = 3,
+		options = {
+			length = 3,
+			direction = { x = 1, y = 0, z = 0 },
+		},
+	},
+}
+
+local platform_definition = nil
+for index, entry in ipairs(build_definitions) do
+	local definition_options = table.copy(entry.options)
+	definition_options.kind = entry.kind
+	definition_options.task_id = "build-agent:test:" .. entry.kind
+	definition_options.agent_id = plugin_agent.agent_id
+	definition_options.owner = "builder"
+	definition_options.origin = vector.add(build_origin, { x = index * 8, y = 0, z = 0 })
+	definition_options.get_node = get_test_node
+	definition_options.set_node = counting_build_set_node
+	definition_options.max_node_writes_per_step = 8
+	local definition = core.build_agent.define_task(definition_options)
+	assert(definition.task_id == definition_options.task_id)
+	assert(definition.agent_id == plugin_agent.agent_id)
+	assert(definition.owner == "builder")
+	assert(definition.label == entry.expected_label)
+	assert(definition.mutation_class == "build")
+	assert(definition.required_capabilities["world.place"] == true)
+	assert(definition.budget.max_steps_per_step == 1)
+	assert(definition.budget.max_node_writes_per_step == 8)
+	assert(definition.metadata.kind == entry.kind)
+	assert(definition.metadata.placement_count == entry.expected_count)
+	assert(type(definition.steps[1]) == "function")
+	assert(build_writes == 0)
+	if entry.kind == "platform" then
+		platform_definition = definition
+	end
+end
+
+assert(platform_definition ~= nil)
+local queued_build_definition = core.queue_ai_task(platform_definition)
+assert(queued_build_definition.status == "queued")
+assert(build_writes == 0)
+core.step_ai_tasks()
+local completed_build_definition = core.get_ai_task(platform_definition.task_id)
+assert(completed_build_definition.status == "completed")
+assert(completed_build_definition.last_result.operation == "ai_world.batch_place")
+assert(completed_build_definition.last_result.changed == 4)
+assert(build_writes == 4)

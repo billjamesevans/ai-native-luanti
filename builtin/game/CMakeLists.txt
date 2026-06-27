@@ -2,6 +2,7 @@ set(BUILTIN_GAME_SRCS
 	game/ai_runtime.lua
 	game/ai_runtime_commands.lua
 	game/repair_agent.lua
+	game/build_agent.lua
 	game/ai_agent_plugin.lua
 	game/async.lua
 	game/auth.lua
