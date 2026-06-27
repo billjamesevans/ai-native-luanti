@@ -710,6 +710,201 @@ assert(#demo_command_message < 12000)
 local post_demo_command_metrics = core.get_ai_runtime_metrics()
 assert(post_demo_command_metrics.entities_by_type["ai_demo_benchmark:helper"] == 0)
 
+assert(core.ai_entity_ops ~= nil)
+core.register_ai_agent({
+	agent_id = "entity_agent:helper",
+	display_name = "Entity Helper Agent",
+	owner = "entity-owner",
+	plugin = "entity_ops_test",
+	capabilities = {
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+	},
+	limits = {
+		max_entities = 2,
+		max_entity_move_distance = 5,
+	},
+})
+core.register_ai_agent({
+	agent_id = "entity_agent:spawn_only",
+	display_name = "Spawn Only Agent",
+	owner = "entity-owner",
+	plugin = "entity_ops_test",
+	capabilities = {
+		["entity.spawn"] = true,
+	},
+})
+
+local spawned_refs = {}
+local function spawn_test_entity(pos, entity_name, staticdata)
+	local ref = {
+		entity_name = entity_name,
+		staticdata = staticdata,
+		pos = table.copy(pos),
+		removed = false,
+	}
+	function ref:get_pos()
+		return table.copy(self.pos)
+	end
+	function ref:set_pos(pos)
+		self.pos = table.copy(pos)
+		return true
+	end
+	function ref:remove()
+		self.removed = true
+	end
+	spawned_refs[#spawned_refs + 1] = ref
+	return ref
+end
+
+local entity_spawn_one = core.ai_entity_ops.spawn("ai_demo_benchmark:helper",
+	{ x = 0, y = 0, z = 0 }, {
+		entity_id = "entity:test:one",
+		agent_id = "entity_agent:helper",
+		owner = "entity-owner",
+		task_id = "entity-task:spawn-one",
+		spawn_entity = spawn_test_entity,
+	})
+assert(entity_spawn_one.ok == true)
+assert(entity_spawn_one.status == "success")
+assert(entity_spawn_one.operation == "ai_entity.spawn")
+assert(entity_spawn_one.changed == 1)
+assert(entity_spawn_one.metrics.entity_count == 1)
+assert(entity_spawn_one.entity.entity_id == "entity:test:one")
+assert(core.get_ai_runtime_metrics().entities_by_type["ai_demo_benchmark:helper"] == 1)
+
+local entity_inspect = core.ai_entity_ops.inspect("entity:test:one", {
+	agent_id = "entity_agent:helper",
+	owner = "entity-owner",
+	task_id = "entity-task:inspect",
+})
+assert(entity_inspect.ok == true)
+assert(entity_inspect.status == "success")
+assert(entity_inspect.operation == "ai_entity.inspect")
+assert(entity_inspect.examined == 1)
+assert(entity_inspect.entity.pos.x == 0)
+
+local entity_move = core.ai_entity_ops.move("entity:test:one",
+	{ x = 2, y = 0, z = 0 }, {
+		agent_id = "entity_agent:helper",
+		owner = "entity-owner",
+		task_id = "entity-task:move",
+	})
+assert(entity_move.ok == true)
+assert(entity_move.status == "success")
+assert(entity_move.operation == "ai_entity.move")
+assert(entity_move.changed == 1)
+assert(entity_move.entity.pos.x == 2)
+assert(entity_move.metrics.distance == 2)
+
+local denied_entity_move = core.ai_entity_ops.move("entity:test:one",
+	{ x = 3, y = 0, z = 0 }, {
+		agent_id = "entity_agent:spawn_only",
+		owner = "entity-owner",
+		task_id = "entity-task:denied-move",
+	})
+assert(denied_entity_move.ok == false)
+assert(denied_entity_move.status == "permission_denied")
+assert(denied_entity_move.reason == "missing_capability")
+assert(denied_entity_move.changed == 0)
+assert(core.ai_entity_ops.inspect("entity:test:one", {
+	agent_id = "entity_agent:helper",
+	owner = "entity-owner",
+}).entity.pos.x == 2)
+
+local too_far_entity_move = core.ai_entity_ops.move("entity:test:one",
+	{ x = 20, y = 0, z = 0 }, {
+		agent_id = "entity_agent:helper",
+		owner = "entity-owner",
+		task_id = "entity-task:too-far",
+	})
+assert(too_far_entity_move.ok == false)
+assert(too_far_entity_move.status == "blocked")
+assert(too_far_entity_move.reason == "movement_limit_exceeded")
+assert(too_far_entity_move.changed == 0)
+
+local owner_mismatch_cleanup = core.ai_entity_ops.cleanup("entity:test:one", {
+	agent_id = "entity_agent:helper",
+	owner = "other-owner",
+	task_id = "entity-task:owner-mismatch",
+})
+assert(owner_mismatch_cleanup.ok == false)
+assert(owner_mismatch_cleanup.status == "blocked")
+assert(owner_mismatch_cleanup.reason == "owner_mismatch")
+assert(owner_mismatch_cleanup.changed == 0)
+
+local entity_spawn_two = core.ai_entity_ops.spawn("ai_demo_benchmark:helper",
+	{ x = 1, y = 0, z = 0 }, {
+		entity_id = "entity:test:two",
+		agent_id = "entity_agent:helper",
+		owner = "entity-owner",
+		task_id = "entity-task:spawn-two",
+		spawn_entity = spawn_test_entity,
+	})
+assert(entity_spawn_two.ok == true)
+assert(entity_spawn_two.changed == 1)
+assert(core.get_ai_runtime_metrics().entities_by_type["ai_demo_benchmark:helper"] == 2)
+
+local entity_spawn_limit = core.ai_entity_ops.spawn("ai_demo_benchmark:helper",
+	{ x = 2, y = 0, z = 0 }, {
+		entity_id = "entity:test:three",
+		agent_id = "entity_agent:helper",
+		owner = "entity-owner",
+		task_id = "entity-task:spawn-limit",
+		spawn_entity = spawn_test_entity,
+	})
+assert(entity_spawn_limit.ok == false)
+assert(entity_spawn_limit.status == "blocked")
+assert(entity_spawn_limit.reason == "entity_limit_exceeded")
+assert(entity_spawn_limit.changed == 0)
+assert(entity_spawn_limit.skipped == 1)
+assert(core.get_ai_runtime_metrics().entities_by_type["ai_demo_benchmark:helper"] == 2)
+
+local cleanup_entities = core.ai_entity_ops.cleanup_owned({
+	agent_id = "entity_agent:helper",
+	owner = "entity-owner",
+	task_id = "entity-task:cleanup-owned",
+	entity_name = "ai_demo_benchmark:helper",
+})
+assert(cleanup_entities.ok == true)
+assert(cleanup_entities.status == "success")
+assert(cleanup_entities.operation == "ai_entity.cleanup_owned")
+assert(cleanup_entities.changed == 2)
+assert(cleanup_entities.metrics.entity_count == 0)
+assert(spawned_refs[1].removed == true)
+assert(spawned_refs[2].removed == true)
+assert(core.get_ai_runtime_metrics().entities_by_type["ai_demo_benchmark:helper"] == 0)
+
+local cleanup_again = core.ai_entity_ops.cleanup_owned({
+	agent_id = "entity_agent:helper",
+	owner = "entity-owner",
+	task_id = "entity-task:cleanup-again",
+	entity_name = "ai_demo_benchmark:helper",
+})
+assert(cleanup_again.ok == true)
+assert(cleanup_again.status == "success")
+assert(cleanup_again.reason == "no_owned_entities")
+assert(cleanup_again.changed == 0)
+assert(cleanup_again.metrics.entity_count == 0)
+
+local post_entity_ops_metrics = core.get_ai_runtime_metrics()
+assert(post_entity_ops_metrics.entity_spawns >= 2)
+assert(post_entity_ops_metrics.entity_moves >= 1)
+assert(post_entity_ops_metrics.entity_cleanups >= 2)
+
+local entity_audit = core.get_ai_runtime_audit({ limit = 50 })
+local function entity_audit_has(event_type, task_id)
+	for _, record in ipairs(entity_audit) do
+		if record.event_type == event_type and record.task_id == task_id then
+			return true
+		end
+	end
+	return false
+end
+assert(entity_audit_has("entity.spawn", "entity-task:spawn-one"))
+assert(entity_audit_has("entity.move", "entity-task:move"))
+assert(entity_audit_has("entity.cleanup", "entity-task:cleanup-owned"))
+
 assert(core.registered_chatcommands.ai_runtime ~= nil)
 local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
 assert(command_ok == true)
@@ -740,10 +935,15 @@ assert(audit_has("task.cancelled", "task:queued-cancel"))
 assert(audit_has("task.unsafe", "task:write-budget"))
 assert(audit_has("world.unsafe", nil))
 
-local last_audit = audit[#audit]
-assert(last_audit.event_type == "model.request")
-assert(last_audit.private_payload == nil)
-assert(last_audit.payload_retained == false)
+local model_request_audit = nil
+for _, record in ipairs(audit) do
+	if record.event_type == "model.request" and record.task_id == "task:safe-world" then
+		model_request_audit = record
+	end
+end
+assert(model_request_audit ~= nil)
+assert(model_request_audit.private_payload == nil)
+assert(model_request_audit.payload_retained == false)
 
 core.ai_agent_plugin.configure({
 	light_node = "ai_runtime_test:stone",
