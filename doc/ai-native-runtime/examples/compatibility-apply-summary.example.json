@@ -1,0 +1,41 @@
+{
+  "summary_version": 1,
+  "apply_id": "synthetic-apply-plan",
+  "report_id": "synthetic-bedrock-pack-report",
+  "status": "planned",
+  "approved_actions": [
+    {
+      "action_index": 0,
+      "action": "map_texture"
+    },
+    {
+      "action_index": 1,
+      "action": "register_entity_stub"
+    }
+  ],
+  "queued_tasks": [],
+  "completed_tasks": [],
+  "blocked_tasks": [],
+  "mutation_cost_actual": {
+    "node_writes": 0,
+    "media_files": 0,
+    "entity_definitions": 0,
+    "manual_review_items": 0
+  },
+  "rollback_records": [
+    {
+      "record_id": "synthetic-apply-plan:no-world-mutation",
+      "policy": "no_world_mutation",
+      "world_mutating": false
+    }
+  ],
+  "audit_record_count": 0,
+  "operator_next_actions": [
+    "Review generated task definitions before enabling apply mode."
+  ],
+  "safety": {
+    "assets_remain_operator_supplied": true,
+    "dry_run_report_unchanged": true,
+    "world_mutation_executed": false
+  }
+}

@@ -1,0 +1,41 @@
+{
+  "request_version": 1,
+  "mode": "apply_plan",
+  "report_id": "synthetic-bedrock-pack-report",
+  "report_version": 1,
+  "source_reference": {
+    "reference_type": "mounted_fixture",
+    "redacted_id": "synthetic-bedrock-pack",
+    "inventory_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "approved_actions": [
+    {
+      "action_index": 0,
+      "action": "map_texture",
+      "status": "partial"
+    },
+    {
+      "action_index": 1,
+      "action": "register_entity_stub",
+      "status": "partial"
+    }
+  ],
+  "target_world": {
+    "world_id": "staging-world",
+    "staging": true
+  },
+  "operator": "server",
+  "agent_id": "compat_import:server",
+  "budget": {
+    "max_media_files": 5,
+    "max_entity_definitions": 2,
+    "max_node_writes_total": 0,
+    "max_node_writes_per_step": 0,
+    "max_manual_review_items": 4,
+    "max_wall_time_ms": 5000
+  },
+  "rollback_policy": {
+    "policy": "no_world_mutation",
+    "metadata_required": true
+  }
+}
