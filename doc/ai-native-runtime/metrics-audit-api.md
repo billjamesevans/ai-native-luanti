@@ -34,6 +34,8 @@ The first implementation is Lua-level and intentionally avoids retaining private
 - `model_adapter_failures`
 - `model_adapter_timeouts`
 - `model_adapter_latency_buckets`
+- `rollback_records_written`
+- `rollback_record_failures`
 - `audit_records`
 - `entities_by_type`
 
@@ -82,6 +84,11 @@ The output includes queue length, task status counts, node-write counters, unsaf
 - `message`
 - `adapter_name`
 - `elapsed_us`
+- `rollback_record_id`
+- `rollback_storage_ref`
+- `mutation_class`
+- `chunk_index`
+- `chunk_count`
 - `changed`
 - `examined`
 - `skipped`
@@ -98,8 +105,11 @@ Built-in audit events currently include:
 - `task.unsafe`
 - `world.unsafe`
 - `model.adapter`
+- `rollback.record`
 
 Plugins may add their own event with `core.record_ai_runtime_audit(record)`.
+
+`rollback.record` audit entries expose only rollback references and summary fields: record id, storage reference, task id, agent id, owner reference, mutation class, chunk index/count, status, reason, and changed count. They do not copy previous-node payloads into the audit log.
 
 ## Privacy Defaults
 
