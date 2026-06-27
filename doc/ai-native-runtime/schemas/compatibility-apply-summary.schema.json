@@ -1,0 +1,208 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billjamesevans/ai-native-luanti/doc/ai-native-runtime/schemas/compatibility-apply-summary.schema.json",
+  "title": "AI-Native Luanti Compatibility Apply Summary",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "summary_version",
+    "apply_id",
+    "report_id",
+    "status",
+    "approved_actions",
+    "queued_tasks",
+    "completed_tasks",
+    "blocked_tasks",
+    "mutation_cost_actual",
+    "rollback_records",
+    "audit_record_count",
+    "operator_next_actions",
+    "safety"
+  ],
+  "properties": {
+    "summary_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "apply_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "report_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "status": {
+      "enum": [
+        "planned",
+        "queued",
+        "running",
+        "completed",
+        "cancelled",
+        "failed",
+        "blocked",
+        "unsafe"
+      ]
+    },
+    "approved_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/action_ref"
+      }
+    },
+    "queued_tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task_ref"
+      }
+    },
+    "completed_tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task_ref"
+      }
+    },
+    "blocked_tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task_ref"
+      }
+    },
+    "mutation_cost_actual": {
+      "$ref": "#/$defs/mutation_cost"
+    },
+    "rollback_records": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rollback_record"
+      }
+    },
+    "audit_record_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "operator_next_actions": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assets_remain_operator_supplied",
+        "dry_run_report_unchanged",
+        "world_mutation_executed"
+      ],
+      "properties": {
+        "assets_remain_operator_supplied": {
+          "const": true
+        },
+        "dry_run_report_unchanged": {
+          "const": true
+        },
+        "world_mutation_executed": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "action_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action_index",
+        "action"
+      ],
+      "properties": {
+        "action_index": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "task_ref": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "task_id",
+        "label",
+        "status"
+      ],
+      "properties": {
+        "task_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "mutation_cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_writes",
+        "media_files",
+        "entity_definitions",
+        "manual_review_items"
+      ],
+      "properties": {
+        "node_writes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "media_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entity_definitions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manual_review_items": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "rollback_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "record_id",
+        "policy",
+        "world_mutating"
+      ],
+      "properties": {
+        "record_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "policy": {
+          "enum": [
+            "snapshot",
+            "manifest_only",
+            "no_world_mutation"
+          ]
+        },
+        "world_mutating": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

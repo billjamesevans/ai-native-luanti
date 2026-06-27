@@ -33,6 +33,16 @@ An apply request requires:
 
 The apply phase must reject requests that omit approval, source references, budgets, or rollback policy.
 
+The machine-readable request and summary contracts live at:
+
+- [`schemas/compatibility-apply-request.schema.json`](schemas/compatibility-apply-request.schema.json)
+- [`schemas/compatibility-apply-summary.schema.json`](schemas/compatibility-apply-summary.schema.json)
+
+Synthetic examples live at:
+
+- [`examples/compatibility-apply-request.example.json`](examples/compatibility-apply-request.example.json)
+- [`examples/compatibility-apply-summary.example.json`](examples/compatibility-apply-summary.example.json)
+
 ## Required Capability
 
 The import agent must be registered through the AI runtime and hold:
