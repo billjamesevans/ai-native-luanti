@@ -13,6 +13,50 @@ import zipfile
 
 
 REPORT_VERSION = 1
+TOP_LEVEL_REQUIRED = (
+    "report_version",
+    "mode",
+    "generated_at",
+    "source",
+    "summary",
+    "sections",
+    "unsupported_features",
+    "planned_actions",
+    "safety",
+)
+SOURCE_REQUIRED = ("source_id", "source_class", "path_policy", "license_status")
+SUMMARY_REQUIRED = (
+    "risk_level",
+    "items_total",
+    "supported",
+    "partial",
+    "unsupported",
+    "skipped",
+    "unknown",
+    "estimated_world_mutations",
+)
+MUTATION_COST_REQUIRED = (
+    "node_writes",
+    "media_files",
+    "entity_definitions",
+    "manual_review_items",
+)
+SECTION_REQUIRED = ("name", "items_total", "status", "message")
+UNSUPPORTED_FEATURE_REQUIRED = (
+    "feature",
+    "status",
+    "reason",
+    "severity",
+    "message",
+    "recommendation",
+)
+PLANNED_ACTION_REQUIRED = ("action", "status", "description", "mutation_cost")
+SAFETY_REQUIRED_TRUE = (
+    "no_assets_copied",
+    "no_world_mutation",
+    "source_paths_redacted",
+    "user_rights_required",
+)
 
 
 def _utc_now():
@@ -354,6 +398,91 @@ def build_report(source):
             ],
         },
     }
+
+
+def _require_mapping(errors, value, path):
+    if not isinstance(value, dict):
+        errors.append(f"{path} must be an object")
+        return False
+    return True
+
+
+def _require_sequence(errors, value, path):
+    if not isinstance(value, list):
+        errors.append(f"{path} must be an array")
+        return False
+    return True
+
+
+def _require_keys(errors, mapping, path, keys):
+    if not _require_mapping(errors, mapping, path):
+        return
+    for key in keys:
+        if key not in mapping:
+            errors.append(f"{path}.{key} is required")
+
+
+def _validate_mutation_cost(errors, value, path):
+    _require_keys(errors, value, path, MUTATION_COST_REQUIRED)
+
+
+def validate_report(report, expected_unsupported_features=None):
+    """Return validation errors for the dry-run report contract."""
+    errors = []
+    _require_keys(errors, report, "report", TOP_LEVEL_REQUIRED)
+    if errors:
+        return errors
+
+    if report.get("report_version") != REPORT_VERSION:
+        errors.append(f"report.report_version must be {REPORT_VERSION}")
+    if report.get("mode") != "dry_run":
+        errors.append("report.mode must be dry_run")
+
+    source = report.get("source")
+    _require_keys(errors, source, "source", SOURCE_REQUIRED)
+
+    summary = report.get("summary")
+    _require_keys(errors, summary, "summary", SUMMARY_REQUIRED)
+    if isinstance(summary, dict):
+        _validate_mutation_cost(
+            errors,
+            summary.get("estimated_world_mutations"),
+            "summary.estimated_world_mutations",
+        )
+
+    sections = report.get("sections")
+    if _require_sequence(errors, sections, "sections"):
+        if not sections:
+            errors.append("sections must contain at least one section")
+        for index, section in enumerate(sections):
+            _require_keys(errors, section, f"sections[{index}]", SECTION_REQUIRED)
+
+    unsupported_features = report.get("unsupported_features")
+    if _require_sequence(errors, unsupported_features, "unsupported_features"):
+        present_features = set()
+        for index, feature in enumerate(unsupported_features):
+            _require_keys(errors, feature, f"unsupported_features[{index}]", UNSUPPORTED_FEATURE_REQUIRED)
+            if isinstance(feature, dict) and "feature" in feature:
+                present_features.add(feature["feature"])
+        for feature in sorted(expected_unsupported_features or ()):
+            if feature not in present_features:
+                errors.append(f"unsupported_features missing expected feature {feature}")
+
+    planned_actions = report.get("planned_actions")
+    if _require_sequence(errors, planned_actions, "planned_actions"):
+        for index, action in enumerate(planned_actions):
+            _require_keys(errors, action, f"planned_actions[{index}]", PLANNED_ACTION_REQUIRED)
+            if isinstance(action, dict):
+                _validate_mutation_cost(errors, action.get("mutation_cost"), f"planned_actions[{index}].mutation_cost")
+
+    safety = report.get("safety")
+    _require_keys(errors, safety, "safety", SAFETY_REQUIRED_TRUE)
+    if isinstance(safety, dict):
+        for key in SAFETY_REQUIRED_TRUE:
+            if key in safety and safety[key] is not True:
+                errors.append(f"safety.{key} must be true")
+
+    return errors
 
 
 def _print_summary(report):
