@@ -28,5 +28,6 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Agent identity and capability API](agent-api.md)
 - [Agent task queue API](task-queue-api.md)
 - [Safe world operations API](safe-world-ops-api.md)
+- [Runtime metrics and audit API](metrics-audit-api.md)
 - [Benchmark plan](benchmark-plan.md)
 - [Baseline status](baseline-status.md)
