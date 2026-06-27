@@ -10,7 +10,7 @@ import unittest
 UTIL_DIR = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(UTIL_DIR))
 
-from ai_native_compat_dry_run import build_report, main
+from ai_native_compat_dry_run import build_report, main, validate_report
 
 
 class CompatibilityDryRunTests(unittest.TestCase):
@@ -78,6 +78,56 @@ class CompatibilityDryRunTests(unittest.TestCase):
             self.assertEqual(report["mode"], "dry_run")
             self.assertIn("risk=", stdout.getvalue())
             self.assertIn("unsupported=", stdout.getvalue())
+
+    def test_generated_reports_validate_required_contract(self):
+        for fixture_name in ("bedrock_pack", "java_pack"):
+            with self.subTest(fixture=fixture_name):
+                report = build_report(self.fixture_root / fixture_name)
+
+                self.assertEqual(validate_report(report), [])
+
+    def test_validator_rejects_missing_required_fields(self):
+        report = build_report(self.fixture_root / "java_pack")
+        del report["summary"]["risk_level"]
+
+        errors = validate_report(report)
+
+        self.assertIn("summary.risk_level is required", errors)
+
+    def test_validator_rejects_false_or_missing_safety_flags(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        report["safety"]["no_world_mutation"] = False
+        del report["safety"]["source_paths_redacted"]
+
+        errors = validate_report(report)
+
+        self.assertIn("safety.no_world_mutation must be true", errors)
+        self.assertIn("safety.source_paths_redacted is required", errors)
+
+    def test_validator_rejects_silently_dropped_unsupported_rows(self):
+        report = build_report(self.fixture_root / "bedrock_pack")
+        report["unsupported_features"] = [
+            item for item in report["unsupported_features"]
+            if item["feature"] != "entity.ai_goal"
+        ]
+
+        errors = validate_report(
+            report,
+            expected_unsupported_features={"entity.behavior_script", "entity.ai_goal"},
+        )
+
+        self.assertIn("unsupported_features missing expected feature entity.ai_goal", errors)
+
+    def test_fixture_policy_is_documented_and_payloads_are_metadata_only(self):
+        readme = self.fixture_root / "README.md"
+
+        self.assertTrue(readme.is_file())
+        self.assertIn("Synthetic", readme.read_text(encoding="utf-8"))
+        for path in self.fixture_root.rglob("*"):
+            if not path.is_file():
+                continue
+            self.assertLess(path.stat().st_size, 4096, path)
+            self.assertIn(path.suffix, {".json", ".js", ".mcmeta", ".md"})
 
 
 if __name__ == "__main__":
