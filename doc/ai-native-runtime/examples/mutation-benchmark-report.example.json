@@ -1,0 +1,177 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-06-27T00:00:00Z",
+  "luanti_commit": "example-commit",
+  "hardware_class": "local-mac",
+  "run_context": {
+    "mode": "sample-synthetic",
+    "requires_private_world": false,
+    "requires_private_assets": false,
+    "requires_live_pi": false
+  },
+  "scenarios": [
+    {
+      "scenario_id": "small_build_rollback",
+      "category": "build",
+      "description": "Queue a small synthetic build task through rollback-backed safe world operations.",
+      "entry_point": {
+        "command": "bin/luantiserver --run-unittests --test-module TestAIRuntime",
+        "runtime_path": "builtin/game/build_agent.lua",
+        "server_action": "core.build_agent.define_task -> core.queue_ai_task"
+      },
+      "fixture": {
+        "synthetic": true,
+        "requires_live_world": false,
+        "requires_private_assets": false,
+        "node_count": 8,
+        "world_ref": "world:synthetic-benchmark"
+      },
+      "metrics": {
+        "avg_step_ms": 1.8,
+        "p95_step_ms": 2.4,
+        "max_lag_ms": 3.0,
+        "node_writes_per_step": 8,
+        "skipped_positions": 0,
+        "rollback_records": 1,
+        "ai_runtime_counters": {
+          "queued_tasks": 1,
+          "completed_tasks": 1,
+          "blocked_tasks": 0,
+          "rollback_write_attempts": 1,
+          "rollback_write_failures": 0
+        },
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
+      "scenario_id": "repair_scan_readonly",
+      "category": "repair_scan",
+      "description": "Inspect bounded synthetic terrain damage without changing nodes.",
+      "entry_point": {
+        "command": "bin/luantiserver --run-unittests --test-module TestAIRuntime",
+        "runtime_path": "builtin/game/repair_agent.lua",
+        "server_action": "core.repair_agent.plan_area"
+      },
+      "fixture": {
+        "synthetic": true,
+        "requires_live_world": false,
+        "requires_private_assets": false,
+        "node_count": 27,
+        "world_ref": "world:synthetic-benchmark"
+      },
+      "metrics": {
+        "avg_step_ms": 1.1,
+        "p95_step_ms": 1.5,
+        "max_lag_ms": 2.0,
+        "node_writes_per_step": 0,
+        "skipped_positions": 2,
+        "rollback_records": 0,
+        "ai_runtime_counters": {
+          "queued_tasks": 1,
+          "completed_tasks": 1,
+          "blocked_tasks": 0,
+          "rollback_write_attempts": 0,
+          "rollback_write_failures": 0
+        },
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
+      "scenario_id": "repair_mutation_rollback",
+      "category": "repair_mutation",
+      "description": "Apply a bounded synthetic repair plan after rollback metadata is persisted.",
+      "entry_point": {
+        "command": "bin/luantiserver --run-unittests --test-module TestAIRuntime",
+        "runtime_path": "builtin/game/repair_agent.lua",
+        "server_action": "core.repair_agent.queue_apply_task"
+      },
+      "fixture": {
+        "synthetic": true,
+        "requires_live_world": false,
+        "requires_private_assets": false,
+        "node_count": 4,
+        "world_ref": "world:synthetic-benchmark"
+      },
+      "metrics": {
+        "avg_step_ms": 1.6,
+        "p95_step_ms": 2.2,
+        "max_lag_ms": 2.9,
+        "node_writes_per_step": 4,
+        "skipped_positions": 1,
+        "rollback_records": 1,
+        "ai_runtime_counters": {
+          "queued_tasks": 1,
+          "completed_tasks": 1,
+          "blocked_tasks": 0,
+          "rollback_write_attempts": 1,
+          "rollback_write_failures": 0
+        },
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
+      "scenario_id": "rollback_record_write",
+      "category": "rollback",
+      "description": "Measure rollback record creation overhead without applying a world mutation.",
+      "entry_point": {
+        "command": "bin/luantiserver --run-unittests --test-module TestAIRuntime",
+        "runtime_path": "builtin/game/ai_runtime.lua",
+        "server_action": "core.write_ai_rollback_record"
+      },
+      "fixture": {
+        "synthetic": true,
+        "requires_live_world": false,
+        "requires_private_assets": false,
+        "node_count": 16,
+        "world_ref": "world:synthetic-benchmark"
+      },
+      "metrics": {
+        "avg_step_ms": 0.7,
+        "p95_step_ms": 1.0,
+        "max_lag_ms": 1.4,
+        "node_writes_per_step": 0,
+        "skipped_positions": 0,
+        "rollback_records": 1,
+        "ai_runtime_counters": {
+          "queued_tasks": 0,
+          "completed_tasks": 0,
+          "blocked_tasks": 0,
+          "rollback_write_attempts": 1,
+          "rollback_write_failures": 0
+        },
+        "warnings": [],
+        "errors": []
+      }
+    }
+  ],
+  "regression_gates": [
+    {
+      "metric": "errors",
+      "condition": "must be empty",
+      "merge_rule": "must not merge with runtime errors"
+    },
+    {
+      "metric": "warnings",
+      "condition": "must not introduce new safety warnings against the baseline",
+      "merge_rule": "must not merge until reviewed"
+    },
+    {
+      "metric": "max_lag_ms",
+      "condition": "must stay within 10 percent of the accepted baseline for the same hardware_class",
+      "merge_rule": "must not merge without an explicit benchmark exception"
+    },
+    {
+      "metric": "node_writes_per_step",
+      "condition": "must stay inside the scenario write budget",
+      "merge_rule": "must not merge if bounded writes are bypassed"
+    },
+    {
+      "metric": "rollback_records",
+      "condition": "mutating scenarios must write rollback metadata before node writes",
+      "merge_rule": "must not merge if rollback records are missing"
+    }
+  ]
+}

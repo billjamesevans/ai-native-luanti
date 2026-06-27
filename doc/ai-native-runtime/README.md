@@ -38,4 +38,5 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Compatibility import dry-run reports](compatibility-import-dry-run.md)
 - [Compatibility apply phase](compatibility-apply-phase.md)
 - [Benchmark plan](benchmark-plan.md)
+- [Mutation benchmark scenarios](mutation-benchmark-scenarios.md)
 - [Baseline status](baseline-status.md)
