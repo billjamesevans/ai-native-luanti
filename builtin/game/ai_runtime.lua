@@ -134,6 +134,157 @@ local function count_active_tasks()
 	return count
 end
 
+local ai_runtime_audit = {}
+local ai_runtime_audit_options = {
+	enabled = true,
+	max_records = 200,
+	retain_private_payloads = false,
+}
+local ai_runtime_metrics = {
+	tasks_queued = 0,
+	tasks_completed = 0,
+	tasks_cancelled = 0,
+	tasks_failed = 0,
+	tasks_blocked = 0,
+	tasks_unsafe = 0,
+	task_steps_run = 0,
+	node_writes = 0,
+	task_reported_node_writes = 0,
+	world_node_writes = 0,
+	skipped_operations = 0,
+	unsafe_operations = 0,
+	blocked_operations = 0,
+	pending_model_requests = 0,
+	pending_http_requests = 0,
+	entities_by_type = {},
+}
+
+local function increment_metric(name, amount)
+	ai_runtime_metrics[name] = (ai_runtime_metrics[name] or 0) + (amount or 1)
+end
+
+local function audit_timestamp()
+	return core.get_us_time and core.get_us_time() or 0
+end
+
+local function copy_audit_record(record)
+	local copy = table.copy(record)
+	if record.private_payload and ai_runtime_audit_options.retain_private_payloads then
+		copy.private_payload = table.copy(record.private_payload)
+	end
+	return copy
+end
+
+function core.set_ai_runtime_audit_options(options)
+	assert(type(options) == "table", "Audit options must be a table")
+	if options.enabled ~= nil then
+		ai_runtime_audit_options.enabled = options.enabled == true
+	end
+	if options.max_records ~= nil then
+		assert(type(options.max_records) == "number" and options.max_records >= 0,
+			"Field 'max_records' must be a non-negative number")
+		ai_runtime_audit_options.max_records = options.max_records
+	end
+	if options.retain_private_payloads ~= nil then
+		ai_runtime_audit_options.retain_private_payloads =
+			options.retain_private_payloads == true
+	end
+end
+
+function core.record_ai_runtime_audit(record)
+	assert(type(record) == "table", "Audit record must be a table")
+	check_string(record.event_type, "event_type")
+	if not ai_runtime_audit_options.enabled then
+		return nil
+	end
+
+	local sanitized = {
+		at = audit_timestamp(),
+		event_type = record.event_type,
+		agent_id = record.agent_id,
+		task_id = record.task_id,
+		actor = record.actor,
+		operation = record.operation,
+		status = record.status,
+		reason = record.reason,
+		message = record.message,
+		changed = record.changed,
+		examined = record.examined,
+		skipped = record.skipped,
+		payload_retained = false,
+	}
+	if record.private_payload and ai_runtime_audit_options.retain_private_payloads then
+		sanitized.private_payload = table.copy(record.private_payload)
+		sanitized.payload_retained = true
+	end
+
+	ai_runtime_audit[#ai_runtime_audit + 1] = sanitized
+	while #ai_runtime_audit > ai_runtime_audit_options.max_records do
+		table.remove(ai_runtime_audit, 1)
+	end
+
+	if core.log then
+		core.log("action", "[ai_runtime] audit event=" .. sanitized.event_type
+			.. (sanitized.agent_id and (" agent=" .. sanitized.agent_id) or "")
+			.. (sanitized.task_id and (" task=" .. sanitized.task_id) or "")
+			.. (sanitized.status and (" status=" .. sanitized.status) or "")
+			.. (sanitized.reason and (" reason=" .. sanitized.reason) or ""))
+	end
+	return copy_audit_record(sanitized)
+end
+
+function core.get_ai_runtime_audit(options)
+	options = options or {}
+	local limit = options.limit or #ai_runtime_audit
+	assert(type(limit) == "number" and limit >= 0,
+		"Field 'limit' must be a non-negative number")
+	local start = math.max(1, #ai_runtime_audit - math.floor(limit) + 1)
+	local result = {}
+	for i = start, #ai_runtime_audit do
+		result[#result + 1] = copy_audit_record(ai_runtime_audit[i])
+	end
+	return result
+end
+
+function core.set_ai_runtime_pending_requests(kind, count)
+	assert(kind == "model" or kind == "http", "Pending request kind must be 'model' or 'http'")
+	assert(type(count) == "number" and count >= 0, "Pending request count must be non-negative")
+	if kind == "model" then
+		ai_runtime_metrics.pending_model_requests = count
+	else
+		ai_runtime_metrics.pending_http_requests = count
+	end
+end
+
+function core.set_ai_runtime_entity_count(entity_type, count)
+	check_string(entity_type, "entity_type")
+	assert(type(count) == "number" and count >= 0, "Entity count must be non-negative")
+	ai_runtime_metrics.entities_by_type[entity_type] = count
+end
+
+function core.get_ai_runtime_metrics()
+	local metrics = table.copy(ai_runtime_metrics)
+	metrics.active_tasks = count_active_tasks()
+	metrics.queue_length = metrics.active_tasks
+	metrics.audit_records = #ai_runtime_audit
+	metrics.entities_by_type = table.copy(ai_runtime_metrics.entities_by_type)
+	return metrics
+end
+
+local function record_task_audit(event_type, task, extra)
+	extra = extra or {}
+	core.record_ai_runtime_audit({
+		event_type = event_type,
+		agent_id = task.agent_id,
+		task_id = task.task_id,
+		status = extra.status or task.status,
+		reason = extra.reason,
+		message = extra.message,
+		changed = extra.changed,
+		skipped = extra.skipped,
+	})
+end
+
 local function copy_pos(pos)
 	return {
 		x = pos.x,
@@ -182,6 +333,29 @@ local function finish_action_result(result, status, reason, message)
 		result.metrics.elapsed_us = core.get_us_time() - started_at
 	end
 	result.metrics.started_at = nil
+	if result.operation and result.operation:sub(1, 9) == "ai_world." then
+		local writes = result.metrics.node_writes or 0
+		increment_metric("node_writes", writes)
+		increment_metric("world_node_writes", writes)
+		increment_metric("skipped_operations", result.skipped)
+		if status == "unsafe" then
+			increment_metric("unsafe_operations")
+			core.record_ai_runtime_audit({
+				event_type = "world.unsafe",
+				agent_id = result.agent_id,
+				task_id = result.task_id,
+				operation = result.operation,
+				status = result.status,
+				reason = result.reason,
+				message = result.message,
+				changed = result.changed,
+				examined = result.examined,
+				skipped = result.skipped,
+			})
+		elseif status == "blocked" then
+			increment_metric("blocked_operations")
+		end
+	end
 	return result
 end
 
@@ -641,6 +815,14 @@ function core.check_agent_capability(agent_id, capability)
 			"missing_capability", "Agent does not have capability '" .. capability .. "'.")
 	end
 	if capability == "admin.override" then
+		core.record_ai_runtime_audit({
+			event_type = "capability.admin_override",
+			agent_id = agent_id,
+			operation = "capability.check",
+			status = "success",
+			reason = "admin_override_granted",
+			message = "Agent has admin override; audit is required.",
+		})
 		return make_capability_result(agent_id, capability, true, "success",
 			"admin_override_granted", "Agent has admin override; audit is required.")
 	end
@@ -679,6 +861,7 @@ function core.queue_ai_task(def)
 
 	core.registered_ai_tasks[task.task_id] = task
 	ai_task_queue[#ai_task_queue + 1] = task.task_id
+	increment_metric("tasks_queued")
 	return public_task(task)
 end
 
@@ -710,6 +893,12 @@ function core.cancel_ai_task(task_id, actor)
 	task.updated_at = core.get_us_time and core.get_us_time() or task.updated_at
 	task.last_result = make_task_result(task_id, true, "cancelled",
 		"task_cancelled", "Task was cancelled.")
+	increment_metric("tasks_cancelled")
+	record_task_audit("task.cancelled", task, {
+		status = "cancelled",
+		reason = "task_cancelled",
+		message = "Task was cancelled.",
+	})
 	return table.copy(task.last_result)
 end
 
@@ -745,7 +934,16 @@ function core.step_ai_tasks()
 	for _, task_id in ipairs(ai_task_queue) do
 		local task = core.registered_ai_tasks[task_id]
 		if task and (task.status == "queued" or task.status == "running") then
+			local was_queued = task.status == "queued"
 			task.status = "running"
+			if was_queued and not task.started_at then
+				task.started_at = core.get_us_time and core.get_us_time() or 0
+				record_task_audit("task.started", task, {
+					status = "running",
+					reason = "task_started",
+					message = "Task started running.",
+				})
+			end
 			local budget = task.budget.max_steps_per_step
 			while budget > 0 and task.progress.current < task.progress.total do
 				local step = task.steps[task.progress.current + 1]
@@ -757,12 +955,19 @@ function core.step_ai_tasks()
 					progress = table.copy(task.progress),
 				})
 				ran = ran + 1
+				increment_metric("task_steps_run")
 				budget = budget - 1
 				task.updated_at = core.get_us_time and core.get_us_time() or task.updated_at
 				if not ok then
 					task.status = "failed"
 					task.last_result = make_task_result(task.task_id, false, "failed",
 						"step_error", tostring(result))
+					increment_metric("tasks_failed")
+					record_task_audit("task.failed", task, {
+						status = "failed",
+						reason = "step_error",
+						message = tostring(result),
+					})
 					break
 				end
 				task.progress.current = task.progress.current + 1
@@ -770,22 +975,52 @@ function core.step_ai_tasks()
 					ok = true,
 					status = "success",
 				}
+				local reported_changed = tonumber(task.last_result.changed) or 0
+				increment_metric("node_writes", reported_changed)
+				increment_metric("task_reported_node_writes", reported_changed)
 				if task.budget.max_node_writes_per_step > 0
 						and (task.last_result.changed or 0) > task.budget.max_node_writes_per_step then
 					task.status = "unsafe"
 					task.last_result = make_task_result(task.task_id, false, "unsafe",
 						"node_write_budget_exceeded",
 						"Task step exceeded its node-write budget.")
+					increment_metric("tasks_unsafe")
+					record_task_audit("task.unsafe", task, {
+						status = "unsafe",
+						reason = "node_write_budget_exceeded",
+						message = "Task step exceeded its node-write budget.",
+						changed = reported_changed,
+					})
 					break
 				end
 				if task.last_result.status == "blocked" or task.last_result.status == "unsafe"
 						or task.last_result.status == "failed" then
 					task.status = task.last_result.status
+					if task.status == "blocked" then
+						increment_metric("tasks_blocked")
+					elseif task.status == "unsafe" then
+						increment_metric("tasks_unsafe")
+					elseif task.status == "failed" then
+						increment_metric("tasks_failed")
+					end
+					record_task_audit("task." .. task.status, task, {
+						status = task.status,
+						reason = task.last_result.reason,
+						message = task.last_result.message,
+						changed = reported_changed,
+						skipped = task.last_result.skipped,
+					})
 					break
 				end
 			end
 			if task.status == "running" and task.progress.current >= task.progress.total then
 				task.status = "completed"
+				increment_metric("tasks_completed")
+				record_task_audit("task.completed", task, {
+					status = "completed",
+					reason = "task_completed",
+					message = "Task completed.",
+				})
 			end
 			break
 		end

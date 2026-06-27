@@ -407,3 +407,59 @@ assert(batch_remove.examined == 2)
 assert(batch_remove.skipped == 1)
 assert(batch_remove.samples[1].reason == "unbreakable_node")
 assert(get_test_node(batch_one).name == "air")
+
+local hazard_pos = test_pos(4160)
+set_test_node(hazard_pos, { name = "ai_runtime_test:hazard" })
+local hazard = core.ai_world_ops.remove_node(hazard_pos, safe_options)
+assert_action_result(hazard, false, "unsafe", "ai_world.remove_node")
+assert(hazard.reason == "hazard_node")
+assert(get_test_node(hazard_pos).name == "ai_runtime_test:hazard")
+
+core.record_ai_runtime_audit({
+	event_type = "model.request",
+	agent_id = "nova:emma",
+	task_id = "task:safe-world",
+	message = "model request queued",
+	private_payload = {
+		prompt = "do not retain this prompt",
+	},
+})
+
+local metrics = core.get_ai_runtime_metrics()
+assert(type(metrics) == "table")
+assert(metrics.tasks_queued == 5)
+assert(metrics.task_steps_run == 5)
+assert(metrics.tasks_completed == 2)
+assert(metrics.tasks_cancelled == 2)
+assert(metrics.tasks_unsafe == 1)
+assert(metrics.queue_length == 0)
+assert(metrics.active_tasks == 0)
+assert(metrics.node_writes >= 4)
+assert(metrics.skipped_operations >= 6)
+assert(metrics.unsafe_operations >= 1)
+assert(metrics.audit_records >= 1)
+assert(type(metrics.entities_by_type) == "table")
+
+local audit = core.get_ai_runtime_audit({ limit = 100 })
+assert(type(audit) == "table")
+
+local function audit_has(event_type, task_id)
+	for _, record in ipairs(audit) do
+		if record.event_type == event_type and (not task_id or record.task_id == task_id) then
+			return true
+		end
+	end
+	return false
+end
+
+assert(audit_has("capability.admin_override", nil))
+assert(audit_has("task.started", "task:lights"))
+assert(audit_has("task.completed", "task:lights"))
+assert(audit_has("task.cancelled", "task:queued-cancel"))
+assert(audit_has("task.unsafe", "task:write-budget"))
+assert(audit_has("world.unsafe", nil))
+
+local last_audit = audit[#audit]
+assert(last_audit.event_type == "model.request")
+assert(last_audit.private_payload == nil)
+assert(last_audit.payload_retained == false)
