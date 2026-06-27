@@ -1,0 +1,167 @@
+core.build_agent = {}
+
+local build_agent = core.build_agent
+local settings = {
+	light_node = "default:torch",
+	marker_node = "default:mese_post_light",
+	platform_node = "default:stone",
+	path_node = "default:stone",
+	max_nodes_per_task = 32,
+	sample_limit = 8,
+}
+
+local function copy_pos(pos)
+	assert(type(pos) == "table", "Position must be a table")
+	return {
+		x = pos.x,
+		y = pos.y,
+		z = pos.z,
+	}
+end
+
+local function offset_pos(origin, x, y, z)
+	return {
+		x = origin.x + x,
+		y = origin.y + y,
+		z = origin.z + z,
+	}
+end
+
+local function positive_int(value, fallback)
+	value = value or fallback
+	assert(type(value) == "number" and value >= 1, "Build dimensions must be positive numbers")
+	return math.floor(value)
+end
+
+local function clamp_count(value)
+	return math.max(1, math.min(value, settings.max_nodes_per_task))
+end
+
+local function add_placement(placements, pos, node_name)
+	placements[#placements + 1] = {
+		pos = copy_pos(pos),
+		node_name = node_name,
+	}
+end
+
+local function light_placements(origin, options)
+	local placements = {}
+	local count = clamp_count(positive_int(options.count, 1))
+	for index = 0, count - 1 do
+		add_placement(placements, offset_pos(origin, index, 1, 0), settings.light_node)
+	end
+	return placements
+end
+
+local function marker_placements(origin)
+	local placements = {}
+	add_placement(placements, origin, settings.marker_node)
+	return placements
+end
+
+local function platform_placements(origin, options)
+	local placements = {}
+	local width = positive_int(options.width, 2)
+	local depth = positive_int(options.depth, 2)
+	while width * depth > settings.max_nodes_per_task do
+		if depth >= width and depth > 1 then
+			depth = depth - 1
+		elseif width > 1 then
+			width = width - 1
+		else
+			break
+		end
+	end
+	for x = 0, width - 1 do
+		for z = 0, depth - 1 do
+			add_placement(placements, offset_pos(origin, x, 0, z), settings.platform_node)
+		end
+	end
+	return placements
+end
+
+local function path_placements(origin, options)
+	local placements = {}
+	local length = clamp_count(positive_int(options.length, 3))
+	local direction = options.direction or { x = 1, y = 0, z = 0 }
+	local dx = direction.x or 0
+	local dz = direction.z or 0
+	if dx == 0 and dz == 0 then
+		dx = 1
+	end
+	dx = dx == 0 and 0 or (dx > 0 and 1 or -1)
+	dz = dz == 0 and 0 or (dz > 0 and 1 or -1)
+	for index = 0, length - 1 do
+		add_placement(placements, offset_pos(origin, dx * index, 0, dz * index), settings.path_node)
+	end
+	return placements
+end
+
+local placement_builders = {
+	lights = light_placements,
+	marker = marker_placements,
+	platform = platform_placements,
+	path = path_placements,
+}
+
+function build_agent.configure(options)
+	options = options or {}
+	for _, field in ipairs({ "light_node", "marker_node", "platform_node", "path_node" }) do
+		if options[field] then
+			assert(type(options[field]) == "string" and options[field] ~= "",
+				"Build node names must be non-empty strings")
+			settings[field] = options[field]
+		end
+	end
+	if options.max_nodes_per_task then
+		settings.max_nodes_per_task = positive_int(options.max_nodes_per_task, settings.max_nodes_per_task)
+	end
+	if options.sample_limit then
+		settings.sample_limit = positive_int(options.sample_limit, settings.sample_limit)
+	end
+end
+
+function build_agent.define_task(options)
+	assert(type(options) == "table", "Build task options must be a table")
+	assert(type(options.kind) == "string" and placement_builders[options.kind],
+		"Build task kind must be one of lights, marker, platform, or path")
+	assert(type(options.task_id) == "string" and options.task_id ~= "", "Build task id is required")
+	assert(type(options.agent_id) == "string" and options.agent_id ~= "", "Build agent id is required")
+	assert(type(options.owner) == "string" and options.owner ~= "", "Build owner is required")
+	local origin = copy_pos(options.origin)
+	local placements = placement_builders[options.kind](origin, options)
+	local placement_count = #placements
+	local max_node_writes = options.max_node_writes_per_step or placement_count
+
+	return {
+		task_id = options.task_id,
+		agent_id = options.agent_id,
+		owner = options.owner,
+		label = "build " .. options.kind,
+		required_capabilities = {
+			["world.place"] = true,
+		},
+		mutation_class = "build",
+		metadata = {
+			kind = options.kind,
+			placement_count = placement_count,
+		},
+		budget = {
+			max_steps_per_step = 1,
+			max_node_writes_per_step = max_node_writes,
+		},
+		steps = {
+			function(ctx)
+				return core.ai_world_ops.batch_place(placements, {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+					get_node = options.get_node,
+					set_node = options.set_node,
+					max_changes = placement_count,
+					sample_limit = options.sample_limit or settings.sample_limit,
+				})
+			end,
+		},
+	}
+end
