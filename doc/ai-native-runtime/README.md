@@ -26,5 +26,6 @@ The fork should not absorb private-server content, showcase builds, copied propr
 
 - [MVP spec](mvp-spec.md)
 - [Agent identity and capability API](agent-api.md)
+- [Agent task queue API](task-queue-api.md)
 - [Benchmark plan](benchmark-plan.md)
 - [Baseline status](baseline-status.md)
