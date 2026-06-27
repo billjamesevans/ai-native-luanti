@@ -34,6 +34,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Repair agent plugin](repair-agent-plugin.md)
 - [Build agent plugin](build-agent-plugin.md)
 - [Rollback metadata](rollback-metadata.md)
+- [Demo entity and vehicle provenance](demo-entity-vehicle-provenance.md)
 - [Compatibility import dry-run reports](compatibility-import-dry-run.md)
 - [Compatibility apply phase](compatibility-apply-phase.md)
 - [Benchmark plan](benchmark-plan.md)
