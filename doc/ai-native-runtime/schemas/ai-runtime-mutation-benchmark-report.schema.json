@@ -1,0 +1,320 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billjamesevans/ai-native-luanti/doc/ai-native-runtime/schemas/ai-runtime-mutation-benchmark-report.schema.json",
+  "title": "AI-Native Luanti Mutation Benchmark Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "luanti_commit",
+    "hardware_class",
+    "run_context",
+    "scenarios",
+    "regression_gates"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "luanti_commit": {
+      "type": "string",
+      "minLength": 1
+    },
+    "hardware_class": {
+      "enum": [
+        "local-mac",
+        "low-power-server"
+      ]
+    },
+    "run_context": {
+      "$ref": "#/$defs/run_context"
+    },
+    "scenarios": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/scenario"
+      }
+    },
+    "regression_gates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/regression_gate"
+      }
+    }
+  },
+  "$defs": {
+    "run_context": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode",
+        "requires_private_world",
+        "requires_private_assets",
+        "requires_live_pi"
+      ],
+      "properties": {
+        "mode": {
+          "enum": [
+            "planned",
+            "sample-synthetic",
+            "measured"
+          ]
+        },
+        "requires_private_world": {
+          "type": "boolean"
+        },
+        "requires_private_assets": {
+          "type": "boolean"
+        },
+        "requires_live_pi": {
+          "type": "boolean"
+        }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "scenario_id",
+        "category",
+        "description",
+        "entry_point",
+        "fixture",
+        "metrics"
+      ],
+      "properties": {
+        "scenario_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "enum": [
+            "build",
+            "repair_scan",
+            "repair_mutation",
+            "rollback"
+          ]
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "entry_point": {
+          "$ref": "#/$defs/entry_point"
+        },
+        "fixture": {
+          "$ref": "#/$defs/fixture"
+        },
+        "metrics": {
+          "$ref": "#/$defs/metrics"
+        }
+      }
+    },
+    "entry_point": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "command",
+        "runtime_path",
+        "server_action"
+      ],
+      "properties": {
+        "command": {
+          "type": "string",
+          "minLength": 1
+        },
+        "runtime_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "server_action": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "synthetic",
+        "requires_live_world",
+        "requires_private_assets",
+        "node_count",
+        "world_ref"
+      ],
+      "properties": {
+        "synthetic": {
+          "const": true
+        },
+        "requires_live_world": {
+          "const": false
+        },
+        "requires_private_assets": {
+          "const": false
+        },
+        "node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "world_ref": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "avg_step_ms",
+        "p95_step_ms",
+        "max_lag_ms",
+        "node_writes_per_step",
+        "skipped_positions",
+        "rollback_records",
+        "ai_runtime_counters",
+        "warnings",
+        "errors"
+      ],
+      "properties": {
+        "avg_step_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "p95_step_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "max_lag_ms": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "node_writes_per_step": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "skipped_positions": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rollback_records": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "ai_runtime_counters": {
+          "$ref": "#/$defs/ai_runtime_counters"
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ai_runtime_counters": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "queued_tasks",
+        "completed_tasks",
+        "blocked_tasks",
+        "rollback_write_attempts",
+        "rollback_write_failures"
+      ],
+      "properties": {
+        "queued_tasks": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "completed_tasks": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "blocked_tasks": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rollback_write_attempts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "rollback_write_failures": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        }
+      }
+    },
+    "regression_gate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "condition",
+        "merge_rule"
+      ],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "condition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "merge_rule": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    }
+  }
+}
