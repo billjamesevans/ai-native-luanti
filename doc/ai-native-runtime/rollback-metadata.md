@@ -55,7 +55,7 @@ Required fields:
 - `mutation_class`: `repair`, `build`, or `compat_import`
 - `positions`: changed positions planned for the next mutation batch
 - `get_node`: optional injected node reader; defaults to Luanti node APIs
-- `persist_record(record)`: callback that must persist the record and return a storage reference or `{ ok = true, storage_ref = "..." }`
+- `persist_record(record)`: optional callback that persists the record and returns a storage reference or `{ ok = true, storage_ref = "..." }`
 
 Optional fields:
 
@@ -63,6 +63,46 @@ Optional fields:
 - `bounds`; when omitted, bounds are derived from `positions`
 - `chunk`
 - `created_at`
+
+## Default Storage Adapter
+
+Issue #54 adds `core.ai_rollback_storage.configure(options)` as the default storage adapter path for repair and build mutations that do not pass `persist_record`.
+
+When enabled without an injected adapter, the default storage adapter writes one JSON rollback record per file under the world path using names like:
+
+- `ai_rollback_<record_id>.json`
+
+The filename uses a sanitized record id segment so punctuation that is unsafe on some filesystems is replaced with `_`; the record body and storage reference keep the original `record_id`.
+
+The stable storage reference is:
+
+- `rollback://world/<record_id>`
+
+Tests and alternate hosts may inject an adapter:
+
+```lua
+core.ai_rollback_storage.configure({
+	enabled = true,
+	persist_record = function(record)
+		return {
+			ok = true,
+			storage_ref = "rollback://store/" .. record.record_id,
+		}
+	end,
+	inspect_record = function(storage_ref)
+		return nil
+	end,
+	prune_records = function(options)
+		return 0
+	end,
+})
+```
+
+`core.ai_rollback_storage.inspect(storage_ref)` returns a stored record when the configured adapter supports inspection. Operators can inspect default world-path records by opening the matching `ai_rollback_<record_id>.json` file in the world path.
+
+`core.ai_rollback_storage.prune(options)` calls the configured adapter's prune hook and returns `{ removed = N }`. Default world-path pruning is intentionally manual in this slice: operators should archive or delete reviewed `ai_rollback_*.json` files only after they no longer need rollback evidence.
+
+If no per-call callback or enabled default storage adapter can persist a record, mutation still fails closed with `rollback_metadata_unavailable` before node writes.
 
 The helper captures `previous_nodes` before persistence and returns an action result:
 
