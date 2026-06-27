@@ -19,6 +19,7 @@ local measured reports stay outside commits under:
 
 - `local/benchmarks/local-mac/<YYYY-MM-DD>/<commit>/`
 - `local/benchmarks/low-power-server/<YYYY-MM-DD>/<commit>/`
+- `local/benchmarks/<hardware-class>/<date>/<commit>/`
 
 Measured reports may include machine timing, branch labels, and local run metadata. They must not include private worlds, media, local paths, secrets, provider prompts, player-private data, private coordinates, or live server operational state.
 
@@ -32,6 +33,29 @@ Accepted local baselines should be retained with:
 - a short operator note when a regression exception is accepted
 
 ## Running Comparisons
+
+Default local capture uses `util/ai_native_benchmark_capture.py`:
+
+```sh
+python3 util/ai_native_benchmark_capture.py \
+  --hardware-class local-mac \
+  --luanti-commit "$(git rev-parse --short HEAD)"
+```
+
+The default runner path requires no live server and writes ignored local files under `local/benchmarks/<hardware-class>/<date>/<commit>/`:
+
+- `mutation-benchmark-report.json`
+- `generic-demo-entity-benchmark-report.json`
+- `benchmark-capture-manifest.json`
+
+When a same-hardware baseline is available, pass it into the capture runner so it writes comparison files next to the branch reports:
+
+```sh
+python3 util/ai_native_benchmark_capture.py \
+  --hardware-class local-mac \
+  --mutation-baseline local/benchmarks/local-mac/accepted/mutation-benchmark-report.json \
+  --demo-entity-baseline local/benchmarks/local-mac/accepted/generic-demo-entity-benchmark-report.json
+```
 
 Mutation benchmark reports and generic demo entity benchmark reports both use `scenarios[*].metrics`, so they can use the same comparator:
 
