@@ -967,6 +967,175 @@ assert(completed_repair_plan.last_result.operation == "repair_agent.plan_area")
 assert(completed_repair_plan.last_result.changed == 0)
 assert(repair_plan_writes == 0)
 
+local repair_apply_center = test_pos(4265)
+local repair_apply_left = vector.add(repair_apply_center, { x = -1, y = 0, z = 0 })
+set_test_node(repair_apply_left, { name = "ai_runtime_test:hazard" })
+set_test_node(repair_apply_center, { name = "ai_runtime_test:hazard" })
+local repair_apply_writes = 0
+local function counting_repair_set_node(pos, node)
+	repair_apply_writes = repair_apply_writes + 1
+	return set_test_node(pos, node)
+end
+
+local repair_apply_plan = core.repair_agent.plan_area(repair_apply_center, {
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	task_id = "repair-apply:plan",
+	radius = 1,
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	sample_limit = 16,
+})
+assert(repair_apply_plan.ok == true)
+assert(#repair_apply_plan.candidates == 2)
+assert(repair_apply_writes == 0)
+
+local repair_apply_disabled = core.repair_agent.apply_plan(repair_apply_plan, {
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	task_id = "repair-apply:disabled",
+	world_id = "test-world",
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	allow_hazards = true,
+})
+assert(repair_apply_disabled.ok == false)
+assert(repair_apply_disabled.status == "blocked")
+assert(repair_apply_disabled.reason == "repair_mutation_not_enabled")
+assert(repair_apply_disabled.changed == 0)
+assert(repair_apply_writes == 0)
+
+local repair_apply_no_rollback = core.repair_agent.apply_plan(repair_apply_plan, {
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	task_id = "repair-apply:no-rollback",
+	world_id = "test-world",
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	allow_mutation = true,
+	allow_hazards = true,
+	max_node_writes = 1,
+})
+assert(repair_apply_no_rollback.ok == false)
+assert(repair_apply_no_rollback.status == "blocked")
+assert(repair_apply_no_rollback.reason == "rollback_metadata_unavailable")
+assert(repair_apply_no_rollback.changed == 0)
+assert(repair_apply_writes == 0)
+
+local persisted_repair_records = {}
+local repair_apply_result = core.repair_agent.apply_plan(repair_apply_plan, {
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	task_id = "repair-apply:success",
+	world_id = "test-world",
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	allow_mutation = true,
+	allow_hazards = true,
+	max_node_writes = 1,
+	persist_record = function(record)
+		persisted_repair_records[#persisted_repair_records + 1] = record
+		return "repair-store:" .. record.record_id
+	end,
+})
+assert(repair_apply_result.ok == true)
+assert(repair_apply_result.status == "partial")
+assert(repair_apply_result.operation == "repair_agent.apply_plan")
+assert(repair_apply_result.changed == 1)
+assert(repair_apply_result.skipped == 1)
+assert(repair_apply_result.reason == "repair_operations_skipped")
+assert(repair_apply_result.rollback_record_id ~= nil)
+assert(repair_apply_result.rollback_storage_ref ~= nil)
+assert(repair_apply_result.metrics.node_writes == 1)
+assert(repair_apply_result.metrics.candidate_count == 2)
+assert(repair_apply_result.metrics.rollback_records == 1)
+assert(#persisted_repair_records == 1)
+assert(#persisted_repair_records[1].changed_positions == 1)
+assert(repair_apply_writes == 1)
+
+local repaired_count = 0
+for _, pos in ipairs({ repair_apply_left, repair_apply_center }) do
+	if get_test_node(pos).name == "air" then
+		repaired_count = repaired_count + 1
+	end
+end
+assert(repaired_count == 1)
+
+local repair_protected_pos = test_pos(4268)
+set_test_node(repair_protected_pos, { name = "ai_runtime_test:hazard" })
+old_is_protected = core.is_protected
+core.is_protected = function(pos, name)
+	return name == plugin_agent.owner and pos.x == repair_protected_pos.x
+end
+local protected_repair_apply = core.repair_agent.apply_plan({
+	agent_id = plugin_agent.agent_id,
+	task_id = "repair-apply:protected-plan",
+	candidates = {
+		{
+			pos = repair_protected_pos,
+			node_name = "ai_runtime_test:hazard",
+			planned_action = "remove_node",
+			replacement = "air",
+			family = "hazard",
+		},
+	},
+}, {
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	task_id = "repair-apply:protected",
+	world_id = "test-world",
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	allow_mutation = true,
+	allow_hazards = true,
+	persist_record = function(record)
+		return "repair-store:" .. record.record_id
+	end,
+})
+assert(protected_repair_apply.ok == false)
+assert(protected_repair_apply.status == "blocked")
+assert(protected_repair_apply.changed == 0)
+assert(protected_repair_apply.skipped == 1)
+assert(protected_repair_apply.reason == "all_repair_operations_skipped")
+assert(get_test_node(repair_protected_pos).name == "ai_runtime_test:hazard")
+core.is_protected = old_is_protected
+
+local queued_apply_pos = test_pos(4269)
+set_test_node(queued_apply_pos, { name = "ai_runtime_test:hazard" })
+local queued_repair_apply = core.repair_agent.queue_apply_task({
+	task_id = "repair-apply:queued",
+	agent_id = plugin_agent.agent_id,
+	owner = plugin_agent.owner,
+	world_id = "test-world",
+	plan = {
+		candidates = {
+			{
+				pos = queued_apply_pos,
+				node_name = "ai_runtime_test:hazard",
+				planned_action = "remove_node",
+				replacement = "air",
+				family = "hazard",
+			},
+		},
+	},
+	get_node = get_test_node,
+	set_node = counting_repair_set_node,
+	allow_mutation = true,
+	allow_hazards = true,
+	max_node_writes_per_step = 1,
+	persist_record = function(record)
+		return "repair-store:" .. record.record_id
+	end,
+})
+assert(queued_repair_apply.status == "queued")
+core.step_ai_tasks()
+local completed_repair_apply = core.get_ai_task("repair-apply:queued")
+assert(completed_repair_apply.status == "completed")
+assert(completed_repair_apply.last_result.operation == "repair_agent.apply_plan")
+assert(completed_repair_apply.last_result.changed == 1)
+assert(completed_repair_apply.last_result.rollback_record_id ~= nil)
+assert(get_test_node(queued_apply_pos).name == "air")
+
 assert(core.build_agent ~= nil)
 core.build_agent.configure({
 	light_node = "ai_runtime_test:stone",
