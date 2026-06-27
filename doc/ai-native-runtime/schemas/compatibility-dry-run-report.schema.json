@@ -1,0 +1,385 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billjamesevans/ai-native-luanti/doc/ai-native-runtime/schemas/compatibility-dry-run-report.schema.json",
+  "title": "AI-Native Luanti Compatibility Import Dry-Run Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "report_version",
+    "mode",
+    "generated_at",
+    "source",
+    "summary",
+    "sections",
+    "unsupported_features",
+    "planned_actions",
+    "safety"
+  ],
+  "properties": {
+    "report_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "mode": {
+      "const": "dry_run"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_id",
+        "source_class",
+        "path_policy",
+        "license_status"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_class": {
+          "enum": [
+            "java_resource_pack",
+            "bedrock_resource_pack",
+            "bedrock_behavior_pack",
+            "structure",
+            "world",
+            "unknown"
+          ]
+        },
+        "path_policy": {
+          "enum": [
+            "external_reference",
+            "redacted",
+            "synthetic_fixture"
+          ]
+        },
+        "license_status": {
+          "enum": [
+            "user_supplied",
+            "synthetic",
+            "unknown",
+            "blocked"
+          ]
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "integer",
+              "boolean",
+              "null"
+            ]
+          }
+        },
+        "content_hashes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/content_hash"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "risk_level",
+        "items_total",
+        "supported",
+        "partial",
+        "unsupported",
+        "skipped",
+        "unknown",
+        "estimated_world_mutations"
+      ],
+      "properties": {
+        "risk_level": {
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "items_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "supported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsupported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unknown": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "estimated_world_mutations": {
+          "$ref": "#/$defs/mutation_cost"
+        }
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/report_section"
+      }
+    },
+    "unsupported_features": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/unsupported_feature"
+      }
+    },
+    "planned_actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/planned_action"
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "no_assets_copied",
+        "no_world_mutation",
+        "source_paths_redacted",
+        "user_rights_required"
+      ],
+      "properties": {
+        "no_assets_copied": {
+          "const": true
+        },
+        "no_world_mutation": {
+          "const": true
+        },
+        "source_paths_redacted": {
+          "const": true
+        },
+        "user_rights_required": {
+          "const": true
+        },
+        "notes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "compat_status": {
+      "enum": [
+        "supported",
+        "partial",
+        "unsupported",
+        "skipped",
+        "unknown"
+      ]
+    },
+    "content_hash": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "algorithm",
+        "value",
+        "purpose"
+      ],
+      "properties": {
+        "algorithm": {
+          "enum": [
+            "sha256"
+          ]
+        },
+        "value": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "mutation_cost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "node_writes",
+        "media_files",
+        "entity_definitions",
+        "manual_review_items"
+      ],
+      "properties": {
+        "node_writes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "media_files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "entity_definitions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "manual_review_items": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "report_section": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "items_total",
+        "status",
+        "message"
+      ],
+      "properties": {
+        "name": {
+          "enum": [
+            "metadata",
+            "textures",
+            "sounds",
+            "models",
+            "entities",
+            "behaviors",
+            "structures",
+            "world"
+          ]
+        },
+        "items_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "$ref": "#/$defs/compat_status"
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "counts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "unsupported_feature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "feature",
+        "status",
+        "reason",
+        "severity",
+        "message",
+        "recommendation"
+      ],
+      "properties": {
+        "feature": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_path": {
+          "type": "string"
+        },
+        "status": {
+          "$ref": "#/$defs/compat_status"
+        },
+        "reason": {
+          "enum": [
+            "protected_asset_policy",
+            "missing_mapping",
+            "unsupported_format",
+            "behavior_script_not_supported",
+            "entity_ai_not_supported",
+            "world_format_not_supported",
+            "requires_manual_review",
+            "too_large_for_budget"
+          ]
+        },
+        "severity": {
+          "enum": [
+            "info",
+            "warning",
+            "error"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "minLength": 1
+        },
+        "recommendation": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "planned_action": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "action",
+        "status",
+        "description",
+        "mutation_cost"
+      ],
+      "properties": {
+        "action": {
+          "enum": [
+            "copy_asset_reference",
+            "map_texture",
+            "map_sound",
+            "register_node_alias",
+            "register_entity_stub",
+            "import_structure",
+            "skip_feature"
+          ]
+        },
+        "status": {
+          "$ref": "#/$defs/compat_status"
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "mutation_cost": {
+          "$ref": "#/$defs/mutation_cost"
+        }
+      }
+    }
+  }
+}
