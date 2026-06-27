@@ -1,4 +1,5 @@
 set(BUILTIN_GAME_SRCS
+	game/ai_runtime.lua
 	game/async.lua
 	game/auth.lua
 	game/chat.lua
