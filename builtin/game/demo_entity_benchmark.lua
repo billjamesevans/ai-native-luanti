@@ -6,6 +6,8 @@ local FIXTURE_ID = "generic_demo_entity:benchmark:v1"
 local DEFAULT_OWNER_REF = "owner:synthetic-operator"
 local DEFAULT_ENTITY_COUNT = 4
 local DEFAULT_MOVEMENT_STEPS = 5
+local MAX_COMMAND_ENTITY_COUNT = 64
+local MAX_COMMAND_MOVEMENT_STEPS = 200
 
 if not core.registered_entities[ENTITY_NAME] then
 	core.register_entity(":" .. ENTITY_NAME, {
@@ -282,3 +284,173 @@ function benchmark.run_suite(options)
 		scenarios = scenarios,
 	}
 end
+
+local function runtime_counters()
+	local metrics = core.get_ai_runtime_metrics()
+	return {
+		active_tasks = metrics.active_tasks or 0,
+		queue_length = metrics.queue_length or 0,
+		audit_records = metrics.audit_records or 0,
+		task_steps_run = metrics.task_steps_run or 0,
+		entities_by_type = table.copy(metrics.entities_by_type or {}),
+	}
+end
+
+local function normalize_hardware_class(value)
+	value = value or "local-mac"
+	assert(value == "local-mac" or value == "low-power-server",
+		"hardware_class must be local-mac or low-power-server")
+	return value
+end
+
+function benchmark.run_report(options)
+	options = options or {}
+	local report = benchmark.run_suite(options)
+	report.generated_at = core.get_us_time and tostring(core.get_us_time()) or "0"
+	report.luanti_commit = options.luanti_commit or "unknown"
+	report.hardware_class = normalize_hardware_class(options.hardware_class)
+	report.run_context = {
+		mode = "measured",
+		requires_private_world = false,
+		requires_private_assets = false,
+		requires_live_pi = false,
+	}
+	report.runtime_counters = runtime_counters()
+	return report
+end
+
+local function is_array(value)
+	local count = 0
+	for key in pairs(value) do
+		if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+			return false
+		end
+		count = math.max(count, key)
+	end
+	for index = 1, count do
+		if value[index] == nil then
+			return false
+		end
+	end
+	return true, count
+end
+
+local function json_escape(value)
+	value = value:gsub("\\", "\\\\")
+	value = value:gsub("\"", "\\\"")
+	value = value:gsub("\n", "\\n")
+	value = value:gsub("\r", "\\r")
+	value = value:gsub("\t", "\\t")
+	return value
+end
+
+local encode_json
+
+local function encode_json_object(value)
+	local keys = {}
+	for key in pairs(value) do
+		keys[#keys + 1] = tostring(key)
+	end
+	table.sort(keys)
+	local parts = {}
+	for _, key in ipairs(keys) do
+		parts[#parts + 1] = "\"" .. json_escape(key) .. "\":" .. encode_json(value[key])
+	end
+	return "{" .. table.concat(parts, ",") .. "}"
+end
+
+local function encode_json_array(value, count)
+	local parts = {}
+	for index = 1, count do
+		parts[index] = encode_json(value[index])
+	end
+	return "[" .. table.concat(parts, ",") .. "]"
+end
+
+encode_json = function(value)
+	local value_type = type(value)
+	if value_type == "string" then
+		return "\"" .. json_escape(value) .. "\""
+	elseif value_type == "number" then
+		return tostring(value)
+	elseif value_type == "boolean" then
+		return value and "true" or "false"
+	elseif value_type == "nil" then
+		return "null"
+	elseif value_type == "table" then
+		local array, count = is_array(value)
+		if array then
+			return encode_json_array(value, count)
+		end
+		return encode_json_object(value)
+	end
+	error("Cannot JSON encode value of type " .. value_type)
+end
+
+function benchmark.encode_report(report)
+	return encode_json(report)
+end
+
+local function parse_positive_command_int(value, field, default, maximum)
+	if value == nil then
+		return default
+	end
+	local number = tonumber(value)
+	if not number or number < 1 then
+		return nil, field .. " must be a positive integer"
+	end
+	number = math.floor(number)
+	if number > maximum then
+		return nil, field .. " exceeds maximum " .. maximum
+	end
+	return number
+end
+
+local function parse_command_options(param)
+	local raw = {}
+	for token in string.gmatch(param or "", "%S+") do
+		local key, value = token:match("^([^=]+)=(.+)$")
+		if not key then
+			return nil, "Use key=value parameters."
+		end
+		raw[key] = value
+	end
+
+	local entity_count, count_error = parse_positive_command_int(raw.count,
+		"count", DEFAULT_ENTITY_COUNT, MAX_COMMAND_ENTITY_COUNT)
+	if not entity_count then
+		return nil, count_error
+	end
+	local movement_steps, steps_error = parse_positive_command_int(raw.steps,
+		"steps", DEFAULT_MOVEMENT_STEPS, MAX_COMMAND_MOVEMENT_STEPS)
+	if not movement_steps then
+		return nil, steps_error
+	end
+
+	local hardware_class = raw.hardware or raw.hardware_class or "local-mac"
+	if hardware_class ~= "local-mac" and hardware_class ~= "low-power-server" then
+		return nil, "hardware must be local-mac or low-power-server"
+	end
+
+	return {
+		entity_count = entity_count,
+		movement_steps = movement_steps,
+		luanti_commit = raw.commit or raw.luanti_commit or "unknown",
+		hardware_class = hardware_class,
+		owner_ref = raw.owner_ref or DEFAULT_OWNER_REF,
+	}
+end
+
+core.register_chatcommand("ai_demo_entity_benchmark", {
+	params = "[count=N] [steps=N] [commit=LABEL] [hardware=local-mac|low-power-server]",
+	description = "Run the AI demo entity benchmark and return a JSON report.",
+	privs = { server = true },
+	func = function(_, param)
+		local options, err = parse_command_options(param)
+		if not options then
+			return false, err
+		end
+		local report = benchmark.run_report(options)
+		return true, benchmark.encode_report(report)
+	end,
+})

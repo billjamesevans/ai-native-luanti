@@ -1,6 +1,6 @@
 # Generic Demo Entity Benchmark
 
-Status: code-only fixture for issue #46
+Status: code-only fixture for issues #46 and #52
 
 ## Purpose
 
@@ -25,6 +25,17 @@ Runtime helpers:
 - `core.demo_entity_benchmark.get_fixture()`
 - `core.demo_entity_benchmark.run_scenario(scenario_id, options)`
 - `core.demo_entity_benchmark.run_suite(options)`
+- `core.demo_entity_benchmark.run_report(options)`
+
+Operator command:
+
+```sh
+/ai_demo_entity_benchmark count=4 steps=5 commit=local-build hardware=local-mac
+```
+
+The command returns a compact machine-readable JSON report. The report includes `hardware_class`, `luanti_commit`, `run_context`, `runtime_counters`, and the four scenario results.
+
+Use `hardware=local-mac` for local workstation checks. Use `hardware=low-power-server` only after the benchmark is safe locally and the target server is backed up.
 
 ## Scenarios
 
