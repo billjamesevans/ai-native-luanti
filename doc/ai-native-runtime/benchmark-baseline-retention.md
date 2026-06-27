@@ -57,6 +57,27 @@ python3 util/ai_native_benchmark_capture.py \
   --demo-entity-baseline local/benchmarks/local-mac/accepted/generic-demo-entity-benchmark-report.json
 ```
 
+## Promoting Accepted Baselines
+
+After a reviewed clean capture is accepted, promote it into the local-only accepted lane with `util/ai_native_benchmark_promote.py`:
+
+```sh
+python3 util/ai_native_benchmark_promote.py \
+  --capture-dir local/benchmarks/local-mac/2026-06-27/5cd0e627c \
+  --output-root local/benchmarks \
+  --source-label reviewed-clean
+```
+
+The promotion command writes local ignored files under `local/benchmarks/<hardware-class>/accepted/`:
+
+- `mutation-benchmark-report.json`
+- `generic-demo-entity-benchmark-report.json`
+- `accepted-baseline-manifest.json`
+
+The `accepted-baseline-manifest.json` stores only the commit label, hardware class, source capture label, generated timestamp, and report filenames. It must not contain absolute local paths, private worlds, media, secrets, provider prompts, player-private data, or live server state.
+
+You must not promote a capture when either report has `warnings`, `errors`, `requires_private_world`, `requires_private_assets`, `requires_live_pi`, or a mismatched hardware class. Low-power-server captures remain backup-first and should not be promoted unless the same backup-first review has been completed for the source capture.
+
 Mutation benchmark reports and generic demo entity benchmark reports both use `scenarios[*].metrics`, so they can use the same comparator:
 
 ```sh

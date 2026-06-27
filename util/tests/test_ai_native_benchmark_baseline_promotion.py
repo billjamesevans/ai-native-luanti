@@ -1,0 +1,189 @@
+import json
+import pathlib
+import re
+import subprocess
+import sys
+import tempfile
+import unittest
+
+
+ROOT = pathlib.Path(__file__).resolve().parents[2]
+CAPTURE_CLI = ROOT / "util" / "ai_native_benchmark_capture.py"
+PROMOTE_CLI = ROOT / "util" / "ai_native_benchmark_promote.py"
+DOC = ROOT / "doc" / "ai-native-runtime" / "benchmark-baseline-retention.md"
+
+PRIVATE_PATTERNS = re.compile(
+    r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
+    r"sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload",
+    re.I,
+)
+
+
+class BenchmarkBaselinePromotionTests(unittest.TestCase):
+    def capture(self, output_root, commit="test-commit"):
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(CAPTURE_CLI),
+                "--output-root",
+                str(output_root),
+                "--hardware-class",
+                "local-mac",
+                "--date",
+                "2026-06-27",
+                "--luanti-commit",
+                commit,
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        return output_root / "local-mac" / "2026-06-27" / commit
+
+    def promote(self, capture_dir, output_root, check=True):
+        self.assertTrue(PROMOTE_CLI.is_file(), f"missing {PROMOTE_CLI}")
+        completed = subprocess.run(
+            [
+                sys.executable,
+                str(PROMOTE_CLI),
+                "--capture-dir",
+                str(capture_dir),
+                "--output-root",
+                str(output_root),
+                "--source-label",
+                "reviewed-clean",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if check:
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+        return completed
+
+    def test_promotes_clean_capture_to_ignored_accepted_baseline(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root)
+
+            self.promote(capture_dir, output_root)
+
+            accepted_dir = output_root / "local-mac" / "accepted"
+            manifest_path = accepted_dir / "accepted-baseline-manifest.json"
+            self.assertTrue(manifest_path.is_file())
+            self.assertTrue((accepted_dir / "mutation-benchmark-report.json").is_file())
+            self.assertTrue((accepted_dir / "generic-demo-entity-benchmark-report.json").is_file())
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["schema_version"], 1)
+            self.assertEqual(manifest["hardware_class"], "local-mac")
+            self.assertEqual(manifest["luanti_commit"], "test-commit")
+            self.assertEqual(manifest["source_label"], "reviewed-clean")
+            self.assertEqual(
+                manifest["source_capture"],
+                "local/benchmarks/local-mac/2026-06-27/test-commit",
+            )
+            self.assertEqual(
+                manifest["reports"]["mutation"],
+                "mutation-benchmark-report.json",
+            )
+            self.assertEqual(
+                manifest["reports"]["demo_entity"],
+                "generic-demo-entity-benchmark-report.json",
+            )
+
+            serialized = json.dumps(manifest, sort_keys=True)
+            self.assertNotIn(str(output_root), serialized)
+            self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+        ignored = subprocess.run(
+            [
+                "git",
+                "check-ignore",
+                "-q",
+                "local/benchmarks/local-mac/accepted/accepted-baseline-manifest.json",
+            ],
+            cwd=ROOT,
+            check=False,
+        )
+        self.assertEqual(ignored.returncode, 0)
+
+    def test_promoted_baseline_can_drive_future_capture_comparison(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root, commit="baseline-commit")
+            self.promote(capture_dir, output_root)
+
+            accepted_dir = output_root / "local-mac" / "accepted"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(CAPTURE_CLI),
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "branch-commit",
+                    "--mutation-baseline",
+                    str(accepted_dir / "mutation-benchmark-report.json"),
+                    "--demo-entity-baseline",
+                    str(accepted_dir / "generic-demo-entity-benchmark-report.json"),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            branch_dir = output_root / "local-mac" / "2026-06-28" / "branch-commit"
+            branch_manifest = json.loads(
+                (branch_dir / "benchmark-capture-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(branch_manifest["comparison_statuses"]["mutation"], "pass")
+            self.assertEqual(branch_manifest["comparison_statuses"]["demo_entity"], "pass")
+
+    def test_refuses_private_or_warning_reports(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root)
+            mutation_report = capture_dir / "mutation-benchmark-report.json"
+            payload = json.loads(mutation_report.read_text(encoding="utf-8"))
+            payload["run_context"]["requires_private_world"] = True
+            payload["scenarios"][0]["metrics"]["warnings"] = ["review this before accepting"]
+            mutation_report.write_text(json.dumps(payload), encoding="utf-8")
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("requires_private_world", completed.stderr)
+            self.assertIn("warnings", completed.stderr)
+            self.assertFalse((output_root / "local-mac" / "accepted").exists())
+
+    def test_docs_explain_promotion_loop(self):
+        body = DOC.read_text(encoding="utf-8")
+        for phrase in (
+            "util/ai_native_benchmark_promote.py",
+            "accepted-baseline-manifest.json",
+            "local/benchmarks/<hardware-class>/accepted/",
+            "reviewed clean capture",
+            "same-hardware baseline",
+            "must not promote",
+            "warnings",
+            "errors",
+            "requires_private_world",
+            "requires_live_pi",
+            "backup-first",
+        ):
+            self.assertIn(phrase, body)
+        self.assertNotRegex(body, PRIVATE_PATTERNS)
+
+
+if __name__ == "__main__":
+    unittest.main()
