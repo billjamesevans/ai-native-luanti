@@ -1,7 +1,25 @@
 {
   "schema_version": 1,
+  "generated_at": "0",
   "fixture_id": "generic_demo_entity:benchmark:v1",
   "entity_name": "ai_demo_benchmark:helper",
+  "luanti_commit": "example-commit",
+  "hardware_class": "local-mac",
+  "run_context": {
+    "mode": "measured",
+    "requires_private_world": false,
+    "requires_private_assets": false,
+    "requires_live_pi": false
+  },
+  "runtime_counters": {
+    "active_tasks": 0,
+    "queue_length": 0,
+    "audit_records": 0,
+    "task_steps_run": 0,
+    "entities_by_type": {
+      "ai_demo_benchmark:helper": 0
+    }
+  },
   "provenance": {
     "source_category": "code-only",
     "assets_included": false,

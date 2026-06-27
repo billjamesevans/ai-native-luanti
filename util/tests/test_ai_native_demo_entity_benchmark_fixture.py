@@ -51,6 +51,15 @@ class DemoEntityBenchmarkFixtureTests(unittest.TestCase):
         self.assertEqual(report["schema_version"], 1)
         self.assertEqual(report["fixture_id"], "generic_demo_entity:benchmark:v1")
         self.assertEqual(report["entity_name"], "ai_demo_benchmark:helper")
+        self.assertIn(report["hardware_class"], {"local-mac", "low-power-server"})
+        self.assertIn("runtime_counters", report)
+        self.assertEqual(
+            report["runtime_counters"]["entities_by_type"]["ai_demo_benchmark:helper"],
+            0,
+        )
+        self.assertFalse(report["run_context"]["requires_private_world"])
+        self.assertFalse(report["run_context"]["requires_private_assets"])
+        self.assertFalse(report["run_context"]["requires_live_pi"])
         self.assertEqual(report["provenance"]["source_category"], "code-only")
         self.assertFalse(report["provenance"]["assets_included"])
         self.assertFalse(report["mutation"]["node_mutation_enabled"])
@@ -91,6 +100,12 @@ class DemoEntityBenchmarkFixtureTests(unittest.TestCase):
         for phrase in (
             "code-only",
             "no assets",
+            "ai_demo_entity_benchmark",
+            "machine-readable",
+            "hardware_class",
+            "runtime_counters",
+            "local-mac",
+            "low-power-server",
             "entity count",
             "movement",
             "collision",
