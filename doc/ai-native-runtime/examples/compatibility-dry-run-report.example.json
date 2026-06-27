@@ -1,0 +1,160 @@
+{
+  "report_version": 1,
+  "mode": "dry_run",
+  "generated_at": "2026-06-27T21:05:00Z",
+  "source": {
+    "source_id": "synthetic-bedrock-pack",
+    "source_class": "bedrock_resource_pack",
+    "path_policy": "synthetic_fixture",
+    "license_status": "synthetic",
+    "metadata": {
+      "manifest_format_version": "2",
+      "pack_name": "Synthetic Pack"
+    },
+    "content_hashes": [
+      {
+        "algorithm": "sha256",
+        "value": "0000000000000000000000000000000000000000000000000000000000000000",
+        "purpose": "synthetic inventory hash"
+      }
+    ]
+  },
+  "summary": {
+    "risk_level": "medium",
+    "items_total": 8,
+    "supported": 3,
+    "partial": 2,
+    "unsupported": 2,
+    "skipped": 1,
+    "unknown": 0,
+    "estimated_world_mutations": {
+      "node_writes": 0,
+      "media_files": 3,
+      "entity_definitions": 1,
+      "manual_review_items": 4
+    }
+  },
+  "sections": [
+    {
+      "name": "metadata",
+      "items_total": 1,
+      "status": "supported",
+      "message": "Pack metadata can be parsed without copying source assets.",
+      "counts": {
+        "manifests": 1
+      }
+    },
+    {
+      "name": "textures",
+      "items_total": 3,
+      "status": "partial",
+      "message": "Texture files can be referenced, but target node mappings need review.",
+      "counts": {
+        "supported": 2,
+        "manual_review": 1
+      }
+    },
+    {
+      "name": "entities",
+      "items_total": 2,
+      "status": "partial",
+      "message": "Entity descriptors can create placeholder stubs; behavior AI is not imported.",
+      "counts": {
+        "stubs": 1,
+        "unsupported_behavior": 1
+      }
+    },
+    {
+      "name": "behaviors",
+      "items_total": 2,
+      "status": "unsupported",
+      "message": "Behavior scripts are reported but not executed or translated.",
+      "counts": {
+        "scripts": 2
+      }
+    }
+  ],
+  "unsupported_features": [
+    {
+      "feature": "entity.behavior_script",
+      "source_path": "entities/example.behavior.json",
+      "status": "unsupported",
+      "reason": "behavior_script_not_supported",
+      "severity": "warning",
+      "message": "Behavior scripts are not translated in dry-run compatibility reports.",
+      "recommendation": "Create a manual Luanti entity behavior or keep the entity as a static stub."
+    },
+    {
+      "feature": "entity.ai_goal",
+      "source_path": "entities/example.entity.json",
+      "status": "unsupported",
+      "reason": "entity_ai_not_supported",
+      "severity": "warning",
+      "message": "Source entity AI goals do not have a Luanti mapping yet.",
+      "recommendation": "Map the entity to a first-party agent or a manually authored mob definition."
+    },
+    {
+      "feature": "texture.asset_payload",
+      "source_path": "textures/blocks/example.png",
+      "status": "skipped",
+      "reason": "protected_asset_policy",
+      "severity": "info",
+      "message": "The dry run references the asset but does not copy payload bytes.",
+      "recommendation": "Keep the asset in a user-owned fixture root and import only after rights are confirmed."
+    }
+  ],
+  "planned_actions": [
+    {
+      "action": "map_texture",
+      "status": "partial",
+      "description": "Map user-owned texture references to Luanti media names after manual review.",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "mutation_cost": {
+        "node_writes": 0,
+        "media_files": 3,
+        "entity_definitions": 0,
+        "manual_review_items": 1
+      }
+    },
+    {
+      "action": "register_entity_stub",
+      "status": "partial",
+      "description": "Create one placeholder entity definition without imported behavior AI.",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "mutation_cost": {
+        "node_writes": 0,
+        "media_files": 0,
+        "entity_definitions": 1,
+        "manual_review_items": 2
+      }
+    },
+    {
+      "action": "skip_feature",
+      "status": "skipped",
+      "description": "Skip behavior scripts until a manual behavior mapping exists.",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "mutation_cost": {
+        "node_writes": 0,
+        "media_files": 0,
+        "entity_definitions": 0,
+        "manual_review_items": 1
+      }
+    }
+  ],
+  "safety": {
+    "no_assets_copied": true,
+    "no_world_mutation": true,
+    "source_paths_redacted": true,
+    "user_rights_required": true,
+    "notes": [
+      "Synthetic example only; no source payloads are committed.",
+      "An apply phase would queue bounded import tasks after operator review."
+    ]
+  }
+}
