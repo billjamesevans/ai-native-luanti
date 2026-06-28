@@ -1,5 +1,22 @@
 local texture = "blank.png"
 
+core.ai_agent_plugin.configure({
+	light_node = "ai_runtime_base:cobble",
+	marker_node = "ai_runtime_base:cobble",
+	repair_nodes = {},
+	max_lights = 8,
+	max_entity_move_distance = 16,
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
+})
+
 core.register_node("ai_runtime_base:stone", {
 	description = "AI Runtime Stone",
 	tiles = {texture},

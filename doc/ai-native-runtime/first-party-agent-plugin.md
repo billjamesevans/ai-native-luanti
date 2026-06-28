@@ -57,12 +57,23 @@ core.ai_agent_plugin.configure({
 	},
 	max_lights = 12,
 	max_entity_move_distance = 16,
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
 })
 ```
 
 The defaults are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
 
 `agent_entity_name` is the registered entity type used for queued bounded entity movement. The default uses the public demo helper fixture; a game package can configure a different registered entity without changing the engine fork.
+
+`capabilities` is the first-party grant policy for newly registered player agents. Clean profiles should declare it explicitly and should not include privileged capabilities such as `admin.override`, compatibility/import grants such as `import.assets`, or other-player controls unless that server profile is intentionally operator-only.
 
 ## Model Adapter
 
