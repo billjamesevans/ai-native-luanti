@@ -69,6 +69,41 @@ That summary records the runner version, Luanti commit, hardware class, and game
 
 When a disposable client path is available, add `--headless-player-command` to the same clean-profile capture. The command is an operator-supplied template; the runner expands `{host}`, `{port}`, `{name}`, `{server_log}`, and `{duration_seconds}` for each synthetic player. The report stores only bounded evidence, not the command path: `probe_kind=headless_client_load`, attempted and connected synthetic players, completed synthetic players, client exit statuses, cleanup status, warning/error counts, sample intervals, and whether the server stayed listening.
 
+For client-capable lanes, build a local client binary with sound disabled so the probe can run with a null video driver:
+
+```sh
+cmake -S . -B build/client-probe \
+  -DBUILD_CLIENT=TRUE \
+  -DBUILD_SERVER=TRUE \
+  -DBUILD_UNITTESTS=TRUE \
+  -DRUN_IN_PLACE=TRUE \
+  -DENABLE_SOUND=FALSE
+
+cmake --build build/client-probe --target luanti --parallel "$(sysctl -n hw.logicalcpu 2>/dev/null || nproc)"
+```
+
+On low-power Linux, install client build dependencies before the same configure step:
+
+```sh
+sudo apt-get install -y \
+  libjpeg-dev libpng-dev libsdl2-dev libfreetype-dev \
+  libgl1-mesa-dev libx11-dev libxxf86vm-dev libxi-dev
+```
+
+Use a temporary null-video client config for the command:
+
+```sh
+tmpconf="$(mktemp /tmp/ai-native-headless-client.XXXXXX)"
+printf '%s\n' \
+  'video_driver = null' \
+  'enable_minimap = false' \
+  'enable_post_processing = false' \
+  'enable_client_modding = false' \
+  'viewing_range = 10' \
+  'mute_sound = true' \
+  > "$tmpconf"
+```
+
 Example local command shape:
 
 ```sh
@@ -76,8 +111,8 @@ python3 util/ai_native_benchmark_capture.py \
   --hardware-class local-mac \
   --luanti-commit "$(git rev-parse --short HEAD)" \
   --game-profile ai_runtime \
-  --headless-player-command '<client-command> --go --address {host} --port {port} --name {name}' \
-  --headless-player-count 2
+  --headless-player-command "bin/luanti --config $tmpconf --go --address {host} --port {port} --name {name}" \
+  --headless-player-count 1
 ```
 
 Use the one-command verifier when refreshing branch evidence:
@@ -87,11 +122,22 @@ python3 util/ai_native_runtime_verify.py \
   --hardware-class local-mac \
   --luanti-commit "$(git rev-parse --short HEAD)" \
   --game-profile ai_runtime \
-  --headless-player-command '<client-command> --go --address {host} --port {port} --name {name}' \
-  --headless-player-count 2
+  --headless-player-command "bin/luanti --config $tmpconf --go --address {host} --port {port} --name {name}" \
+  --headless-player-count 1
 ```
 
-After the branch passes and the capture is reviewed, promote the refreshed local lane. Repeat the same flow for `low-power-server` only after backup-first readiness, keeping the family server side by side and passing `--confirm-low-power-backup`. Do not promote either lane unless the clean-profile summary has `overall_status=pass`, `player_load_tick_probe.probe_status=pass`, `headless_player_supported=true`, `synthetic_player_count>0`, and connected synthetic players equal attempted synthetic players.
+After the branch passes and the capture is reviewed, promote the refreshed local lane:
+
+```sh
+python3 util/ai_native_benchmark_promote.py \
+  --capture-dir local/benchmarks/local-mac/<date>/<commit> \
+  --output-root local/benchmarks \
+  --source-label reviewed-local-headless-client
+```
+
+Repeat the same flow for `low-power-server` only after backup-first readiness, keeping the family server side by side and passing `--confirm-low-power-backup` during capture. Use a low-power source label such as `reviewed-low-power-headless-client`.
+
+Do not promote either lane unless the clean-profile summary has `overall_status=pass`, `player_load_tick_probe.probe_status=pass`, `probe_kind=headless_client_load`, `headless_player_supported=true`, `synthetic_player_count>0`, and connected synthetic players equal attempted synthetic players.
 
 When a same-hardware baseline is available, pass it into the capture runner so it writes comparison files next to the branch reports:
 
