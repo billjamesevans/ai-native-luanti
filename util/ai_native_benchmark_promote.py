@@ -88,6 +88,43 @@ def clean_profile_errors(report: dict) -> list[str]:
             errors.append("clean_profile: server_step_workload completed_sample_count must be positive")
         if (workload.get("failed_sample_count") or 0) != 0:
             errors.append("clean_profile: server_step_workload failed_sample_count must be 0")
+    player_probe = comparison_summary.get("player_load_tick_probe")
+    if not isinstance(player_probe, dict):
+        errors.append("clean_profile: player_load_tick_probe missing")
+    else:
+        attempted = player_probe.get("attempted_synthetic_player_count") or 0
+        connected = player_probe.get("connected_synthetic_player_count") or 0
+        if player_probe.get("probe_status") != "pass":
+            errors.append("clean_profile: player_load_tick_probe status must be pass")
+        if player_probe.get("probe_kind") != "headless_client_load":
+            errors.append("clean_profile: player_load_tick_probe kind must be headless_client_load")
+        if player_probe.get("headless_player_supported") is not True:
+            errors.append("clean_profile: headless_player_supported must be true")
+        if attempted <= 0:
+            errors.append("clean_profile: attempted_synthetic_player_count must be positive")
+        if connected <= 0:
+            errors.append("clean_profile: connected_synthetic_player_count must be positive")
+        if connected != attempted:
+            errors.append("clean_profile: connected synthetic players must equal attempted synthetic players")
+        if player_probe.get("latency_proxy_supported") is not True:
+            errors.append("clean_profile: latency_proxy_supported must be true")
+        if player_probe.get("latency_probe_kind") != "headless_join_log_observation":
+            errors.append("clean_profile: latency_probe_kind must be headless_join_log_observation")
+        join_latency = player_probe.get("join_latency_proxy_ms") or {}
+        if (join_latency.get("sample_count") or 0) <= 0:
+            errors.append("clean_profile: join_latency_proxy_ms.sample_count must be positive")
+    map_workload = comparison_summary.get("map_chunk_workload")
+    if not isinstance(map_workload, dict):
+        errors.append("clean_profile: map_chunk_workload missing")
+    else:
+        if map_workload.get("workload_status") != "pass":
+            errors.append("clean_profile: map_chunk_workload status must be pass")
+        if map_workload.get("workload_kind") != "synthetic_sqlite_mapblock_churn":
+            errors.append(
+                "clean_profile: map_chunk_workload kind must be synthetic_sqlite_mapblock_churn"
+            )
+        if (map_workload.get("mapblock_rows_created") or 0) <= 0:
+            errors.append("clean_profile: mapblock_rows_created must be positive")
     return errors
 
 
