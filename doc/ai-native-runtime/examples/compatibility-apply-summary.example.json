@@ -18,6 +18,7 @@
   "blocked_tasks": [],
   "mutation_cost_actual": {
     "node_writes": 0,
+    "mapblock_churn": 0,
     "media_files": 0,
     "entity_definitions": 0,
     "manual_review_items": 0
