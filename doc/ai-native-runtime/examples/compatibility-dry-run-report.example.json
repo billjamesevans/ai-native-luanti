@@ -119,6 +119,7 @@
     "unknown": 0,
     "estimated_world_mutations": {
       "node_writes": 0,
+      "mapblock_churn": 0,
       "media_files": 3,
       "entity_definitions": 1,
       "manual_review_items": 4
@@ -203,6 +204,7 @@
       ],
       "mutation_cost": {
         "node_writes": 0,
+        "mapblock_churn": 0,
         "media_files": 3,
         "entity_definitions": 0,
         "manual_review_items": 1
@@ -217,6 +219,7 @@
       ],
       "mutation_cost": {
         "node_writes": 0,
+        "mapblock_churn": 0,
         "media_files": 0,
         "entity_definitions": 1,
         "manual_review_items": 2
@@ -231,6 +234,7 @@
       ],
       "mutation_cost": {
         "node_writes": 0,
+        "mapblock_churn": 0,
         "media_files": 0,
         "entity_definitions": 0,
         "manual_review_items": 1
