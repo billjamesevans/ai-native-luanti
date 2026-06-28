@@ -49,6 +49,7 @@ Games or server mods can configure game-specific nodes without changing the engi
 
 ```lua
 core.ai_agent_plugin.configure({
+	capability_profile = "clean",
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
 	agent_entity_name = "ai_demo_benchmark:helper",
@@ -69,9 +70,13 @@ core.ai_agent_plugin.configure({
 })
 ```
 
-The defaults are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
+The default capability policy is empty. A game package or operator mod must declare a named `capability_profile` and explicit `capabilities` table before newly registered player agents receive grants.
+
+The default node/entity settings are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
 
 `agent_entity_name` is the registered entity type used for queued bounded entity movement. The default uses the public demo helper fixture; a game package can configure a different registered entity without changing the engine fork.
+
+`capability_profile` is a short policy label such as `clean` or `operator`. It is copied into the registered agent limits for audit/debug visibility.
 
 `capabilities` is the first-party grant policy for newly registered player agents. Clean profiles should declare it explicitly and should not include privileged capabilities such as `admin.override`, compatibility/import grants such as `import.assets`, or other-player controls unless that server profile is intentionally operator-only.
 

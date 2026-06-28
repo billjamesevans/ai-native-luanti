@@ -28,6 +28,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [MVP gap checklist](mvp-gap-checklist.md)
 - [Post-MVP alpha roadmap](post-mvp-alpha-roadmap.md)
 - [Agent identity and capability API](agent-api.md)
+- [Agent capability profiles](agent-capability-profiles.md)
 - [Agent task queue API](task-queue-api.md)
 - [Safe world operations API](safe-world-ops-api.md)
 - [Safe entity operations API](safe-entity-ops-api.md)
