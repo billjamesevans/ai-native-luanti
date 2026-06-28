@@ -141,6 +141,10 @@ class MvpAuditTests(unittest.TestCase):
                 "already_proven",
             )
             self.assertEqual(
+                audit_by_id["player-teleport-and-combat-capabilities"]["category"],
+                "already_proven",
+            )
+            self.assertEqual(
                 audit_by_id["compatibility-import-deferred"]["category"],
                 "compatibility_import_deferral",
             )
@@ -154,11 +158,10 @@ class MvpAuditTests(unittest.TestCase):
                 )
 
             follow_on_ids = [issue["id"] for issue in report["follow_on_issues"]]
-            self.assertGreaterEqual(len(follow_on_ids), 4)
+            self.assertGreaterEqual(len(follow_on_ids), 3)
             self.assertEqual(
-                follow_on_ids[:4],
+                follow_on_ids[:3],
                 [
-                    "mvp-player-teleport-combat-runtime",
                     "mvp-model-import-capability-runtime",
                     "mvp-runtime-task-duration-metrics",
                     "mvp-agent-policy-profile",

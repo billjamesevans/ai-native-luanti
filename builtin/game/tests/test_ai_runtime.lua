@@ -1135,6 +1135,183 @@ assert(entity_audit_has("entity.spawn", "entity-task:spawn-one"))
 assert(entity_audit_has("entity.move", "entity-task:move"))
 assert(entity_audit_has("entity.cleanup", "entity-task:cleanup-owned"))
 
+local function run_player_ops_tests()
+	assert(core.ai_player_ops ~= nil)
+	core.register_ai_agent({
+	agent_id = "player_agent:self",
+	display_name = "Player Self Agent",
+	owner = "PlayerOne",
+	plugin = "player_ops_test",
+	capabilities = {
+		["player.teleport.self"] = true,
+		["combat.defend"] = true,
+	},
+	limits = {
+		max_player_teleport_distance = 8,
+		max_defend_distance = 6,
+	},
+})
+core.register_ai_agent({
+	agent_id = "player_agent:other-no-admin",
+	display_name = "Other Teleport No Admin",
+	owner = "server",
+	plugin = "player_ops_test",
+	capabilities = {
+		["player.teleport.other"] = true,
+	},
+})
+core.register_ai_agent({
+	agent_id = "player_agent:admin",
+	display_name = "Admin Player Agent",
+	owner = "server",
+	plugin = "player_ops_test",
+	capabilities = {
+		["player.teleport.other"] = true,
+		["admin.override"] = true,
+	},
+	limits = {
+		max_player_teleport_distance = 32,
+	},
+})
+
+local test_players = {}
+local function make_test_player(name, pos)
+	local player = {
+		name = name,
+		pos = table.copy(pos),
+		attached = false,
+	}
+	function player:get_player_name()
+		return self.name
+	end
+	function player:get_pos()
+		return table.copy(self.pos)
+	end
+	function player:set_pos(pos)
+		self.pos = table.copy(pos)
+		return true
+	end
+	function player:get_attach()
+		return self.attached
+	end
+	test_players[name] = player
+	return player
+end
+make_test_player("PlayerOne", { x = 0, y = 0, z = 0 })
+make_test_player("TargetPlayer", { x = 4, y = 0, z = 0 })
+local function get_test_player(name)
+	return test_players[name]
+end
+
+local self_teleport = core.ai_player_ops.teleport_self({ x = 3, y = 0, z = 0 }, {
+	agent_id = "player_agent:self",
+	owner = "PlayerOne",
+	player_name = "PlayerOne",
+	task_id = "player-task:self-teleport",
+	get_player_by_name = get_test_player,
+})
+assert(self_teleport.ok == true)
+assert(self_teleport.status == "success")
+assert(self_teleport.operation == "ai_player.teleport_self")
+assert(self_teleport.player.name == "PlayerOne")
+assert(self_teleport.player.pos.x == 3)
+assert(self_teleport.metrics.distance == 3)
+assert(test_players.PlayerOne.pos.x == 3)
+
+local too_far_self_teleport = core.ai_player_ops.teleport_self({ x = 20, y = 0, z = 0 }, {
+	agent_id = "player_agent:self",
+	owner = "PlayerOne",
+	player_name = "PlayerOne",
+	task_id = "player-task:self-too-far",
+	get_player_by_name = get_test_player,
+})
+assert(too_far_self_teleport.ok == false)
+assert(too_far_self_teleport.status == "blocked")
+assert(too_far_self_teleport.reason == "movement_limit_exceeded")
+assert(test_players.PlayerOne.pos.x == 3)
+
+	local non_admin_other_teleport = core.ai_player_ops.teleport_player("TargetPlayer",
+		{ x = 7, y = 0, z = 0 }, {
+			agent_id = "player_agent:other-no-admin",
+			owner = "server",
+			task_id = "player-task:other-no-admin",
+			get_player_by_name = get_test_player,
+		})
+	assert(non_admin_other_teleport.ok == false)
+	assert(non_admin_other_teleport.status == "permission_denied")
+	assert(non_admin_other_teleport.reason == "admin_override_required")
+	assert(test_players.TargetPlayer.pos.x == 4)
+
+	local missing_agent_ok, missing_agent_error = pcall(core.ai_player_ops.teleport_player,
+		"TargetPlayer", { x = 7, y = 0, z = 0 }, {
+			owner = "server",
+			task_id = "player-task:other-missing-agent",
+			get_player_by_name = get_test_player,
+		})
+	assert(missing_agent_ok == false)
+	assert(missing_agent_error:find("agent_id", 1, true))
+
+	local admin_other_teleport = core.ai_player_ops.teleport_player("TargetPlayer",
+		{ x = 7, y = 0, z = 0 }, {
+		agent_id = "player_agent:admin",
+		owner = "server",
+		task_id = "player-task:other-admin",
+		get_player_by_name = get_test_player,
+	})
+assert(admin_other_teleport.ok == true)
+assert(admin_other_teleport.status == "success")
+assert(admin_other_teleport.operation == "ai_player.teleport_player")
+assert(admin_other_teleport.player.name == "TargetPlayer")
+assert(admin_other_teleport.player.pos.x == 7)
+
+local attacked_hostile = nil
+local defend_result = core.ai_player_ops.defend("PlayerOne", {
+	agent_id = "player_agent:self",
+	owner = "PlayerOne",
+	task_id = "player-task:defend",
+	get_player_by_name = get_test_player,
+	hostiles = {
+		{
+			entity_id = "hostile:far",
+			entity_name = "synthetic:hostile",
+			pos = { x = 20, y = 0, z = 0 },
+			hostile = true,
+		},
+		{
+			entity_id = "hostile:near",
+			entity_name = "synthetic:hostile",
+			pos = { x = 5, y = 0, z = 0 },
+			hostile = true,
+		},
+	},
+	attack_entity = function(hostile)
+		attacked_hostile = hostile.entity_id
+		return true
+	end,
+})
+assert(defend_result.ok == true)
+assert(defend_result.status == "success")
+assert(defend_result.operation == "ai_player.defend")
+assert(defend_result.target.entity_id == "hostile:near")
+assert(defend_result.changed == 1)
+assert(defend_result.examined == 2)
+assert(defend_result.metrics.distance == 2)
+assert(attacked_hostile == "hostile:near")
+
+local no_hostile_result = core.ai_player_ops.defend("PlayerOne", {
+	agent_id = "player_agent:self",
+	owner = "PlayerOne",
+	task_id = "player-task:defend-empty",
+	get_player_by_name = get_test_player,
+	hostiles = {},
+})
+	assert(no_hostile_result.ok == false)
+	assert(no_hostile_result.status == "blocked")
+	assert(no_hostile_result.reason == "no_hostile_target")
+end
+
+run_player_ops_tests()
+
 assert(core.registered_chatcommands.ai_runtime ~= nil)
 local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
 assert(command_ok == true)
