@@ -1855,3 +1855,38 @@ assert(smoke_blocked.world_after.build_node == "ai_runtime_test:stone")
 assert(smoke_blocked.world_after.repair_node == "ai_runtime_test:hazard")
 assert(smoke_blocked.private_prompt == nil)
 assert(smoke_blocked.asset_payload == nil)
+
+assert(core.registered_chatcommands.ai_runtime_smoke ~= nil)
+assert(core.registered_chatcommands.ai_runtime_smoke.privs.server == true)
+local smoke_command_ok, smoke_command_message =
+	core.registered_chatcommands.ai_runtime_smoke.func(
+		"admin",
+		"origin=4480")
+assert(smoke_command_ok == true)
+assert(smoke_command_message:find("\"operation\":\"ai_runtime_smoke.run_scenario\"", 1, true))
+assert(smoke_command_message:find("\"status\":\"success\"", 1, true))
+assert(smoke_command_message:find("\"task_statuses\"", 1, true))
+assert(smoke_command_message:find("\"rollback_records\":2", 1, true))
+assert(smoke_command_message:find("\"audit_event_count\"", 1, true))
+assert(smoke_command_message:find("\"blocked_or_unsafe_outcomes\":[]", 1, true))
+assert(not smoke_command_message:find("/Users/", 1, true))
+assert(not smoke_command_message:find("minecraftpi", 1, true))
+assert(not smoke_command_message:find("private_prompt", 1, true))
+assert(not smoke_command_message:find("asset_payload", 1, true))
+assert(#smoke_command_message < 12000)
+
+local smoke_blocked_command_ok, smoke_blocked_command_message =
+	core.registered_chatcommands.ai_runtime_smoke.func(
+		"admin",
+		"mode=blocked origin=4490")
+assert(smoke_blocked_command_ok == true)
+assert(smoke_blocked_command_message:find("\"status\":\"blocked\"", 1, true))
+assert(smoke_blocked_command_message:find("\"reason\":\"rollback_metadata_unavailable\"", 1, true))
+assert(smoke_blocked_command_message:find("\"rollback_records\":1", 1, true))
+assert(smoke_blocked_command_message:find("\"blocked_or_unsafe_outcomes\":[", 1, true))
+assert(#smoke_blocked_command_message < 12000)
+
+local private_option_ok, private_option_message =
+	core.registered_chatcommands.ai_runtime_smoke.func("admin", "agent=bill")
+assert(private_option_ok == false)
+assert(private_option_message:find("unknown option", 1, true))

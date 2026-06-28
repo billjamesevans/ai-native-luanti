@@ -29,6 +29,30 @@ The returned summary has:
 
 The summary must not include absolute local paths, private server hosts, private prompts, player-private data, copied media, or asset payload bytes.
 
+## Operator Command
+
+`/ai_runtime_smoke` is a `server`-privileged command for local operators. It runs the same synthetic scenario and returns a bounded JSON summary under 12k characters. The command always uses synthetic mode and does not accept player names, provider prompts, local paths, private assets, live-server targets, or model-network settings.
+
+Default successful run:
+
+```text
+/ai_runtime_smoke
+```
+
+Intentional blocked rollback run:
+
+```text
+/ai_runtime_smoke mode=blocked
+```
+
+Optional coordinates keep repeated local checks separate without touching a real world:
+
+```text
+/ai_runtime_smoke mode=success origin=100
+```
+
+The command summary includes pass/fail status, build and repair `task_statuses`, compact `results`, `rollback_record_summaries`, `audit_event_count`, and `blocked_or_unsafe_outcomes`. It omits full audit payloads and task internals so the operator-facing output remains bounded and public-safe.
+
 ## Running It
 
 The default project check is the AI runtime unit module:

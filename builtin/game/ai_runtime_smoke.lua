@@ -1,6 +1,35 @@
 core.ai_runtime_smoke = {}
 
 local smoke = core.ai_runtime_smoke
+local DEFAULT_AGENT_ID = "ai_runtime_smoke:operator"
+local DEFAULT_OWNER = "synthetic-operator"
+local DEFAULT_WORLD_ID = "synthetic-smoke-world"
+local DEFAULT_BUILD_NODE = "ai_runtime_smoke:marker"
+local DEFAULT_REPAIR_NODE = "ai_runtime_smoke:repair_marker"
+local MAX_COMMAND_OUTPUT_BYTES = 12000
+
+if core.register_node and core.registered_nodes then
+	if not core.registered_nodes[DEFAULT_BUILD_NODE] then
+		core.register_node(":" .. DEFAULT_BUILD_NODE, {
+			description = "AI Runtime Smoke Marker",
+			drawtype = "airlike",
+			pointable = false,
+			walkable = false,
+			buildable_to = false,
+			groups = { not_in_creative_inventory = 1 },
+		})
+	end
+	if not core.registered_nodes[DEFAULT_REPAIR_NODE] then
+		core.register_node(":" .. DEFAULT_REPAIR_NODE, {
+			description = "AI Runtime Smoke Repair Marker",
+			drawtype = "airlike",
+			pointable = false,
+			walkable = false,
+			buildable_to = false,
+			groups = { hazard = 1, not_in_creative_inventory = 1 },
+		})
+	end
+end
 
 local function copy_pos(pos)
 	return {
@@ -165,11 +194,11 @@ end
 
 function smoke.run_scenario(options)
 	options = options or {}
-	local agent_id = options.agent_id or "ai_runtime_smoke:agent"
-	local owner = options.owner or "synthetic-operator"
-	local world_id = options.world_id or "synthetic-smoke-world"
+	local agent_id = options.agent_id or DEFAULT_AGENT_ID
+	local owner = options.owner or DEFAULT_OWNER
+	local world_id = options.world_id or DEFAULT_WORLD_ID
 	local origin = copy_pos(options.origin or { x = 0, y = 32, z = 0 })
-	local build_node = options.build_node or "default:stone"
+	local build_node = options.build_node or DEFAULT_BUILD_NODE
 	local repair_node = options.repair_node or build_node
 	local replacement_node = options.replacement_node or "air"
 	local prefix = task_prefix_for(agent_id)
@@ -313,3 +342,190 @@ function smoke.run_scenario(options)
 		},
 	}
 end
+
+local function is_array(value)
+	local count = 0
+	for key in pairs(value) do
+		if type(key) ~= "number" or key < 1 or key % 1 ~= 0 then
+			return false
+		end
+		count = math.max(count, key)
+	end
+	for index = 1, count do
+		if value[index] == nil then
+			return false
+		end
+	end
+	return true, count
+end
+
+local function json_escape(value)
+	value = value:gsub("\\", "\\\\")
+	value = value:gsub("\"", "\\\"")
+	value = value:gsub("\n", "\\n")
+	value = value:gsub("\r", "\\r")
+	value = value:gsub("\t", "\\t")
+	return value
+end
+
+local encode_json
+
+local function encode_json_object(value)
+	local keys = {}
+	for key in pairs(value) do
+		keys[#keys + 1] = tostring(key)
+	end
+	table.sort(keys)
+	local parts = {}
+	for _, key in ipairs(keys) do
+		parts[#parts + 1] = "\"" .. json_escape(key) .. "\":" .. encode_json(value[key])
+	end
+	return "{" .. table.concat(parts, ",") .. "}"
+end
+
+local function encode_json_array(value, count)
+	local parts = {}
+	for index = 1, count do
+		parts[index] = encode_json(value[index])
+	end
+	return "[" .. table.concat(parts, ",") .. "]"
+end
+
+encode_json = function(value)
+	local value_type = type(value)
+	if value_type == "string" then
+		return "\"" .. json_escape(value) .. "\""
+	elseif value_type == "number" then
+		return tostring(value)
+	elseif value_type == "boolean" then
+		return value and "true" or "false"
+	elseif value_type == "nil" then
+		return "null"
+	elseif value_type == "table" then
+		local array, count = is_array(value)
+		if array then
+			return encode_json_array(value, count)
+		end
+		return encode_json_object(value)
+	end
+	error("Cannot JSON encode value of type " .. value_type)
+end
+
+local function command_summary(summary)
+	return {
+		schema_version = summary.schema_version,
+		operation = summary.operation,
+		ok = summary.ok,
+		status = summary.status,
+		run_context = summary.run_context,
+		command = {
+			name = "/ai_runtime_smoke",
+			output = "bounded",
+			truncated = false,
+		},
+		task_statuses = summary.task_statuses,
+		results = summary.results,
+		rollback_records = summary.rollback_records,
+		rollback_record_summaries = summary.rollback_record_summaries,
+		audit_event_count = summary.audit_event_count,
+		blocked_or_unsafe_outcomes = summary.blocked_or_unsafe_outcomes,
+		world_after = summary.world_after,
+	}
+end
+
+function smoke.encode_summary(summary)
+	local payload = command_summary(summary)
+	local encoded = encode_json(payload)
+	if #encoded <= MAX_COMMAND_OUTPUT_BYTES then
+		return encoded
+	end
+
+	payload.results = nil
+	payload.rollback_record_summaries = nil
+	payload.blocked_or_unsafe_outcomes = {
+		{
+			reason = "command_output_truncated",
+			operation = "ai_runtime_smoke.command",
+		},
+	}
+	payload.command.truncated = true
+	return encode_json(payload)
+end
+
+local function parse_number(value, field, fallback)
+	if value == nil then
+		return fallback
+	end
+	local number = tonumber(value)
+	if not number then
+		return nil, field .. " must be a number"
+	end
+	return math.floor(number)
+end
+
+local function parse_command_options(param)
+	local raw = {}
+	local allowed_options = {
+		mode = true,
+		origin = true,
+		x = true,
+		y = true,
+		z = true,
+	}
+	for token in tostring(param or ""):gmatch("%S+") do
+		local key, value = token:match("^([%w_]+)=(.+)$")
+		if not key then
+			return nil, "options must use key=value form"
+		end
+		if not allowed_options[key] then
+			return nil, "unknown option: " .. key
+		end
+		raw[key] = value
+	end
+
+	local mode = raw.mode or "success"
+	if mode ~= "success" and mode ~= "blocked" then
+		return nil, "mode must be success or blocked"
+	end
+
+	local origin_x, x_error = parse_number(raw.origin or raw.x, "origin", 0)
+	if not origin_x then
+		return nil, x_error
+	end
+	local origin_y, y_error = parse_number(raw.y, "y", 32)
+	if not origin_y then
+		return nil, y_error
+	end
+	local origin_z, z_error = parse_number(raw.z, "z", 0)
+	if not origin_z then
+		return nil, z_error
+	end
+
+	return {
+		agent_id = DEFAULT_AGENT_ID,
+		owner = DEFAULT_OWNER,
+		world_id = DEFAULT_WORLD_ID,
+		origin = { x = origin_x, y = origin_y, z = origin_z },
+		build_node = DEFAULT_BUILD_NODE,
+		repair_node = DEFAULT_REPAIR_NODE,
+		replacement_node = "air",
+		block_repair_rollback = mode == "blocked",
+	}
+end
+
+function smoke.run_command(param)
+	local options, err = parse_command_options(param)
+	if not options then
+		return false, err
+	end
+	return true, smoke.encode_summary(smoke.run_scenario(options))
+end
+
+core.register_chatcommand("ai_runtime_smoke", {
+	params = "[mode=success|blocked] [origin=N] [x=N] [y=N] [z=N]",
+	description = "Run the synthetic AI runtime smoke scenario and return a bounded JSON summary.",
+	privs = { server = true },
+	func = function(_, param)
+		return smoke.run_command(param)
+	end,
+})
