@@ -21,12 +21,15 @@ class AgentProductLoopContractTests(unittest.TestCase):
 
         for phrase in (
             "`core.build_agent.define_task`",
+            "`core.build_agent.plan`",
             "`core.repair_agent.queue_apply_task`",
             "`core.ai_player_ops.defend`",
             "`guide`",
             "`audit`",
             "`rollback`",
             "`defend`",
+            "`build plan`",
+            "`repair plan`",
             "rollback-backed",
             "combat.defend",
         ):
@@ -38,6 +41,7 @@ class AgentProductLoopContractTests(unittest.TestCase):
 
         for phrase in (
             "core.build_agent.define_task",
+            "core.build_agent.plan",
             "core.repair_agent.queue_apply_task",
             "core.ai_player_ops.defend",
             "core.get_ai_runtime_audit",

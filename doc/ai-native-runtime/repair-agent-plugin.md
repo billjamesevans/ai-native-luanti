@@ -138,6 +138,8 @@ Planning remains intentionally non-mutating:
 - It does not call `core.ai_world_ops.remove_node`, `replace_node`, or batch mutation APIs.
 - It reports protected and skipped positions instead of bypassing them.
 - It records no private prompts, assets, or world payloads by default.
+- First-party agent preview commands can expose `plan_area` results before a
+  separate apply command queues mutation.
 
 Mutation is intentionally narrow:
 
