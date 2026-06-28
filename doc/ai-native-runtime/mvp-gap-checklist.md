@@ -25,7 +25,7 @@ The generated JSON is local evidence under `local/benchmarks/`. This committed c
 | MVP item | Category | Current evidence | Next action |
 | --- | --- | --- | --- |
 | Fork builds locally | `already_proven` | `util/ai_native_runtime_verify.py` runs utility contracts, benchmark gate, and `TestAIRuntime`. | Keep as the pre-PR gate. |
-| Agent identity and capabilities | `implemented_but_weakly_verified` | `core.register_ai_agent`, capability checks, and unit tests exist. | Add clean-profile policy coverage for real server defaults. |
+| Agent identity and capabilities | `already_proven` | `core.register_ai_agent`, capability checks, configurable first-party grants, and clean-profile policy tests exist. | Keep privileged grants out of default clean-profile policy unless an operator-specific profile explicitly opts in. |
 | Queued inspect/place/remove | `already_proven` | Safe world ops and queue tests cover inspect, place, remove, batch place, and batch remove. | Keep expanding through runtime scenarios. |
 | Structured action results | `already_proven` | Central action-result helpers and schema assertions exist. | Keep all new runtime APIs on this result shape. |
 | Task cancellation | `already_proven` | Owner/admin cancellation paths are tested. | Keep cancellation wired into every long-running plugin task. |
@@ -47,7 +47,8 @@ Completed:
 - #97 `mvp-player-teleport-combat-runtime`: added safe player teleport and defensive-combat capability slices.
 - #98 `mvp-model-import-capability-runtime`: aligned model and import capability gates with queued runtime execution.
 - #99 `mvp-runtime-task-duration-metrics`: exposed task-duration aggregates in the operator runtime snapshot.
+- #100 `mvp-agent-policy-profile`: added clean-profile policy tests for first-party agent capability grants.
 
 Remaining:
 
-1. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
+None for the current AI-native runtime MVP acceptance matrix. Compatibility/import remains intentionally deferred.

@@ -132,8 +132,8 @@ AUDIT_ITEMS = [
     {
         "id": "agent-identity-capabilities",
         "requirement": "Agent identity and capabilities are registered through a first-party runtime path.",
-        "category": "implemented_but_weakly_verified",
-        "verification_strength": "weak",
+        "category": "already_proven",
+        "verification_strength": "proven",
         "mvp_spec_refs": [
             "Agent Identity: stable id, display name, owner, plugin, capabilities, limits, state.",
             "Acceptance Criteria: Agent identity and capabilities are registered through a first-party runtime path.",
@@ -151,11 +151,30 @@ AUDIT_ITEMS = [
             ),
             (
                 "builtin/game/tests/test_ai_runtime.lua",
-                "Focused runtime tests exercise registration and capability denial.",
-                ["core.register_ai_agent", "core.check_agent_capability", "missing_capability"],
+                "Focused runtime tests exercise registration, capability denial, and configurable first-party plugin grants.",
+                [
+                    "core.register_ai_agent",
+                    "core.check_agent_capability",
+                    "missing_capability",
+                    "test_ai_runtime_profile_policy_capabilities",
+                ],
+            ),
+            (
+                "builtin/game/ai_agent_plugin.lua",
+                "First-party plugin registers player agents from a configured capability policy.",
+                ["settings.capabilities", "options.capabilities", "table.copy(settings.capabilities)"],
+            ),
+            (
+                "games/ai_runtime/mods/ai_runtime_base/init.lua",
+                "Clean profile declares the public-safe first-party agent capability grants.",
+                ["core.ai_agent_plugin.configure", "capabilities = {", '["http.llm"] = true'],
+            ),
+            (
+                "util/tests/test_ai_native_server_profile_contract.py",
+                "Profile contract tests reject missing clean-profile capability policy and privileged grants.",
+                ["test_profile_declares_first_party_agent_capability_policy", "admin.override", "import.assets"],
             ),
         ],
-        "note": "The API exists and is unit-tested; cross-profile/server-admin policy coverage is still thin.",
     },
     {
         "id": "queued-inspect-place-remove",
@@ -534,16 +553,7 @@ AUDIT_ITEMS = [
 ]
 
 
-FOLLOW_ON_ISSUES = [
-    {
-        "id": "mvp-agent-policy-profile",
-        "priority": 1,
-        "title": "Add clean-profile policy tests for first-party agent capability grants",
-        "category": "implemented_but_weakly_verified",
-        "source_acceptance_ids": ["agent-identity-capabilities"],
-        "why_now": "Registration and capability checks are unit-tested; server-profile policy needs stronger verification.",
-    },
-]
+FOLLOW_ON_ISSUES = []
 
 
 def validate_scorecard(scorecard: dict) -> dict:
