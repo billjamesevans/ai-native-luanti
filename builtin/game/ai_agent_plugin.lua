@@ -15,6 +15,7 @@ local settings = {
 	repair_nodes = {},
 	max_lights = 12,
 	max_entity_move_distance = 16,
+	max_defend_distance = 8,
 	capabilities = table.copy(default_capabilities),
 }
 
@@ -43,6 +44,26 @@ local function next_task_id(name, action)
 	return "nova_agent:" .. name .. ":" .. action .. ":" .. task_sequence
 end
 
+local function configure_product_surfaces()
+	if core.build_agent then
+		core.build_agent.configure({
+			light_node = settings.light_node,
+			marker_node = settings.marker_node,
+			platform_node = settings.marker_node,
+			path_node = settings.marker_node,
+			max_nodes_per_task = settings.max_lights,
+			sample_limit = settings.max_lights,
+		})
+	end
+	if core.repair_agent then
+		core.repair_agent.configure({
+			repair_nodes = settings.repair_nodes,
+			radius = 0,
+			sample_limit = settings.max_lights,
+		})
+	end
+end
+
 local function default_pos(context)
 	context = context or {}
 	if context.pos then
@@ -55,20 +76,6 @@ local function default_pos(context)
 		end
 	end
 	return { x = 0, y = 0, z = 0 }
-end
-
-local function world_options(name, context)
-	context = context or {}
-	return {
-		agent_id = agent_id_for(name),
-		owner = name,
-		task_id = context.task_id,
-		get_node = context.get_node,
-		set_node = context.set_node,
-		sample_limit = context.sample_limit or 4,
-		max_changes = context.max_changes,
-		allow_hazards = context.allow_hazards,
-	}
 end
 
 local function public_reply(name, action, status, message, extra)
@@ -106,10 +113,14 @@ function plugin.configure(options)
 	if options.max_entity_move_distance then
 		settings.max_entity_move_distance = options.max_entity_move_distance
 	end
+	if options.max_defend_distance then
+		settings.max_defend_distance = options.max_defend_distance
+	end
 	if options.capabilities then
 		assert(type(options.capabilities) == "table", "Capabilities must be a table")
 		settings.capabilities = table.copy(options.capabilities)
 	end
+	configure_product_surfaces()
 end
 
 function plugin.ensure_player_agent(name)
@@ -207,38 +218,37 @@ local function queue_plugin_task(name, action, label, steps, context)
 	})
 end
 
-local function light_positions(base, count)
-	local positions = {}
-	for i = 1, count do
-		positions[i] = {
-			x = base.x + (i - 1),
-			y = base.y + 1,
-			z = base.z,
-		}
-	end
-	return positions
+local function queue_defined_task(name, action, label, definition)
+	local task = core.queue_ai_task(definition)
+	remember_task(name, task.task_id)
+	return public_reply(name, action, "queued", label .. " queued.", {
+		task_id = task.task_id,
+	})
 end
 
 local function handle_light(name, prompt, context)
 	context = context or {}
+	configure_product_surfaces()
 	local count = tonumber(prompt:match("(%d+)%s+lights?")) or 1
 	count = math.max(1, math.min(count, settings.max_lights))
 	local base = default_pos(context)
-	return queue_plugin_task(name, "light", "place " .. count .. " light node(s)", {
-		function()
-			local placements = {}
-			for _, pos in ipairs(light_positions(base, count)) do
-				placements[#placements + 1] = {
-					pos = pos,
-					node_name = settings.light_node,
-				}
-			end
-			local options = world_options(name, context)
-			options.task_id = context.task_id
-			options.max_changes = count
-			return core.ai_world_ops.batch_place(placements, options)
-		end,
-	}, context)
+	local task_id = next_task_id(name, "light")
+	return queue_defined_task(name, "light", "place " .. count .. " light node(s)",
+		core.build_agent.define_task({
+			kind = "lights",
+			task_id = task_id,
+			agent_id = agent_id_for(name),
+			owner = name,
+			world_id = context.world_id or "ai_agent_plugin",
+			origin = base,
+			count = count,
+			get_node = context.get_node,
+			set_node = context.set_node,
+			max_node_writes_per_step = count,
+			persist_record = context.persist_record or context.persist_rollback_record,
+			rollback_policy = context.rollback_policy,
+			operation_label = "ai_agent_plugin.light",
+		}))
 end
 
 local function update_player_entity_state(name, state, entity_id)
@@ -289,37 +299,147 @@ end
 
 local function handle_build(name, context)
 	context = context or {}
+	configure_product_surfaces()
 	local pos = default_pos(context)
-	return queue_plugin_task(name, "build", "build marker", {
-		function()
-			local options = world_options(name, context)
-			options.task_id = context.task_id
-			return core.ai_world_ops.place_node(pos, settings.marker_node, options)
-		end,
-	}, context)
+	local task_id = next_task_id(name, "build")
+	return queue_defined_task(name, "build", "build marker",
+		core.build_agent.define_task({
+			kind = "marker",
+			task_id = task_id,
+			agent_id = agent_id_for(name),
+			owner = name,
+			world_id = context.world_id or "ai_agent_plugin",
+			origin = pos,
+			get_node = context.get_node,
+			set_node = context.set_node,
+			max_node_writes_per_step = 1,
+			persist_record = context.persist_record or context.persist_rollback_record,
+			rollback_policy = context.rollback_policy,
+			operation_label = "ai_agent_plugin.build",
+		}))
 end
 
 local function handle_repair(name, context)
 	context = context or {}
+	configure_product_surfaces()
 	local pos = default_pos(context)
-	return queue_plugin_task(name, "repair", "repair nearby hazard", {
+	local task_id = next_task_id(name, "repair")
+	local plan = core.repair_agent.plan_area(pos, {
+		agent_id = agent_id_for(name),
+		owner = name,
+		task_id = task_id .. ":plan",
+		radius = 0,
+		repair_nodes = settings.repair_nodes,
+		get_node = context.get_node,
+		sample_limit = context.sample_limit or settings.max_lights,
+	})
+	local task = core.repair_agent.queue_apply_task({
+		task_id = task_id,
+		agent_id = agent_id_for(name),
+		owner = name,
+		world_id = context.world_id or "ai_agent_plugin",
+		plan = plan,
+		allow_mutation = true,
+		allow_hazards = true,
+		get_node = context.get_node,
+		set_node = context.set_node,
+		max_node_writes_per_step = 1,
+		persist_record = context.persist_record or context.persist_rollback_record,
+		rollback_policy = context.rollback_policy,
+		operation_label = "ai_agent_plugin.repair",
+	})
+	remember_task(name, task.task_id)
+	return public_reply(name, "repair", "queued", "repair nearby hazard queued.", {
+		task_id = task.task_id,
+		plan_status = plan.status,
+		candidate_count = #(plan.candidates or {}),
+	})
+end
+
+local function compact_audit_record(record)
+	return {
+		event_type = record.event_type,
+		agent_id = record.agent_id,
+		task_id = record.task_id,
+		operation = record.operation,
+		status = record.status,
+		reason = record.reason,
+		rollback_record_id = record.rollback_record_id,
+		rollback_storage_ref = record.rollback_storage_ref,
+		mutation_class = record.mutation_class,
+		changed = record.changed,
+		skipped = record.skipped,
+		payload_retained = record.payload_retained == true,
+	}
+end
+
+local function audit_events_for(name, limit)
+	local agent_id = agent_id_for(name)
+	local events = {}
+	for _, record in ipairs(core.get_ai_runtime_audit({ limit = limit or 25 })) do
+		if record.agent_id == agent_id then
+			events[#events + 1] = compact_audit_record(record)
+		end
+	end
+	return events
+end
+
+local function handle_guide(name)
+	return public_reply(name, "guide", "success", "First-party agent guide returned.", {
+		surfaces = {
+			builder = true,
+			repair = true,
+			guide = true,
+			defender = true,
+		},
+		commands = {
+			"status",
+			"tasks",
+			"cancel",
+			"light",
+			"build marker",
+			"repair",
+			"defend",
+			"audit",
+			"rollback",
+		},
+		tasks = active_player_tasks(name),
+	})
+end
+
+local function handle_audit(name)
+	return public_reply(name, "audit", "success", "Recent agent audit events returned.", {
+		audit_events = audit_events_for(name, 50),
+	})
+end
+
+local function handle_rollback_review(name)
+	local records = {}
+	for _, record in ipairs(audit_events_for(name, 100)) do
+		if record.event_type == "rollback.record" and record.rollback_record_id then
+			records[#records + 1] = record
+		end
+	end
+	return public_reply(name, "rollback", "success", "Recent rollback records returned.", {
+		rollback_records = records,
+	})
+end
+
+local function handle_defend(name, context)
+	context = context or {}
+	return queue_plugin_task(name, "defend", "defend player", {
 		function()
-			local options = world_options(name, context)
-			options.task_id = context.task_id
-			local node = options.get_node and options.get_node(pos) or core.get_node_or_nil(pos)
-			if node and settings.repair_nodes[node.name] then
-				options.allow_hazards = true
-				return core.ai_world_ops.remove_node(pos, options)
-			end
-			return {
-				ok = true,
-				status = "success",
-				changed = 0,
-				examined = 1,
-				skipped = 0,
-				reason = "no_repair_needed",
-				message = "No configured repair target was found.",
-			}
+			return core.ai_player_ops.defend(name, {
+				agent_id = agent_id_for(name),
+				owner = name,
+				task_id = context.task_id,
+				get_player_by_name = context.get_player_by_name,
+				hostiles = context.hostiles,
+				find_hostiles = context.find_hostiles,
+				attack_entity = context.attack_entity,
+				max_distance = context.max_defend_distance or context.max_distance
+					or settings.max_defend_distance,
+			})
 		end,
 	}, context)
 end
@@ -376,6 +496,15 @@ function plugin.handle_command(name, param, context)
 			metrics = core.get_ai_runtime_metrics(),
 		})
 	end
+	if prompt == "guide" or prompt == "help" then
+		return handle_guide(name)
+	end
+	if prompt == "audit" or prompt == "history" then
+		return handle_audit(name)
+	end
+	if prompt == "rollback" or prompt == "rollback review" then
+		return handle_rollback_review(name)
+	end
 	if prompt == "tasks" or prompt == "task status" or prompt == "builder" then
 		return handle_tasks(name)
 	end
@@ -403,6 +532,9 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt:find("repair", 1, true) or prompt:find("fix", 1, true) then
 		return handle_repair(name, context)
+	end
+	if prompt:find("defend", 1, true) then
+		return handle_defend(name, context)
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
 		return handle_build(name, context)
