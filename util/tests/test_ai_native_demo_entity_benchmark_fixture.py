@@ -12,6 +12,7 @@ README = ROOT / "doc" / "ai-native-runtime" / "README.md"
 
 EXPECTED_SCENARIOS = {
     "entity_count_small",
+    "entity_scale_16",
     "movement_patrol",
     "collision_wall_contact",
     "cleanup_despawn",
@@ -89,6 +90,10 @@ class DemoEntityBenchmarkFixtureTests(unittest.TestCase):
                 self.assertEqual(metrics["remaining_entities"], 0)
                 self.assertGreaterEqual(metrics["p95_step_ms"], metrics["avg_step_ms"])
                 self.assertGreaterEqual(metrics["max_lag_ms"], metrics["p95_step_ms"])
+                if scenario["scenario_id"] == "entity_scale_16":
+                    self.assertGreaterEqual(metrics["entity_count"], 16)
+                    self.assertGreaterEqual(metrics["active_peak"], 16)
+                    self.assertEqual(metrics["cleaned_up"], metrics["spawned"])
 
         self.assert_public_safe_text(json.dumps(report, sort_keys=True))
 
@@ -114,6 +119,8 @@ class DemoEntityBenchmarkFixtureTests(unittest.TestCase):
             "node mutation disabled",
             "not a gameplay creature",
             "entity_count_small",
+            "entity_scale_16",
+            "at least 16",
             "movement_patrol",
             "collision_wall_contact",
             "cleanup_despawn",
