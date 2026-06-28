@@ -282,6 +282,23 @@ The headless-player gap is cleared only when every accepted lane has complete pu
 
 The scorecard performs a focused privacy scan of the JSON payload before writing the artifact. Do not publish or commit scorecards that include private hosts, private network addresses, local absolute paths, secrets, provider prompts, private showcase names, copied media, or family-server operational details.
 
+## Minecraft-Parity Harness
+
+After accepted clean-profile lanes exist, build the public-safe Minecraft-parity comparison report with:
+
+```sh
+python3 util/ai_native_minecraft_parity_harness.py \
+  --output-root local/benchmarks
+```
+
+Default output:
+
+```text
+local/benchmarks/minecraft-parity-comparison-report.json
+```
+
+The harness reads the same accepted lanes as the clean-profile runtime gap scorecard and defines explicit dimensions for startup, player join/liveness, server-step stability, mapblock/chunk churn, entity load, world-edit throughput, memory, CPU, and latency. It separates measured facts from qualitative Minecraft-parity gaps and uses only synthetic workloads, accepted local benchmark reports, or operator-supplied external references. It does not use proprietary Minecraft code or assets, copied server jars, copied media, or closed gameplay data.
+
 ## Privacy Boundary
 
 Benchmark retention must avoid:
