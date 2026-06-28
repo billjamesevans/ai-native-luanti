@@ -75,6 +75,19 @@ def clean_profile_errors(report: dict) -> list[str]:
     for flag in (*PRIVATE_CONTEXT_FLAGS, "requires_model_network"):
         if run_context.get(flag) is True:
             errors.append(f"clean_profile: {flag}=true")
+    comparison_summary = report.get("comparison_summary") or {}
+    workload = comparison_summary.get("server_step_workload")
+    if not isinstance(workload, dict):
+        errors.append("clean_profile: server_step_workload missing")
+    else:
+        if workload.get("workload_status") != "pass":
+            errors.append("clean_profile: server_step_workload status must be pass")
+        if (workload.get("attempted_sample_count") or 0) <= 0:
+            errors.append("clean_profile: server_step_workload attempted_sample_count must be positive")
+        if (workload.get("completed_sample_count") or 0) <= 0:
+            errors.append("clean_profile: server_step_workload completed_sample_count must be positive")
+        if (workload.get("failed_sample_count") or 0) != 0:
+            errors.append("clean_profile: server_step_workload failed_sample_count must be 0")
     return errors
 
 

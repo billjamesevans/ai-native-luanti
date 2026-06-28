@@ -174,6 +174,15 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
                             "requires_live_pi": False,
                             "requires_model_network": False,
                         },
+                        "comparison_summary": {
+                            "server_step_workload": {
+                                "workload_status": "pass",
+                                "workload_kind": "server_step_liveness",
+                                "attempted_sample_count": 3,
+                                "completed_sample_count": 3,
+                                "failed_sample_count": 0,
+                            },
+                        },
                         "failure_notes": [],
                     }
                 ),
@@ -191,6 +200,59 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
                 accepted_manifest["reports"]["clean_profile"],
                 "clean-profile-benchmark-summary.json",
             )
+
+    def test_refuses_clean_profile_without_passing_workload_evidence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root)
+            manifest_path = capture_dir / "benchmark-capture-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["game_profile"] = "ai_runtime"
+            manifest["reports"]["clean_profile"] = "clean-profile-benchmark-summary.json"
+            manifest["profile_statuses"] = {"clean_profile": "pass"}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            clean_profile = {
+                "schema_version": 1,
+                "runner_version": "ai-native-clean-profile-benchmark:v1",
+                "luanti_commit": "test-commit",
+                "hardware_class": "local-mac",
+                "overall_status": "pass",
+                "game_profile": {"gameid": "ai_runtime"},
+                "run_context": {
+                    "requires_private_world": False,
+                    "requires_private_assets": False,
+                    "requires_live_pi": False,
+                    "requires_model_network": False,
+                },
+                "comparison_summary": {},
+                "failure_notes": [],
+            }
+            (capture_dir / "clean-profile-benchmark-summary.json").write_text(
+                json.dumps(clean_profile),
+                encoding="utf-8",
+            )
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("server_step_workload missing", completed.stderr)
+
+            clean_profile["comparison_summary"]["server_step_workload"] = {
+                "workload_status": "fail",
+                "workload_kind": "server_step_liveness",
+                "attempted_sample_count": 2,
+                "completed_sample_count": 1,
+                "failed_sample_count": 1,
+            }
+            (capture_dir / "clean-profile-benchmark-summary.json").write_text(
+                json.dumps(clean_profile),
+                encoding="utf-8",
+            )
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("server_step_workload status must be pass", completed.stderr)
 
     def test_refuses_private_or_warning_reports(self):
         with tempfile.TemporaryDirectory() as tmpdir:
