@@ -5,6 +5,7 @@ local ENTITY_NAME = "ai_demo_benchmark:helper"
 local FIXTURE_ID = "generic_demo_entity:benchmark:v1"
 local DEFAULT_OWNER_REF = "owner:synthetic-operator"
 local DEFAULT_ENTITY_COUNT = 4
+local SCALE_ENTITY_COUNT = 16
 local DEFAULT_MOVEMENT_STEPS = 5
 local MAX_COMMAND_ENTITY_COUNT = 64
 local MAX_COMMAND_MOVEMENT_STEPS = 200
@@ -96,6 +97,7 @@ function benchmark.get_fixture()
 		mutation = fixture_mutation(),
 		scenarios = {
 			"entity_count_small",
+			"entity_scale_16",
 			"movement_patrol",
 			"collision_wall_contact",
 			"cleanup_despawn",
@@ -202,6 +204,10 @@ local scenario_defaults = {
 		entity_count = DEFAULT_ENTITY_COUNT,
 		movement_steps = 1,
 	},
+	entity_scale_16 = {
+		entity_count = SCALE_ENTITY_COUNT,
+		movement_steps = DEFAULT_MOVEMENT_STEPS,
+	},
 	movement_patrol = {
 		entity_count = DEFAULT_ENTITY_COUNT,
 		movement_steps = DEFAULT_MOVEMENT_STEPS,
@@ -227,6 +233,9 @@ function benchmark.run_scenario(scenario_id, options)
 		defaults.movement_steps, "movement_steps")
 	if scenario_id == "collision_wall_contact" then
 		entity_count = math.max(2, entity_count)
+	end
+	if scenario_id == "entity_scale_16" then
+		entity_count = math.max(SCALE_ENTITY_COUNT, entity_count)
 	end
 
 	local entities = spawn_entities(entity_count, owner_ref, scenario_id)
