@@ -263,8 +263,8 @@ AUDIT_ITEMS = [
     {
         "id": "runtime-metrics",
         "requirement": "Metrics expose queue length, task duration, and node-write counts.",
-        "category": "implemented_but_weakly_verified",
-        "verification_strength": "weak",
+        "category": "already_proven",
+        "verification_strength": "proven",
         "mvp_spec_refs": [
             "Action Result: metrics include elapsed time, server-step slice used, and write counts.",
             "Acceptance Criteria: Metrics expose queue length, task duration, and node-write counts.",
@@ -272,16 +272,32 @@ AUDIT_ITEMS = [
         "evidence_specs": [
             (
                 "builtin/game/ai_runtime.lua",
-                "Runtime exposes queue, write, audit, model, and entity counters.",
-                ["function core.get_ai_runtime_metrics", "queue_length", "node_writes", "task_reported_node_writes"],
+                "Runtime exposes queue, write, audit, model, entity, and task-duration counters.",
+                [
+                    "function core.get_ai_runtime_metrics",
+                    "function core.get_ai_runtime_operator_metrics",
+                    "record_task_duration",
+                    "task_duration_us",
+                    "duration=count=",
+                    "node_writes",
+                    "task_reported_node_writes",
+                ],
+            ),
+            (
+                "builtin/game/tests/test_ai_runtime.lua",
+                "Focused tests prove task-duration aggregate and formatted operator output.",
+                [
+                    "duration_snapshot",
+                    "duration_snapshot.by_status.unsafe.count",
+                    "duration=count=5,total_us=12000,max_us=5000,avg_us=2400",
+                ],
             ),
             (
                 "doc/ai-native-runtime/metrics-audit-api.md",
-                "Metrics docs describe operator snapshots and adapter metrics.",
-                ["core.get_ai_runtime_metrics()", "queue_length", "node_writes", "elapsed_us"],
+                "Metrics docs describe task-duration aggregates in operator snapshots.",
+                ["task_duration_us", "count", "total", "max", "average", "by_status"],
             ),
         ],
-        "note": "Queue and write metrics are strong; explicit task-duration aggregation remains weaker than per-result elapsed_us.",
     },
     {
         "id": "first-party-deterministic-plugin",
@@ -520,16 +536,8 @@ AUDIT_ITEMS = [
 
 FOLLOW_ON_ISSUES = [
     {
-        "id": "mvp-runtime-task-duration-metrics",
-        "priority": 1,
-        "title": "Expose task-duration metrics in the operator runtime snapshot",
-        "category": "implemented_but_weakly_verified",
-        "source_acceptance_ids": ["runtime-metrics"],
-        "why_now": "Per-result elapsed_us exists, but the MVP calls for task duration at the metrics layer.",
-    },
-    {
         "id": "mvp-agent-policy-profile",
-        "priority": 2,
+        "priority": 1,
         "title": "Add clean-profile policy tests for first-party agent capability grants",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["agent-identity-capabilities"],

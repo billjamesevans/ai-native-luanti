@@ -305,6 +305,15 @@ assert(wall_clock_task.status == "unsafe")
 assert(wall_clock_task.last_result.ok == false)
 assert(wall_clock_task.last_result.reason == "wall_clock_budget_exceeded")
 assert(wall_clock_task.last_result.metrics.elapsed_us == 3000)
+local duration_snapshot = core.get_ai_runtime_operator_metrics().task_duration_us
+assert(type(duration_snapshot) == "table")
+assert(duration_snapshot.count >= 1)
+assert(duration_snapshot.total >= 3000)
+assert(duration_snapshot.max >= 3000)
+assert(duration_snapshot.average >= 1)
+assert(type(duration_snapshot.by_status) == "table")
+assert(duration_snapshot.by_status.unsafe.count >= 1)
+assert(duration_snapshot.by_status.unsafe.max >= 3000)
 core.get_us_time = old_get_us_time
 
 core.register_node(":ai_runtime_test:stone", {
@@ -839,6 +848,12 @@ local formatted_metrics = core.format_ai_runtime_metrics({
 		completed = 4,
 		unsafe = 1,
 	},
+	task_duration_us = {
+		count = 5,
+		total = 12000,
+		max = 5000,
+		average = 2400,
+	},
 	node_writes = 7,
 	world_node_writes = 5,
 	task_reported_node_writes = 2,
@@ -852,6 +867,7 @@ local formatted_metrics = core.format_ai_runtime_metrics({
 })
 assert(formatted_metrics ==
 	"AI runtime: queue=2 tasks=queued=1,running=1,completed=4,unsafe=1 "
+	.. "duration=count=5,total_us=12000,max_us=5000,avg_us=2400 "
 	.. "writes=total=7,world=5,reported=2 unsafe=3 audit=9 "
 	.. "model=pending=4,requests=6,ok=3,fail=2,timeout=1")
 assert(not formatted_metrics:find("nova:emma", 1, true))
