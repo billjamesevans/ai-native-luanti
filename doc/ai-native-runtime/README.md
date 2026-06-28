@@ -42,4 +42,5 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Benchmark plan](benchmark-plan.md)
 - [Mutation benchmark scenarios](mutation-benchmark-scenarios.md)
 - [Benchmark baseline retention](benchmark-baseline-retention.md)
+- [Synthetic runtime smoke](synthetic-runtime-smoke.md)
 - [Baseline status](baseline-status.md)
