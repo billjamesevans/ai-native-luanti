@@ -25,6 +25,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 ## Design Documents
 
 - [MVP spec](mvp-spec.md)
+- [MVP gap checklist](mvp-gap-checklist.md)
 - [Agent identity and capability API](agent-api.md)
 - [Agent task queue API](task-queue-api.md)
 - [Safe world operations API](safe-world-ops-api.md)
@@ -45,5 +46,6 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Synthetic runtime smoke](synthetic-runtime-smoke.md)
 - One-command local pre-PR verification: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac`
 - Clean-profile runtime gap scorecard: `python3 util/ai_native_runtime_gap_scorecard.py --output-root local/benchmarks`
+- MVP gap audit: `python3 util/ai_native_mvp_audit.py --scorecard local/benchmarks/runtime-gap-scorecard.json --output local/benchmarks/ai-native-mvp-audit.json`
 - [AI runtime server profile](non-devtest-server-profile.md)
 - [Baseline status](baseline-status.md)
