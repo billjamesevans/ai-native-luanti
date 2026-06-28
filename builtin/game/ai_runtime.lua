@@ -711,6 +711,42 @@ local function import_action_requires_capability(action)
 	return false
 end
 
+local function import_handoff_has_payload(value, depth)
+	if type(value) ~= "table" then
+		return false
+	end
+	depth = depth or 0
+	if depth > 8 then
+		return false
+	end
+	if value.asset_payload ~= nil or value.private_payload ~= nil or value.payload ~= nil then
+		return true
+	end
+	for _, child in pairs(value) do
+		if import_handoff_has_payload(child, depth + 1) then
+			return true
+		end
+	end
+	return false
+end
+
+local function import_inventory_requires_capability(entry)
+	local capabilities = entry.required_capabilities or {}
+	for _, capability in ipairs(capabilities) do
+		if capability == "import.assets" then
+			return true
+		end
+	end
+	return false
+end
+
+local function import_source_inventory(plan)
+	local source = plan.source or {}
+	local inventory = plan.source_inventory or source.inventory or {}
+	assert(type(inventory) == "table", "Import source inventory must be a table")
+	return inventory
+end
+
 function core.ai_import_ops.plan(plan, options)
 	assert(type(plan) == "table", "Import plan must be a table")
 	options = options or {}
@@ -719,7 +755,7 @@ function core.ai_import_ops.plan(plan, options)
 	if denied then
 		return denied
 	end
-	if plan.asset_payload ~= nil or plan.private_payload ~= nil then
+	if import_handoff_has_payload(plan) then
 		result.skipped = 1
 		core.record_ai_runtime_audit({
 			event_type = "import.plan",
@@ -774,13 +810,39 @@ function core.ai_import_ops.plan(plan, options)
 				"Every import action must require import.assets.")
 		end
 	end
+	local inventory = import_source_inventory(plan)
+	for _, entry in ipairs(inventory) do
+		assert(type(entry) == "table", "Import inventory entries must be tables")
+		if not import_inventory_requires_capability(entry) then
+			result.skipped = 1
+			core.record_ai_runtime_audit({
+				event_type = "import.plan",
+				agent_id = result.agent_id,
+				task_id = result.task_id,
+				actor = owner,
+				operation = result.operation,
+				status = "blocked",
+				reason = "import_inventory_capability_marker_required",
+				message = "Every import inventory entry must require import.assets.",
+				skipped = result.skipped,
+			})
+			return finish_runtime_gate_result(result, "blocked",
+				"import_inventory_capability_marker_required",
+				"Every import inventory entry must require import.assets.")
+		end
+	end
 
 	result.examined = #actions
+	local source = plan.source or {}
 	result.import_plan = {
 		dry_run = true,
-		source_class = plan.source_class,
+		source_id = plan.source_id or source.source_id,
+		source_class = plan.source_class or source.source_class,
+		source_inventory = table.copy(inventory),
+		source_content_hashes = table.copy(source.content_hashes or plan.source_content_hashes or {}),
 		planned_actions = table.copy(actions),
 		assets_copied = false,
+		inventory_count = #inventory,
 	}
 	increment_metric("import_plans")
 	core.record_ai_runtime_audit({
