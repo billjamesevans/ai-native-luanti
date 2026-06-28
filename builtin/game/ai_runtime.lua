@@ -98,6 +98,7 @@ local function public_task(task)
 		budget = table.copy(task.budget),
 		progress = table.copy(task.progress),
 		last_result = table.copy(task.last_result),
+		duration_us = task.duration_us,
 	}
 end
 
@@ -182,6 +183,13 @@ local ai_runtime_metrics = {
 	rollback_record_failures = 0,
 	task_lag_pauses = 0,
 	task_wall_clock_budget_exceeded = 0,
+	task_duration_us = {
+		count = 0,
+		total = 0,
+		max = 0,
+		average = 0,
+		by_status = {},
+	},
 	entity_spawns = 0,
 	entity_moves = 0,
 	entity_cleanups = 0,
@@ -367,6 +375,16 @@ function core.get_ai_runtime_metrics()
 	metrics.entities_by_type = table.copy(ai_runtime_metrics.entities_by_type)
 	metrics.model_adapter_latency_buckets =
 		table.copy(ai_runtime_metrics.model_adapter_latency_buckets)
+	metrics.task_duration_us = {
+		count = ai_runtime_metrics.task_duration_us.count,
+		total = ai_runtime_metrics.task_duration_us.total,
+		max = ai_runtime_metrics.task_duration_us.max,
+		average = ai_runtime_metrics.task_duration_us.average,
+		by_status = {},
+	}
+	for status, duration in pairs(ai_runtime_metrics.task_duration_us.by_status) do
+		metrics.task_duration_us.by_status[status] = table.copy(duration)
+	end
 	return metrics
 end
 
@@ -409,10 +427,23 @@ local function metric_number(metrics, name)
 	return value
 end
 
+local function duration_metric_number(metrics, name)
+	local duration = metrics and metrics.task_duration_us or nil
+	local value = duration and duration[name] or 0
+	if type(value) ~= "number" then
+		return 0
+	end
+	return value
+end
+
 function core.format_ai_runtime_metrics(metrics)
 	metrics = metrics or core.get_ai_runtime_operator_metrics()
 	return "AI runtime: queue=" .. metric_number(metrics, "queue_length")
 		.. " tasks=" .. format_task_status_counts(metrics.task_status_counts)
+		.. " duration=count=" .. duration_metric_number(metrics, "count")
+		.. ",total_us=" .. duration_metric_number(metrics, "total")
+		.. ",max_us=" .. duration_metric_number(metrics, "max")
+		.. ",avg_us=" .. duration_metric_number(metrics, "average")
 		.. " writes=total=" .. metric_number(metrics, "node_writes")
 		.. ",world=" .. metric_number(metrics, "world_node_writes")
 		.. ",reported=" .. metric_number(metrics, "task_reported_node_writes")
@@ -437,6 +468,35 @@ local function record_task_audit(event_type, task, extra)
 		changed = extra.changed,
 		skipped = extra.skipped,
 	})
+end
+
+local function record_task_duration(task, status)
+	if task.duration_recorded then
+		return
+	end
+	local finished_at = core.get_us_time and core.get_us_time() or task.updated_at or 0
+	local started_at = task.started_at or task.created_at or finished_at
+	local elapsed_us = math.max(0, finished_at - started_at)
+	task.duration_us = elapsed_us
+	task.duration_recorded = true
+
+	local duration = ai_runtime_metrics.task_duration_us
+	duration.count = duration.count + 1
+	duration.total = duration.total + elapsed_us
+	duration.max = math.max(duration.max, elapsed_us)
+	duration.average = duration.count > 0 and duration.total / duration.count or 0
+
+	local by_status = duration.by_status[status] or {
+		count = 0,
+		total = 0,
+		max = 0,
+		average = 0,
+	}
+	by_status.count = by_status.count + 1
+	by_status.total = by_status.total + elapsed_us
+	by_status.max = math.max(by_status.max, elapsed_us)
+	by_status.average = by_status.count > 0 and by_status.total / by_status.count or 0
+	duration.by_status[status] = by_status
 end
 
 local function copy_pos(pos)
@@ -2270,6 +2330,7 @@ function core.cancel_ai_task(task_id, actor)
 	task.last_result = make_task_result(task_id, true, "cancelled",
 		"task_cancelled", "Task was cancelled.")
 	increment_metric("tasks_cancelled")
+	record_task_duration(task, "cancelled")
 	record_task_audit("task.cancelled", task, {
 		status = "cancelled",
 		reason = "task_cancelled",
@@ -2408,6 +2469,7 @@ function core.step_ai_tasks()
 					task.last_result = make_task_result(task.task_id, false, "failed",
 						"step_error", tostring(result))
 					increment_metric("tasks_failed")
+					record_task_duration(task, "failed")
 					record_task_audit("task.failed", task, {
 						status = "failed",
 						reason = "step_error",
@@ -2430,6 +2492,7 @@ function core.step_ai_tasks()
 						"node_write_budget_exceeded",
 						"Task step exceeded its node-write budget.")
 					increment_metric("tasks_unsafe")
+					record_task_duration(task, "unsafe")
 					record_task_audit("task.unsafe", task, {
 						status = "unsafe",
 						reason = "node_write_budget_exceeded",
@@ -2452,6 +2515,7 @@ function core.step_ai_tasks()
 						}
 						increment_metric("tasks_unsafe")
 						increment_metric("task_wall_clock_budget_exceeded")
+						record_task_duration(task, "unsafe")
 						record_task_audit("task.unsafe", task, {
 							status = "unsafe",
 							reason = "wall_clock_budget_exceeded",
@@ -2471,19 +2535,21 @@ function core.step_ai_tasks()
 					elseif task.status == "failed" then
 						increment_metric("tasks_failed")
 					end
+					record_task_duration(task, task.status)
 					record_task_audit("task." .. task.status, task, {
 						status = task.status,
 						reason = task.last_result.reason,
 						message = task.last_result.message,
 						changed = reported_changed,
 						skipped = task.last_result.skipped,
-					})
-					break
+						})
+						break
+					end
 				end
-			end
-			if task.status == "running" and task.progress.current >= task.progress.total then
+				if task.status == "running" and task.progress.current >= task.progress.total then
 				task.status = "completed"
 				increment_metric("tasks_completed")
+				record_task_duration(task, "completed")
 				record_task_audit("task.completed", task, {
 					status = "completed",
 					reason = "task_completed",

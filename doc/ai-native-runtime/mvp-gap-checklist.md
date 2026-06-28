@@ -30,7 +30,7 @@ The generated JSON is local evidence under `local/benchmarks/`. This committed c
 | Structured action results | `already_proven` | Central action-result helpers and schema assertions exist. | Keep all new runtime APIs on this result shape. |
 | Task cancellation | `already_proven` | Owner/admin cancellation paths are tested. | Keep cancellation wired into every long-running plugin task. |
 | Protected and unsafe skips | `already_proven` | Protected, unbreakable, hazard, and sample reporting paths are tested. | Add player-proximity safety when player movement APIs land. |
-| Runtime metrics | `implemented_but_weakly_verified` | Queue and node-write counters exist; per-result elapsed time exists. | Add task-duration aggregates to operator metrics. |
+| Runtime metrics | `already_proven` | Queue, node-write, model, entity, and task-duration counters are exposed in operator metrics. | Keep benchmark dashboards downstream of this runtime snapshot. |
 | Deterministic first-party plugin actions | `already_proven` | The plugin queues light, build, repair, cancel, tasks, and model fallback paths through runtime APIs. | Preserve the no raw world-write boundary. |
 | Follow/come product behavior | `already_proven` | Follow and come queue bounded helper-entity movement through `core.ai_entity_ops` and `core.queue_ai_task`. | Add continuous follow/pathfinding as a later gameplay slice. |
 | Lag pausing and budgets | `already_proven` | Manual pause, automatic lag threshold pausing, node-write budget checks, and wall-clock budget checks are covered in `TestAIRuntime`. | Keep measuring behavior under benchmark load. |
@@ -46,8 +46,8 @@ Completed:
 - #96 `mvp-first-party-agent-plugin-runtime`: made follow and come queue bounded runtime entity movement.
 - #97 `mvp-player-teleport-combat-runtime`: added safe player teleport and defensive-combat capability slices.
 - #98 `mvp-model-import-capability-runtime`: aligned model and import capability gates with queued runtime execution.
+- #99 `mvp-runtime-task-duration-metrics`: exposed task-duration aggregates in the operator runtime snapshot.
 
 Remaining:
 
-1. #99 `mvp-runtime-task-duration-metrics`: expose task-duration aggregates in operator metrics.
-2. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
+1. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
