@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""Run the local AI-native runtime pre-PR verification sequence."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ai_native_benchmark_capture
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_OUTPUT_ROOT = ROOT / "local" / "benchmarks"
+MANIFEST_NAME = "ai-runtime-verification-manifest.json"
+
+
+class CommandStep:
+    def __init__(
+        self,
+        step_id: str,
+        label: str,
+        actual_command: list[str],
+        manifest_command: list[str],
+    ) -> None:
+        self.id = step_id
+        self.label = label
+        self.actual_command = actual_command
+        self.manifest_command = manifest_command
+
+
+class CommandRun:
+    def __init__(
+        self,
+        returncode: int,
+        duration_seconds: float,
+        stdout: str = "",
+        stderr: str = "",
+    ) -> None:
+        self.returncode = returncode
+        self.duration_seconds = duration_seconds
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+PRIVATE_REDACTIONS = (
+    (re.compile(r"/Users/[^\s\"']+"), "<local-path>"),
+    (re.compile(r"\bminecraftpi(?:\.home)?\b", re.I), "<private-host>"),
+    (re.compile(r"\b192\.168(?:\.\d{1,3}){2}\b"), "<private-ip>"),
+    (re.compile(r"\bspacebase|themepark|showcase100|disneyland100\b", re.I), "<private-demo>"),
+    (re.compile(r"sk-[A-Za-z0-9_-]{20,}"), "<secret>"),
+    (re.compile(r"\bOPENAI_API_KEY\b"), "<secret-env>"),
+    (re.compile(r"\bprivate_prompt\b"), "<private-prompt>"),
+    (re.compile(r"\basset_payload\b"), "<asset-payload>"),
+)
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def sanitize_text(value: str) -> str:
+    sanitized = value.replace(str(ROOT), "<repo>")
+    sanitized = sanitized.replace(str(Path.home()), "<home>")
+    for pattern, replacement in PRIVATE_REDACTIONS:
+        sanitized = pattern.sub(replacement, sanitized)
+    return sanitized
+
+
+def bounded_summary(stdout: str, stderr: str, max_chars: int) -> str:
+    text = stderr.strip() or stdout.strip()
+    text = sanitize_text(text)
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+
+
+def logical_run_dir(args) -> str:
+    return "/".join(
+        [
+            "local",
+            "benchmarks",
+            args.hardware_class,
+            ai_native_benchmark_capture.path_part(args.date),
+            ai_native_benchmark_capture.path_part(args.luanti_commit),
+        ]
+    )
+
+
+def physical_run_dir(args) -> Path:
+    return (
+        Path(args.output_root)
+        / args.hardware_class
+        / ai_native_benchmark_capture.path_part(args.date)
+        / ai_native_benchmark_capture.path_part(args.luanti_commit)
+    )
+
+
+def logical_path(args, filename: str) -> str:
+    return f"{logical_run_dir(args)}/{filename}"
+
+
+def python_manifest_command(*parts: str) -> list[str]:
+    return ["python3", *parts]
+
+
+def resolve_server_bin(server_bin: str) -> str:
+    path = Path(server_bin)
+    if path.is_absolute():
+        return str(path)
+    return str(ROOT / path)
+
+
+def server_manifest_bin(server_bin: str) -> str:
+    path = Path(server_bin)
+    if path.is_absolute():
+        try:
+            return path.relative_to(ROOT).as_posix()
+        except ValueError:
+            return "<server-bin>"
+    return path.as_posix()
+
+
+def build_steps(args) -> list[CommandStep]:
+    steps = [
+        CommandStep(
+            "utility_contract_tests",
+            "AI-native Python utility contract tests",
+            [args.python, "-m", "unittest", "discover", "util/tests"],
+            python_manifest_command("-m", "unittest", "discover", "util/tests"),
+        ),
+        CommandStep(
+            "branch_benchmark_gate",
+            "Branch benchmark gate against accepted local baseline",
+            [
+                args.python,
+                "util/ai_native_benchmark_gate.py",
+                "--output-root",
+                str(args.output_root),
+                "--hardware-class",
+                args.hardware_class,
+                "--date",
+                args.date,
+                "--luanti-commit",
+                args.luanti_commit,
+            ]
+            + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
+            python_manifest_command(
+                "util/ai_native_benchmark_gate.py",
+                "--output-root",
+                "local/benchmarks",
+                "--hardware-class",
+                args.hardware_class,
+                "--date",
+                args.date,
+                "--luanti-commit",
+                args.luanti_commit,
+            )
+            + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
+        ),
+        CommandStep(
+            "ai_runtime_focused_tests",
+            "Focused AI runtime unit smoke",
+            [
+                resolve_server_bin(args.server_bin),
+                "--run-unittests",
+                "--test-module",
+                "TestAIRuntime",
+            ],
+            [
+                server_manifest_bin(args.server_bin),
+                "--run-unittests",
+                "--test-module",
+                "TestAIRuntime",
+            ],
+        ),
+    ]
+
+    if args.include_full_unittests:
+        steps.append(
+            CommandStep(
+                "full_engine_unittests",
+                "Full engine unit test suite",
+                [resolve_server_bin(args.server_bin), "--run-unittests"],
+                [server_manifest_bin(args.server_bin), "--run-unittests"],
+            )
+        )
+
+    return steps
+
+
+def run_subprocess(step: CommandStep) -> CommandRun:
+    started = time.monotonic()
+    try:
+        completed = subprocess.run(
+            step.actual_command,
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return CommandRun(
+            completed.returncode,
+            time.monotonic() - started,
+            completed.stdout,
+            completed.stderr,
+        )
+    except OSError as exc:
+        return CommandRun(127, time.monotonic() - started, "", str(exc))
+
+
+def benchmark_gate_artifact(args, result: CommandRun) -> str:
+    for line in result.stdout.splitlines():
+        candidate = line.strip()
+        if candidate.startswith("local/benchmarks/") and candidate.endswith(
+            "benchmark-gate-manifest.json"
+        ):
+            return sanitize_text(candidate)
+    return logical_path(args, "benchmark-gate-manifest.json")
+
+
+def build_step_manifest(step: CommandStep, result: CommandRun, max_output_chars: int) -> dict:
+    status = "pass" if result.returncode == 0 else "fail"
+    payload = {
+        "id": step.id,
+        "label": step.label,
+        "status": status,
+        "returncode": result.returncode,
+        "duration_seconds": round(result.duration_seconds, 3),
+        "command": " ".join(step.manifest_command),
+    }
+    summary = bounded_summary(result.stdout, result.stderr, max_output_chars)
+    if summary:
+        payload["output_summary"] = summary
+    return payload
+
+
+def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], now_fn=utc_now) -> dict:
+    steps = [
+        build_step_manifest(step, result, args.max_output_chars)
+        for step, result in command_results
+    ]
+    failure_reasons = []
+    for step, result in command_results:
+        if result.returncode != 0:
+            failure_reasons.append(f"{step.id} exited with status {result.returncode}")
+
+    artifact_paths = {
+        "verification_manifest": logical_path(args, MANIFEST_NAME),
+    }
+    for step, result in command_results:
+        if step.id == "branch_benchmark_gate":
+            artifact_paths["benchmark_gate_manifest"] = benchmark_gate_artifact(args, result)
+
+    return {
+        "schema_version": 1,
+        "generated_at": now_fn(),
+        "hardware_class": args.hardware_class,
+        "luanti_commit": args.luanti_commit,
+        "logical_run_dir": logical_run_dir(args),
+        "overall_status": "fail" if failure_reasons else "pass",
+        "steps": steps,
+        "artifact_paths": artifact_paths,
+        "failure_reasons": failure_reasons,
+        "run_context": {
+            "mode": "ai-runtime-pre-pr-verification",
+            "requires_private_world": False,
+            "requires_private_assets": False,
+            "requires_live_pi": False,
+            "requires_model_network": False,
+        },
+        "notes": [
+            "Runs local utility contracts, the branch benchmark gate, and focused AI runtime unit smoke.",
+            "Generated artifacts remain local-only and ignored by Git under local/benchmarks.",
+            "Use the low-power lane only after backup-first readiness is confirmed.",
+        ],
+    }
+
+
+def run_harness(args, runner=run_subprocess, now_fn=utc_now) -> tuple[int, Path, dict]:
+    command_results = []
+    for step in build_steps(args):
+        result = runner(step)
+        command_results.append((step, result))
+        if args.fail_fast and result.returncode != 0:
+            break
+
+    manifest = build_manifest(args, command_results, now_fn=now_fn)
+    manifest_path = physical_run_dir(args) / MANIFEST_NAME
+    write_json(manifest_path, manifest)
+    return (0 if manifest["overall_status"] == "pass" else 1), manifest_path, manifest
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Run local AI-native runtime pre-PR verification and write a bounded manifest."
+    )
+    parser.add_argument(
+        "--output-root",
+        default=str(DEFAULT_OUTPUT_ROOT),
+        help="Local benchmark evidence root. Default: local/benchmarks.",
+    )
+    parser.add_argument(
+        "--hardware-class",
+        choices=("local-mac", "low-power-server"),
+        default="local-mac",
+        help="Hardware lane for verification evidence.",
+    )
+    parser.add_argument(
+        "--date",
+        default=ai_native_benchmark_capture.utc_date(),
+        help="Run date segment for local evidence.",
+    )
+    parser.add_argument(
+        "--luanti-commit",
+        default=ai_native_benchmark_capture.default_commit(),
+        help="Commit or label for the branch under verification.",
+    )
+    parser.add_argument(
+        "--server-bin",
+        default="bin/luantiserver",
+        help="Server binary to use for AI runtime unit checks.",
+    )
+    parser.add_argument(
+        "--python",
+        default=sys.executable,
+        help="Python executable for utility checks.",
+    )
+    parser.add_argument(
+        "--include-full-unittests",
+        action="store_true",
+        help="Also run the full Luanti unit test suite after focused AI runtime checks.",
+    )
+    parser.add_argument(
+        "--fail-fast",
+        action="store_true",
+        help="Stop after the first failed command while still writing a manifest.",
+    )
+    parser.add_argument(
+        "--max-output-chars",
+        type=int,
+        default=1200,
+        help="Maximum sanitized output summary characters to keep per step.",
+    )
+    parser.add_argument(
+        "--confirm-low-power-backup",
+        action="store_true",
+        help="Pass backup-first confirmation through to low-power-server benchmark gates.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+    status, _, manifest = run_harness(args)
+    print(manifest["artifact_paths"]["verification_manifest"])
+    return status
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

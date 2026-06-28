@@ -43,4 +43,5 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Mutation benchmark scenarios](mutation-benchmark-scenarios.md)
 - [Benchmark baseline retention](benchmark-baseline-retention.md)
 - [Synthetic runtime smoke](synthetic-runtime-smoke.md)
+- One-command local pre-PR verification: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac`
 - [Baseline status](baseline-status.md)
