@@ -24,6 +24,7 @@ Optional fields:
 
 - `budget.max_steps_per_step`: maximum task step functions to run in one `core.step_ai_tasks()` call. Defaults to `1`.
 - `budget.max_node_writes_per_step`: maximum node writes a step may report through `last_result.changed`. Defaults to `0`, which means not enforced yet.
+- `budget.max_wall_time_ms`: maximum elapsed wall-clock time for the task. Defaults to `0`, which means not enforced.
 
 The queued task starts with status `queued`, progress `{ current = 0, total = #steps }`, and an empty `last_result`.
 
@@ -39,6 +40,8 @@ Runs bounded task work and returns a summary:
 - `remaining`: active queued/running/paused task count.
 - `paused`: whether the queue is paused.
 - `reason`: pause reason when paused.
+- `current_lag_ms`: sampled lag when automatic lag pausing triggers.
+- `max_lag_ms`: configured lag threshold when automatic lag pausing triggers.
 
 Current behavior runs the first queued/running task in queue order. Each call respects that task's `max_steps_per_step` budget.
 
@@ -50,7 +53,7 @@ Step functions receive a context table:
 - `budget`
 - `progress`
 
-Step functions should return an action-result-like table. The task stores it as `last_result`. If the result status is `blocked`, `unsafe`, or `failed`, the task stops with that status. If the reported `changed` count exceeds `budget.max_node_writes_per_step`, the task stops as `unsafe` with reason `node_write_budget_exceeded`.
+Step functions should return an action-result-like table. The task stores it as `last_result`. If the result status is `blocked`, `unsafe`, or `failed`, the task stops with that status. If the reported `changed` count exceeds `budget.max_node_writes_per_step`, the task stops as `unsafe` with reason `node_write_budget_exceeded`. If elapsed wall-clock time exceeds `budget.max_wall_time_ms`, the task stops as `unsafe` with reason `wall_clock_budget_exceeded`.
 
 ### `core.cancel_ai_task(task_id, actor)`
 
@@ -64,7 +67,18 @@ The function returns a structured task result with status `cancelled`, `permissi
 
 ### `core.set_ai_task_queue_paused(paused, reason)`
 
-Sets a global queue pause hook. This is the first placeholder for lag-based pausing. When paused, active tasks are marked `paused` and `core.step_ai_tasks()` runs no task steps. Clearing the pause returns paused tasks to `queued` or `running` based on progress.
+Sets a manual global queue pause hook. When paused, active tasks are marked `paused` and `core.step_ai_tasks()` runs no task steps. Clearing the pause returns paused tasks to `queued` or `running` based on progress.
+
+### `core.set_ai_task_queue_lag_monitor(options)`
+
+Configures automatic lag-based task pausing. Pass `nil` to disable it.
+
+Options:
+
+- `max_lag_ms`: non-negative lag threshold in milliseconds.
+- `get_lag_ms`: optional sampler function returning the current lag in milliseconds. When omitted, the runtime samples `core.get_server_max_lag()` when that engine function is available.
+
+When sampled lag exceeds `max_lag_ms`, `core.step_ai_tasks()` marks active tasks `paused`, runs no task steps, and returns `reason = "lag_threshold_exceeded"`. A later `core.step_ai_tasks()` call automatically resumes paused tasks when sampled lag is at or below the threshold.
 
 ## Task Statuses
 
@@ -88,6 +102,6 @@ This first slice is intentionally small:
 - It does not yet wire into automatic globalstep scheduling.
 - It does not yet perform actual protected-node checks or world writes.
 - It enforces node-write budgets only when step results report `changed`.
+- Wall-clock budgets stop work after a step returns; Lua task steps still need to stay small because the runtime cannot preempt a single long-running function.
 
 Those limits are deliberate. Safe world operations and metrics are tracked by later MVP issues.
-

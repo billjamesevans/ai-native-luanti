@@ -212,6 +212,43 @@ assert(core.step_ai_tasks().ran == 1)
 assert(#lag_events == 1)
 assert(core.get_ai_task("task:lag-paused").status == "completed")
 
+local automatic_lag_events = {}
+local lag_samples = { 75, 10 }
+core.set_ai_task_queue_lag_monitor({
+	max_lag_ms = 50,
+	get_lag_ms = function()
+		local sample = lag_samples[1] or 0
+		table.remove(lag_samples, 1)
+		return sample
+	end,
+})
+core.queue_ai_task({
+	task_id = "task:auto-lag-paused",
+	agent_id = "nova:emma",
+	owner = "emma",
+	label = "automatic lag paused",
+	steps = {
+		function()
+			table.insert(automatic_lag_events, "ran")
+			return { ok = true, status = "success" }
+		end,
+	},
+})
+local auto_paused = core.step_ai_tasks()
+assert(auto_paused.ran == 0)
+assert(auto_paused.paused == true)
+assert(auto_paused.reason == "lag_threshold_exceeded")
+assert(auto_paused.current_lag_ms == 75)
+assert(auto_paused.max_lag_ms == 50)
+assert(core.get_ai_task("task:auto-lag-paused").status == "paused")
+assert(#automatic_lag_events == 0)
+local auto_resumed = core.step_ai_tasks()
+assert(auto_resumed.ran == 1)
+assert(auto_resumed.paused == false)
+assert(#automatic_lag_events == 1)
+assert(core.get_ai_task("task:auto-lag-paused").status == "completed")
+core.set_ai_task_queue_lag_monitor(nil)
+
 core.queue_ai_task({
 	task_id = "task:write-budget",
 	agent_id = "nova:emma",
@@ -236,6 +273,39 @@ local unsafe_task = core.get_ai_task("task:write-budget")
 assert(unsafe_task.status == "unsafe")
 assert(unsafe_task.last_result.ok == false)
 assert(unsafe_task.last_result.reason == "node_write_budget_exceeded")
+
+local old_get_us_time = core.get_us_time
+local fake_us_time = 1000000
+core.get_us_time = function()
+	return fake_us_time
+end
+core.queue_ai_task({
+	task_id = "task:wall-clock-budget",
+	agent_id = "nova:emma",
+	owner = "emma",
+	label = "wall clock budget",
+	budget = {
+		max_steps_per_step = 2,
+		max_wall_time_ms = 2,
+	},
+	steps = {
+		function()
+			fake_us_time = fake_us_time + 3000
+			return { ok = true, status = "success", changed = 0 }
+		end,
+		function()
+			error("wall-clock budgeted task must not continue")
+		end,
+	},
+})
+local wall_clock_budget = core.step_ai_tasks()
+assert(wall_clock_budget.ran == 1)
+local wall_clock_task = core.get_ai_task("task:wall-clock-budget")
+assert(wall_clock_task.status == "unsafe")
+assert(wall_clock_task.last_result.ok == false)
+assert(wall_clock_task.last_result.reason == "wall_clock_budget_exceeded")
+assert(wall_clock_task.last_result.metrics.elapsed_us == 3000)
+core.get_us_time = old_get_us_time
 
 core.register_node(":ai_runtime_test:stone", {
 	description = "AI Runtime Test Stone",
@@ -744,11 +814,11 @@ core.record_ai_runtime_audit({
 
 local metrics = core.get_ai_runtime_metrics()
 assert(type(metrics) == "table")
-assert(metrics.tasks_queued == 5)
-assert(metrics.task_steps_run == 5)
-assert(metrics.tasks_completed == 2)
+assert(metrics.tasks_queued == 7)
+assert(metrics.task_steps_run == 7)
+assert(metrics.tasks_completed == 3)
 assert(metrics.tasks_cancelled == 2)
-assert(metrics.tasks_unsafe == 1)
+assert(metrics.tasks_unsafe == 2)
 assert(metrics.queue_length == 0)
 assert(metrics.active_tasks == 0)
 assert(metrics.node_writes >= 4)
@@ -756,6 +826,8 @@ assert(metrics.skipped_operations >= 6)
 assert(metrics.unsafe_operations >= 1)
 assert(metrics.rollback_records_written >= 2)
 assert(metrics.rollback_record_failures >= 1)
+assert(metrics.task_lag_pauses >= 1)
+assert(metrics.task_wall_clock_budget_exceeded >= 1)
 assert(metrics.audit_records >= 1)
 assert(type(metrics.entities_by_type) == "table")
 

@@ -7,6 +7,8 @@ core.ai_rollback_storage = {}
 local ai_task_queue = {}
 local ai_task_queue_paused = false
 local ai_task_queue_pause_reason = nil
+local ai_task_queue_auto_paused = false
+local ai_task_queue_lag_monitor = nil
 
 local function check_string(value, field)
 	assert(type(value) == "string" and value ~= "",
@@ -104,10 +106,15 @@ local function normalize_budget(value)
 	if budget.max_node_writes_per_step == nil then
 		budget.max_node_writes_per_step = 0
 	end
+	if budget.max_wall_time_ms == nil then
+		budget.max_wall_time_ms = 0
+	end
 	assert(type(budget.max_steps_per_step) == "number" and budget.max_steps_per_step >= 1,
 		"Field 'budget.max_steps_per_step' must be a positive number")
 	assert(type(budget.max_node_writes_per_step) == "number" and budget.max_node_writes_per_step >= 0,
 		"Field 'budget.max_node_writes_per_step' must be a non-negative number")
+	assert(type(budget.max_wall_time_ms) == "number" and budget.max_wall_time_ms >= 0,
+		"Field 'budget.max_wall_time_ms' must be a non-negative number")
 	return budget
 end
 
@@ -169,6 +176,8 @@ local ai_runtime_metrics = {
 	},
 	rollback_records_written = 0,
 	rollback_record_failures = 0,
+	task_lag_pauses = 0,
+	task_wall_clock_budget_exceeded = 0,
 	entity_spawns = 0,
 	entity_moves = 0,
 	entity_cleanups = 0,
@@ -1774,32 +1783,101 @@ function core.cancel_ai_task(task_id, actor)
 	return table.copy(task.last_result)
 end
 
+local function resume_paused_ai_tasks()
+	for _, task in pairs(core.registered_ai_tasks) do
+		if task.status == "paused" then
+			task.status = task.progress.current > 0 and "running" or "queued"
+		end
+	end
+end
+
 function core.set_ai_task_queue_paused(paused, reason)
 	ai_task_queue_paused = paused == true
 	ai_task_queue_pause_reason = ai_task_queue_paused and (reason or "paused") or nil
 	if not ai_task_queue_paused then
-		for _, task in pairs(core.registered_ai_tasks) do
-			if task.status == "paused" then
-				task.status = task.progress.current > 0 and "running" or "queued"
-			end
+		resume_paused_ai_tasks()
+	end
+end
+
+function core.set_ai_task_queue_lag_monitor(options)
+	if options == nil then
+		ai_task_queue_lag_monitor = nil
+		ai_task_queue_auto_paused = false
+		if not ai_task_queue_paused then
+			resume_paused_ai_tasks()
+		end
+		return
+	end
+	assert(type(options) == "table", "Lag monitor options must be a table")
+	assert(type(options.max_lag_ms) == "number" and options.max_lag_ms >= 0,
+		"Field 'max_lag_ms' must be a non-negative number")
+	if options.get_lag_ms ~= nil then
+		assert(type(options.get_lag_ms) == "function",
+			"Field 'get_lag_ms' must be a function")
+	end
+	ai_task_queue_lag_monitor = {
+		max_lag_ms = options.max_lag_ms,
+		get_lag_ms = options.get_lag_ms,
+	}
+end
+
+local function default_lag_sample_ms()
+	if core.get_server_max_lag then
+		local lag_seconds = core.get_server_max_lag()
+		if type(lag_seconds) == "number" then
+			return lag_seconds * 1000
+		end
+	end
+	return 0
+end
+
+local function sample_ai_task_queue_lag()
+	if not ai_task_queue_lag_monitor then
+		return nil
+	end
+	local sampler = ai_task_queue_lag_monitor.get_lag_ms
+	local value = sampler and sampler() or default_lag_sample_ms()
+	assert(type(value) == "number" and value >= 0,
+		"Lag monitor sample must be a non-negative number")
+	return value
+end
+
+local function pause_active_ai_tasks()
+	for _, task_id in ipairs(ai_task_queue) do
+		local task = core.registered_ai_tasks[task_id]
+		if task and (task.status == "queued" or task.status == "running") then
+			task.status = "paused"
 		end
 	end
 end
 
 function core.step_ai_tasks()
 	if ai_task_queue_paused then
-		for _, task_id in ipairs(ai_task_queue) do
-			local task = core.registered_ai_tasks[task_id]
-			if task and (task.status == "queued" or task.status == "running") then
-				task.status = "paused"
-			end
-		end
+		pause_active_ai_tasks()
 		return {
 			ran = 0,
 			remaining = count_active_tasks(),
 			paused = true,
 			reason = ai_task_queue_pause_reason,
 		}
+	end
+
+	local current_lag_ms = sample_ai_task_queue_lag()
+	if current_lag_ms and current_lag_ms > ai_task_queue_lag_monitor.max_lag_ms then
+		pause_active_ai_tasks()
+		ai_task_queue_auto_paused = true
+		increment_metric("task_lag_pauses")
+		return {
+			ran = 0,
+			remaining = count_active_tasks(),
+			paused = true,
+			reason = "lag_threshold_exceeded",
+			current_lag_ms = current_lag_ms,
+			max_lag_ms = ai_task_queue_lag_monitor.max_lag_ms,
+		}
+	elseif ai_task_queue_auto_paused then
+		ai_task_queue_auto_paused = false
+		resume_paused_ai_tasks()
 	end
 
 	local ran = 0
@@ -1864,6 +1942,29 @@ function core.step_ai_tasks()
 						changed = reported_changed,
 					})
 					break
+				end
+				if task.budget.max_wall_time_ms > 0 and task.started_at then
+					local now = core.get_us_time and core.get_us_time() or task.updated_at
+					local elapsed_us = now - task.started_at
+					if elapsed_us > task.budget.max_wall_time_ms * 1000 then
+						task.status = "unsafe"
+						task.last_result = make_task_result(task.task_id, false, "unsafe",
+							"wall_clock_budget_exceeded",
+							"Task exceeded its wall-clock budget.")
+						task.last_result.metrics = {
+							elapsed_us = elapsed_us,
+							max_wall_time_ms = task.budget.max_wall_time_ms,
+						}
+						increment_metric("tasks_unsafe")
+						increment_metric("task_wall_clock_budget_exceeded")
+						record_task_audit("task.unsafe", task, {
+							status = "unsafe",
+							reason = "wall_clock_budget_exceeded",
+							message = "Task exceeded its wall-clock budget.",
+							changed = reported_changed,
+						})
+						break
+					end
 				end
 				if task.last_result.status == "blocked" or task.last_result.status == "unsafe"
 						or task.last_result.status == "failed" then
