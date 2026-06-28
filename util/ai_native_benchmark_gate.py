@@ -87,6 +87,15 @@ def comparison_failure_reasons(comparison_statuses: dict) -> list[str]:
     return reasons
 
 
+def profile_failure_reasons(args, profile_statuses: dict) -> list[str]:
+    if args.game_profile != "ai_runtime":
+        return []
+    status = profile_statuses.get("clean_profile")
+    if status != "pass":
+        return [f"clean_profile status is {status or 'missing'}"]
+    return []
+
+
 def build_gate_manifest(
     args,
     accepted_manifest: dict,
@@ -97,6 +106,7 @@ def build_gate_manifest(
     date_part = ai_native_benchmark_capture.path_part(args.date)
     commit_part = ai_native_benchmark_capture.path_part(args.luanti_commit)
     comparison_statuses = capture_manifest.get("comparison_statuses") or {}
+    profile_statuses = capture_manifest.get("profile_statuses") or {}
     overall_status = "fail" if failure_reasons or capture_status != 0 else "pass"
 
     if capture_status not in (0, 1):
@@ -106,11 +116,13 @@ def build_gate_manifest(
         "schema_version": 1,
         "generated_at": utc_now(),
         "hardware_class": args.hardware_class,
+        "game_profile": args.game_profile,
         "logical_run_dir": logical_benchmark_path(args.hardware_class, date_part, commit_part),
         "overall_status": overall_status,
         "branch_ref": {
             "luanti_commit": args.luanti_commit,
             "run_mode": (capture_manifest.get("run_context") or {}).get("mode"),
+            "game_profile": capture_manifest.get("game_profile"),
         },
         "accepted_baseline": {
             "logical_dir": logical_benchmark_path(args.hardware_class, "accepted"),
@@ -122,12 +134,14 @@ def build_gate_manifest(
         "reports": capture_manifest.get("reports") or {},
         "comparisons": capture_manifest.get("comparisons") or {},
         "comparison_statuses": comparison_statuses,
+        "profile_statuses": profile_statuses,
         "failure_reasons": failure_reasons,
         "run_context": {
             "mode": "branch-benchmark-gate",
             "requires_private_world": False,
             "requires_private_assets": False,
             "requires_live_pi": False,
+            "requires_model_network": False,
         },
         "low_power_backup_confirmed": args.confirm_low_power_backup,
         "notes": [
@@ -156,6 +170,19 @@ def run_gate(args) -> int:
         "--demo-entity-baseline",
         str(accepted_dir / accepted_reports.get("demo_entity", REPORT_DEFAULTS["demo_entity"])),
     ]
+    if args.game_profile == "ai_runtime":
+        capture_args += [
+            "--game-profile",
+            "ai_runtime",
+            "--server-bin",
+            args.server_bin,
+            "--profile-sample-seconds",
+            str(args.profile_sample_seconds),
+            "--profile-startup-timeout",
+            str(args.profile_startup_timeout),
+        ]
+        if args.profile_port:
+            capture_args += ["--profile-port", str(args.profile_port)]
     if args.confirm_low_power_backup:
         capture_args.append("--confirm-low-power-backup")
 
@@ -164,7 +191,10 @@ def run_gate(args) -> int:
     commit_part = ai_native_benchmark_capture.path_part(args.luanti_commit)
     run_dir = output_root / args.hardware_class / date_part / commit_part
     capture_manifest = load_json(run_dir / "benchmark-capture-manifest.json")
-    failure_reasons = comparison_failure_reasons(capture_manifest.get("comparison_statuses") or {})
+    failure_reasons = [
+        *comparison_failure_reasons(capture_manifest.get("comparison_statuses") or {}),
+        *profile_failure_reasons(args, capture_manifest.get("profile_statuses") or {}),
+    ]
     gate_manifest = build_gate_manifest(
         args,
         accepted_manifest,
@@ -201,6 +231,34 @@ def parse_args(argv=None):
         "--luanti-commit",
         default=ai_native_benchmark_capture.default_commit(),
         help="Commit or label for the branch build under benchmark.",
+    )
+    parser.add_argument(
+        "--game-profile",
+        choices=("sample-synthetic", "ai_runtime"),
+        default="sample-synthetic",
+        help="Optional clean server profile to launch during capture.",
+    )
+    parser.add_argument(
+        "--server-bin",
+        default="bin/luantiserver",
+        help="Server binary used when --game-profile ai_runtime is selected.",
+    )
+    parser.add_argument(
+        "--profile-sample-seconds",
+        type=float,
+        default=3.0,
+        help="Seconds to keep the disposable ai_runtime server alive after startup.",
+    )
+    parser.add_argument(
+        "--profile-startup-timeout",
+        type=float,
+        default=15.0,
+        help="Seconds to wait for the ai_runtime server listening log line.",
+    )
+    parser.add_argument(
+        "--profile-port",
+        type=int,
+        help="Optional UDP port for the disposable ai_runtime profile launch.",
     )
     parser.add_argument(
         "--confirm-low-power-backup",

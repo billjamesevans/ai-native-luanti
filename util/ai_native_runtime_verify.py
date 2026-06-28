@@ -133,6 +133,33 @@ def server_manifest_bin(server_bin: str) -> str:
 
 
 def build_steps(args) -> list[CommandStep]:
+    actual_profile_args = []
+    manifest_profile_args = []
+    if args.game_profile == "ai_runtime":
+        actual_profile_args = [
+            "--game-profile",
+            "ai_runtime",
+            "--server-bin",
+            args.server_bin,
+            "--profile-sample-seconds",
+            str(args.profile_sample_seconds),
+            "--profile-startup-timeout",
+            str(args.profile_startup_timeout),
+        ]
+        manifest_profile_args = [
+            "--game-profile",
+            "ai_runtime",
+            "--server-bin",
+            server_manifest_bin(args.server_bin),
+            "--profile-sample-seconds",
+            str(args.profile_sample_seconds),
+            "--profile-startup-timeout",
+            str(args.profile_startup_timeout),
+        ]
+        if args.profile_port:
+            actual_profile_args += ["--profile-port", str(args.profile_port)]
+            manifest_profile_args += ["--profile-port", str(args.profile_port)]
+
     steps = [
         CommandStep(
             "utility_contract_tests",
@@ -155,6 +182,7 @@ def build_steps(args) -> list[CommandStep]:
                 "--luanti-commit",
                 args.luanti_commit,
             ]
+            + actual_profile_args
             + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
             python_manifest_command(
                 "util/ai_native_benchmark_gate.py",
@@ -167,6 +195,7 @@ def build_steps(args) -> list[CommandStep]:
                 "--luanti-commit",
                 args.luanti_commit,
             )
+            + manifest_profile_args
             + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
         ),
         CommandStep(
@@ -262,19 +291,27 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     for step, result in command_results:
         if step.id == "branch_benchmark_gate":
             artifact_paths["benchmark_gate_manifest"] = benchmark_gate_artifact(args, result)
+            if args.game_profile == "ai_runtime":
+                artifact_paths["clean_profile_summary"] = logical_path(
+                    args,
+                    "clean-profile-benchmark-summary.json",
+                )
 
     return {
         "schema_version": 1,
         "generated_at": now_fn(),
         "hardware_class": args.hardware_class,
         "luanti_commit": args.luanti_commit,
+        "game_profile": args.game_profile,
         "logical_run_dir": logical_run_dir(args),
         "overall_status": "fail" if failure_reasons else "pass",
         "steps": steps,
         "artifact_paths": artifact_paths,
         "failure_reasons": failure_reasons,
         "run_context": {
-            "mode": "ai-runtime-pre-pr-verification",
+            "mode": "ai-runtime-pre-pr-verification+clean-profile"
+            if args.game_profile == "ai_runtime"
+            else "ai-runtime-pre-pr-verification",
             "requires_private_world": False,
             "requires_private_assets": False,
             "requires_live_pi": False,
@@ -284,7 +321,14 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "Runs local utility contracts, the branch benchmark gate, and focused AI runtime unit smoke.",
             "Generated artifacts remain local-only and ignored by Git under local/benchmarks.",
             "Use the low-power lane only after backup-first readiness is confirmed.",
-        ],
+        ]
+        + (
+            [
+                "Opt-in clean-profile verification records a disposable ai_runtime server capture.",
+            ]
+            if args.game_profile == "ai_runtime"
+            else []
+        ),
     }
 
 
@@ -331,6 +375,29 @@ def parse_args(argv=None):
         "--server-bin",
         default="bin/luantiserver",
         help="Server binary to use for AI runtime unit checks.",
+    )
+    parser.add_argument(
+        "--game-profile",
+        choices=("sample-synthetic", "ai_runtime"),
+        default="sample-synthetic",
+        help="Optional clean server profile to launch through the benchmark gate.",
+    )
+    parser.add_argument(
+        "--profile-sample-seconds",
+        type=float,
+        default=3.0,
+        help="Seconds to keep the disposable ai_runtime server alive after startup.",
+    )
+    parser.add_argument(
+        "--profile-startup-timeout",
+        type=float,
+        default=15.0,
+        help="Seconds to wait for the ai_runtime server listening log line.",
+    )
+    parser.add_argument(
+        "--profile-port",
+        type=int,
+        help="Optional UDP port for the disposable ai_runtime profile launch.",
     )
     parser.add_argument(
         "--python",
