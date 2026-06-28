@@ -22,6 +22,10 @@ class AIRuntimeSmokeContractTests(unittest.TestCase):
 
         for phrase in (
             "core.ai_runtime_smoke.run_scenario",
+            "/ai_runtime_smoke",
+            "mode=blocked",
+            "server",
+            "bounded",
             "synthetic-task-loop-smoke",
             "bounded build-agent task",
             "repair-agent apply task",
