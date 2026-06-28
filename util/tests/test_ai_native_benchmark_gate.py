@@ -1,4 +1,5 @@
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -90,6 +91,59 @@ class BenchmarkGateTests(unittest.TestCase):
             gate = json.loads(gate_path.read_text(encoding="utf-8"))
         return completed, gate_path, gate
 
+    def write_fake_profile_server(self, tmpdir):
+        server = pathlib.Path(tmpdir) / "fake_luantiserver.py"
+        server.write_text(
+            """#!/usr/bin/env python3
+import pathlib
+import signal
+import sys
+import time
+
+args = sys.argv[1:]
+logfile = pathlib.Path(args[args.index("--logfile") + 1])
+gameid = args[args.index("--gameid") + 1]
+port = "30000"
+config = pathlib.Path(args[args.index("--config") + 1])
+for line in config.read_text(encoding="utf-8").splitlines():
+    if line.startswith("port ="):
+        port = line.split("=", 1)[1].strip()
+logfile.parent.mkdir(parents=True, exist_ok=True)
+logfile.write_text(
+    f'2026-06-28 00:00:00: ACTION[Main]: Server for gameid="{gameid}" listening on [::]:{port}.\\n',
+    encoding="utf-8",
+)
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+while True:
+    time.sleep(0.05)
+""",
+            encoding="utf-8",
+        )
+        os.chmod(server, 0o755)
+        return server
+
+    def write_fake_headless_player(self, tmpdir):
+        client = pathlib.Path(tmpdir) / "fake_headless_player.py"
+        client.write_text(
+            """#!/usr/bin/env python3
+import argparse
+import pathlib
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--server-log", required=True)
+parser.add_argument("--name", required=True)
+parser.add_argument("--duration", type=float, default=0.02)
+args = parser.parse_args()
+with pathlib.Path(args.server_log).open("a", encoding="utf-8") as handle:
+    handle.write(f'2026-06-28 00:00:01: ACTION[Server]: {args.name} joins game.\\n')
+time.sleep(max(args.duration, 0.0))
+""",
+            encoding="utf-8",
+        )
+        os.chmod(client, 0o755)
+        return client
+
     def test_gate_passes_against_promoted_accepted_baseline(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -115,6 +169,57 @@ class BenchmarkGateTests(unittest.TestCase):
             serialized = json.dumps(gate, sort_keys=True)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_gate_forwards_headless_player_probe_args_to_clean_profile_capture(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.promote(self.capture(output_root), output_root)
+            fake_server = self.write_fake_profile_server(tmpdir)
+            fake_client = self.write_fake_headless_player(tmpdir)
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(GATE_CLI),
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "branch-headless",
+                    "--game-profile",
+                    "ai_runtime",
+                    "--server-bin",
+                    str(fake_server),
+                    "--profile-sample-seconds",
+                    "0.15",
+                    "--profile-startup-timeout",
+                    "2",
+                    "--headless-player-command",
+                    f"{sys.executable} {fake_client} --server-log {{server_log}} --name {{name}} --duration {{duration_seconds}}",
+                    "--headless-player-count",
+                    "1",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            summary_path = (
+                output_root
+                / "local-mac"
+                / "2026-06-28"
+                / "branch-headless"
+                / "clean-profile-benchmark-summary.json"
+            )
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            probe = summary["comparison_summary"]["player_load_tick_probe"]
+            self.assertEqual(probe["probe_status"], "pass")
+            self.assertEqual(probe["probe_kind"], "headless_client_load")
+            self.assertEqual(probe["synthetic_player_count"], 1)
 
     def test_gate_fails_when_branch_regresses_accepted_baseline(self):
         with tempfile.TemporaryDirectory() as tmpdir:
