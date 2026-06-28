@@ -1549,7 +1549,56 @@ assert(model_request_audit ~= nil)
 assert(model_request_audit.private_payload == nil)
 assert(model_request_audit.payload_retained == false)
 
+function test_ai_agent_plugin_defaults_are_profile_empty()
+	local default_policy_agent = core.ai_agent_plugin.ensure_player_agent("DefaultPolicy")
+	assert(default_policy_agent.agent_id == "nova_agent:DefaultPolicy")
+	assert(core.agent_has_capability(default_policy_agent.agent_id, "world.read") == false)
+	assert(core.agent_has_capability(default_policy_agent.agent_id, "world.place") == false)
+	assert(core.agent_has_capability(default_policy_agent.agent_id, "entity.spawn") == false)
+	assert(core.agent_has_capability(default_policy_agent.agent_id, "task.cancel") == false)
+	assert(core.agent_has_capability(default_policy_agent.agent_id, "http.llm") == false)
+	assert(core.agent_has_capability(default_policy_agent.agent_id, "admin.override") == false)
+	assert(core.agent_has_capability(default_policy_agent.agent_id, "import.assets") == false)
+end
+
+test_ai_agent_plugin_defaults_are_profile_empty()
+test_ai_agent_plugin_defaults_are_profile_empty = nil
+
 core.ai_agent_plugin.configure({
+	capability_profile = "operator",
+	capabilities = {
+		["admin.override"] = true,
+	},
+})
+
+function test_ai_agent_plugin_operator_profile_requires_explicit_audited_override()
+	local operator_policy_agent = core.ai_agent_plugin.ensure_player_agent("OperatorPolicy")
+	assert(operator_policy_agent.agent_id == "nova_agent:OperatorPolicy")
+	assert(operator_policy_agent.limits.capability_profile == "operator")
+	assert(core.agent_has_capability(operator_policy_agent.agent_id, "admin.override") == true)
+
+	local override_check = core.check_agent_capability(operator_policy_agent.agent_id, "admin.override")
+	assert_result(override_check, true, "success", "admin_override_granted")
+	assert(override_check.audit_required == true)
+
+	local latest_audit = core.get_ai_runtime_audit({ limit = 10 })
+	local saw_override_audit = false
+	for _, record in ipairs(latest_audit) do
+		if record.event_type == "capability.admin_override"
+				and record.agent_id == operator_policy_agent.agent_id
+				and record.operation == "capability.check"
+				and record.status == "success" then
+			saw_override_audit = true
+		end
+	end
+	assert(saw_override_audit == true)
+end
+
+test_ai_agent_plugin_operator_profile_requires_explicit_audited_override()
+test_ai_agent_plugin_operator_profile_requires_explicit_audited_override = nil
+
+core.ai_agent_plugin.configure({
+	capability_profile = "clean",
 	light_node = "ai_runtime_test:stone",
 	marker_node = "ai_runtime_test:stone",
 	repair_nodes = {
@@ -1566,6 +1615,7 @@ core.ai_agent_plugin.configure({
 function test_ai_runtime_profile_policy_capabilities()
 	local policy_agent = core.ai_agent_plugin.ensure_player_agent("ProfilePolicy")
 	assert(policy_agent.agent_id == "nova_agent:ProfilePolicy")
+	assert(policy_agent.limits.capability_profile == "clean")
 	assert(core.agent_has_capability(policy_agent.agent_id, "world.read") == true)
 	assert(core.agent_has_capability(policy_agent.agent_id, "entity.spawn") == true)
 	assert(core.agent_has_capability(policy_agent.agent_id, "task.cancel") == true)
@@ -1580,6 +1630,7 @@ test_ai_runtime_profile_policy_capabilities()
 test_ai_runtime_profile_policy_capabilities = nil
 
 core.ai_agent_plugin.configure({
+	capability_profile = "clean",
 	light_node = "ai_runtime_test:stone",
 	marker_node = "ai_runtime_test:stone",
 	repair_nodes = {
