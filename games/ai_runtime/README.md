@@ -1,6 +1,6 @@
 # AI Runtime Game Profile
 
-This is a production-like, public-safe game profile for AI-native runtime operator checks.
+This is the production-like, player-ready alpha game profile for AI-native runtime checks and early agent playtesting.
 
 It intentionally ships only a tiny base mod for mapgen aliases. It includes no private content, copied media, provider configuration, or world data. The AI runtime command surfaces are loaded by builtin server code, so this profile can host local checks such as `/ai_runtime_smoke` without pulling in test-only gameplay material.
 
@@ -8,4 +8,4 @@ The base mod also declares `capability_profile = "clean"` for the first-party ag
 
 Default rollback storage is enabled for this profile so rollback-backed build and repair commands can persist local rollback metadata before mutating a disposable world.
 
-Use this profile for disposable local worlds and future low-power proving-ground checks after the one-command verification harness passes.
+Runtime unit tests, synthetic smoke scenarios, and benchmark fixtures stay outside this profile. Use this profile for disposable local worlds and future low-power proving-ground checks after the one-command verification harness passes.
