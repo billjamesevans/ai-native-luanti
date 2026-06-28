@@ -3,13 +3,16 @@ core.ai_agent_plugin = {}
 local plugin = core.ai_agent_plugin
 local player_states = {}
 local player_task_ids = {}
+local player_entity_ids = {}
 local task_sequence = 0
 local model_adapter = nil
 local settings = {
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
+	agent_entity_name = "ai_demo_benchmark:helper",
 	repair_nodes = {},
 	max_lights = 12,
+	max_entity_move_distance = 16,
 }
 
 local function copy_pos(pos)
@@ -83,11 +86,17 @@ function plugin.configure(options)
 	if options.marker_node then
 		settings.marker_node = options.marker_node
 	end
+	if options.agent_entity_name then
+		settings.agent_entity_name = options.agent_entity_name
+	end
 	if options.repair_nodes then
 		settings.repair_nodes = table.copy(options.repair_nodes)
 	end
 	if options.max_lights then
 		settings.max_lights = options.max_lights
+	end
+	if options.max_entity_move_distance then
+		settings.max_entity_move_distance = options.max_entity_move_distance
 	end
 end
 
@@ -107,11 +116,15 @@ function plugin.ensure_player_agent(name)
 			["world.read"] = true,
 			["world.place"] = true,
 			["world.remove"] = true,
+			["entity.spawn"] = true,
+			["entity.control"] = true,
 			["task.cancel"] = true,
 			["model.request"] = true,
 		},
 		limits = {
 			max_nodes_per_step = settings.max_lights,
+			max_entities = 1,
+			max_entity_move_distance = settings.max_entity_move_distance,
 		},
 	})
 end
@@ -150,6 +163,22 @@ local function active_player_tasks(name)
 		end
 	end
 	return result
+end
+
+local function agent_entity_id_for(name)
+	return agent_id_for(name) .. ":helper"
+end
+
+local function entity_options(name, context)
+	context = context or {}
+	return {
+		agent_id = agent_id_for(name),
+		owner = name,
+		task_id = context.task_id,
+		spawn_entity = context.spawn_entity,
+		max_entities = 1,
+		max_distance = context.max_entity_move_distance or settings.max_entity_move_distance,
+	}
 end
 
 local function queue_plugin_task(name, action, label, steps, context)
@@ -203,6 +232,52 @@ local function handle_light(name, prompt, context)
 			options.task_id = context.task_id
 			options.max_changes = count
 			return core.ai_world_ops.batch_place(placements, options)
+		end,
+	}, context)
+end
+
+local function update_player_entity_state(name, state, entity_id)
+	state = table.copy(state or plugin.get_player_state(name))
+	state.entity_id = entity_id
+	set_player_state(name, state)
+end
+
+local function ensure_agent_entity(name, pos, context, state)
+	local entity_id = player_entity_ids[name] or agent_entity_id_for(name)
+	local options = entity_options(name, context)
+	local inspected = core.ai_entity_ops.inspect(entity_id, options)
+	if inspected.ok then
+		player_entity_ids[name] = entity_id
+		update_player_entity_state(name, state, entity_id)
+		return entity_id, inspected
+	end
+
+	options.entity_id = entity_id
+	local spawned = core.ai_entity_ops.spawn(settings.agent_entity_name, pos, options)
+	if not spawned.ok then
+		return nil, spawned
+	end
+	entity_id = spawned.entity.entity_id
+	player_entity_ids[name] = entity_id
+	update_player_entity_state(name, state, entity_id)
+	return entity_id, spawned
+end
+
+local function handle_agent_move(name, action, label, target_pos, state, context)
+	context = context or {}
+	local target = copy_pos(target_pos)
+	return queue_plugin_task(name, action, label, {
+		function()
+			local entity_id, setup_result = ensure_agent_entity(name, target, context, state)
+			if not entity_id then
+				return setup_result
+			end
+			local options = entity_options(name, context)
+			local moved = core.ai_entity_ops.move(entity_id, target, options)
+			if moved.ok and moved.entity then
+				update_player_entity_state(name, state, moved.entity.entity_id)
+			end
+			return moved
 		end,
 	}, context)
 end
@@ -336,18 +411,20 @@ function plugin.handle_command(name, param, context)
 		return handle_cancel(name)
 	end
 	if prompt:find("follow me", 1, true) or prompt == "follow" then
-		set_player_state(name, {
+		local state = set_player_state(name, {
 			mode = "follow",
 			target_name = name,
 		})
-		return public_reply(name, "follow", "success", "Following " .. name .. ".")
+		return handle_agent_move(name, "follow", "follow " .. name,
+			default_pos(context), state, context)
 	end
 	if prompt == "come" or prompt:find("come here", 1, true) then
-		set_player_state(name, {
+		local target = default_pos(context)
+		local state = set_player_state(name, {
 			mode = "come",
-			target_pos = default_pos(context),
+			target_pos = target,
 		})
-		return public_reply(name, "come", "success", "Moving to your position.")
+		return handle_agent_move(name, "come", "come to player", target, state, context)
 	end
 	if prompt:find("light", 1, true) then
 		return handle_light(name, prompt, context)
