@@ -1,6 +1,7 @@
 local texture = "blank.png"
 
 core.ai_agent_plugin.configure({
+	capability_profile = "clean",
 	light_node = "ai_runtime_base:cobble",
 	marker_node = "ai_runtime_base:cobble",
 	repair_nodes = {},
