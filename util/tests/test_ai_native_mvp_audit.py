@@ -131,7 +131,7 @@ class MvpAuditTests(unittest.TestCase):
             )
             self.assertEqual(
                 audit_by_id["lag-pausing-budget-enforcement"]["category"],
-                "missing_runtime_behavior",
+                "already_proven",
             )
             self.assertEqual(
                 audit_by_id["first-party-deterministic-plugin"]["category"],
@@ -159,10 +159,10 @@ class MvpAuditTests(unittest.TestCase):
             self.assertEqual(
                 follow_on_ids[:4],
                 [
-                    "mvp-task-budget-lag-pausing",
                     "mvp-first-party-agent-plugin-runtime",
                     "mvp-player-teleport-combat-runtime",
                     "mvp-model-import-capability-runtime",
+                    "mvp-runtime-task-duration-metrics",
                 ],
             )
 

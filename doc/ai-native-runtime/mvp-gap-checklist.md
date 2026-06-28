@@ -33,16 +33,21 @@ The generated JSON is local evidence under `local/benchmarks/`. This committed c
 | Runtime metrics | `implemented_but_weakly_verified` | Queue and node-write counters exist; per-result elapsed time exists. | Add task-duration aggregates to operator metrics. |
 | Deterministic first-party plugin actions | `already_proven` | The plugin queues light, build, repair, cancel, tasks, and model fallback paths through runtime APIs. | Preserve the no raw world-write boundary. |
 | Follow/come product behavior | `missing_first_party_plugin_behavior` | Current follow and come commands store state only. | Implement bounded movement/pathing through runtime APIs. |
-| Lag pausing and budgets | `missing_runtime_behavior` | Manual pause and node-write budget checks exist. | Add automatic lag threshold handling and wall-clock budgets. |
+| Lag pausing and budgets | `already_proven` | Manual pause, automatic lag threshold pausing, node-write budget checks, and wall-clock budget checks are covered in `TestAIRuntime`. | Keep measuring behavior under benchmark load. |
 | Player teleport and defensive combat | `missing_runtime_behavior` | Capabilities are in the MVP spec, but runtime APIs are not present. | Add default-deny safe APIs and tests. |
 | Model/import capability gates | `missing_runtime_behavior` | Model metrics and import dry-run planning exist. | Align `http.llm` and `import.assets` with runtime task gates. |
 | Compatibility/import | `compatibility_import_deferral` | MVP spec explicitly defers compatibility/import. | Resume after the runtime gaps above are closed. |
 
 ## Ranked Follow-On Issues
 
-1. #95 `mvp-task-budget-lag-pausing`: implement wall-clock budgets and automatic lag-based pausing.
-2. #96 `mvp-first-party-agent-plugin-runtime`: make follow and come real bounded runtime behavior.
-3. #97 `mvp-player-teleport-combat-runtime`: add safe player teleport and defensive-combat capability slices.
-4. #98 `mvp-model-import-capability-runtime`: align model and import capability gates with runtime task execution.
-5. #99 `mvp-runtime-task-duration-metrics`: expose task-duration aggregates in operator metrics.
-6. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
+Completed:
+
+- #95 `mvp-task-budget-lag-pausing`: implemented wall-clock budgets and automatic lag-based pausing.
+
+Remaining:
+
+1. #96 `mvp-first-party-agent-plugin-runtime`: make follow and come real bounded runtime behavior.
+2. #97 `mvp-player-teleport-combat-runtime`: add safe player teleport and defensive-combat capability slices.
+3. #98 `mvp-model-import-capability-runtime`: align model and import capability gates with runtime task execution.
+4. #99 `mvp-runtime-task-duration-metrics`: expose task-duration aggregates in operator metrics.
+5. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
