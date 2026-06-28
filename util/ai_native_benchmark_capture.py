@@ -23,6 +23,7 @@ import ai_native_mutation_benchmarks
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_VERSION = "ai-native-benchmark-capture:v2"
 CLEAN_PROFILE_RUNNER_VERSION = "ai-native-clean-profile-benchmark:v1"
+SYNTHETIC_MAPBLOCK_ROWS = 4
 DEMO_ENTITY_EXAMPLE = (
     ROOT
     / "doc"
@@ -463,6 +464,77 @@ def inspect_map_workload(world_dir: Path) -> dict:
     return result
 
 
+def run_synthetic_mapblock_workload(world_dir: Path, row_count: int = SYNTHETIC_MAPBLOCK_ROWS) -> dict:
+    map_db = world_dir / "map.sqlite"
+    before = inspect_map_workload(world_dir)
+    started = time.monotonic()
+    warning_count = 0
+    error_count = 0
+    workload_status = "pass"
+    error_reason = None
+
+    try:
+        map_db.parent.mkdir(parents=True, exist_ok=True)
+        with sqlite3.connect(map_db) as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS blocks ("
+                "x INTEGER, y INTEGER, z INTEGER, data BLOB NOT NULL, "
+                "PRIMARY KEY (x, z, y))"
+            )
+            columns = {
+                row[1]
+                for row in conn.execute("PRAGMA table_info(blocks)").fetchall()
+            }
+            payload = b"ai-native-synthetic-mapblock-v1"
+            for index in range(row_count):
+                if {"x", "y", "z", "data"}.issubset(columns):
+                    conn.execute(
+                        "INSERT OR REPLACE INTO blocks (x, y, z, data) VALUES (?, ?, ?, ?)",
+                        (index, 0, 0, payload + str(index).encode("ascii")),
+                    )
+                elif {"pos", "data"}.issubset(columns):
+                    conn.execute(
+                        "INSERT OR REPLACE INTO blocks (pos, data) VALUES (?, ?)",
+                        (index + 1, payload + str(index).encode("ascii")),
+                    )
+                else:
+                    raise sqlite3.OperationalError("unsupported_blocks_schema")
+            conn.commit()
+    except sqlite3.Error as exc:
+        workload_status = "fail"
+        error_count = 1
+        error_reason = exc.__class__.__name__
+
+    after = inspect_map_workload(world_dir)
+    duration_ms = round((time.monotonic() - started) * 1000, 3)
+    rows_before = before.get("mapblock_rows") or 0
+    rows_after = after.get("mapblock_rows") or 0
+    bytes_before = before.get("map_sqlite_bytes") or 0
+    bytes_after = after.get("map_sqlite_bytes") or 0
+    if workload_status == "pass" and rows_after <= rows_before:
+        workload_status = "fail"
+        error_count = 1
+        error_reason = "no_mapblocks_created"
+
+    return {
+        **after,
+        "workload_status": workload_status,
+        "workload_kind": "synthetic_sqlite_mapblock_churn",
+        "synthetic": True,
+        "requested_mapblock_rows": row_count,
+        "mapblock_rows_before": rows_before,
+        "mapblock_rows_after": rows_after,
+        "mapblock_rows_created": max(0, rows_after - rows_before),
+        "map_sqlite_bytes_before": bytes_before,
+        "map_sqlite_bytes_after": bytes_after,
+        "map_sqlite_bytes_growth": max(0, bytes_after - bytes_before),
+        "workload_duration_ms": duration_ms,
+        "warning_count": warning_count,
+        "error_count": error_count,
+        "error_reason": error_reason,
+    }
+
+
 def summarize_entity_report(report: dict) -> dict:
     return {
         "report_family": "demo_entity",
@@ -639,7 +711,9 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         if PROFILE_LOG_FAILURE_PATTERNS.search(log_text):
             failure_notes.append("profile_log_contains_devtest_or_invalid_mapgen_alias")
 
-        map_workload = inspect_map_workload(world_dir)
+        map_workload = run_synthetic_mapblock_workload(world_dir)
+        if map_workload["workload_status"] != "pass":
+            failure_notes.append("map_chunk_workload_failed")
 
     startup = {
         "listening": listening,

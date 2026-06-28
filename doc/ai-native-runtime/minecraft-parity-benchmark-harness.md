@@ -42,7 +42,9 @@ The harness defines these comparison dimensions:
 - CPU
 - latency
 
-Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, server-step workload samples, map/chunk inspection, generic demo entity benchmarks, mutation/write benchmarks, and memory sampling.
+Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, and memory sampling.
+
+The first mapblock/chunk churn probe is `synthetic_sqlite_mapblock_churn`. It runs only in the disposable clean-profile benchmark world and records mapblock rows before/after, rows created, SQLite byte growth, workload duration, and warning/error counts.
 
 CPU and true client/server network latency are tracked as qualitative Minecraft-parity gaps until public-safe probes exist.
 
