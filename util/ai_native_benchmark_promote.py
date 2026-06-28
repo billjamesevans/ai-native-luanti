@@ -15,6 +15,9 @@ REPORT_FILES = {
     "mutation": "mutation-benchmark-report.json",
     "demo_entity": "generic-demo-entity-benchmark-report.json",
 }
+OPTIONAL_REPORT_FILES = {
+    "clean_profile": "clean-profile-benchmark-summary.json",
+}
 PRIVATE_CONTEXT_FLAGS = (
     "requires_private_world",
     "requires_private_assets",
@@ -60,19 +63,39 @@ def report_errors(report_name: str, report: dict) -> list[str]:
     return errors
 
 
+def clean_profile_errors(report: dict) -> list[str]:
+    errors = []
+    if report.get("overall_status") != "pass":
+        errors.append("clean_profile: overall_status must be pass")
+    if (report.get("game_profile") or {}).get("gameid") != "ai_runtime":
+        errors.append("clean_profile: game_profile.gameid must be ai_runtime")
+    if report.get("failure_notes"):
+        errors.append("clean_profile: failure_notes present")
+    run_context = report.get("run_context") or {}
+    for flag in (*PRIVATE_CONTEXT_FLAGS, "requires_model_network"):
+        if run_context.get(flag) is True:
+            errors.append(f"clean_profile: {flag}=true")
+    return errors
+
+
 def load_capture(capture_dir: Path):
     manifest_path = capture_dir / "benchmark-capture-manifest.json"
     if not manifest_path.is_file():
         raise FileNotFoundError(f"missing capture manifest: {manifest_path}")
     manifest = load_json(manifest_path)
+    report_files = dict(REPORT_FILES)
+    declared_reports = manifest.get("reports") or {}
+    for report_name, filename in OPTIONAL_REPORT_FILES.items():
+        if declared_reports.get(report_name) == filename:
+            report_files[report_name] = filename
 
     reports = {}
-    for report_name, filename in REPORT_FILES.items():
+    for report_name, filename in report_files.items():
         path = capture_dir / filename
         if not path.is_file():
             raise FileNotFoundError(f"missing {report_name} report: {path}")
         reports[report_name] = load_json(path)
-    return manifest, reports
+    return manifest, reports, report_files
 
 
 def validate_capture(manifest: dict, reports: dict) -> list[str]:
@@ -87,24 +110,29 @@ def validate_capture(manifest: dict, reports: dict) -> list[str]:
                 f"{report_name}: hardware_class mismatch "
                 f"({report_hardware!r} != {hardware_class!r})"
             )
-        errors.extend(report_errors(report_name, report))
+        if report_name == "clean_profile":
+            errors.extend(clean_profile_errors(report))
+        else:
+            errors.extend(report_errors(report_name, report))
     return errors
 
 
-def build_manifest(source_manifest: dict, source_label: str) -> dict:
+def build_manifest(source_manifest: dict, source_label: str, report_files: dict) -> dict:
     return {
         "schema_version": 1,
         "generated_at": utc_now(),
         "luanti_commit": source_manifest.get("luanti_commit"),
         "hardware_class": source_manifest.get("hardware_class"),
+        "game_profile": source_manifest.get("game_profile", "sample-synthetic"),
         "source_label": source_label,
         "source_capture": source_manifest.get("logical_run_dir"),
-        "reports": dict(REPORT_FILES),
+        "reports": dict(report_files),
         "run_context": {
             "mode": "accepted-local-baseline",
             "requires_private_world": False,
             "requires_private_assets": False,
             "requires_live_pi": False,
+            "requires_model_network": False,
         },
         "notes": [
             "Accepted baseline is local-only and ignored by Git.",
@@ -114,7 +142,7 @@ def build_manifest(source_manifest: dict, source_label: str) -> dict:
 
 
 def promote_capture(capture_dir: Path, output_root: Path, source_label: str) -> Path:
-    manifest, reports = load_capture(capture_dir)
+    manifest, reports, report_files = load_capture(capture_dir)
     validation_errors = validate_capture(manifest, reports)
     if validation_errors:
         raise ValueError("\n".join(validation_errors))
@@ -122,11 +150,11 @@ def promote_capture(capture_dir: Path, output_root: Path, source_label: str) -> 
     hardware_class = manifest["hardware_class"]
     accepted_dir = output_root / hardware_class / "accepted"
     accepted_dir.mkdir(parents=True, exist_ok=True)
-    for _, filename in REPORT_FILES.items():
+    for _, filename in report_files.items():
         shutil.copyfile(capture_dir / filename, accepted_dir / filename)
     write_json(
         accepted_dir / "accepted-baseline-manifest.json",
-        build_manifest(manifest, source_label),
+        build_manifest(manifest, source_label, report_files),
     )
     return accepted_dir
 

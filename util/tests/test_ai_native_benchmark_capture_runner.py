@@ -1,4 +1,5 @@
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -50,6 +51,37 @@ class BenchmarkCaptureRunnerTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         return completed, output, run_dir, manifest
 
+    def write_fake_profile_server(self, tmpdir):
+        server = pathlib.Path(tmpdir) / "fake_luantiserver.py"
+        server.write_text(
+            """#!/usr/bin/env python3
+import pathlib
+import signal
+import sys
+import time
+
+args = sys.argv[1:]
+logfile = pathlib.Path(args[args.index("--logfile") + 1])
+gameid = args[args.index("--gameid") + 1]
+port = "30000"
+config = pathlib.Path(args[args.index("--config") + 1])
+for line in config.read_text(encoding="utf-8").splitlines():
+    if line.startswith("port ="):
+        port = line.split("=", 1)[1].strip()
+logfile.parent.mkdir(parents=True, exist_ok=True)
+logfile.write_text(
+    f'2026-06-28 00:00:00: ACTION[Main]: Server for gameid="{gameid}" listening on [::]:{port}.\\n',
+    encoding="utf-8",
+)
+signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+while True:
+    time.sleep(0.05)
+""",
+            encoding="utf-8",
+        )
+        os.chmod(server, 0o755)
+        return server
+
     def test_runner_writes_local_reports_and_private_safe_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -74,6 +106,54 @@ class BenchmarkCaptureRunnerTests(unittest.TestCase):
             self.assertEqual(output.name, "benchmarks")
 
             serialized = json.dumps(manifest, sort_keys=True)
+            self.assertNotIn(str(output), serialized)
+            self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_runner_writes_clean_profile_summary_for_ai_runtime(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            fake_server = self.write_fake_profile_server(tmpdir)
+
+            completed, output, run_dir, manifest = self.run_capture(
+                "--game-profile",
+                "ai_runtime",
+                "--server-bin",
+                str(fake_server),
+                "--profile-sample-seconds",
+                "0.1",
+                "--profile-startup-timeout",
+                "2",
+                output_root=output_root,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIsNotNone(manifest)
+            self.assertEqual(manifest["runner_version"], "ai-native-benchmark-capture:v2")
+            self.assertEqual(manifest["game_profile"], "ai_runtime")
+            self.assertEqual(manifest["reports"]["clean_profile"], "clean-profile-benchmark-summary.json")
+
+            summary_path = run_dir / manifest["reports"]["clean_profile"]
+            self.assertTrue(summary_path.is_file())
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(summary["runner_version"], "ai-native-clean-profile-benchmark:v1")
+            self.assertEqual(summary["luanti_commit"], "test-commit")
+            self.assertEqual(summary["hardware_class"], "local-mac")
+            self.assertEqual(summary["game_profile"]["gameid"], "ai_runtime")
+            self.assertEqual(summary["server_launch"]["gameid"], "ai_runtime")
+            self.assertEqual(summary["overall_status"], "pass")
+            self.assertEqual(summary["failure_notes"], [])
+            for key in (
+                "startup",
+                "steady_tick_behavior",
+                "map_chunk_workload",
+                "entity_runtime_operations",
+                "mutation_write_throughput",
+                "memory",
+                "failure_notes",
+            ):
+                self.assertIn(key, summary["comparison_summary"])
+
+            serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
@@ -143,8 +223,10 @@ class BenchmarkCaptureRunnerTests(unittest.TestCase):
             "local/benchmarks/<hardware-class>/<date>/<commit>/",
             "mutation-benchmark-report.json",
             "generic-demo-entity-benchmark-report.json",
+            "clean-profile-benchmark-summary.json",
             "benchmark-capture-manifest.json",
             "same-hardware baseline",
+            "--game-profile ai_runtime",
             "backup-first",
             "no live server",
         ):
