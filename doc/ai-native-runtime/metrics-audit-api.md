@@ -19,6 +19,7 @@ The first implementation is Lua-level and intentionally avoids retaining private
 - `tasks_blocked`
 - `tasks_unsafe`
 - `task_steps_run`
+- `task_duration_us`
 - `queue_length`
 - `active_tasks`
 - `node_writes`
@@ -39,7 +40,7 @@ The first implementation is Lua-level and intentionally avoids retaining private
 - `audit_records`
 - `entities_by_type`
 
-Task counters are updated by `core.queue_ai_task`, `core.step_ai_tasks`, and `core.cancel_ai_task`. World-operation counters are updated when `core.ai_world_ops` results are finalized.
+Task counters are updated by `core.queue_ai_task`, `core.step_ai_tasks`, and `core.cancel_ai_task`. `task_duration_us` records terminal task duration aggregates with `count`, `total`, `max`, `average`, and `by_status` buckets. World-operation counters are updated when `core.ai_world_ops` results are finalized.
 
 ## Pending Requests and Entity Counts
 
@@ -59,7 +60,7 @@ These values are exposed through `core.get_ai_runtime_metrics()`.
 `/ai_runtime` exposes a bounded server-privileged summary for local operators:
 
 ```text
-AI runtime: queue=0 tasks=completed=2,cancelled=2,unsafe=1 writes=total=4,world=4,reported=5 unsafe=1 audit=12 model=pending=0,requests=3,ok=1,fail=1,timeout=1
+AI runtime: queue=0 tasks=completed=2,cancelled=2,unsafe=1 duration=count=5,total_us=12000,max_us=5000,avg_us=2400 writes=total=4,world=4,reported=5 unsafe=1 audit=12 model=pending=0,requests=3,ok=1,fail=1,timeout=1
 ```
 
 The command uses:
@@ -67,7 +68,7 @@ The command uses:
 - `core.get_ai_runtime_operator_metrics()` for the snapshot.
 - `core.format_ai_runtime_metrics(metrics)` for deterministic output.
 
-The output includes queue length, task status counts, node-write counters, unsafe operation count, audit record count, pending model requests, and model-adapter outcome counters. It intentionally omits agent ids, player names, prompts, payloads, source paths, and individual task labels.
+The output includes queue length, task status counts, task-duration aggregates, node-write counters, unsafe operation count, audit record count, pending model requests, and model-adapter outcome counters. It intentionally omits agent ids, player names, prompts, payloads, source paths, and individual task labels.
 
 ## Audit Records
 
