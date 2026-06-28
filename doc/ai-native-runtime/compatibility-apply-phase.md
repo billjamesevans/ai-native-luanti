@@ -28,7 +28,7 @@ An apply request requires:
 - `target_world`: Luanti world identifier or staging world.
 - `operator`: player, server admin, or automation identity approving the work.
 - `agent_id`: import agent that will own queued tasks.
-- `budget`: node-write, media, entity, wall-clock, and manual-review limits.
+- `budget`: node-write, mapblock-churn, media, entity, wall-clock, and manual-review limits.
 - `rollback_policy`: snapshot, manifest-only, or no-world-mutation mode.
 
 The apply phase must reject requests that omit approval, source references, budgets, or rollback policy.
@@ -106,6 +106,7 @@ Apply must enforce explicit budgets before queueing and during execution:
 - `max_entity_definitions`: number of generated entity or node definitions.
 - `max_node_writes_total`: total approved world writes.
 - `max_node_writes_per_step`: per-queue-step world writes.
+- `max_mapblock_churn_total`: total approved mapblock churn from structure placement.
 - `max_manual_review_items`: count of items allowed to remain manual.
 - `max_wall_time_ms`: operator-facing runtime limit.
 
@@ -217,7 +218,12 @@ This command:
 - Requires explicit approval request JSON.
 - Rejects missing approval actions, budgets, rollback policy, and unknown planned action references.
 - Verifies the approved action list against the dry-run report.
+- Validates approved `import_structure` actions against node-write, mapblock-churn, manual-review, wall-clock, and rollback budgets.
+- Requires staging plus `manifest_only` or `snapshot` rollback policy before a structure handoff can be defined.
+- Emits inert task definitions that preserve calibrated structure cost, redacted source provenance, required `import.assets`/world capabilities, and `mutation_enabled = false`.
 - Emits an apply summary with `status = planned`.
+
+Structure apply remains a staging/no-op prototype in this slice. It does not queue runnable world-write steps or mutate a world.
 - Leaves the dry-run report unchanged.
 - Copies no assets and performs no world mutation.
 

@@ -145,6 +145,7 @@
         "max_entity_definitions",
         "max_node_writes_total",
         "max_node_writes_per_step",
+        "max_mapblock_churn_total",
         "max_manual_review_items",
         "max_wall_time_ms"
       ],
@@ -162,6 +163,10 @@
           "minimum": 0
         },
         "max_node_writes_per_step": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_mapblock_churn_total": {
           "type": "integer",
           "minimum": 0
         },

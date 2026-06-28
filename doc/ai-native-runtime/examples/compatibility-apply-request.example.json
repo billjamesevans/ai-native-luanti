@@ -31,6 +31,7 @@
     "max_entity_definitions": 2,
     "max_node_writes_total": 0,
     "max_node_writes_per_step": 0,
+    "max_mapblock_churn_total": 0,
     "max_manual_review_items": 4,
     "max_wall_time_ms": 5000
   },
