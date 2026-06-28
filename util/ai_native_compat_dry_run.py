@@ -26,7 +26,7 @@ TOP_LEVEL_REQUIRED = (
     "planned_actions",
     "safety",
 )
-SOURCE_REQUIRED = ("source_id", "source_class", "path_policy", "license_status")
+SOURCE_REQUIRED = ("source_id", "source_class", "path_policy", "license_status", "inventory")
 SUMMARY_REQUIRED = (
     "risk_level",
     "items_total",
@@ -53,6 +53,15 @@ UNSUPPORTED_FEATURE_REQUIRED = (
     "recommendation",
 )
 PLANNED_ACTION_REQUIRED = ("action", "status", "description", "mutation_cost")
+INVENTORY_ENTRY_REQUIRED = (
+    "entry_id",
+    "source_path",
+    "source_kind",
+    "size_bytes",
+    "classification",
+    "reason",
+    "required_capabilities",
+)
 SAFETY_REQUIRED_TRUE = (
     "no_assets_copied",
     "no_world_mutation",
@@ -195,6 +204,25 @@ def _read_zip_json(source, filename):
             return json.loads(handle.read().decode("utf-8"))
 
 
+def _read_entry_text(source, filename):
+    if source.is_dir():
+        return (source / filename).read_text(encoding="utf-8")
+    with zipfile.ZipFile(source) as archive:
+        with archive.open(filename) as handle:
+            return handle.read().decode("utf-8")
+
+
+def _parse_luanti_mod_conf(text):
+    metadata = {}
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        metadata[key.strip()] = value.strip()
+    return metadata
+
+
 def _metadata_for(source, entries):
     names = {entry["path"] for entry in entries}
     if source.is_dir() and (source / "pack.mcmeta").is_file():
@@ -222,6 +250,23 @@ def _metadata_for(source, entries):
             "pack_name": str(manifest.get("header", {}).get("name", "")),
             "module_types": ",".join(sorted(t for t in module_types if t)),
         }
+
+    mod_conf_name = next((name for name in names if name == "mod.conf" or name.endswith("/mod.conf")), None)
+    if mod_conf_name:
+        mod_conf = _parse_luanti_mod_conf(_read_entry_text(source, mod_conf_name))
+        depends_name = next((name for name in names if name == "depends.txt" or name.endswith("/depends.txt")), None)
+        parent = pathlib.PurePosixPath(mod_conf_name).parent
+        fallback_name = source.name if str(parent) == "." else parent.name
+        metadata = {
+            "mod_name": mod_conf.get("name", fallback_name),
+            "description": mod_conf.get("description", ""),
+        }
+        if depends_name:
+            metadata["depends_declared"] = "true"
+        return "luanti_mod", metadata
+
+    if any(name.endswith("level.dat") for name in names):
+        return "world", {}
 
     suffix = source.suffix.lower()
     if suffix in {".schem", ".schematic", ".mcstructure"}:
@@ -255,7 +300,8 @@ def _category_counts(entries):
     for entry in entries:
         path = entry["path"].lower()
         suffix = pathlib.PurePosixPath(path).suffix
-        if path.endswith("pack.mcmeta") or path.endswith("manifest.json"):
+        if (path.endswith("pack.mcmeta") or path.endswith("manifest.json")
+                or path.endswith("mod.conf") or path.endswith("depends.txt")):
             counts["metadata"] += 1
         if "/textures/" in f"/{path}" or suffix in {".png", ".jpg", ".jpeg"}:
             counts["textures"] += 1
@@ -272,6 +318,64 @@ def _category_counts(entries):
         if path.endswith("level.dat") or suffix == ".mcworld":
             counts["world"] += 1
     return counts
+
+
+def _source_kind(entry):
+    path = entry["path"].lower()
+    suffix = pathlib.PurePosixPath(path).suffix
+    wrapped = f"/{path}"
+    if path.endswith("mod.conf") or path.endswith("depends.txt"):
+        return "mod_metadata"
+    if path.endswith("pack.mcmeta") or path.endswith("manifest.json"):
+        return "metadata"
+    if "/textures/" in wrapped or suffix in {".png", ".jpg", ".jpeg"}:
+        return "texture"
+    if "/sounds/" in wrapped or suffix in {".ogg", ".wav"}:
+        return "sound"
+    if "/models/" in wrapped or "models" in path:
+        return "model"
+    if "/scripts/" in wrapped or suffix == ".js" or "behavior" in path:
+        return "behavior"
+    if "/entities/" in wrapped or ".entity.json" in path:
+        return "entity"
+    if suffix in {".schem", ".schematic", ".mcstructure"}:
+        return "structure"
+    if path.endswith("level.dat") or suffix == ".mcworld":
+        return "world"
+    return "unknown"
+
+
+def _inventory_classification(source_kind, source_class):
+    if source_kind in {"metadata", "mod_metadata", "texture", "sound"}:
+        return "mapped", "metadata_or_asset_reference"
+    if source_kind in {"model", "entity"}:
+        return "blocked", "requires_manual_review"
+    if source_kind == "behavior":
+        return "unsupported", "behavior_script_not_supported"
+    if source_kind == "structure":
+        return "blocked", "requires_apply_approval"
+    if source_kind == "world":
+        return "blocked", "world_format_not_supported"
+    if source_class == "unknown":
+        return "unsupported", "unsupported_format"
+    return "unknown", "unclassified_entry"
+
+
+def _source_inventory(entries, source_class):
+    inventory = []
+    for index, entry in enumerate(entries):
+        source_kind = _source_kind(entry)
+        classification, reason = _inventory_classification(source_kind, source_class)
+        inventory.append({
+            "entry_id": f"entry:{index + 1}",
+            "source_path": entry["path"],
+            "source_kind": source_kind,
+            "size_bytes": entry["size"],
+            "classification": classification,
+            "reason": reason,
+            "required_capabilities": ["import.assets"],
+        })
+    return inventory
 
 
 def _section_status(name, count, unsupported_count):
@@ -363,6 +467,16 @@ def _unsupported_features(entries, source_class):
                 "message": "Source entity AI goals do not have a Luanti mapping yet.",
                 "recommendation": "Map the entity to a first-party agent or manually authored mob definition.",
             })
+        if path.endswith("level.dat") or suffix == ".mcworld":
+            features.append({
+                "feature": "world.format",
+                "source_path": path,
+                "status": "unsupported",
+                "reason": "world_format_not_supported",
+                "severity": "warning",
+                "message": "Whole-world conversion is not supported by the dry-run importer yet.",
+                "recommendation": "Start with public-safe metadata inventory or structures before world conversion.",
+            })
     if source_class == "unknown":
         features.append({
             "feature": "source.format",
@@ -378,10 +492,10 @@ def _unsupported_features(entries, source_class):
 
 def _mutation_cost(counts, unsupported_count):
     return {
-        "node_writes": 0,
+        "node_writes": counts["structures"],
         "media_files": counts["textures"] + counts["sounds"] + counts["models"],
         "entity_definitions": counts["entities"],
-        "manual_review_items": unsupported_count + counts["models"],
+        "manual_review_items": unsupported_count + counts["models"] + counts["structures"] + counts["world"],
     }
 
 
@@ -434,6 +548,7 @@ def build_report(source):
 
     entries = _entries_for(source)
     source_class, metadata = _metadata_for(source, entries)
+    inventory = _source_inventory(entries, source_class)
     counts = _category_counts(entries)
     unsupported_features = _unsupported_features(entries, source_class)
     unsupported_count = len(unsupported_features)
@@ -451,6 +566,7 @@ def build_report(source):
             "path_policy": "external_reference",
             "license_status": "user_supplied",
             "metadata": metadata,
+            "inventory": inventory,
             "content_hashes": [{
                 "algorithm": "sha256",
                 "value": _inventory_hash(entries),
@@ -523,6 +639,11 @@ def validate_report(report, expected_unsupported_features=None):
 
     source = report.get("source")
     _require_keys(errors, source, "source", SOURCE_REQUIRED)
+    if isinstance(source, dict):
+        inventory = source.get("inventory")
+        if _require_sequence(errors, inventory, "source.inventory"):
+            for index, entry in enumerate(inventory):
+                _require_keys(errors, entry, f"source.inventory[{index}]", INVENTORY_ENTRY_REQUIRED)
 
     summary = report.get("summary")
     _require_keys(errors, summary, "summary", SUMMARY_REQUIRED)

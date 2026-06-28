@@ -25,6 +25,7 @@ The dry-run reporter should classify source material into these initial classes:
 - `bedrock_behavior_pack`: Bedrock-style behavior metadata such as entities, loot tables, recipes, and scripts.
 - `structure`: user-owned schematic or structure exports.
 - `world`: world metadata or conversion inventory.
+- `luanti_mod`: Luanti mod metadata such as `mod.conf` and dependency declarations.
 - `unknown`: any source that can be listed but not classified safely.
 
 The first implementation can parse metadata and file inventories without interpreting every asset format.
@@ -77,6 +78,7 @@ Every report has:
 - `mode`: always `dry_run` for this phase.
 - `generated_at`: ISO 8601 timestamp.
 - `source`: classified source metadata and redacted path policy.
+- `source.inventory`: redacted per-item inventory with classification, reason, size, and required runtime capabilities.
 - `summary`: totals, estimated mutation cost, risk level, and support counts.
 - `sections`: per-domain compatibility sections for assets, behavior, structures, or world metadata.
 - `unsupported_features`: explicit reasons for unsupported or partially supported items.
@@ -92,6 +94,16 @@ Result status values:
 - `unsupported`: cannot be imported by the current fork.
 - `skipped`: intentionally ignored because it is out of scope or blocked by policy.
 - `unknown`: detected but not understood well enough to classify.
+
+Inventory classification values:
+
+- `mapped`: metadata or user-owned asset references can be mapped later without copying payloads in dry run.
+- `skipped`: intentionally omitted from apply planning.
+- `blocked`: detected and potentially useful, but requires operator review, approval, budgets, rollback policy, or manual mapping before apply.
+- `unsupported`: detected but not supported by the current importer.
+- `unknown`: listed but not classified strongly enough for apply planning.
+
+Each inventory row must use a package-relative `source_path`, not an absolute local path, and must include `required_capabilities` so future apply planning remains aligned with runtime capability gates.
 
 Risk levels:
 
