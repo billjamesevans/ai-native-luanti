@@ -92,10 +92,13 @@ APPLY_BUDGET_REQUIRED = (
     "max_entity_definitions",
     "max_node_writes_total",
     "max_node_writes_per_step",
+    "max_mapblock_churn_total",
     "max_manual_review_items",
     "max_wall_time_ms",
 )
 ROLLBACK_POLICY_REQUIRED = ("policy", "metadata_required")
+ROLLBACK_POLICIES = ("snapshot", "manifest_only", "no_world_mutation")
+WORLD_MUTATING_ROLLBACK_POLICIES = ("snapshot", "manifest_only")
 APPLY_SUMMARY_REQUIRED = (
     "summary_version",
     "apply_id",
@@ -146,6 +149,7 @@ PLANNED_ACTION_TASK_MAPPINGS = {
         "label": "compat.structure.place",
         "mutation_class": "world_mutating",
         "requires_safe_world_ops": True,
+        "extra_capabilities": ("world.place", "world.batch"),
     },
     "skip_feature": {
         "label": "compat.feature.skip",
@@ -808,8 +812,10 @@ def validate_apply_request(request):
     if isinstance(rollback_policy, dict):
         if rollback_policy.get("metadata_required") is not True:
             errors.append("rollback_policy.metadata_required must be true")
-        if rollback_policy.get("policy") != "no_world_mutation":
-            errors.append("rollback_policy.policy must be no_world_mutation for apply_plan")
+        if rollback_policy.get("policy") not in ROLLBACK_POLICIES:
+            errors.append(
+                "rollback_policy.policy must be snapshot, manifest_only, or no_world_mutation"
+            )
 
     return errors
 
@@ -863,6 +869,85 @@ def _planned_action_by_index(report, index):
     return actions[index]
 
 
+def _estimated_wall_time_ms(cost):
+    return (
+        cost.get("node_writes", 0) * 2
+        + cost.get("mapblock_churn", 0) * 25
+        + cost.get("media_files", 0) * 5
+        + cost.get("entity_definitions", 0) * 50
+        + cost.get("manual_review_items", 0) * 100
+    )
+
+
+def _calibrated_action_cost(planned):
+    cost = dict(planned.get("mutation_cost") or {})
+    cost["estimated_wall_time_ms"] = _estimated_wall_time_ms(cost)
+    return cost
+
+
+def _approved_cost_totals(approved_actions):
+    totals = {
+        "media_files": 0,
+        "entity_definitions": 0,
+        "node_writes": 0,
+        "mapblock_churn": 0,
+        "manual_review_items": 0,
+        "estimated_wall_time_ms": 0,
+    }
+    for _action_index, _requested, planned in approved_actions:
+        cost = _calibrated_action_cost(planned)
+        for key in totals:
+            totals[key] += cost.get(key, 0)
+    return totals
+
+
+def _enforce_budget(totals, budget):
+    checks = (
+        ("media_files", "max_media_files"),
+        ("entity_definitions", "max_entity_definitions"),
+        ("node_writes", "max_node_writes_total"),
+        ("mapblock_churn", "max_mapblock_churn_total"),
+        ("manual_review_items", "max_manual_review_items"),
+        ("estimated_wall_time_ms", "max_wall_time_ms"),
+    )
+    for cost_key, budget_key in checks:
+        if totals[cost_key] > budget[budget_key]:
+            raise ValueError(
+                f"approved actions exceed budget.{budget_key}: "
+                f"{totals[cost_key]} > {budget[budget_key]}"
+            )
+    if totals["node_writes"] > 0 and budget["max_node_writes_per_step"] <= 0:
+        raise ValueError(
+            "budget.max_node_writes_per_step must be positive for structure apply tasks"
+        )
+
+
+def _enforce_runtime_handoff_gates(report, request, approved_actions):
+    budget = request["budget"]
+    rollback_policy = request["rollback_policy"]["policy"]
+    totals = _approved_cost_totals(approved_actions)
+    _enforce_budget(totals, budget)
+
+    for _action_index, _requested, planned in approved_actions:
+        required_capabilities = planned.get("required_capabilities") or []
+        if "import.assets" not in required_capabilities:
+            raise ValueError("approved actions must require import.assets")
+        if planned["action"] != "import_structure":
+            continue
+
+        cost = _calibrated_action_cost(planned)
+        if cost["node_writes"] <= 0 and cost["mapblock_churn"] <= 0:
+            continue
+        if request.get("target_world", {}).get("staging") is not True:
+            raise ValueError("target_world.staging must be true for import_structure prototype")
+        if rollback_policy not in WORLD_MUTATING_ROLLBACK_POLICIES:
+            raise ValueError(
+                "rollback_policy.policy must be manifest_only or snapshot for import_structure"
+            )
+        if report.get("source", {}).get("source_class") not in {"structure", "world"}:
+            raise ValueError("import_structure requires a structure or world dry-run source")
+
+
 def _validated_approved_actions(report, request):
     report_errors = validate_report(report)
     if report_errors:
@@ -886,6 +971,7 @@ def _validated_approved_actions(report, request):
         if requested["action"] != planned["action"]:
             raise ValueError(f"approved action index {requested['action_index']} action mismatch")
         approved_actions.append((requested["action_index"], requested, planned))
+    _enforce_runtime_handoff_gates(report, request, approved_actions)
     return approved_actions
 
 
@@ -896,6 +982,11 @@ def build_apply_task_definitions(report, request):
         mapping = PLANNED_ACTION_TASK_MAPPINGS.get(planned["action"])
         if mapping is None:
             raise ValueError(f"planned action {planned['action']} cannot be mapped to a task definition")
+        required_capabilities = sorted({
+            "import.assets",
+            *planned.get("required_capabilities", []),
+            *mapping.get("extra_capabilities", ()),
+        })
         task_definitions.append({
             "task_id": f"compat:{request['report_id']}:{action_index}",
             "agent_id": request["agent_id"],
@@ -904,10 +995,7 @@ def build_apply_task_definitions(report, request):
             "status": "defined",
             "inert": True,
             "queue_state": "not_queued",
-            "required_capabilities": sorted({
-                "import.assets",
-                *planned.get("required_capabilities", []),
-            }),
+            "required_capabilities": required_capabilities,
             "mutation_class": mapping["mutation_class"],
             "requires_safe_world_ops": mapping["requires_safe_world_ops"],
             "budget": {
@@ -916,6 +1004,7 @@ def build_apply_task_definitions(report, request):
                 "max_entity_definitions": request["budget"]["max_entity_definitions"],
                 "max_node_writes_total": request["budget"]["max_node_writes_total"],
                 "max_node_writes_per_step": request["budget"]["max_node_writes_per_step"],
+                "max_mapblock_churn_total": request["budget"]["max_mapblock_churn_total"],
                 "max_manual_review_items": request["budget"]["max_manual_review_items"],
                 "max_wall_time_ms": request["budget"]["max_wall_time_ms"],
             },
@@ -924,6 +1013,25 @@ def build_apply_task_definitions(report, request):
                 "policy": request["rollback_policy"]["policy"],
                 "metadata_required": request["rollback_policy"]["metadata_required"],
                 "world_mutating": mapping["requires_safe_world_ops"],
+            },
+            "runtime_handoff": {
+                "status": "staging_noop",
+                "operation": mapping["label"],
+                "mutation_enabled": False,
+                "requires_capabilities": required_capabilities,
+            },
+            "calibrated_cost": _calibrated_action_cost(planned),
+            "provenance": {
+                "report_id": request["report_id"],
+                "report_version": report["report_version"],
+                "source_class": report["source"]["source_class"],
+                "source_reference": {
+                    "reference_type": request["source_reference"]["reference_type"],
+                    "redacted_id": request["source_reference"]["redacted_id"],
+                    "inventory_hash": request["source_reference"]["inventory_hash"],
+                },
+                "action_index": action_index,
+                "dry_run_action": planned["action"],
             },
             "source_action": {
                 "action_index": action_index,
