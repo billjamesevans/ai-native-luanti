@@ -397,22 +397,45 @@ AUDIT_ITEMS = [
     {
         "id": "player-teleport-and-combat-capabilities",
         "requirement": "player.teleport.self, player.teleport.other, and combat.defend need safe runtime APIs and tests.",
-        "category": "missing_runtime_behavior",
-        "verification_strength": "missing",
+        "category": "already_proven",
+        "verification_strength": "proven",
         "mvp_spec_refs": [
             "Capabilities: player.teleport.self, player.teleport.other, combat.defend.",
             "Safe World Operations: move_agent(agent_id, target, options).",
         ],
         "evidence_specs": [
             (
-                "doc/ai-native-runtime/mvp-spec.md",
-                "Spec includes teleport and defensive combat capabilities.",
-                ["player.teleport.self", "player.teleport.other", "combat.defend"],
+                "builtin/game/ai_runtime.lua",
+                "Runtime exposes default-deny player teleport and bounded defend APIs.",
+                [
+                    "core.ai_player_ops = {}",
+                    "function core.ai_player_ops.teleport_self",
+                    "function core.ai_player_ops.teleport_player",
+                    "function core.ai_player_ops.defend",
+                    "admin_override_required",
+                    "combat.defend",
+                ],
             ),
             (
-                "builtin/game/ai_runtime.lua",
-                "No dedicated player teleport or combat-defend runtime API is present yet.",
-                ["core.ai_entity_ops.move", "entity.control"],
+                "builtin/game/tests/test_ai_runtime.lua",
+                "Focused runtime tests cover self teleport, admin-only other teleport, and defend target selection.",
+                [
+                    "player-task:self-teleport",
+                    "player-task:other-no-admin",
+                    "player-task:other-admin",
+                    "player-task:defend",
+                    "no_hostile_target",
+                ],
+            ),
+            (
+                "doc/ai-native-runtime/safe-player-ops-api.md",
+                "Safe player operations docs describe capabilities, bounds, and audit behavior.",
+                [
+                    "core.ai_player_ops.teleport_self",
+                    "core.ai_player_ops.teleport_player",
+                    "core.ai_player_ops.defend",
+                    "admin-only by default",
+                ],
             ),
         ],
     },
@@ -465,16 +488,8 @@ AUDIT_ITEMS = [
 
 FOLLOW_ON_ISSUES = [
     {
-        "id": "mvp-player-teleport-combat-runtime",
-        "priority": 1,
-        "title": "Add safe player teleport and defensive-combat capability runtime slices",
-        "category": "missing_runtime_behavior",
-        "source_acceptance_ids": ["player-teleport-and-combat-capabilities"],
-        "why_now": "These capabilities are in the MVP set and need explicit admin/default-deny semantics before broader gameplay agents.",
-    },
-    {
         "id": "mvp-model-import-capability-runtime",
-        "priority": 2,
+        "priority": 1,
         "title": "Align http.llm and import.assets capability gates with runtime task execution",
         "category": "missing_runtime_behavior",
         "source_acceptance_ids": ["model-and-import-capability-boundaries"],
@@ -482,7 +497,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-runtime-task-duration-metrics",
-        "priority": 3,
+        "priority": 2,
         "title": "Expose task-duration metrics in the operator runtime snapshot",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["runtime-metrics"],
@@ -490,7 +505,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-agent-policy-profile",
-        "priority": 4,
+        "priority": 3,
         "title": "Add clean-profile policy tests for first-party agent capability grants",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["agent-identity-capabilities"],

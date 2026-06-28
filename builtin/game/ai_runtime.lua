@@ -2,6 +2,7 @@ core.registered_ai_agents = {}
 core.registered_ai_tasks = {}
 core.ai_world_ops = {}
 core.ai_entity_ops = {}
+core.ai_player_ops = {}
 core.ai_rollback_storage = {}
 
 local ai_task_queue = {}
@@ -181,6 +182,8 @@ local ai_runtime_metrics = {
 	entity_spawns = 0,
 	entity_moves = 0,
 	entity_cleanups = 0,
+	player_teleports = 0,
+	combat_defends = 0,
 	entities_by_type = {},
 }
 local ai_task_status_order = {
@@ -901,6 +904,269 @@ function core.ai_entity_ops.cleanup_owned(options)
 	increment_metric("entity_cleanups", result.changed)
 	return finish_entity_result(result, "success", "owned_entities_cleaned_up",
 		"Owned entities were cleaned up.")
+end
+
+local function make_player_result(operation, options)
+	local result = make_action_result(operation, options)
+	result.metrics.distance = 0
+	return result
+end
+
+local function player_event_type(operation)
+	return operation:gsub("^ai_player%.", "player.")
+end
+
+local function finish_player_result(result, status, reason, message)
+	core.record_ai_runtime_audit({
+		event_type = player_event_type(result.operation),
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		operation = result.operation,
+		status = status,
+		reason = reason,
+		message = message,
+		changed = result.changed,
+		examined = result.examined,
+		skipped = result.skipped,
+	})
+	return finish_action_result(result, status, reason, message)
+end
+
+local function player_options(options, operation)
+	assert(type(options) == "table", "Player operation options must be a table")
+	check_string(options.agent_id, "agent_id")
+	local agent = core.get_ai_agent(options.agent_id)
+	local owner = options.owner or options.owner_ref or agent and agent.owner
+	if owner then
+		check_string(owner, "owner")
+	end
+	return agent, owner, make_player_result(operation, options)
+end
+
+local function player_capability(options, operation, capability)
+	local result = make_player_result(operation, options)
+	local capability_result = core.check_agent_capability(options.agent_id, capability)
+	if capability_result.ok then
+		return nil
+	end
+	result.skipped = 1
+	return finish_player_result(result, capability_result.status,
+		capability_result.reason, capability_result.message)
+end
+
+local function public_player(player, name)
+	return {
+		name = name,
+		pos = player:get_pos(),
+	}
+end
+
+local function get_player_ref(player_name, options, result)
+	local get_player = options.get_player_by_name or core.get_player_by_name
+	local player = get_player and get_player(player_name) or nil
+	if not player then
+		result.skipped = 1
+		return nil, finish_player_result(result, "not_found", "unknown_player",
+			"Player was not found.")
+	end
+	if not player.get_pos or not player.set_pos then
+		result.skipped = 1
+		return nil, finish_player_result(result, "blocked", "invalid_player_ref",
+			"Player reference cannot be moved.")
+	end
+	if player.get_attach and player:get_attach() then
+		result.skipped = 1
+		return nil, finish_player_result(result, "blocked", "player_attached",
+			"Attached players cannot be teleported.")
+	end
+	return player, nil
+end
+
+local function player_move_limit(agent, options)
+	local limit = options.max_distance or agent and agent.limits
+		and agent.limits.max_player_teleport_distance
+	if limit == nil then
+		return nil
+	end
+	assert(type(limit) == "number" and limit >= 0,
+		"Player teleport distance limit must be non-negative")
+	return limit
+end
+
+local function teleport_player_ref(player_name, target_pos, options, operation, capability)
+	local agent, _, result = player_options(options, operation)
+	local denied = player_capability(options, operation, capability)
+	if denied then
+		return denied
+	end
+	local player, player_error = get_player_ref(player_name, options, result)
+	if player_error then
+		return player_error
+	end
+	local current_pos = check_pos(player:get_pos(), "player.pos")
+	local distance = entity_distance(current_pos, target_pos)
+	local limit = player_move_limit(agent, options)
+	if limit and distance > limit then
+		result.skipped = 1
+		result.metrics.distance = distance
+		return finish_player_result(result, "blocked", "movement_limit_exceeded",
+			"Player teleport distance exceeded the configured limit.")
+	end
+
+	local ok, moved = pcall(player.set_pos, player, target_pos)
+	if not ok or moved == false then
+		result.skipped = 1
+		return finish_player_result(result, "blocked", "player_move_failed",
+			"Player could not be teleported.")
+	end
+
+	result.changed = 1
+	result.examined = 1
+	result.player = public_player(player, player_name)
+	result.metrics.distance = distance
+	increment_metric("player_teleports")
+	return finish_player_result(result, "success", "player_teleported",
+		"Player was teleported.")
+end
+
+function core.ai_player_ops.teleport_self(pos, options)
+	local target_pos = check_pos(pos, "pos")
+	options = options or {}
+	local agent, owner, result = player_options(options, "ai_player.teleport_self")
+	local player_name = options.player_name or owner
+	if not player_name then
+		result.skipped = 1
+		return finish_player_result(result, "blocked", "missing_player_name",
+			"Player name is required.")
+	end
+	check_string(player_name, "player_name")
+	if not agent or agent.owner ~= player_name or owner ~= player_name then
+		result.skipped = 1
+		return finish_player_result(result, "blocked", "owner_mismatch",
+			"Self teleport requires the agent owner to match the player.")
+	end
+	return teleport_player_ref(player_name, target_pos, options,
+		"ai_player.teleport_self", "player.teleport.self")
+end
+
+function core.ai_player_ops.teleport_player(player_name, pos, options)
+	check_string(player_name, "player_name")
+	local target_pos = check_pos(pos, "pos")
+	options = options or {}
+	local _, _, result = player_options(options, "ai_player.teleport_player")
+	local admin_check = core.check_agent_capability(options.agent_id, "admin.override")
+	if not admin_check.ok then
+		result.skipped = 1
+		return finish_player_result(result, "permission_denied", "admin_override_required",
+			"Teleporting other players requires admin override.")
+	end
+	return teleport_player_ref(player_name, target_pos, options,
+		"ai_player.teleport_player", "player.teleport.other")
+end
+
+local function defend_limit(agent, options)
+	local limit = options.max_distance or agent and agent.limits
+		and agent.limits.max_defend_distance
+	if limit == nil then
+		return nil
+	end
+	assert(type(limit) == "number" and limit >= 0,
+		"Defend distance limit must be non-negative")
+	return limit
+end
+
+local function hostile_pos(hostile)
+	if hostile.pos then
+		return check_pos(hostile.pos, "hostile.pos")
+	end
+	if hostile.ref and hostile.ref.get_pos then
+		local ok, pos = pcall(hostile.ref.get_pos, hostile.ref)
+		if ok and pos then
+			return check_pos(pos, "hostile.pos")
+		end
+	end
+	return nil
+end
+
+local function public_hostile(hostile, pos)
+	return {
+		entity_id = hostile.entity_id,
+		entity_name = hostile.entity_name,
+		pos = pos and copy_pos(pos) or nil,
+	}
+end
+
+function core.ai_player_ops.defend(player_name, options)
+	check_string(player_name, "player_name")
+	options = options or {}
+	local agent, owner, result = player_options(options, "ai_player.defend")
+	local denied = player_capability(options, "ai_player.defend", "combat.defend")
+	if denied then
+		return denied
+	end
+	if not agent or agent.owner ~= player_name or owner ~= player_name then
+		result.skipped = 1
+		return finish_player_result(result, "blocked", "owner_mismatch",
+			"Defend requires the agent owner to match the player.")
+	end
+	local player, player_error = get_player_ref(player_name, options, result)
+	if player_error then
+		return player_error
+	end
+	local player_pos = check_pos(player:get_pos(), "player.pos")
+	local hostiles = options.hostiles
+	if not hostiles and options.find_hostiles then
+		hostiles = options.find_hostiles(player, options)
+	end
+	hostiles = hostiles or {}
+	assert(type(hostiles) == "table", "Field 'hostiles' must be a table")
+
+	local limit = defend_limit(agent, options)
+	local nearest = nil
+	local nearest_pos = nil
+	local nearest_distance = nil
+	for _, hostile in ipairs(hostiles) do
+		if hostile.hostile ~= false then
+			result.examined = result.examined + 1
+			local pos = hostile_pos(hostile)
+			if pos then
+				local distance = entity_distance(player_pos, pos)
+				if (not limit or distance <= limit)
+						and (not nearest_distance or distance < nearest_distance) then
+					nearest = hostile
+					nearest_pos = pos
+					nearest_distance = distance
+				end
+			end
+		end
+	end
+	if not nearest then
+		result.skipped = result.examined
+		return finish_player_result(result, "blocked", "no_hostile_target",
+			"No hostile target was found within the defend limit.")
+	end
+
+	local attack = options.attack_entity or function(hostile)
+		if hostile.ref and hostile.ref.punch then
+			return hostile.ref:punch(player)
+		end
+		return false
+	end
+	local ok, attacked = pcall(attack, nearest, player, options)
+	if not ok or attacked == false then
+		result.skipped = 1
+		result.metrics.distance = nearest_distance
+		result.target = public_hostile(nearest, nearest_pos)
+		return finish_player_result(result, "blocked", "attack_failed",
+			"Defensive action could not be applied to the target.")
+	end
+
+	result.changed = 1
+	result.target = public_hostile(nearest, nearest_pos)
+	result.metrics.distance = nearest_distance
+	increment_metric("combat_defends")
+	return finish_player_result(result, "success", "hostile_target_defended",
+		"Hostile target was defended against.")
 end
 
 local ai_rollback_record_counter = 0
