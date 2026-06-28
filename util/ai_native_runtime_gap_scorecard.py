@@ -214,6 +214,20 @@ def player_probe_measurement(summary: dict) -> dict:
     }
 
 
+def server_step_workload_measurement(summary: dict) -> dict:
+    workload = summary.get("server_step_workload")
+    if workload:
+        return dict(workload)
+    return {
+        "workload_status": "missing",
+        "workload_kind": "not_recorded",
+        "attempted_sample_count": 0,
+        "completed_sample_count": 0,
+        "failed_sample_count": 0,
+        "evidence_gap": "clean-profile summary has no bounded server-step workload",
+    }
+
+
 def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
     manifest = accepted["manifest"]
     clean_profile = accepted["clean_profile"]
@@ -252,6 +266,7 @@ def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
             "observed_uptime_seconds": steady.get("observed_uptime_seconds"),
             "evidence_gap": "headless player load remains follow-on work",
         },
+        "server_step_workload": server_step_workload_measurement(summary),
         "player_load_tick_probe": player_probe_measurement(summary),
         "mutation_write_throughput": mutation_summary,
         "demo_entity_runtime_cost": demo_summary,
@@ -393,6 +408,42 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         lane["measurements"]["player_load_tick_probe"]
         for lane in lanes
     ]
+    server_step_workloads = [
+        lane["measurements"]["server_step_workload"]
+        for lane in lanes
+    ]
+    if any(workload.get("workload_status") == "missing" for workload in server_step_workloads):
+        gaps.append(
+            build_gap(
+                "server_step_workload",
+                2,
+                "Add bounded server-step workload evidence",
+                [
+                    f"{lane['hardware_class']}: "
+                    f"{lane['measurements']['server_step_workload'].get('evidence_gap')}"
+                    for lane in lanes
+                    if lane["measurements"]["server_step_workload"].get("workload_status") == "missing"
+                ],
+                "Refresh clean-profile captures with server_step_workload evidence.",
+            )
+        )
+    elif any(workload.get("workload_status") != "pass" for workload in server_step_workloads):
+        gaps.append(
+            measured_gap(
+                "server_step_workload_failure",
+                2,
+                "Fix failing bounded server-step workload",
+                [
+                    f"{lane['hardware_class']}: workload_status="
+                    f"{lane['measurements']['server_step_workload'].get('workload_status')}, "
+                    f"failed_sample_count="
+                    f"{lane['measurements']['server_step_workload'].get('failed_sample_count')}"
+                    for lane in lanes
+                    if lane["measurements"]["server_step_workload"].get("workload_status") != "pass"
+                ],
+                "Stabilize clean-profile server-step sampling before heavier player-load probes.",
+            )
+        )
     if any(probe.get("probe_status") == "missing" for probe in player_probes):
         gaps.append(
             build_gap(

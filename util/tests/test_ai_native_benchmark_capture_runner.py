@@ -179,6 +179,7 @@ sys.exit(0)
             for key in (
                 "startup",
                 "steady_tick_behavior",
+                "server_step_workload",
                 "player_load_tick_probe",
                 "map_chunk_workload",
                 "entity_runtime_operations",
@@ -197,6 +198,14 @@ sys.exit(0)
             self.assertIn("p95_sample_interval_ms", probe)
             self.assertIn("max_sample_interval_ms", probe)
             self.assertTrue(probe["limitations"])
+            workload = summary["comparison_summary"]["server_step_workload"]
+            self.assertEqual(workload["workload_status"], "pass")
+            self.assertEqual(workload["workload_kind"], "server_step_liveness")
+            self.assertGreaterEqual(workload["attempted_sample_count"], 1)
+            self.assertGreaterEqual(workload["completed_sample_count"], 1)
+            self.assertEqual(workload["failed_sample_count"], 0)
+            self.assertIn("p95_sample_interval_ms", workload)
+            self.assertIn("max_sample_interval_ms", workload)
 
             serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)
