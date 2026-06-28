@@ -57,6 +57,30 @@
       }
     },
     {
+      "scenario_id": "entity_scale_16",
+      "status": "success",
+      "changed": 0,
+      "examined": 80,
+      "skipped": 0,
+      "metrics": {
+        "entity_count": 16,
+        "spawned": 16,
+        "active_peak": 16,
+        "movement_steps": 5,
+        "distance_moved": 80,
+        "collision_checks": 0,
+        "collision_events": 0,
+        "cleaned_up": 16,
+        "remaining_entities": 0,
+        "avg_step_ms": 0.4,
+        "p95_step_ms": 0.5,
+        "max_lag_ms": 0.7,
+        "node_writes": 0,
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
       "scenario_id": "movement_patrol",
       "status": "success",
       "changed": 0,
