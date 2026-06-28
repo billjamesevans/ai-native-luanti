@@ -64,6 +64,74 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
         return completed
 
+    def clean_profile_payload(self, comparison_summary=None):
+        summary = {
+            "server_step_workload": {
+                "workload_status": "pass",
+                "workload_kind": "server_step_liveness",
+                "attempted_sample_count": 3,
+                "completed_sample_count": 3,
+                "failed_sample_count": 0,
+            },
+            "player_load_tick_probe": {
+                "probe_status": "pass",
+                "probe_kind": "headless_client_load",
+                "headless_player_supported": True,
+                "synthetic_player_count": 1,
+                "attempted_synthetic_player_count": 1,
+                "connected_synthetic_player_count": 1,
+                "completed_synthetic_player_count": 1,
+                "client_launch_failure_count": 0,
+                "cleanup_status": "complete",
+                "latency_proxy_supported": True,
+                "latency_probe_kind": "headless_join_log_observation",
+                "join_latency_proxy_ms": {
+                    "sample_count": 1,
+                    "min": 100.0,
+                    "p50": 100.0,
+                    "p95": 100.0,
+                    "max": 100.0,
+                    "avg": 100.0,
+                },
+            },
+            "map_chunk_workload": {
+                "workload_status": "pass",
+                "workload_kind": "synthetic_sqlite_mapblock_churn",
+                "mapblock_rows": 4,
+                "mapblock_rows_created": 4,
+            },
+        }
+        if comparison_summary:
+            summary.update(comparison_summary)
+        return {
+            "schema_version": 1,
+            "runner_version": "ai-native-clean-profile-benchmark:v1",
+            "luanti_commit": "test-commit",
+            "hardware_class": "local-mac",
+            "overall_status": "pass",
+            "game_profile": {"gameid": "ai_runtime"},
+            "run_context": {
+                "requires_private_world": False,
+                "requires_private_assets": False,
+                "requires_live_pi": False,
+                "requires_model_network": False,
+            },
+            "comparison_summary": summary,
+            "failure_notes": [],
+        }
+
+    def add_clean_profile_capture(self, capture_dir, clean_profile=None):
+        manifest_path = capture_dir / "benchmark-capture-manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["game_profile"] = "ai_runtime"
+        manifest["reports"]["clean_profile"] = "clean-profile-benchmark-summary.json"
+        manifest["profile_statuses"] = {"clean_profile": "pass"}
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        (capture_dir / "clean-profile-benchmark-summary.json").write_text(
+            json.dumps(clean_profile or self.clean_profile_payload()),
+            encoding="utf-8",
+        )
+
     def test_promotes_clean_capture_to_ignored_accepted_baseline(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -153,41 +221,7 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
             capture_dir = self.capture(output_root)
-            manifest_path = capture_dir / "benchmark-capture-manifest.json"
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest["game_profile"] = "ai_runtime"
-            manifest["reports"]["clean_profile"] = "clean-profile-benchmark-summary.json"
-            manifest["profile_statuses"] = {"clean_profile": "pass"}
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            (capture_dir / "clean-profile-benchmark-summary.json").write_text(
-                json.dumps(
-                    {
-                        "schema_version": 1,
-                        "runner_version": "ai-native-clean-profile-benchmark:v1",
-                        "luanti_commit": "test-commit",
-                        "hardware_class": "local-mac",
-                        "overall_status": "pass",
-                        "game_profile": {"gameid": "ai_runtime"},
-                        "run_context": {
-                            "requires_private_world": False,
-                            "requires_private_assets": False,
-                            "requires_live_pi": False,
-                            "requires_model_network": False,
-                        },
-                        "comparison_summary": {
-                            "server_step_workload": {
-                                "workload_status": "pass",
-                                "workload_kind": "server_step_liveness",
-                                "attempted_sample_count": 3,
-                                "completed_sample_count": 3,
-                                "failed_sample_count": 0,
-                            },
-                        },
-                        "failure_notes": [],
-                    }
-                ),
-                encoding="utf-8",
-            )
+            self.add_clean_profile_capture(capture_dir)
 
             self.promote(capture_dir, output_root)
 
@@ -205,32 +239,9 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
             capture_dir = self.capture(output_root)
-            manifest_path = capture_dir / "benchmark-capture-manifest.json"
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            manifest["game_profile"] = "ai_runtime"
-            manifest["reports"]["clean_profile"] = "clean-profile-benchmark-summary.json"
-            manifest["profile_statuses"] = {"clean_profile": "pass"}
-            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-            clean_profile = {
-                "schema_version": 1,
-                "runner_version": "ai-native-clean-profile-benchmark:v1",
-                "luanti_commit": "test-commit",
-                "hardware_class": "local-mac",
-                "overall_status": "pass",
-                "game_profile": {"gameid": "ai_runtime"},
-                "run_context": {
-                    "requires_private_world": False,
-                    "requires_private_assets": False,
-                    "requires_live_pi": False,
-                    "requires_model_network": False,
-                },
-                "comparison_summary": {},
-                "failure_notes": [],
-            }
-            (capture_dir / "clean-profile-benchmark-summary.json").write_text(
-                json.dumps(clean_profile),
-                encoding="utf-8",
-            )
+            clean_profile = self.clean_profile_payload(comparison_summary={})
+            clean_profile["comparison_summary"] = {}
+            self.add_clean_profile_capture(capture_dir, clean_profile)
 
             completed = self.promote(capture_dir, output_root, check=False)
 
@@ -253,6 +264,34 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
 
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("server_step_workload status must be pass", completed.stderr)
+
+    def test_refuses_clean_profile_without_headless_latency_and_mapblock_evidence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root)
+            clean_profile = self.clean_profile_payload()
+            clean_profile["comparison_summary"]["player_load_tick_probe"] = {
+                "probe_status": "pass",
+                "probe_kind": "server_process_liveness",
+                "headless_player_supported": False,
+                "synthetic_player_count": 0,
+            }
+            clean_profile["comparison_summary"]["map_chunk_workload"] = {
+                "workload_status": "pass",
+                "workload_kind": "synthetic_sqlite_mapblock_churn",
+                "mapblock_rows": 0,
+                "mapblock_rows_created": 0,
+            }
+            self.add_clean_profile_capture(capture_dir, clean_profile)
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("player_load_tick_probe kind must be headless_client_load", completed.stderr)
+            self.assertIn("headless_player_supported must be true", completed.stderr)
+            self.assertIn("latency_proxy_supported must be true", completed.stderr)
+            self.assertIn("join_latency_proxy_ms.sample_count must be positive", completed.stderr)
+            self.assertIn("mapblock_rows_created must be positive", completed.stderr)
 
     def test_refuses_private_or_warning_reports(self):
         with tempfile.TemporaryDirectory() as tmpdir:
