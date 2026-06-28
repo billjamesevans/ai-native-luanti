@@ -6,4 +6,6 @@ It intentionally ships only a tiny base mod for mapgen aliases. It includes no p
 
 The base mod also declares `capability_profile = "clean"` for the first-party agent capability policy. It grants bounded world, entity, task, and model-adapter capabilities, and excludes privileged operator/import/player-combat grants.
 
+Default rollback storage is enabled for this profile so rollback-backed build and repair commands can persist local rollback metadata before mutating a disposable world.
+
 Use this profile for disposable local worlds and future low-power proving-ground checks after the one-command verification harness passes.
