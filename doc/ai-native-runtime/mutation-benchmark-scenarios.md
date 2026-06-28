@@ -6,7 +6,7 @@ Status: runnable report contract for issue #45
 
 AI-native mutation work needs a repeatable benchmark shape before more repair and build workloads are added. This slice defines public synthetic scenarios, a JSON report schema, and a small repo-local generator that can produce either a planned report or a deterministic sample report.
 
-The report contract covers average step, p95 step, max lag, node writes per step, skipped positions, rollback record count, AI runtime counters, warnings, and errors.
+The report contract covers average step, p95 step, max lag, total node writes (`node_writes`), node writes per step, skipped positions, rollback record count, AI runtime counters, warnings, and errors.
 
 ## Entry Point
 
@@ -37,25 +37,25 @@ Use `hardware-class local-mac` for local workstation runs. Use `hardware-class l
 
 Entry point: `core.build_agent.define_task -> core.queue_ai_task`
 
-Runs a small synthetic build task through the rollback-backed safe-world-operation path. It must report node writes per step, skipped positions, rollback records, average step, p95 step, and max lag.
+Runs a small synthetic build task through the rollback-backed safe-world-operation path. It must report total node writes, node writes per step, skipped positions, rollback records, average step, p95 step, and max lag.
 
 ### repair_scan_readonly
 
 Entry point: `core.repair_agent.plan_area`
 
-Inspects bounded synthetic terrain damage without changing nodes. It must report scan cost separately from mutation cost, with `node_writes_per_step` and `rollback_records` at zero.
+Inspects bounded synthetic terrain damage without changing nodes. It must report scan cost separately from mutation cost, with `node_writes`, `node_writes_per_step`, and `rollback_records` at zero.
 
 ### repair_mutation_rollback
 
 Entry point: `core.repair_agent.queue_apply_task`
 
-Applies a bounded synthetic repair plan only after rollback metadata has been persisted. It must report skipped positions, rollback records, average step, p95 step, max lag, warnings, and errors.
+Applies a bounded synthetic repair plan only after rollback metadata has been persisted. It must report total node writes, skipped positions, rollback records, average step, p95 step, max lag, warnings, and errors.
 
 ### rollback_record_write
 
 Entry point: `core.write_ai_rollback_record`
 
-Measures rollback record creation overhead without applying a world mutation. It isolates metadata capture and persistence overhead from node writes.
+Measures rollback record creation overhead without applying a world mutation. It isolates metadata capture and persistence overhead from node writes and reports `node_writes` as zero.
 
 ## Report Files
 
@@ -78,5 +78,7 @@ A mutation branch must not merge when it introduces new safety warnings unless t
 A mutation branch must not merge when `max_lag_ms` is more than 10 percent above the accepted baseline for the same `hardware_class` without an explicit benchmark exception.
 
 A mutation branch must not merge when `node_writes_per_step` exceeds the scenario write budget.
+
+A mutation branch must not merge when mutating scenarios do not record total node writes.
 
 A mutation branch must not merge when a mutating scenario changes nodes without matching rollback records.
