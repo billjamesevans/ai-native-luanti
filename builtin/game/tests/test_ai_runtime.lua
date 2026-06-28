@@ -1776,9 +1776,25 @@ assert(core.get_ai_task(light_reply.task_id).last_result.rollback_record_id ~= n
 assert(get_test_node(vector.add(plugin_base, { x = 0, y = 1, z = 0 })).name
 	== "ai_runtime_test:stone")
 
+function test_ai_agent_plugin_continuous_follow(plugin_base, plugin_agent)
+local follow_player_pos = table.copy(plugin_base)
+local follow_player = {
+	get_pos = function()
+		return table.copy(follow_player_pos)
+	end,
+}
 local follow_reply = core.ai_agent_plugin.handle_command("Wills", "follow me", {
-	pos = plugin_base,
+	get_player_by_name = function(name)
+		if name == "Wills" then
+			return follow_player
+		end
+		return nil
+	end,
 	spawn_entity = spawn_test_entity,
+	max_follow_steps = 3,
+	max_follow_step_distance = 2,
+	max_follow_total_distance = 8,
+	max_follow_stop_distance = 0,
 })
 assert(follow_reply.ok == true)
 assert(follow_reply.status == "queued")
@@ -1786,16 +1802,95 @@ assert(follow_reply.action == "follow")
 assert(follow_reply.task_id ~= nil)
 assert(core.ai_agent_plugin.get_player_state("Wills").mode == "follow")
 core.step_ai_tasks()
+assert(core.get_ai_task(follow_reply.task_id).status == "running")
+assert(core.get_ai_task(follow_reply.task_id).last_result.operation == "ai_agent.follow_step")
+assert(core.get_ai_task(follow_reply.task_id).last_result.reason == "follow_target_reached")
+follow_player_pos = vector.add(plugin_base, { x = 2, y = 0, z = 0 })
+core.step_ai_tasks()
+assert(core.get_ai_task(follow_reply.task_id).status == "running")
+follow_player_pos = vector.add(plugin_base, { x = 4, y = 0, z = 0 })
+core.step_ai_tasks()
 local completed_follow = core.get_ai_task(follow_reply.task_id)
 assert(completed_follow.status == "completed")
-assert(completed_follow.last_result.operation == "ai_entity.move")
+assert(completed_follow.last_result.operation == "ai_agent.follow_step")
+assert(completed_follow.last_result.movement_result.operation == "ai_entity.move")
 assert(completed_follow.last_result.entity.entity_name == "ai_demo_benchmark:helper")
-assert(completed_follow.last_result.entity.pos.x == plugin_base.x)
+assert(completed_follow.last_result.entity.pos.x == plugin_base.x + 4)
 assert(completed_follow.last_result.entity.pos.y == plugin_base.y)
 assert(completed_follow.last_result.entity.pos.z == plugin_base.z)
+assert(completed_follow.last_result.metrics.total_distance_moved == 4)
+assert(completed_follow.last_result.metrics.max_steps == 3)
+assert(completed_follow.last_result.metrics.path_status == "direct_line_bounded")
+assert(completed_follow.last_result.metrics.node_writes == 0)
 local follow_entity_id = completed_follow.last_result.entity.entity_id
 assert(follow_entity_id ~= nil)
 assert(core.ai_agent_plugin.get_player_state("Wills").entity_id == follow_entity_id)
+
+follow_player_pos = vector.add(plugin_base, { x = 4, y = 0, z = 0 })
+local cancel_follow_reply = core.ai_agent_plugin.handle_command("Wills", "follow 3", {
+	get_player_by_name = function(name)
+		if name == "Wills" then
+			return follow_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	max_follow_step_distance = 1,
+	max_follow_total_distance = 8,
+	max_follow_stop_distance = 0,
+})
+assert(cancel_follow_reply.ok == true)
+core.step_ai_tasks()
+follow_player_pos = vector.add(plugin_base, { x = 5, y = 0, z = 0 })
+core.step_ai_tasks()
+local cancel_follow_task = core.get_ai_task(cancel_follow_reply.task_id)
+assert(cancel_follow_task.status == "running")
+assert(cancel_follow_task.last_result.metrics.total_distance_moved == 1)
+local cancelled_follow = core.ai_agent_plugin.handle_command("Wills", "cancel", {})
+assert(cancelled_follow.ok == true)
+assert(core.get_ai_task(cancel_follow_reply.task_id).status == "cancelled")
+follow_player_pos = vector.add(plugin_base, { x = 6, y = 0, z = 0 })
+core.step_ai_tasks()
+local inspected_after_cancel = core.ai_entity_ops.inspect(follow_entity_id, {
+	agent_id = plugin_agent.agent_id,
+	owner = "Wills",
+})
+assert(inspected_after_cancel.entity.pos.x == plugin_base.x + 5)
+
+local limit_player_pos = test_pos(4245)
+local limit_player = {
+	get_pos = function()
+		return table.copy(limit_player_pos)
+	end,
+}
+local limited_follow = core.ai_agent_plugin.handle_command("Limit", "follow me", {
+	get_player_by_name = function(name)
+		if name == "Limit" then
+			return limit_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	max_follow_steps = 2,
+	max_follow_step_distance = 2,
+	max_follow_total_distance = 1,
+	max_follow_stop_distance = 0,
+})
+assert(limited_follow.ok == true)
+core.step_ai_tasks()
+limit_player_pos = vector.add(limit_player_pos, { x = 3, y = 0, z = 0 })
+core.step_ai_tasks()
+local blocked_follow = core.get_ai_task(limited_follow.task_id)
+assert(blocked_follow.status == "blocked")
+assert(blocked_follow.last_result.reason == "follow_distance_limit_exceeded")
+assert(blocked_follow.last_result.skipped == 1)
+assert(blocked_follow.last_result.metrics.step_distance == 2)
+assert(blocked_follow.last_result.metrics.skipped_reason == "max_total_distance")
+return follow_entity_id
+end
+
+local follow_entity_id = test_ai_agent_plugin_continuous_follow(plugin_base, plugin_agent)
+test_ai_agent_plugin_continuous_follow = nil
 
 local come_reply = core.ai_agent_plugin.handle_command("Wills", "come", {
 	pos = vector.add(plugin_base, { x = 3, y = 0, z = 0 }),
@@ -1811,7 +1906,7 @@ assert(completed_come.status == "completed")
 assert(completed_come.last_result.operation == "ai_entity.move")
 assert(completed_come.last_result.entity.entity_id == follow_entity_id)
 assert(completed_come.last_result.entity.pos.x == plugin_base.x + 3)
-assert(completed_come.last_result.metrics.distance == 3)
+assert(completed_come.last_result.metrics.distance == 2)
 
 function test_ai_agent_plugin_product_loop_commands()
 local build_plan_pos = test_pos(4208)

@@ -15,6 +15,11 @@ local settings = {
 	repair_nodes = {},
 	max_lights = 12,
 	max_entity_move_distance = 16,
+	max_follow_steps = 6,
+	max_follow_step_distance = 4,
+	max_follow_total_distance = 24,
+	max_follow_stop_distance = 1,
+	max_follow_wall_time_ms = 250,
 	max_defend_distance = 8,
 	capabilities = table.copy(default_capabilities),
 }
@@ -113,6 +118,21 @@ function plugin.configure(options)
 	if options.max_entity_move_distance then
 		settings.max_entity_move_distance = options.max_entity_move_distance
 	end
+	if options.max_follow_steps then
+		settings.max_follow_steps = options.max_follow_steps
+	end
+	if options.max_follow_step_distance then
+		settings.max_follow_step_distance = options.max_follow_step_distance
+	end
+	if options.max_follow_total_distance then
+		settings.max_follow_total_distance = options.max_follow_total_distance
+	end
+	if options.max_follow_stop_distance then
+		settings.max_follow_stop_distance = options.max_follow_stop_distance
+	end
+	if options.max_follow_wall_time_ms then
+		settings.max_follow_wall_time_ms = options.max_follow_wall_time_ms
+	end
 	if options.max_defend_distance then
 		settings.max_defend_distance = options.max_defend_distance
 	end
@@ -141,6 +161,9 @@ function plugin.ensure_player_agent(name)
 			max_nodes_per_step = settings.max_lights,
 			max_entities = 1,
 			max_entity_move_distance = settings.max_entity_move_distance,
+			max_follow_steps = settings.max_follow_steps,
+			max_follow_step_distance = settings.max_follow_step_distance,
+			max_follow_total_distance = settings.max_follow_total_distance,
 		},
 	})
 end
@@ -209,6 +232,7 @@ local function queue_plugin_task(name, action, label, steps, context)
 		budget = {
 			max_steps_per_step = 1,
 			max_node_writes_per_step = context.max_node_writes_per_step or settings.max_lights,
+			max_wall_time_ms = context.max_wall_time_ms or 0,
 		},
 		steps = steps,
 	})
@@ -295,6 +319,218 @@ local function handle_agent_move(name, action, label, target_pos, state, context
 			return moved
 		end,
 	}, context)
+end
+
+local function numeric_limit(value, fallback, minimum, maximum)
+	local result = tonumber(value)
+	if result == nil then
+		result = fallback
+	end
+	result = math.max(minimum, result)
+	if maximum then
+		result = math.min(maximum, result)
+	end
+	return result
+end
+
+local function distance_between(a, b)
+	local dx = b.x - a.x
+	local dy = b.y - a.y
+	local dz = b.z - a.z
+	return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+local function step_toward(current_pos, target_pos, max_step_distance, stop_distance)
+	local distance = distance_between(current_pos, target_pos)
+	if distance <= stop_distance then
+		return copy_pos(current_pos), 0, distance, "within_stop_distance"
+	end
+	local travel = math.min(max_step_distance, math.max(0, distance - stop_distance))
+	if travel <= 0 then
+		return copy_pos(current_pos), 0, distance, "no_step_required"
+	end
+	local ratio = travel / distance
+	return {
+		x = current_pos.x + (target_pos.x - current_pos.x) * ratio,
+		y = current_pos.y + (target_pos.y - current_pos.y) * ratio,
+		z = current_pos.z + (target_pos.z - current_pos.z) * ratio,
+	}, travel, distance, "direct_line_bounded"
+end
+
+local function follow_target_pos(name, context)
+	local get_player = context.get_player_by_name or core.get_player_by_name
+	if get_player then
+		local ok, player = pcall(get_player, name)
+		if ok and player and player.get_pos then
+			local pos_ok, pos = pcall(player.get_pos, player)
+			if pos_ok and pos then
+				return copy_pos(pos)
+			end
+			return nil, "invalid_player_position"
+		elseif not ok then
+			return nil, "player_lookup_failed"
+		end
+	end
+	if context.pos then
+		return copy_pos(context.pos)
+	end
+	return nil, "follow_target_not_found"
+end
+
+local function follow_options(prompt, context)
+	context = context or {}
+	local requested_steps = context.max_follow_steps
+		or tonumber(prompt:match("follow%s+(%d+)"))
+		or settings.max_follow_steps
+	local max_steps = numeric_limit(requested_steps, settings.max_follow_steps,
+		1, settings.max_follow_steps)
+	local max_entity_step = context.max_entity_move_distance or settings.max_entity_move_distance
+	local max_step_distance = numeric_limit(context.max_follow_step_distance,
+		settings.max_follow_step_distance, 0, max_entity_step)
+	local max_total_distance = numeric_limit(context.max_follow_total_distance,
+		settings.max_follow_total_distance, 0, settings.max_follow_total_distance)
+	local stop_distance = numeric_limit(context.max_follow_stop_distance,
+		settings.max_follow_stop_distance, 0, nil)
+	return {
+		max_steps = max_steps,
+		max_step_distance = max_step_distance,
+		max_total_distance = max_total_distance,
+		stop_distance = stop_distance,
+		wall_time_ms = numeric_limit(context.max_follow_wall_time_ms,
+			settings.max_follow_wall_time_ms, 0, settings.max_follow_wall_time_ms),
+	}
+end
+
+local function make_follow_result(name, context, state, status, reason, message, extra)
+	extra = extra or {}
+	local result = {
+		ok = status == "success" or status == "partial",
+		status = status,
+		operation = "ai_agent.follow_step",
+		agent_id = agent_id_for(name),
+		task_id = context.task_id,
+		changed = 0,
+		examined = extra.examined or 0,
+		skipped = extra.skipped or 0,
+		reason = reason,
+		message = message,
+		entity = extra.entity,
+		movement_result = extra.movement_result,
+		metrics = {
+			node_writes = 0,
+			step_distance = extra.step_distance or 0,
+			distance_to_target = extra.distance_to_target or 0,
+			distance_moved = extra.distance_moved or 0,
+			total_distance_moved = state.distance_moved or 0,
+			steps_run = state.steps_run or 0,
+			max_steps = state.max_steps,
+			max_step_distance = state.max_step_distance,
+			max_total_distance = state.max_total_distance,
+			stop_distance = state.stop_distance,
+			path_status = extra.path_status,
+			skipped_reason = extra.skipped_reason,
+		},
+	}
+	return result
+end
+
+local function handle_follow(name, prompt, context)
+	context = context or {}
+	local options = follow_options(prompt, context)
+	local state = set_player_state(name, {
+		mode = "follow",
+		target_name = name,
+		max_steps = options.max_steps,
+		max_step_distance = options.max_step_distance,
+		max_total_distance = options.max_total_distance,
+	})
+	local follow_state = {
+		steps_run = 0,
+		distance_moved = 0,
+		max_steps = options.max_steps,
+		max_step_distance = options.max_step_distance,
+		max_total_distance = options.max_total_distance,
+		stop_distance = options.stop_distance,
+	}
+	local steps = {}
+	for _ = 1, options.max_steps do
+		steps[#steps + 1] = function()
+			follow_state.steps_run = follow_state.steps_run + 1
+			local target_pos, target_error = follow_target_pos(name, context)
+			if not target_pos then
+				return make_follow_result(name, context, follow_state, "blocked",
+					target_error, "Follow target position was not available.", {
+						skipped = 1,
+						skipped_reason = target_error,
+					})
+			end
+
+			local entity_id, setup_result = ensure_agent_entity(name, target_pos, context, state)
+			if not entity_id then
+				return setup_result
+			end
+
+			local current_pos = setup_result.entity and setup_result.entity.pos or target_pos
+			local next_pos, step_distance, distance_to_target, path_status =
+				step_toward(current_pos, target_pos, options.max_step_distance,
+					options.stop_distance)
+			if step_distance <= 0 then
+				return make_follow_result(name, context, follow_state, "success",
+					"follow_target_reached", "Helper is within follow distance.", {
+						entity = setup_result.entity,
+						examined = 1,
+						skipped = 1,
+						step_distance = 0,
+						distance_to_target = distance_to_target,
+						path_status = path_status,
+						skipped_reason = "within_stop_distance",
+					})
+			end
+			if follow_state.distance_moved + step_distance > options.max_total_distance then
+				return make_follow_result(name, context, follow_state, "blocked",
+					"follow_distance_limit_exceeded",
+					"Follow task exceeded its total movement distance limit.", {
+						entity = setup_result.entity,
+						examined = 1,
+						skipped = 1,
+						step_distance = step_distance,
+						distance_to_target = distance_to_target,
+						path_status = path_status,
+						skipped_reason = "max_total_distance",
+					})
+			end
+
+			local move_context = table.copy(context)
+			move_context.max_entity_move_distance = options.max_step_distance
+			local moved = core.ai_entity_ops.move(entity_id, next_pos,
+				entity_options(name, move_context))
+			if moved.ok and moved.entity then
+				local moved_distance = moved.metrics and moved.metrics.distance or step_distance
+				follow_state.distance_moved = follow_state.distance_moved + moved_distance
+				update_player_entity_state(name, state, moved.entity.entity_id)
+			end
+			return make_follow_result(name, context, follow_state, moved.status,
+				moved.reason, moved.message, {
+					entity = moved.entity,
+					movement_result = {
+						operation = moved.operation,
+						status = moved.status,
+						reason = moved.reason,
+						message = moved.message,
+					},
+					examined = moved.examined,
+					skipped = moved.skipped,
+					step_distance = step_distance,
+					distance_to_target = distance_to_target,
+					distance_moved = moved.metrics and moved.metrics.distance or 0,
+					path_status = path_status,
+					skipped_reason = moved.skipped > 0 and moved.reason or nil,
+				})
+		end
+	end
+	context.max_node_writes_per_step = 0
+	context.max_wall_time_ms = options.wall_time_ms
+	return queue_plugin_task(name, "follow", "follow " .. name, steps, context)
 end
 
 local function handle_build(name, context)
@@ -464,6 +700,7 @@ local function handle_guide(name)
 			"status",
 			"tasks",
 			"cancel",
+			"follow",
 			"light",
 			"build plan",
 			"build marker",
@@ -581,13 +818,9 @@ function plugin.handle_command(name, param, context)
 	if prompt == "cancel" or prompt == "stop" then
 		return handle_cancel(name)
 	end
-	if prompt:find("follow me", 1, true) or prompt == "follow" then
-		local state = set_player_state(name, {
-			mode = "follow",
-			target_name = name,
-		})
-		return handle_agent_move(name, "follow", "follow " .. name,
-			default_pos(context), state, context)
+	if prompt:find("follow me", 1, true) or prompt == "follow"
+			or prompt:match("^follow%s+%d+$") then
+		return handle_follow(name, prompt, context)
 	end
 	if prompt == "come" or prompt:find("come here", 1, true) then
 		local target = default_pos(context)

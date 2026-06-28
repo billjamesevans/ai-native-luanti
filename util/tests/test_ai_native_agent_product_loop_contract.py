@@ -24,12 +24,17 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "`core.build_agent.plan`",
             "`core.repair_agent.queue_apply_task`",
             "`core.ai_player_ops.defend`",
+            "`core.ai_entity_ops.move`",
             "`guide`",
             "`audit`",
             "`rollback`",
             "`defend`",
+            "`follow N`",
             "`build plan`",
             "`repair plan`",
+            "continuous follow",
+            "total-distance budgets",
+            "`ai_agent.follow_step`",
             "rollback-backed",
             "combat.defend",
         ):
@@ -44,6 +49,9 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "core.build_agent.plan",
             "core.repair_agent.queue_apply_task",
             "core.ai_player_ops.defend",
+            "core.ai_entity_ops.move",
+            "ai_agent.follow_step",
+            "follow_distance_limit_exceeded",
             "core.get_ai_runtime_audit",
         ):
             self.assertIn(phrase, source)
@@ -51,6 +59,8 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "core.set_node",
             "core.remove_node",
             "core.bulk_set_node",
+            ":set_pos(",
+            ".set_pos(",
         ):
             self.assertNotIn(forbidden, source)
 
