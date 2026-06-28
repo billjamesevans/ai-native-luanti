@@ -30,6 +30,12 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertTrue(report["safety"]["source_paths_redacted"])
         self.assertTrue(report["safety"]["user_rights_required"])
 
+    def inventory_by_path(self, report):
+        return {
+            entry["source_path"]: entry
+            for entry in report["source"]["inventory"]
+        }
+
     def test_bedrock_manifest_report_has_safety_and_unsupported_rows(self):
         source = self.fixture_root / "bedrock_pack"
 
@@ -50,6 +56,14 @@ class CompatibilityDryRunTests(unittest.TestCase):
             "behavior_script_not_supported",
         )
         self.assertEqual(features["entity.ai_goal"]["reason"], "entity_ai_not_supported")
+        inventory = self.inventory_by_path(report)
+        self.assertEqual(inventory["manifest.json"]["classification"], "mapped")
+        self.assertEqual(inventory["entities/example.entity.json"]["classification"], "blocked")
+        self.assertEqual(inventory["scripts/main.js"]["classification"], "unsupported")
+        self.assertTrue(
+            all("import.assets" in entry["required_capabilities"]
+                for entry in inventory.values())
+        )
         self.assertNotIn(str(source), json.dumps(report))
         self.assertTrue(
             all("import.assets" in action["required_capabilities"]
@@ -70,6 +84,45 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(sections["metadata"]["status"], "supported")
         self.assertEqual(sections["models"]["status"], "partial")
         self.assertEqual(report["summary"]["estimated_world_mutations"]["node_writes"], 0)
+        inventory = self.inventory_by_path(report)
+        self.assertEqual(inventory["pack.mcmeta"]["classification"], "mapped")
+        self.assertEqual(inventory["assets/synthetic/models_item.json"]["classification"], "blocked")
+
+    def test_source_inventory_classifies_structure_world_and_mod_metadata(self):
+        structure = build_report(self.fixture_root / "structure" / "example.mcstructure")
+        structure_inventory = self.inventory_by_path(structure)
+
+        self.assertEqual(structure["source"]["source_class"], "structure")
+        self.assertEqual(structure["summary"]["risk_level"], "high")
+        self.assertEqual(structure_inventory["example.mcstructure"]["source_kind"], "structure")
+        self.assertEqual(structure_inventory["example.mcstructure"]["classification"], "blocked")
+        self.assertEqual(structure["summary"]["estimated_world_mutations"]["node_writes"], 1)
+        self.assertIn(
+            "import_structure",
+            {action["action"] for action in structure["planned_actions"]},
+        )
+        self.assertEqual(validate_report(structure), [])
+
+        world = build_report(self.fixture_root / "world_export")
+        world_inventory = self.inventory_by_path(world)
+        self.assertEqual(world["source"]["source_class"], "world")
+        self.assertEqual(world_inventory["level.dat"]["source_kind"], "world")
+        self.assertEqual(world_inventory["level.dat"]["classification"], "blocked")
+        self.assertIn(
+            "world.format",
+            {feature["feature"] for feature in world["unsupported_features"]},
+        )
+        self.assertEqual(validate_report(world), [])
+
+        luanti_mod = build_report(self.fixture_root / "luanti_mod")
+        mod_inventory = self.inventory_by_path(luanti_mod)
+        self.assertEqual(luanti_mod["source"]["source_class"], "luanti_mod")
+        self.assertEqual(luanti_mod["source"]["metadata"]["mod_name"], "synthetic_compat_mod")
+        self.assertEqual(mod_inventory["mod.conf"]["source_kind"], "mod_metadata")
+        self.assertEqual(mod_inventory["mod.conf"]["classification"], "mapped")
+        self.assertEqual(mod_inventory["depends.txt"]["classification"], "mapped")
+        self.assertNotIn(str(self.fixture_root), json.dumps(luanti_mod))
+        self.assertEqual(validate_report(luanti_mod), [])
 
     def test_cli_writes_json_report_and_summary(self):
         source = self.fixture_root / "bedrock_pack"
@@ -134,7 +187,10 @@ class CompatibilityDryRunTests(unittest.TestCase):
             if not path.is_file():
                 continue
             self.assertLess(path.stat().st_size, 4096, path)
-            self.assertIn(path.suffix, {".json", ".js", ".mcmeta", ".md"})
+            self.assertIn(
+                path.suffix,
+                {".json", ".js", ".mcmeta", ".md", ".mcstructure", ".dat", ".conf", ".txt"},
+            )
 
     def build_apply_request(self, report, action_indexes=(0,)):
         inventory_hash = report["source"]["content_hashes"][0]["value"]

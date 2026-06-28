@@ -34,7 +34,8 @@
         "source_id",
         "source_class",
         "path_policy",
-        "license_status"
+        "license_status",
+        "inventory"
       ],
       "properties": {
         "source_id": {
@@ -48,6 +49,7 @@
             "bedrock_behavior_pack",
             "structure",
             "world",
+            "luanti_mod",
             "unknown"
           ]
         },
@@ -82,6 +84,12 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/content_hash"
+          }
+        },
+        "inventory": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/inventory_entry"
           }
         }
       }
@@ -217,6 +225,67 @@
         "purpose": {
           "type": "string",
           "minLength": 1
+        }
+      }
+    },
+    "inventory_entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entry_id",
+        "source_path",
+        "source_kind",
+        "size_bytes",
+        "classification",
+        "reason",
+        "required_capabilities"
+      ],
+      "properties": {
+        "entry_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_kind": {
+          "enum": [
+            "metadata",
+            "texture",
+            "sound",
+            "model",
+            "entity",
+            "behavior",
+            "structure",
+            "world",
+            "mod_metadata",
+            "unknown"
+          ]
+        },
+        "size_bytes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "classification": {
+          "enum": [
+            "mapped",
+            "skipped",
+            "blocked",
+            "unsupported",
+            "unknown"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "minLength": 1
+        },
+        "required_capabilities": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
         }
       }
     },
