@@ -6,6 +6,15 @@ local player_task_ids = {}
 local player_entity_ids = {}
 local task_sequence = 0
 local model_adapter = nil
+local default_capabilities = {
+	["world.read"] = true,
+	["world.place"] = true,
+	["world.remove"] = true,
+	["entity.spawn"] = true,
+	["entity.control"] = true,
+	["task.cancel"] = true,
+	["http.llm"] = true,
+}
 local settings = {
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
@@ -13,6 +22,7 @@ local settings = {
 	repair_nodes = {},
 	max_lights = 12,
 	max_entity_move_distance = 16,
+	capabilities = table.copy(default_capabilities),
 }
 
 local function copy_pos(pos)
@@ -98,6 +108,10 @@ function plugin.configure(options)
 	if options.max_entity_move_distance then
 		settings.max_entity_move_distance = options.max_entity_move_distance
 	end
+	if options.capabilities then
+		assert(type(options.capabilities) == "table", "Capabilities must be a table")
+		settings.capabilities = table.copy(options.capabilities)
+	end
 end
 
 function plugin.ensure_player_agent(name)
@@ -112,15 +126,7 @@ function plugin.ensure_player_agent(name)
 		display_name = "Nova Agent - " .. name,
 		owner = name,
 		plugin = "ai_agent_plugin",
-			capabilities = {
-				["world.read"] = true,
-				["world.place"] = true,
-				["world.remove"] = true,
-				["entity.spawn"] = true,
-				["entity.control"] = true,
-				["task.cancel"] = true,
-				["http.llm"] = true,
-			},
+		capabilities = table.copy(settings.capabilities),
 		limits = {
 			max_nodes_per_step = settings.max_lights,
 			max_entities = 1,

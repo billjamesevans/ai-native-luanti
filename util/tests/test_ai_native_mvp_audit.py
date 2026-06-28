@@ -83,7 +83,7 @@ class MvpAuditTests(unittest.TestCase):
             self.assertIsNone(PRIVATE_PATTERNS.search(report_text))
             report = json.loads(report_text)
             self.assertEqual(report["runner_version"], "ai-native-mvp-audit:v1")
-            self.assertEqual(report["overall_status"], "mvp-gaps-open")
+            self.assertEqual(report["overall_status"], "mvp-ready")
             self.assertEqual(
                 report["scorecard_prerequisite"]["status"],
                 "pass",
@@ -95,7 +95,7 @@ class MvpAuditTests(unittest.TestCase):
 
             categories = {item["category"] for item in report["acceptance_audit"]}
             self.assertIn("already_proven", categories)
-            self.assertIn("implemented_but_weakly_verified", categories)
+            self.assertNotIn("implemented_but_weakly_verified", categories)
             self.assertNotIn("missing_runtime_behavior", categories)
             self.assertIn("compatibility_import_deferral", categories)
 
@@ -126,7 +126,7 @@ class MvpAuditTests(unittest.TestCase):
             )
             self.assertEqual(
                 audit_by_id["agent-identity-capabilities"]["category"],
-                "implemented_but_weakly_verified",
+                "already_proven",
             )
             self.assertEqual(
                 audit_by_id["lag-pausing-budget-enforcement"]["category"],
@@ -166,13 +166,7 @@ class MvpAuditTests(unittest.TestCase):
                 )
 
             follow_on_ids = [issue["id"] for issue in report["follow_on_issues"]]
-            self.assertGreaterEqual(len(follow_on_ids), 1)
-            self.assertEqual(
-                follow_on_ids[:1],
-                [
-                    "mvp-agent-policy-profile",
-                ],
-            )
+            self.assertEqual(follow_on_ids, [])
 
     def test_mvp_audit_refuses_dirty_runtime_gap_scorecard(self):
         with tempfile.TemporaryDirectory() as tmpdir:
