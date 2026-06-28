@@ -161,6 +161,40 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
+    def test_clean_profile_mode_forwards_headless_player_probe_args_to_gate(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-headless",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--game-profile",
+                    "ai_runtime",
+                    "--headless-player-command",
+                    "bin/luanti --config <temp-client-config> --go --address {host} --port {port}",
+                    "--headless-player-count",
+                    "2",
+                ]
+            )
+
+            gate_step = harness.build_steps(args)[1]
+
+            self.assertIn("--headless-player-command", gate_step.actual_command)
+            self.assertIn("--headless-player-count", gate_step.actual_command)
+            self.assertIn("2", gate_step.actual_command)
+            self.assertIn("--headless-player-command", gate_step.manifest_command)
+            self.assertIn("<headless-player-command>", gate_step.manifest_command)
+            self.assertNotIn("{host}", gate_step.manifest_command)
+
     def test_failed_command_writes_manifest_with_sanitized_failure_reason(self):
         harness = load_harness_module()
         with tempfile.TemporaryDirectory() as tmpdir:
