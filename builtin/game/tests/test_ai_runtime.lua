@@ -1448,6 +1448,49 @@ local function run_model_import_gate_tests()
 	assert(denied_import_task.last_result.reason == "missing_capability")
 
 	core.queue_ai_task({
+		task_id = "runtime-gate:import-payload-blocked",
+		agent_id = "runtime_gate:import",
+		owner = "runtime-owner",
+		label = "blocked import payload runtime gate",
+		steps = {
+			function(ctx)
+				return core.ai_import_ops.plan({
+					source = {
+						source_id = "synthetic-pack",
+						source_class = "bedrock_resource_pack",
+						inventory = {
+							{
+								entry_id = "entry:1",
+								source_path = "textures/example.png",
+								classification = "mapped",
+								required_capabilities = { "import.assets" },
+								asset_payload = "must not be retained",
+							},
+						},
+					},
+					dry_run = true,
+					planned_actions = {
+						{
+							action = "map_texture",
+							status = "partial",
+							required_capabilities = { "import.assets" },
+						},
+					},
+				}, {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+				})
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local blocked_payload_import_task = core.get_ai_task("runtime-gate:import-payload-blocked")
+	assert(blocked_payload_import_task.status == "blocked")
+	assert(blocked_payload_import_task.last_result.operation == "ai_import.plan")
+	assert(blocked_payload_import_task.last_result.reason == "payload_rejected")
+
+	core.queue_ai_task({
 		task_id = "runtime-gate:import-plan",
 		agent_id = "runtime_gate:import",
 		owner = "runtime-owner",
@@ -1455,13 +1498,38 @@ local function run_model_import_gate_tests()
 		steps = {
 			function(ctx)
 				return core.ai_import_ops.plan({
-					source_class = "resource_pack",
+					source = {
+						source_id = "synthetic-pack",
+						source_class = "bedrock_resource_pack",
+						inventory = {
+							{
+								entry_id = "entry:1",
+								source_path = "textures/example.png",
+								source_kind = "texture",
+								classification = "mapped",
+								reason = "metadata_or_asset_reference",
+								required_capabilities = { "import.assets" },
+							},
+						},
+						content_hashes = {
+							{
+								algorithm = "sha256",
+								value = string.rep("0", 64),
+								purpose = "synthetic inventory hash",
+							},
+						},
+					},
 					dry_run = true,
 					planned_actions = {
 						{
 							action = "map_texture",
 							status = "partial",
 							required_capabilities = { "import.assets" },
+							provenance = {
+								source_id = "synthetic-pack",
+								inventory_refs = { "entry:1" },
+								classification = "mapped",
+							},
 							mutation_cost = {
 								node_writes = 0,
 								media_files = 1,
@@ -1484,6 +1552,13 @@ local function run_model_import_gate_tests()
 	assert(import_plan_task.last_result.status == "success")
 	assert(import_plan_task.last_result.import_plan.dry_run == true)
 	assert(import_plan_task.last_result.import_plan.assets_copied == false)
+	assert(import_plan_task.last_result.import_plan.source_id == "synthetic-pack")
+	assert(import_plan_task.last_result.import_plan.source_class == "bedrock_resource_pack")
+	assert(import_plan_task.last_result.import_plan.inventory_count == 1)
+	assert(import_plan_task.last_result.import_plan.source_inventory[1].classification == "mapped")
+	assert(import_plan_task.last_result.import_plan.source_inventory[1].asset_payload == nil)
+	assert(import_plan_task.last_result.import_plan.planned_actions[1].provenance.inventory_refs[1] == "entry:1")
+	assert(import_plan_task.last_result.import_plan.source_content_hashes[1].algorithm == "sha256")
 	assert(import_plan_task.last_result.examined == 1)
 
 	local gate_audit = core.get_ai_runtime_audit({ limit = 30 })

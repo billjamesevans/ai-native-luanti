@@ -46,7 +46,15 @@ Required plan fields:
 - `dry_run = true`
 - `planned_actions`
 
-Each planned action must include `import.assets` in `required_capabilities`. The runtime rejects asset payloads, private payloads, copied-asset flags, and non-dry-run plans. This keeps the compatibility/import milestone deferred while still giving future import tooling a safe runtime handoff point.
+Useful dry-run report fields:
+
+- `source.source_id`
+- `source.source_class`
+- `source.inventory`
+- `source.content_hashes`
+- per-action `provenance`
+
+Each planned action and inventory entry must include `import.assets` in `required_capabilities`. The runtime rejects asset payloads, private payloads, generic payload fields, copied-asset flags, and non-dry-run plans. Accepted handoffs preserve source inventory classifications, content-hash metadata, per-action provenance, and planned actions without copying asset bytes. This keeps the compatibility/import milestone deferred while still giving future import tooling a safe runtime handoff point.
 
 ## Task Queue Behavior
 
