@@ -194,7 +194,7 @@ def measurement_status(lane: dict) -> str:
         return "needs-attention"
     if health["server_log_error_count"] > 0 or health["process_exited_unexpectedly"]:
         return "needs-attention"
-    if health["server_log_warning_count"] > 0:
+    if health["actionable_server_log_warning_count"] > 0:
         return "watch"
     return "ready"
 
@@ -228,6 +228,12 @@ def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
     steady = summary["steady_tick_behavior"]
     startup = summary["startup"]
     failure_notes = list(clean_profile.get("failure_notes") or summary.get("failure_notes") or [])
+    total_warning_count = steady.get("server_log_warning_count", 0)
+    expected_warning_count = steady.get("expected_server_log_warning_count", 0)
+    actionable_warning_count = steady.get(
+        "actionable_server_log_warning_count",
+        total_warning_count,
+    )
     measurements = {
         "startup": {
             "listening": startup.get("listening"),
@@ -237,7 +243,10 @@ def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
         "clean_profile_server_health": {
             "overall_status": clean_profile.get("overall_status"),
             "process_exited_unexpectedly": steady.get("process_exited_unexpectedly"),
-            "server_log_warning_count": steady.get("server_log_warning_count", 0),
+            "server_log_warning_count": total_warning_count,
+            "expected_server_log_warning_count": expected_warning_count,
+            "actionable_server_log_warning_count": actionable_warning_count,
+            "expected_warning_kinds": list(steady.get("expected_warning_kinds") or []),
             "server_log_error_count": steady.get("server_log_error_count", 0),
             "idle_sample_seconds": steady.get("sample_seconds"),
             "observed_uptime_seconds": steady.get("observed_uptime_seconds"),
@@ -490,7 +499,13 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         )
 
     if any(
-        (lane["measurements"]["clean_profile_server_health"].get("server_log_warning_count") or 0) > 0
+        (
+            lane["measurements"]["clean_profile_server_health"].get(
+                "actionable_server_log_warning_count"
+            )
+            or 0
+        )
+        > 0
         for lane in lanes
     ):
         gaps.append(
@@ -499,7 +514,9 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
                 6,
                 "Classify or eliminate clean-profile warnings",
                 [
-                    f"{lane['hardware_class']}: warning_count="
+                    f"{lane['hardware_class']}: actionable_warning_count="
+                    f"{lane['measurements']['clean_profile_server_health'].get('actionable_server_log_warning_count')}, "
+                    f"total_warning_count="
                     f"{lane['measurements']['clean_profile_server_health'].get('server_log_warning_count')}"
                     for lane in lanes
                 ],
