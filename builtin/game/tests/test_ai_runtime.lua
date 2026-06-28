@@ -1665,6 +1665,18 @@ assert(core.registered_chatcommands.bot ~= nil)
 assert(core.registered_chatcommands.nova ~= nil)
 assert(core.registered_chatcommands.aibot ~= nil)
 
+product_loop_records = {}
+core.ai_rollback_storage.configure({
+	enabled = true,
+	persist_record = function(record)
+		product_loop_records[#product_loop_records + 1] = record
+		return {
+			ok = true,
+			storage_ref = "rollback://product-loop/" .. record.record_id,
+		}
+	end,
+})
+
 local plugin_base = test_pos(4200)
 set_test_node(vector.add(plugin_base, { x = 0, y = 1, z = 0 }), { name = "air" })
 local light_reply = core.ai_agent_plugin.handle_command("Wills", "place 2 lights", {
@@ -1685,6 +1697,7 @@ assert(task_view.owner == "Wills")
 
 core.step_ai_tasks()
 assert(core.get_ai_task(light_reply.task_id).status == "completed")
+assert(core.get_ai_task(light_reply.task_id).last_result.rollback_record_id ~= nil)
 assert(get_test_node(vector.add(plugin_base, { x = 0, y = 1, z = 0 })).name
 	== "ai_runtime_test:stone")
 
@@ -1725,10 +1738,12 @@ assert(completed_come.last_result.entity.entity_id == follow_entity_id)
 assert(completed_come.last_result.entity.pos.x == plugin_base.x + 3)
 assert(completed_come.last_result.metrics.distance == 3)
 
+function test_ai_agent_plugin_product_loop_commands()
 local build_pos = test_pos(4210)
 set_test_node(build_pos, { name = "air" })
 local build_reply = core.ai_agent_plugin.handle_command("Wills", "build marker", {
 	pos = build_pos,
+	world_id = "product-loop-world",
 	get_node = get_test_node,
 	set_node = set_test_node,
 })
@@ -1738,11 +1753,17 @@ assert(core.get_ai_task(build_reply.task_id).status == "queued")
 assert(get_test_node(build_pos).name == "air")
 core.step_ai_tasks()
 assert(get_test_node(build_pos).name == "ai_runtime_test:stone")
+local completed_plugin_build = core.get_ai_task(build_reply.task_id)
+assert(completed_plugin_build.status == "completed")
+assert(completed_plugin_build.last_result.rollback_record_id ~= nil)
+assert(completed_plugin_build.last_result.rollback_storage_ref:find(
+	"rollback://product-loop/", 1, true))
 
 local repair_pos = test_pos(4220)
 set_test_node(repair_pos, { name = "ai_runtime_test:hazard" })
 local repair_reply = core.ai_agent_plugin.handle_command("Wills", "repair", {
 	pos = repair_pos,
+	world_id = "product-loop-world",
 	get_node = get_test_node,
 	set_node = set_test_node,
 })
@@ -1751,6 +1772,116 @@ assert(repair_reply.action == "repair")
 assert(get_test_node(repair_pos).name == "ai_runtime_test:hazard")
 core.step_ai_tasks()
 assert(get_test_node(repair_pos).name == "air")
+local completed_repair = core.get_ai_task(repair_reply.task_id)
+assert(completed_repair.status == "completed")
+assert(completed_repair.last_result.operation == "repair_agent.apply_plan")
+assert(completed_repair.last_result.changed == 1)
+assert(completed_repair.last_result.rollback_record_id ~= nil)
+
+local guide_reply = core.ai_agent_plugin.handle_command("Wills", "guide", {})
+assert(guide_reply.ok == true)
+assert(guide_reply.action == "guide")
+assert(guide_reply.surfaces.builder == true)
+assert(guide_reply.surfaces.repair == true)
+assert(guide_reply.surfaces.guide == true)
+assert(guide_reply.surfaces.defender == true)
+assert(type(guide_reply.commands) == "table")
+
+local audit_reply = core.ai_agent_plugin.handle_command("Wills", "audit", {})
+assert(audit_reply.ok == true)
+assert(audit_reply.action == "audit")
+assert(#audit_reply.audit_events > 0)
+for _, record in ipairs(audit_reply.audit_events) do
+	assert(record.private_payload == nil)
+end
+
+local rollback_reply = core.ai_agent_plugin.handle_command("Wills", "rollback", {})
+assert(rollback_reply.ok == true)
+assert(rollback_reply.action == "rollback")
+assert(#rollback_reply.rollback_records >= 2)
+for _, record in ipairs(rollback_reply.rollback_records) do
+	assert(record.rollback_record_id ~= nil)
+	assert(record.rollback_storage_ref ~= nil)
+end
+assert(#product_loop_records >= 2)
+core.ai_rollback_storage.configure(nil)
+
+core.ai_agent_plugin.configure({
+	capability_profile = "operator",
+	capabilities = {
+		["combat.defend"] = true,
+		["task.cancel"] = true,
+	},
+})
+
+local defender_pos = test_pos(4230)
+local defender_player = {
+	get_pos = function()
+		return defender_pos
+	end,
+	set_pos = function()
+		return true
+	end,
+	get_attach = function()
+		return nil
+	end,
+}
+local defended = false
+local defend_reply = core.ai_agent_plugin.handle_command("Defender", "defend", {
+	get_player_by_name = function(name)
+		if name == "Defender" then
+			return defender_player
+		end
+		return nil
+	end,
+	hostiles = {
+		{
+			entity_id = "hostile:test",
+			entity_name = "ai_runtime_test:hostile",
+			pos = vector.add(defender_pos, { x = 1, y = 0, z = 0 }),
+		},
+	},
+	attack_entity = function()
+		defended = true
+		return true
+	end,
+	max_defend_distance = 8,
+})
+assert(defend_reply.ok == true)
+assert(defend_reply.action == "defend")
+assert(defend_reply.status == "queued")
+assert(defend_reply.task_id ~= nil)
+core.step_ai_tasks()
+local completed_defend = core.get_ai_task(defend_reply.task_id)
+assert(completed_defend.status == "completed")
+assert(completed_defend.last_result.operation == "ai_player.defend")
+assert(completed_defend.last_result.reason == "hostile_target_defended")
+assert(completed_defend.last_result.changed == 1)
+assert(defended == true)
+
+core.ai_agent_plugin.configure({
+	capability_profile = "clean",
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	repair_nodes = {
+		["ai_runtime_test:hazard"] = true,
+	},
+	max_lights = 3,
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
+})
+end
+
+test_ai_agent_plugin_product_loop_commands()
+test_ai_agent_plugin_product_loop_commands = nil
+product_loop_records = nil
 
 local cancel_reply = core.ai_agent_plugin.handle_command("Wills", "light", {
 	pos = test_pos(4230),
