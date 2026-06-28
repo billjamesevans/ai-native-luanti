@@ -808,7 +808,7 @@ assert(demo_report.fixture_id == demo_fixture.fixture_id)
 assert(demo_report.entity_name == demo_fixture.entity_name)
 assert(demo_report.provenance.assets_included == false)
 assert(demo_report.mutation.node_mutation_enabled == false)
-assert(#demo_report.scenarios == 4)
+assert(#demo_report.scenarios == 5)
 
 local demo_scenarios = {}
 for _, scenario in ipairs(demo_report.scenarios) do
@@ -826,6 +826,9 @@ for _, scenario in ipairs(demo_report.scenarios) do
 end
 
 assert(demo_scenarios.entity_count_small.metrics.entity_count == 4)
+assert(demo_scenarios.entity_scale_16.metrics.entity_count >= 16)
+assert(demo_scenarios.entity_scale_16.metrics.active_peak >= 16)
+assert(demo_scenarios.entity_scale_16.metrics.remaining_entities == 0)
 assert(demo_scenarios.movement_patrol.metrics.movement_steps == 5)
 assert(demo_scenarios.movement_patrol.metrics.distance_moved > 0)
 assert(demo_scenarios.collision_wall_contact.metrics.collision_checks > 0)
@@ -849,7 +852,7 @@ assert(demo_command_report.run_context.requires_private_world == false)
 assert(demo_command_report.run_context.requires_private_assets == false)
 assert(demo_command_report.run_context.requires_live_pi == false)
 assert(demo_command_report.runtime_counters.entities_by_type["ai_demo_benchmark:helper"] == 0)
-assert(#demo_command_report.scenarios == 4)
+assert(#demo_command_report.scenarios == 5)
 
 assert(core.registered_chatcommands.ai_demo_entity_benchmark ~= nil)
 local demo_command_ok, demo_command_message =

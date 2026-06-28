@@ -30,10 +30,10 @@ Runtime helpers:
 Operator command:
 
 ```sh
-/ai_demo_entity_benchmark count=4 steps=5 commit=local-build hardware=local-mac
+/ai_demo_entity_benchmark count=16 steps=5 commit=local-build hardware=local-mac
 ```
 
-The command returns a compact machine-readable JSON report. The report includes `hardware_class`, `luanti_commit`, `run_context`, `runtime_counters`, and the four scenario results.
+The command returns a compact machine-readable JSON report. The report includes `hardware_class`, `luanti_commit`, `run_context`, `runtime_counters`, and the five scenario results.
 
 Use `hardware=local-mac` for local workstation checks. Use `hardware=low-power-server` only after the benchmark is safe locally and the target server is backed up.
 
@@ -42,6 +42,10 @@ Use `hardware=local-mac` for local workstation checks. Use `hardware=low-power-s
 ### entity_count_small
 
 Spawns a fixed small count of generic helper entities and records entity count metrics. The scenario immediately cleans up and leaves zero remaining entities.
+
+### entity_scale_16
+
+Spawns at least 16 generic helper entities, runs bounded patrol movement, records active peak and step impact, then cleans up every helper and leaves zero remaining entities.
 
 ### movement_patrol
 
