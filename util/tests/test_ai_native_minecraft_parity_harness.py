@@ -121,6 +121,16 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             "server_stayed_listening": True,
             "p95_sample_interval_ms": 100.0,
             "max_sample_interval_ms": 120.0,
+            "latency_probe_kind": "not_measured",
+            "latency_proxy_supported": False,
+            "join_latency_proxy_ms": {
+                "sample_count": 0,
+                "min": None,
+                "p50": None,
+                "p95": None,
+                "max": None,
+                "avg": None,
+            },
             "limitations": ["headless-player client load is not wired in this fixture"],
         }
         if headless_players:
@@ -135,6 +145,16 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "client_exit_statuses": [0, 0],
                     "client_launch_failure_count": 0,
                     "cleanup_status": "complete",
+                    "latency_probe_kind": "headless_join_log_observation",
+                    "latency_proxy_supported": True,
+                    "join_latency_proxy_ms": {
+                        "sample_count": 2,
+                        "min": 80.0,
+                        "p50": 80.0,
+                        "p95": 120.0,
+                        "max": 120.0,
+                        "avg": 100.0,
+                    },
                     "limitations": [],
                 }
             )
@@ -320,13 +340,73 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertEqual(results["mapblock_chunk_churn"]["status"], "measured")
             self.assertEqual(results["entity_load"]["status"], "measured")
             self.assertEqual(results["world_edit_throughput"]["status"], "measured")
+            self.assertEqual(results["latency"]["status"], "measured")
+            self.assertEqual(
+                results["latency"]["metrics"]["latency_probe_kind"],
+                "headless_join_log_observation",
+            )
+            self.assertEqual(
+                results["latency"]["metrics"]["join_latency_proxy_ms"]["p95"],
+                120.0,
+            )
             gap_ids = {item["dimension_id"] for item in report["qualitative_minecraft_parity_gaps"]}
             self.assertNotIn("player_join_liveness", gap_ids)
             self.assertNotIn("mapblock_chunk_churn", gap_ids)
             self.assertNotIn("entity_load", gap_ids)
             self.assertNotIn("world_edit_throughput", gap_ids)
             self.assertIn("cpu", gap_ids)
-            self.assertIn("latency", gap_ids)
+            self.assertNotIn("latency", gap_ids)
+
+    def test_harness_marks_partial_headless_evidence_as_measured_failure(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(
+                output_root,
+                headless_players=True,
+                mapblock_rows=256,
+                entity_count=16,
+                total_node_writes=11,
+            )
+            clean_profile_path = (
+                output_root / "local-mac" / "accepted" / "clean-profile-benchmark-summary.json"
+            )
+            clean_profile = json.loads(clean_profile_path.read_text(encoding="utf-8"))
+            probe = clean_profile["comparison_summary"]["player_load_tick_probe"]
+            probe.update(
+                {
+                    "probe_status": "partial",
+                    "synthetic_player_count": 1,
+                    "connected_synthetic_player_count": 1,
+                    "completed_synthetic_player_count": 1,
+                    "client_exit_statuses": [0, 7],
+                    "join_latency_proxy_ms": {
+                        "sample_count": 1,
+                        "min": 80.0,
+                        "p50": 80.0,
+                        "p95": 80.0,
+                        "max": 80.0,
+                        "avg": 80.0,
+                    },
+                }
+            )
+            self.write_json(clean_profile_path, clean_profile)
+            report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
+
+            self.run_harness(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            results = {
+                item["dimension_id"]: item
+                for item in report["measured_facts"][0]["dimension_results"]
+            }
+            self.assertEqual(results["player_join_liveness"]["status"], "measured_failure")
+            self.assertEqual(results["latency"]["status"], "measured_failure")
+            gaps = {
+                item["dimension_id"]: item
+                for item in report["qualitative_minecraft_parity_gaps"]
+            }
+            self.assertIn("Fix failing synthetic player join evidence", gaps["player_join_liveness"]["title"])
+            self.assertIn("Fix failing headless latency evidence", gaps["latency"]["title"])
 
     def test_docs_explain_public_safe_harness_and_retention(self):
         for doc in (DOC, README):
