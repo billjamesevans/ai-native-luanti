@@ -325,8 +325,8 @@ AUDIT_ITEMS = [
     {
         "id": "first-party-follow-come-product-behavior",
         "requirement": "First-party follow and come behavior should become real bounded movement/pathing, not only state updates.",
-        "category": "missing_first_party_plugin_behavior",
-        "verification_strength": "missing",
+        "category": "already_proven",
+        "verification_strength": "proven",
         "mvp_spec_refs": [
             "First Plugin: status, task listing, cancellation, follow, come, build, repair, and light commands.",
             "Safe World Operations: move_agent(agent_id, target, options).",
@@ -334,13 +334,24 @@ AUDIT_ITEMS = [
         "evidence_specs": [
             (
                 "doc/ai-native-runtime/first-party-agent-plugin.md",
-                "Current limits explicitly say follow/come only update state.",
-                ["Follow and come commands update state only", "movement/pathing is a later slice"],
+                "Plugin docs describe follow/come as queued bounded entity movement.",
+                ["queued bounded entity movement", "core.ai_entity_ops", "agent_entity_name"],
             ),
             (
                 "builtin/game/ai_agent_plugin.lua",
-                "Plugin follow/come handlers currently record state and target positions.",
-                ["mode = \"follow\"", "mode = \"come\"", "target_pos = default_pos(context)"],
+                "Plugin follow/come handlers queue runtime entity movement work.",
+                [
+                    "core.ai_agent_plugin = {}",
+                    "entity.spawn",
+                    "entity.control",
+                    "handle_agent_move",
+                    "core.ai_entity_ops.move",
+                ],
+            ),
+            (
+                "builtin/game/tests/test_ai_runtime.lua",
+                "Focused runtime tests prove follow/come queue and move a first-party helper entity.",
+                ["follow_entity_id", "completed_come.last_result.operation == \"ai_entity.move\""],
             ),
         ],
     },
@@ -454,16 +465,8 @@ AUDIT_ITEMS = [
 
 FOLLOW_ON_ISSUES = [
     {
-        "id": "mvp-first-party-agent-plugin-runtime",
-        "priority": 1,
-        "title": "Promote first-party follow and come commands from state updates to bounded runtime behavior",
-        "category": "missing_first_party_plugin_behavior",
-        "source_acceptance_ids": ["first-party-follow-come-product-behavior"],
-        "why_now": "Player-visible agent behavior should prove the runtime can safely move or guide an agent, not only mutate nodes.",
-    },
-    {
         "id": "mvp-player-teleport-combat-runtime",
-        "priority": 2,
+        "priority": 1,
         "title": "Add safe player teleport and defensive-combat capability runtime slices",
         "category": "missing_runtime_behavior",
         "source_acceptance_ids": ["player-teleport-and-combat-capabilities"],
@@ -471,7 +474,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-model-import-capability-runtime",
-        "priority": 3,
+        "priority": 2,
         "title": "Align http.llm and import.assets capability gates with runtime task execution",
         "category": "missing_runtime_behavior",
         "source_acceptance_ids": ["model-and-import-capability-boundaries"],
@@ -479,7 +482,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-runtime-task-duration-metrics",
-        "priority": 4,
+        "priority": 3,
         "title": "Expose task-duration metrics in the operator runtime snapshot",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["runtime-metrics"],
@@ -487,7 +490,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-agent-policy-profile",
-        "priority": 5,
+        "priority": 4,
         "title": "Add clean-profile policy tests for first-party agent capability grants",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["agent-identity-capabilities"],
