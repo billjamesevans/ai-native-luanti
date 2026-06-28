@@ -34,7 +34,7 @@ The generated JSON is local evidence under `local/benchmarks/`. This committed c
 | Deterministic first-party plugin actions | `already_proven` | The plugin queues light, build, repair, cancel, tasks, and model fallback paths through runtime APIs. | Preserve the no raw world-write boundary. |
 | Follow/come product behavior | `already_proven` | Follow and come queue bounded helper-entity movement through `core.ai_entity_ops` and `core.queue_ai_task`. | Add continuous follow/pathfinding as a later gameplay slice. |
 | Lag pausing and budgets | `already_proven` | Manual pause, automatic lag threshold pausing, node-write budget checks, and wall-clock budget checks are covered in `TestAIRuntime`. | Keep measuring behavior under benchmark load. |
-| Player teleport and defensive combat | `missing_runtime_behavior` | Capabilities are in the MVP spec, but runtime APIs are not present. | Add default-deny safe APIs and tests. |
+| Player teleport and defensive combat | `already_proven` | `core.ai_player_ops` covers self teleport, admin-only other-player teleport, and bounded defend actions with focused runtime tests. | Keep broader combat AI and pathfinding as later gameplay slices. |
 | Model/import capability gates | `missing_runtime_behavior` | Model metrics and import dry-run planning exist. | Align `http.llm` and `import.assets` with runtime task gates. |
 | Compatibility/import | `compatibility_import_deferral` | MVP spec explicitly defers compatibility/import. | Resume after the runtime gaps above are closed. |
 
@@ -44,10 +44,10 @@ Completed:
 
 - #95 `mvp-task-budget-lag-pausing`: implemented wall-clock budgets and automatic lag-based pausing.
 - #96 `mvp-first-party-agent-plugin-runtime`: made follow and come queue bounded runtime entity movement.
+- #97 `mvp-player-teleport-combat-runtime`: added safe player teleport and defensive-combat capability slices.
 
 Remaining:
 
-1. #97 `mvp-player-teleport-combat-runtime`: add safe player teleport and defensive-combat capability slices.
-2. #98 `mvp-model-import-capability-runtime`: align model and import capability gates with runtime task execution.
-3. #99 `mvp-runtime-task-duration-metrics`: expose task-duration aggregates in operator metrics.
-4. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
+1. #98 `mvp-model-import-capability-runtime`: align model and import capability gates with runtime task execution.
+2. #99 `mvp-runtime-task-duration-metrics`: expose task-duration aggregates in operator metrics.
+3. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
