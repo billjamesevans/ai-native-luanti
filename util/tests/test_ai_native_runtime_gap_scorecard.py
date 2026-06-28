@@ -37,6 +37,10 @@ class RuntimeGapScorecardTests(unittest.TestCase):
         include_clean_profile=True,
         include_player_probe=False,
         player_probe=None,
+        demo_entity_count=4,
+        mutation_total_node_writes=0,
+        expected_warning_count=None,
+        actionable_warning_count=None,
     ):
         accepted = pathlib.Path(output_root) / hardware_class / "accepted"
         reports = {
@@ -82,6 +86,9 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     {
                         "scenario_id": "small_build_rollback",
                         "metrics": {
+                            "node_writes": max(mutation_total_node_writes - 3, 0)
+                            if mutation_total_node_writes
+                            else 0,
                             "node_writes_per_step": 8,
                             "rollback_records": 1,
                             "warnings": [],
@@ -91,6 +98,9 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     {
                         "scenario_id": "repair_mutation_rollback",
                         "metrics": {
+                            "node_writes": min(mutation_total_node_writes, 3)
+                            if mutation_total_node_writes
+                            else 0,
                             "node_writes_per_step": 4,
                             "rollback_records": 1,
                             "warnings": [],
@@ -117,8 +127,8 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     {
                         "scenario_id": "movement_patrol",
                         "metrics": {
-                            "entity_count": 4,
-                            "active_peak": 4,
+                            "entity_count": demo_entity_count,
+                            "active_peak": demo_entity_count,
                             "remaining_entities": 0,
                             "warnings": [],
                             "errors": [],
@@ -160,6 +170,18 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                             "observed_uptime_seconds": 3.5,
                             "process_exited_unexpectedly": False,
                             "server_log_warning_count": warning_count,
+                            **(
+                                {
+                                    "expected_server_log_warning_count": expected_warning_count,
+                                    "actionable_server_log_warning_count": actionable_warning_count,
+                                    "expected_warning_kinds": ["run_in_place_builtin_sha_missing"]
+                                    if expected_warning_count
+                                    else [],
+                                }
+                                if expected_warning_count is not None
+                                and actionable_warning_count is not None
+                                else {}
+                            ),
                             "server_log_error_count": 0,
                             "note": "Idle clean-profile server sample; player-load tick probes remain follow-on work.",
                         },
@@ -171,15 +193,15 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                         },
                         "entity_runtime_operations": {
                             "scenario_count": 1,
-                            "max_entity_count": 4,
-                            "max_active_peak": 4,
+                            "max_entity_count": demo_entity_count,
+                            "max_active_peak": demo_entity_count,
                             "max_remaining_entities": 0,
                             "warnings": 0,
                             "errors": 0,
                         },
                         "mutation_write_throughput": {
                             "scenario_count": 2,
-                            "total_node_writes": 0,
+                            "total_node_writes": mutation_total_node_writes,
                             "max_node_writes_per_step": 8,
                             "total_rollback_records": 2,
                             "warnings": 0,
@@ -387,6 +409,65 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             gap_ids = [gap["id"] for gap in report["ranked_gaps"]]
             self.assertIn("headless_player_load_probe", gap_ids)
             self.assertNotIn("player_load_tick_probe_failure", gap_ids)
+
+    def test_scorecard_ignores_expected_warnings_but_keeps_actionable_warning_gap(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            for hardware_class in ("local-mac", "low-power-server"):
+                self.write_accepted_baseline(
+                    output_root,
+                    hardware_class,
+                    warning_count=1,
+                    expected_warning_count=1,
+                    actionable_warning_count=0,
+                    mapblock_rows=128,
+                    player_probe=self.supported_headless_probe(1),
+                    demo_entity_count=16,
+                    mutation_total_node_writes=11,
+                )
+            report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
+
+            self.run_scorecard(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            self.assertEqual(report["ranked_gaps"], [])
+            for lane in report["measured_evidence"]:
+                health = lane["measurements"]["clean_profile_server_health"]
+                self.assertEqual(health["server_log_warning_count"], 1)
+                self.assertEqual(health["expected_server_log_warning_count"], 1)
+                self.assertEqual(health["actionable_server_log_warning_count"], 0)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(
+                output_root,
+                "local-mac",
+                warning_count=1,
+                expected_warning_count=1,
+                actionable_warning_count=0,
+                mapblock_rows=128,
+                player_probe=self.supported_headless_probe(1),
+                demo_entity_count=16,
+                mutation_total_node_writes=11,
+            )
+            self.write_accepted_baseline(
+                output_root,
+                "low-power-server",
+                warning_count=1,
+                expected_warning_count=0,
+                actionable_warning_count=1,
+                mapblock_rows=128,
+                player_probe=self.supported_headless_probe(1),
+                demo_entity_count=16,
+                mutation_total_node_writes=11,
+            )
+            report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
+
+            self.run_scorecard(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            gap_ids = [gap["id"] for gap in report["ranked_gaps"]]
+            self.assertIn("server_log_warning_cleanup", gap_ids)
 
     def test_scorecard_refuses_missing_required_hardware_lane(self):
         with tempfile.TemporaryDirectory() as tmpdir:

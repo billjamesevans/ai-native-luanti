@@ -69,6 +69,8 @@ That summary records the runner version, Luanti commit, hardware class, and game
 
 When a disposable client path is available, add `--headless-player-command` to the same clean-profile capture. The command is an operator-supplied template; the runner expands `{host}`, `{port}`, `{name}`, `{server_log}`, and `{duration_seconds}` for each synthetic player. The report stores only bounded evidence, not the command path: `probe_kind=headless_client_load`, attempted and connected synthetic players, completed synthetic players, client exit statuses, cleanup status, warning/error counts, sample intervals, and whether the server stayed listening.
 
+Clean-profile warning counts are split into raw and classified fields. `server_log_warning_count` remains the total number of warning lines, `expected_server_log_warning_count` records known expected startup warnings, `actionable_server_log_warning_count` records warnings that still need review, and `expected_warning_kinds` stores bounded classification ids such as `run_in_place_builtin_sha_missing`. The scorecard uses actionable warnings for `server_log_warning_cleanup`; old summaries without these fields are treated conservatively as actionable.
+
 For client-capable lanes, build a local client binary with sound disabled so the probe can run with a null video driver:
 
 ```sh

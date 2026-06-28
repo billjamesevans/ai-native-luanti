@@ -31,6 +31,16 @@ DEMO_ENTITY_EXAMPLE = (
     / "generic-demo-entity-benchmark-report.example.json"
 )
 PROFILE_LOG_FAILURE_PATTERNS = re.compile(r"Mapgen alias .* invalid|testnodes:", re.I)
+KNOWN_PROFILE_WARNING_PATTERNS = (
+    (
+        "run_in_place_builtin_sha_missing",
+        re.compile(
+            r"No SHA256 known for builtin file .*builtin[\\/]game[\\/]"
+            r"(demo_entity_benchmark|tests[\\/]test_ai_runtime)\.lua",
+            re.I,
+        ),
+    ),
+)
 
 
 def utc_now() -> str:
@@ -119,6 +129,27 @@ def sample_interval_stats(sample_times: list[float]) -> dict:
         "p95_sample_interval_ms": ordered[p95_index],
         "max_sample_interval_ms": max(intervals),
         "avg_sample_interval_ms": round(sum(intervals) / len(intervals), 3),
+    }
+
+
+def classify_profile_log_warnings(log_text: str) -> dict:
+    warning_lines = [
+        line for line in log_text.splitlines() if re.search(r"\bWARNING\b", line)
+    ]
+    expected_count = 0
+    expected_kinds = set()
+    for line in warning_lines:
+        for kind, pattern in KNOWN_PROFILE_WARNING_PATTERNS:
+            if pattern.search(line):
+                expected_count += 1
+                expected_kinds.add(kind)
+                break
+    total_count = len(warning_lines)
+    return {
+        "server_log_warning_count": total_count,
+        "expected_server_log_warning_count": expected_count,
+        "actionable_server_log_warning_count": max(0, total_count - expected_count),
+        "expected_warning_kinds": sorted(expected_kinds),
     }
 
 
@@ -263,7 +294,7 @@ def build_player_load_tick_probe(
     listening: bool,
     sample_times: list[float],
     failure_notes: list[str],
-    log_warning_count: int,
+    warning_summary: dict,
     log_error_count: int,
     headless_player_run: dict | None = None,
 ) -> dict:
@@ -301,7 +332,7 @@ def build_player_load_tick_probe(
         "synthetic_player_count": connected if headless_supported else 0,
         "headless_player_supported": headless_supported,
         "server_stayed_listening": server_stayed_listening,
-        "server_log_warning_count": log_warning_count,
+        **warning_summary,
         "server_log_error_count": log_error_count,
         "p95_sample_interval_ms": intervals["p95_sample_interval_ms"],
         "max_sample_interval_ms": intervals["max_sample_interval_ms"],
@@ -558,7 +589,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
             uptime_seconds = round(time.monotonic() - profile_start, 3)
             log_text = read_text_if_exists(log_path)
 
-        log_warning_count = len(re.findall(r"\bWARNING\b", log_text))
+        warning_summary = classify_profile_log_warnings(log_text)
         log_error_count = len(re.findall(r"\bERROR\b", log_text))
         if log_error_count:
             failure_notes.append("server_log_contains_errors")
@@ -576,7 +607,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         "sample_seconds": args.profile_sample_seconds,
         "observed_uptime_seconds": uptime_seconds,
         "process_exited_unexpectedly": "server_exited_during_profile_sample" in failure_notes,
-        "server_log_warning_count": log_warning_count,
+        **warning_summary,
         "server_log_error_count": log_error_count,
         "note": "Idle clean-profile server sample; player-load tick probe records bounded process liveness.",
     }
@@ -585,7 +616,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         listening,
         probe_sample_times,
         failure_notes,
-        log_warning_count,
+        warning_summary,
         log_error_count,
         headless_player_summary,
     )
@@ -599,7 +630,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
             listening,
             probe_sample_times,
             failure_notes,
-            log_warning_count,
+            warning_summary,
             log_error_count,
             headless_player_summary,
         )
