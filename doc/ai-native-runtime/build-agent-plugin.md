@@ -66,9 +66,30 @@ The returned definition includes:
 - `budget.max_node_writes_per_step`
 - one task step that calls `core.run_ai_world_mutation_with_rollback`, then `core.ai_world_ops.batch_place`
 
+### `core.build_agent.plan(options)`
+
+Returns a read-only build preview for the same task kinds accepted by
+`define_task`. Planning does not queue a task, persist rollback records, or
+write nodes.
+
+The result includes:
+
+- `operation = "build_agent.plan"`
+- `changed = 0`
+- `metrics.node_writes = 0`
+- `metrics.planned_node_writes`
+- `plan.kind`
+- `plan.placement_count`
+- `plan.rollback_policy`
+- `plan.required_capabilities`
+- `plan.will_mutate = false`
+- bounded placement `samples`
+
 ## Safety Boundary
 
-`define_task` is inert. It prepares a queueable definition but does not queue or execute it.
+`plan` and `define_task` are inert. `plan` returns a preview, while `define_task`
+prepares a queueable definition. Neither queues work or executes mutation by
+itself.
 
 The queued step uses `core.run_ai_world_mutation_with_rollback` and `core.ai_world_ops.batch_place` instead of raw node mutation APIs. It returns `blocked` with `reason = "rollback_metadata_unavailable"` if the caller does not provide rollback persistence or previous-node capture fails.
 

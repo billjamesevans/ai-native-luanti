@@ -52,6 +52,22 @@ local function placement_positions(placements)
 	return positions
 end
 
+local function placement_samples(placements, limit)
+	local samples = {}
+	limit = math.min(limit or settings.sample_limit, #placements)
+	for index = 1, limit do
+		local placement = placements[index]
+		samples[#samples + 1] = {
+			pos = copy_pos(placement.pos),
+			node = {
+				name = placement.node_name,
+			},
+			planned_action = "place_node",
+		}
+	end
+	return samples
+end
+
 local function light_placements(origin, options)
 	local placements = {}
 	local count = clamp_count(positive_int(options.count, 1))
@@ -112,6 +128,20 @@ local placement_builders = {
 	path = path_placements,
 }
 
+local function build_plan_data(options, require_task_id)
+	assert(type(options) == "table", "Build task options must be a table")
+	assert(type(options.kind) == "string" and placement_builders[options.kind],
+		"Build task kind must be one of lights, marker, platform, or path")
+	if require_task_id then
+		assert(type(options.task_id) == "string" and options.task_id ~= "", "Build task id is required")
+	end
+	assert(type(options.agent_id) == "string" and options.agent_id ~= "", "Build agent id is required")
+	assert(type(options.owner) == "string" and options.owner ~= "", "Build owner is required")
+	local origin = copy_pos(options.origin)
+	local placements = placement_builders[options.kind](origin, options)
+	return origin, placements
+end
+
 function build_agent.configure(options)
 	options = options or {}
 	for _, field in ipairs({ "light_node", "marker_node", "platform_node", "path_node" }) do
@@ -129,15 +159,44 @@ function build_agent.configure(options)
 	end
 end
 
+function build_agent.plan(options)
+	local origin, placements = build_plan_data(options, false)
+	local placement_count = #placements
+	local max_node_writes = options.max_node_writes_per_step or placement_count
+	return {
+		ok = true,
+		status = "success",
+		operation = "build_agent.plan",
+		agent_id = options.agent_id,
+		task_id = options.task_id,
+		changed = 0,
+		examined = placement_count,
+		skipped = 0,
+		reason = "build_plan_created",
+		message = "Build plan created without mutation.",
+		plan = {
+			kind = options.kind,
+			origin = origin,
+			placement_count = placement_count,
+			mutation_class = "build",
+			rollback_policy = options.rollback_policy or "snapshot",
+			required_capabilities = {
+				"world.place",
+			},
+			max_node_writes_per_step = max_node_writes,
+			will_mutate = false,
+		},
+		samples = placement_samples(placements, options.sample_limit or settings.sample_limit),
+		metrics = {
+			node_writes = 0,
+			planned_node_writes = placement_count,
+			sample_count = math.min(placement_count, options.sample_limit or settings.sample_limit),
+		},
+	}
+end
+
 function build_agent.define_task(options)
-	assert(type(options) == "table", "Build task options must be a table")
-	assert(type(options.kind) == "string" and placement_builders[options.kind],
-		"Build task kind must be one of lights, marker, platform, or path")
-	assert(type(options.task_id) == "string" and options.task_id ~= "", "Build task id is required")
-	assert(type(options.agent_id) == "string" and options.agent_id ~= "", "Build agent id is required")
-	assert(type(options.owner) == "string" and options.owner ~= "", "Build owner is required")
-	local origin = copy_pos(options.origin)
-	local placements = placement_builders[options.kind](origin, options)
+	local _origin, placements = build_plan_data(options, true)
 	local placement_count = #placements
 	local max_node_writes = options.max_node_writes_per_step or placement_count
 

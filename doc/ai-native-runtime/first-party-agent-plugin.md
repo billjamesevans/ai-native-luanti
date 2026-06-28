@@ -15,7 +15,7 @@ The plugin uses:
 - `core.register_ai_agent` for one agent per player.
 - `core.queue_ai_task` for all task-backed work.
 - `core.cancel_ai_task` for player-owned cancellation.
-- `core.build_agent.define_task` for rollback-backed light and marker build tasks.
+- `core.build_agent.plan` and `core.build_agent.define_task` for read-only build previews and rollback-backed light/marker build tasks.
 - `core.repair_agent.queue_apply_task` for rollback-backed repair apply tasks.
 - `core.ai_player_ops.defend` for bounded defensive actions when a profile grants `combat.defend`.
 - `core.ai_world_ops` indirectly through build and repair task surfaces.
@@ -42,7 +42,9 @@ Implemented deterministic commands:
 - `follow`, `follow me`: queues bounded movement for the player's helper entity to the current player position.
 - `come`, `come here`: queues bounded movement for the player's helper entity to the requested target position.
 - `light`, `place N lights`: queues a rollback-backed `build_agent` lights task.
+- `build plan`, `preview build`: returns a read-only marker build plan before mutation.
 - `build`, `build marker`, `marker`: queues a rollback-backed `build_agent` marker task.
+- `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair`, `fix`: queues a rollback-backed `repair_agent` apply task for configured repair nodes.
 - `defend`: queues a bounded defensive player task through `core.ai_player_ops.defend`.
 - `audit`, `history`: returns recent sanitized audit events for the player-owned agent.
@@ -110,6 +112,7 @@ Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin 
 - Follow and come use queued bounded entity movement. Full pathfinding and continuous follow ticks are later slices.
 - Build remains small lights and marker tasks, not a showcase structure system.
 - Repair only applies configured repair rules around the requested target position.
+- Build and repair previews explain bounded plans, but approval workflow and richer plan editing remain later slices.
 - Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
 - Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
 - The model adapter is a boundary only; no default network client is bundled.

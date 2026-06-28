@@ -1739,6 +1739,43 @@ assert(completed_come.last_result.entity.pos.x == plugin_base.x + 3)
 assert(completed_come.last_result.metrics.distance == 3)
 
 function test_ai_agent_plugin_product_loop_commands()
+local build_plan_pos = test_pos(4208)
+set_test_node(build_plan_pos, { name = "air" })
+local build_plan_reply = core.ai_agent_plugin.handle_command("Wills", "build plan", {
+	pos = build_plan_pos,
+	get_node = get_test_node,
+	set_node = function()
+		error("build plan must not mutate")
+	end,
+})
+assert(build_plan_reply.ok == true)
+assert(build_plan_reply.action == "build_plan")
+assert(build_plan_reply.task_id == nil)
+assert(build_plan_reply.plan.operation == "build_agent.plan")
+assert(build_plan_reply.plan.will_mutate == false)
+assert(build_plan_reply.planned_node_writes == 1)
+assert(build_plan_reply.plan.metrics.node_writes == 0)
+assert(get_test_node(build_plan_pos).name == "air")
+
+local repair_plan_pos = test_pos(4209)
+set_test_node(repair_plan_pos, { name = "ai_runtime_test:hazard" })
+local repair_plan_reply = core.ai_agent_plugin.handle_command("Wills", "repair plan", {
+	pos = repair_plan_pos,
+	get_node = get_test_node,
+	set_node = function()
+		error("repair plan must not mutate")
+	end,
+})
+assert(repair_plan_reply.ok == true)
+assert(repair_plan_reply.action == "repair_plan")
+assert(repair_plan_reply.task_id == nil)
+assert(repair_plan_reply.plan.operation == "repair_agent.plan_area")
+assert(repair_plan_reply.plan.will_mutate == false)
+assert(repair_plan_reply.plan.changed == 0)
+assert(repair_plan_reply.plan.metrics.node_writes == 0)
+assert(repair_plan_reply.candidate_count == 1)
+assert(get_test_node(repair_plan_pos).name == "ai_runtime_test:hazard")
+
 local build_pos = test_pos(4210)
 set_test_node(build_pos, { name = "air" })
 local build_reply = core.ai_agent_plugin.handle_command("Wills", "build marker", {
