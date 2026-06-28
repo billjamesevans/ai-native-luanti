@@ -145,6 +145,7 @@ while True:
             for key in (
                 "startup",
                 "steady_tick_behavior",
+                "player_load_tick_probe",
                 "map_chunk_workload",
                 "entity_runtime_operations",
                 "mutation_write_throughput",
@@ -152,6 +153,16 @@ while True:
                 "failure_notes",
             ):
                 self.assertIn(key, summary["comparison_summary"])
+            probe = summary["comparison_summary"]["player_load_tick_probe"]
+            self.assertEqual(probe["probe_status"], "pass")
+            self.assertEqual(probe["probe_kind"], "server_process_liveness")
+            self.assertEqual(probe["synthetic_player_count"], 0)
+            self.assertFalse(probe["headless_player_supported"])
+            self.assertTrue(probe["server_stayed_listening"])
+            self.assertGreaterEqual(probe["sample_count"], 1)
+            self.assertIn("p95_sample_interval_ms", probe)
+            self.assertIn("max_sample_interval_ms", probe)
+            self.assertTrue(probe["limitations"])
 
             serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)
@@ -224,6 +235,8 @@ while True:
             "mutation-benchmark-report.json",
             "generic-demo-entity-benchmark-report.json",
             "clean-profile-benchmark-summary.json",
+            "player_load_tick_probe",
+            "server-step",
             "benchmark-capture-manifest.json",
             "same-hardware baseline",
             "--game-profile ai_runtime",

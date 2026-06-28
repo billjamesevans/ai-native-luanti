@@ -100,6 +100,61 @@ def count_metric_items(report: dict, metric_name: str) -> int:
     )
 
 
+def sample_interval_stats(sample_times: list[float]) -> dict:
+    if len(sample_times) < 2:
+        value = 0.0 if sample_times else None
+        return {
+            "p95_sample_interval_ms": value,
+            "max_sample_interval_ms": value,
+            "avg_sample_interval_ms": value,
+        }
+    intervals = [
+        round((sample_times[index] - sample_times[index - 1]) * 1000, 3)
+        for index in range(1, len(sample_times))
+    ]
+    ordered = sorted(intervals)
+    p95_index = min(len(ordered) - 1, int((len(ordered) * 0.95) + 0.999999) - 1)
+    return {
+        "p95_sample_interval_ms": ordered[p95_index],
+        "max_sample_interval_ms": max(intervals),
+        "avg_sample_interval_ms": round(sum(intervals) / len(intervals), 3),
+    }
+
+
+def build_player_load_tick_probe(
+    args,
+    listening: bool,
+    sample_times: list[float],
+    failure_notes: list[str],
+    log_warning_count: int,
+    log_error_count: int,
+) -> dict:
+    intervals = sample_interval_stats(sample_times)
+    server_stayed_listening = listening and "server_exited_during_profile_sample" not in failure_notes
+    return {
+        "probe_status": "pass" if server_stayed_listening and log_error_count == 0 else "fail",
+        "probe_kind": "server_process_liveness",
+        "probe_duration_seconds": (
+            round(sample_times[-1] - sample_times[0], 3)
+            if len(sample_times) >= 2
+            else 0.0
+        ),
+        "requested_sample_seconds": args.profile_sample_seconds,
+        "sample_count": len(sample_times),
+        "synthetic_player_count": 0,
+        "headless_player_supported": False,
+        "server_stayed_listening": server_stayed_listening,
+        "server_log_warning_count": log_warning_count,
+        "server_log_error_count": log_error_count,
+        "p95_sample_interval_ms": intervals["p95_sample_interval_ms"],
+        "max_sample_interval_ms": intervals["max_sample_interval_ms"],
+        "avg_sample_interval_ms": intervals["avg_sample_interval_ms"],
+        "limitations": [
+            "No headless-player client load path is wired yet; this probe measures bounded server-process liveness during clean-profile sampling.",
+        ],
+    }
+
+
 def resolve_server_bin(server_bin: str) -> str:
     path = Path(server_bin)
     if path.is_absolute():
@@ -253,6 +308,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
     startup_ms = None
     uptime_seconds = 0.0
     log_text = ""
+    probe_sample_times = []
 
     with tempfile.TemporaryDirectory(prefix="ai-runtime-profile-") as tmpdir:
         temp_root = Path(tmpdir)
@@ -306,6 +362,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
 
             sample_deadline = time.monotonic() + max(args.profile_sample_seconds, 0.0)
             while listening and time.monotonic() < sample_deadline:
+                probe_sample_times.append(time.monotonic())
                 exit_status = proc.poll()
                 if exit_status is not None:
                     failure_notes.append("server_exited_during_profile_sample")
@@ -349,8 +406,16 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         "process_exited_unexpectedly": "server_exited_during_profile_sample" in failure_notes,
         "server_log_warning_count": log_warning_count,
         "server_log_error_count": log_error_count,
-        "note": "Idle clean-profile server sample; player-load tick probes remain follow-on work.",
+        "note": "Idle clean-profile server sample; player-load tick probe records bounded process liveness.",
     }
+    player_load_tick_probe = build_player_load_tick_probe(
+        args,
+        listening,
+        probe_sample_times,
+        failure_notes,
+        log_warning_count,
+        log_error_count,
+    )
     memory = {
         "max_rss_kb": max(rss_samples) if rss_samples else None,
         "rss_sample_count": len(rss_samples),
@@ -361,6 +426,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
     comparison_summary = {
         "startup": startup,
         "steady_tick_behavior": steady_tick_behavior,
+        "player_load_tick_probe": player_load_tick_probe,
         "map_chunk_workload": map_workload,
         "entity_runtime_operations": entity_runtime,
         "mutation_write_throughput": mutation_writes,

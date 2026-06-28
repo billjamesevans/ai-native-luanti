@@ -65,7 +65,7 @@ The clean-profile capture starts a disposable local `ai_runtime` world and write
 
 - `clean-profile-benchmark-summary.json`
 
-That summary records the runner version, Luanti commit, hardware class, and game profile. Its public-safe comparison summary covers startup, idle steady tick behavior, map/chunk workload, entity/runtime operations, mutation/write throughput, memory, and failure notes. It must not include temporary paths, private worlds, provider prompts, player data, copied assets, live hostnames, or live service state.
+That summary records the runner version, Luanti commit, hardware class, and game profile. Its public-safe comparison summary covers startup, idle steady tick behavior, `player_load_tick_probe`, map/chunk workload, entity/runtime operations, mutation/write throughput, memory, and failure notes. The first player-load/server-step probe is a bounded server-process liveness probe: it records sample count, probe duration, p95/max sample interval, warning/error counts, whether the server stayed listening, and the current headless-player limitation. It must not include temporary paths, private worlds, provider prompts, player data, copied assets, live hostnames, or live service state.
 
 When a same-hardware baseline is available, pass it into the capture runner so it writes comparison files next to the branch reports:
 
@@ -183,9 +183,9 @@ and writes the ignored local artifact:
 
 - `runtime-gap-scorecard.json`
 
-The report separates measured fork evidence from Minecraft-parity target bands. The measured section covers startup, clean-profile server health, mutation throughput, demo entity/runtime cost, map/chunk workload, memory, and failure notes. The target bands are project targets only; they do not use proprietary Minecraft code or assets, server jars, copied benchmarks, copied media, or closed gameplay data.
+The report separates measured fork evidence from Minecraft-parity target bands. The measured section covers startup, clean-profile server health, player-load/server-step probe evidence, mutation throughput, demo entity/runtime cost, map/chunk workload, memory, and failure notes. The target bands are project targets only; they do not use proprietary Minecraft code or assets, server jars, copied benchmarks, copied media, or closed gameplay data.
 
-Use the ranked gaps as the runtime hardening queue before compatibility/import expansion. The first expected gaps are player-load tick probes, non-empty map/chunk workload, larger entity-runtime probes, total mutation-write measurements, and clean-profile warning classification. If the scorecard refuses to run, refresh the missing accepted clean-profile baseline with `util/ai_native_benchmark_capture.py`, review it, and promote it with `util/ai_native_benchmark_promote.py`.
+Use the ranked gaps as the runtime hardening queue before compatibility/import expansion. The first expected gaps are missing player-load tick probes, true headless-player load after the server-step probe exists, non-empty map/chunk workload, larger entity-runtime probes, total mutation-write measurements, and clean-profile warning classification. If the scorecard refuses to run, refresh the missing accepted clean-profile baseline with `util/ai_native_benchmark_capture.py`, review it, and promote it with `util/ai_native_benchmark_promote.py`.
 
 The scorecard performs a focused privacy scan of the JSON payload before writing the artifact. Do not publish or commit scorecards that include private hosts, private network addresses, local absolute paths, secrets, provider prompts, private showcase names, copied media, or family-server operational details.
 

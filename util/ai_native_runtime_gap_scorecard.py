@@ -199,6 +199,21 @@ def measurement_status(lane: dict) -> str:
     return "ready"
 
 
+def player_probe_measurement(summary: dict) -> dict:
+    probe = summary.get("player_load_tick_probe")
+    if probe:
+        return dict(probe)
+    return {
+        "probe_status": "missing",
+        "probe_kind": "not_recorded",
+        "sample_count": 0,
+        "synthetic_player_count": 0,
+        "headless_player_supported": False,
+        "server_stayed_listening": None,
+        "evidence_gap": "clean-profile summary has no player-load/server-step probe",
+    }
+
+
 def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
     manifest = accepted["manifest"]
     clean_profile = accepted["clean_profile"]
@@ -226,8 +241,9 @@ def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
             "server_log_error_count": steady.get("server_log_error_count", 0),
             "idle_sample_seconds": steady.get("sample_seconds"),
             "observed_uptime_seconds": steady.get("observed_uptime_seconds"),
-            "evidence_gap": "player-load tick probes remain follow-on work",
+            "evidence_gap": "headless player load remains follow-on work",
         },
+        "player_load_tick_probe": player_probe_measurement(summary),
         "mutation_write_throughput": mutation_summary,
         "demo_entity_runtime_cost": demo_summary,
         "map_chunk_workload": summary["map_chunk_workload"],
@@ -267,6 +283,13 @@ def target_bands() -> list[dict]:
             "target": "listening=true, error_count=0, no unexpected process exit",
             "source": "project-target",
             "rationale": "The base AI runtime profile must be stable before compatibility/import expands.",
+        },
+        {
+            "id": "player_load_tick_probe",
+            "metric": "player_load_tick_probe",
+            "target": "probe_status=pass with bounded sample count before true headless-player load",
+            "source": "project-target",
+            "rationale": "Clean-profile runtime evidence needs server-step liveness before compatibility/import workloads expand.",
         },
         {
             "id": "map_chunk_workload",
@@ -313,6 +336,12 @@ def build_gap(gap_id: str, priority: int, title: str, evidence: list[str], next_
     }
 
 
+def measured_gap(gap_id: str, priority: int, title: str, evidence: list[str], next_action: str) -> dict:
+    gap = build_gap(gap_id, priority, title, evidence, next_action)
+    gap["status"] = "measured_gap"
+    return gap
+
+
 def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
     gaps = []
     if any(lane["measurements"]["failure_notes"] for lane in lanes):
@@ -330,18 +359,60 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
             )
         )
 
-    gaps.append(
-        build_gap(
-            "player_load_tick_probe",
-            2,
-            "Add player-load and server-step probes",
-            [
-                f"{lane['hardware_class']}: clean profile currently records idle uptime only"
-                for lane in lanes
-            ],
-            "Add a bounded synthetic player/tick workload to clean-profile capture.",
+    player_probes = [
+        lane["measurements"]["player_load_tick_probe"]
+        for lane in lanes
+    ]
+    if any(probe.get("probe_status") == "missing" for probe in player_probes):
+        gaps.append(
+            build_gap(
+                "player_load_tick_probe",
+                2,
+                "Add player-load and server-step probes",
+                [
+                    f"{lane['hardware_class']}: "
+                    f"{lane['measurements']['player_load_tick_probe'].get('evidence_gap')}"
+                    for lane in lanes
+                    if lane["measurements"]["player_load_tick_probe"].get("probe_status") == "missing"
+                ],
+                "Add a bounded synthetic player/tick workload to clean-profile capture.",
+            )
         )
-    )
+    elif any(probe.get("probe_status") != "pass" for probe in player_probes):
+        gaps.append(
+            measured_gap(
+                "player_load_tick_probe_failure",
+                2,
+                "Fix failing player-load/server-step probe",
+                [
+                    f"{lane['hardware_class']}: probe_status="
+                    f"{lane['measurements']['player_load_tick_probe'].get('probe_status')}"
+                    for lane in lanes
+                    if lane["measurements"]["player_load_tick_probe"].get("probe_status") != "pass"
+                ],
+                "Stabilize clean-profile sampling before adding heavier runtime workloads.",
+            )
+        )
+    elif any(
+        not probe.get("headless_player_supported")
+        or (probe.get("synthetic_player_count") or 0) == 0
+        for probe in player_probes
+    ):
+        gaps.append(
+            measured_gap(
+                "headless_player_load_probe",
+                2,
+                "Add true synthetic player load after server-step liveness is measured",
+                [
+                    f"{lane['hardware_class']}: synthetic_player_count="
+                    f"{lane['measurements']['player_load_tick_probe'].get('synthetic_player_count')}, "
+                    f"headless_player_supported="
+                    f"{lane['measurements']['player_load_tick_probe'].get('headless_player_supported')}"
+                    for lane in lanes
+                ],
+                "Wire a public-safe headless-client or synthetic player path and keep this server-step probe as the base liveness signal.",
+            )
+        )
 
     if any(
         (lane["measurements"]["map_chunk_workload"].get("mapblock_rows") or 0) == 0
