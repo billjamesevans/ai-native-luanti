@@ -44,5 +44,6 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Benchmark baseline retention](benchmark-baseline-retention.md)
 - [Synthetic runtime smoke](synthetic-runtime-smoke.md)
 - One-command local pre-PR verification: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac`
+- Clean-profile runtime gap scorecard: `python3 util/ai_native_runtime_gap_scorecard.py --output-root local/benchmarks`
 - [AI runtime server profile](non-devtest-server-profile.md)
 - [Baseline status](baseline-status.md)
