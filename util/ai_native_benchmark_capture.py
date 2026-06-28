@@ -133,6 +133,29 @@ def sample_interval_stats(sample_times: list[float]) -> dict:
     }
 
 
+def latency_ms_stats(latencies_ms: list[float]) -> dict:
+    if not latencies_ms:
+        return {
+            "sample_count": 0,
+            "min": None,
+            "p50": None,
+            "p95": None,
+            "max": None,
+            "avg": None,
+        }
+    ordered = sorted(round(value, 3) for value in latencies_ms)
+    p50_index = int((len(ordered) - 1) * 0.50)
+    p95_index = min(len(ordered) - 1, int((len(ordered) * 0.95) + 0.999999) - 1)
+    return {
+        "sample_count": len(ordered),
+        "min": ordered[0],
+        "p50": ordered[p50_index],
+        "p95": ordered[p95_index],
+        "max": ordered[-1],
+        "avg": round(sum(ordered) / len(ordered), 3),
+    }
+
+
 def classify_profile_log_warnings(log_text: str) -> dict:
     warning_lines = [
         line for line in log_text.splitlines() if re.search(r"\bWARNING\b", line)
@@ -193,6 +216,7 @@ def start_headless_players(args, port: int, log_path: Path) -> dict:
     }
     for index in range(args.headless_player_count):
         name = f"ai_probe_{index + 1}"
+        started_at = time.monotonic()
         try:
             command = build_headless_player_command(
                 args.headless_player_command,
@@ -215,20 +239,52 @@ def start_headless_players(args, port: int, log_path: Path) -> dict:
                     "name": name,
                     "process": None,
                     "launch_error": exc.__class__.__name__,
+                    "started_at": started_at,
+                    "connected_at": None,
+                    "join_latency_proxy_ms": None,
                 }
             )
         else:
-            run["players"].append({"name": name, "process": proc, "launch_error": None})
+            run["players"].append(
+                {
+                    "name": name,
+                    "process": proc,
+                    "launch_error": None,
+                    "started_at": started_at,
+                    "connected_at": None,
+                    "join_latency_proxy_ms": None,
+                }
+            )
     return run
 
 
-def connected_synthetic_player_count(log_text: str, player_names: list[str]) -> int:
-    connected = 0
-    for name in player_names:
-        pattern = re.compile(rf"\b{re.escape(name)}\b.*\bjoins game\b", re.I)
-        if pattern.search(log_text):
-            connected += 1
-    return connected
+def synthetic_player_joined(log_text: str, player_name: str) -> bool:
+    pattern = re.compile(rf"\b{re.escape(player_name)}\b.*\bjoins game\b", re.I)
+    return bool(pattern.search(log_text))
+
+
+def observe_headless_player_connections(
+    run: dict,
+    log_text: str,
+    *,
+    observed_at: float | None = None,
+) -> None:
+    if not run.get("supported"):
+        return
+    if observed_at is None:
+        observed_at = time.monotonic()
+    for player in run["players"]:
+        if player.get("connected_at") is not None:
+            continue
+        if not synthetic_player_joined(log_text, player["name"]):
+            continue
+        player["connected_at"] = observed_at
+        started_at = player.get("started_at")
+        if started_at is not None:
+            player["join_latency_proxy_ms"] = round(
+                max(0.0, observed_at - started_at) * 1000,
+                3,
+            )
 
 
 def finish_headless_players(args, run: dict, log_text: str) -> dict:
@@ -241,10 +297,18 @@ def finish_headless_players(args, run: dict, log_text: str) -> dict:
             "client_exit_statuses": [],
             "client_launch_failure_count": 0,
             "cleanup_status": "not_started",
+            "latency_probe_kind": "not_measured",
+            "latency_proxy_supported": False,
+            "join_latency_proxy_ms": latency_ms_stats([]),
         }
 
-    player_names = [player["name"] for player in run["players"]]
-    connected_count = connected_synthetic_player_count(log_text, player_names)
+    observe_headless_player_connections(run, log_text)
+    connected_count = sum(1 for player in run["players"] if player.get("connected_at") is not None)
+    join_latencies = [
+        player["join_latency_proxy_ms"]
+        for player in run["players"]
+        if player.get("join_latency_proxy_ms") is not None
+    ]
     exit_statuses = []
     completed_count = 0
     killed_any = False
@@ -287,6 +351,11 @@ def finish_headless_players(args, run: dict, log_text: str) -> dict:
         "client_exit_statuses": exit_statuses,
         "client_launch_failure_count": run["launch_failure_count"],
         "cleanup_status": cleanup_status,
+        "latency_probe_kind": (
+            "headless_join_log_observation" if join_latencies else "not_measured"
+        ),
+        "latency_proxy_supported": bool(join_latencies),
+        "join_latency_proxy_ms": latency_ms_stats(join_latencies),
     }
 
 
@@ -338,6 +407,12 @@ def build_player_load_tick_probe(
         "p95_sample_interval_ms": intervals["p95_sample_interval_ms"],
         "max_sample_interval_ms": intervals["max_sample_interval_ms"],
         "avg_sample_interval_ms": intervals["avg_sample_interval_ms"],
+        "latency_probe_kind": headless.get("latency_probe_kind", "not_measured"),
+        "latency_proxy_supported": headless.get("latency_proxy_supported", False),
+        "join_latency_proxy_ms": headless.get(
+            "join_latency_proxy_ms",
+            latency_ms_stats([]),
+        ),
     }
     if headless_supported:
         probe.update(headless)
@@ -488,14 +563,26 @@ def run_synthetic_mapblock_workload(world_dir: Path, row_count: int = SYNTHETIC_
             payload = b"ai-native-synthetic-mapblock-v1"
             for index in range(row_count):
                 if {"x", "y", "z", "data"}.issubset(columns):
+                    x = 100000 + index
+                    while conn.execute(
+                        "SELECT 1 FROM blocks WHERE x = ? AND y = ? AND z = ? LIMIT 1",
+                        (x, 0, 0),
+                    ).fetchone():
+                        x += row_count
                     conn.execute(
                         "INSERT OR REPLACE INTO blocks (x, y, z, data) VALUES (?, ?, ?, ?)",
-                        (index, 0, 0, payload + str(index).encode("ascii")),
+                        (x, 0, 0, payload + str(index).encode("ascii")),
                     )
                 elif {"pos", "data"}.issubset(columns):
+                    pos = 100000 + index
+                    while conn.execute(
+                        "SELECT 1 FROM blocks WHERE pos = ? LIMIT 1",
+                        (pos,),
+                    ).fetchone():
+                        pos += row_count
                     conn.execute(
                         "INSERT OR REPLACE INTO blocks (pos, data) VALUES (?, ?)",
-                        (index + 1, payload + str(index).encode("ascii")),
+                        (pos, payload + str(index).encode("ascii")),
                     )
                 else:
                     raise sqlite3.OperationalError("unsupported_blocks_schema")
@@ -677,7 +764,14 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
 
             sample_deadline = time.monotonic() + max(args.profile_sample_seconds, 0.0)
             while listening and time.monotonic() < sample_deadline:
-                probe_sample_times.append(time.monotonic())
+                sample_time = time.monotonic()
+                probe_sample_times.append(sample_time)
+                log_text = read_text_if_exists(log_path)
+                observe_headless_player_connections(
+                    headless_player_run,
+                    log_text,
+                    observed_at=sample_time,
+                )
                 exit_status = proc.poll()
                 if exit_status is not None:
                     failure_notes.append("server_exited_during_profile_sample")
