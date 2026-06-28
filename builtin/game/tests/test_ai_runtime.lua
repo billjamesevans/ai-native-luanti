@@ -1783,3 +1783,75 @@ for _, record in ipairs(persisted_build_records) do
 	assert(record.private_payload == nil)
 	assert(record.asset_payload == nil)
 end
+
+assert(core.ai_runtime_smoke ~= nil)
+
+local smoke_success = core.ai_runtime_smoke.run_scenario({
+	agent_id = "smoke_agent:success",
+	owner = "synthetic-operator",
+	world_id = "synthetic-smoke-world",
+	origin = test_pos(4400),
+	build_node = "ai_runtime_test:stone",
+	repair_node = "ai_runtime_test:hazard",
+	replacement_node = "air",
+})
+assert(smoke_success.schema_version == 1)
+assert(smoke_success.operation == "ai_runtime_smoke.run_scenario")
+assert(smoke_success.ok == true)
+assert(smoke_success.status == "success")
+assert(smoke_success.run_context.mode == "synthetic-task-loop-smoke")
+assert(smoke_success.run_context.requires_private_world == false)
+assert(smoke_success.run_context.requires_private_assets == false)
+assert(smoke_success.run_context.requires_live_pi == false)
+assert(smoke_success.task_statuses.build == "completed")
+assert(smoke_success.task_statuses.repair == "completed")
+assert(smoke_success.results.build.status == "success")
+assert(smoke_success.results.repair.status == "success")
+assert(smoke_success.results.build.changed == 1)
+assert(smoke_success.results.repair.changed == 1)
+assert(smoke_success.rollback_records == 2)
+assert(smoke_success.audit_event_count >= 4)
+assert(#smoke_success.blocked_or_unsafe_outcomes == 0)
+assert(smoke_success.world_after.build_node == "ai_runtime_test:stone")
+assert(smoke_success.world_after.repair_node == "air")
+assert(smoke_success.private_prompt == nil)
+assert(smoke_success.asset_payload == nil)
+
+local smoke_repeat = core.ai_runtime_smoke.run_scenario({
+	agent_id = "smoke_agent:success",
+	owner = "synthetic-operator",
+	world_id = "synthetic-smoke-world",
+	origin = test_pos(4430),
+	build_node = "ai_runtime_test:stone",
+	repair_node = "ai_runtime_test:hazard",
+	replacement_node = "air",
+})
+assert(smoke_repeat.ok == true)
+assert(smoke_repeat.status == "success")
+assert(smoke_repeat.tasks.build.task_id ~= smoke_success.tasks.build.task_id)
+assert(smoke_repeat.tasks.repair.task_id ~= smoke_success.tasks.repair.task_id)
+
+local smoke_blocked = core.ai_runtime_smoke.run_scenario({
+	agent_id = "smoke_agent:blocked",
+	owner = "synthetic-operator",
+	world_id = "synthetic-smoke-world",
+	origin = test_pos(4450),
+	build_node = "ai_runtime_test:stone",
+	repair_node = "ai_runtime_test:hazard",
+	replacement_node = "air",
+	block_repair_rollback = true,
+})
+assert(smoke_blocked.ok == false)
+assert(smoke_blocked.status == "blocked")
+assert(smoke_blocked.task_statuses.build == "completed")
+assert(smoke_blocked.task_statuses.repair == "blocked")
+assert(smoke_blocked.results.repair.status == "blocked")
+assert(smoke_blocked.results.repair.reason == "rollback_metadata_unavailable")
+assert(#smoke_blocked.blocked_or_unsafe_outcomes >= 1)
+assert(smoke_blocked.blocked_or_unsafe_outcomes[1].task_id
+	== "ai-runtime-smoke:smoke_agent_blocked:repair")
+assert(smoke_blocked.rollback_records == 1)
+assert(smoke_blocked.world_after.build_node == "ai_runtime_test:stone")
+assert(smoke_blocked.world_after.repair_node == "ai_runtime_test:hazard")
+assert(smoke_blocked.private_prompt == nil)
+assert(smoke_blocked.asset_payload == nil)
