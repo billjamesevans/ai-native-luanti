@@ -1312,6 +1312,187 @@ end
 
 run_player_ops_tests()
 
+local function run_model_import_gate_tests()
+	assert(core.ai_model_ops ~= nil)
+	assert(core.ai_import_ops ~= nil)
+	core.register_ai_agent({
+		agent_id = "runtime_gate:none",
+		display_name = "Runtime Gate Missing Capability",
+		owner = "runtime-owner",
+		plugin = "runtime_gate_test",
+		capabilities = {
+			["world.read"] = true,
+		},
+	})
+	core.register_ai_agent({
+		agent_id = "runtime_gate:http",
+		display_name = "Runtime Gate HTTP Agent",
+		owner = "runtime-owner",
+		plugin = "runtime_gate_test",
+		capabilities = {
+			["http.llm"] = true,
+		},
+	})
+	core.register_ai_agent({
+		agent_id = "runtime_gate:import",
+		display_name = "Runtime Gate Import Agent",
+		owner = "runtime-owner",
+		plugin = "runtime_gate_test",
+		capabilities = {
+			["import.assets"] = true,
+		},
+	})
+
+	core.queue_ai_task({
+		task_id = "runtime-gate:model-denied",
+		agent_id = "runtime_gate:none",
+		owner = "runtime-owner",
+		label = "denied model runtime gate",
+		steps = {
+			function(ctx)
+				return core.ai_model_ops.request("synthetic model prompt", {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+					adapter = function()
+						error("adapter should not be called without http.llm")
+					end,
+				})
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local denied_model_task = core.get_ai_task("runtime-gate:model-denied")
+	assert(denied_model_task.status == "blocked")
+	assert(denied_model_task.last_result.operation == "ai_model.request")
+	assert(denied_model_task.last_result.reason == "missing_capability")
+
+	local model_requests = {}
+	local before_gate_model_metrics = core.get_ai_runtime_metrics()
+	core.queue_ai_task({
+		task_id = "runtime-gate:model-success",
+		agent_id = "runtime_gate:http",
+		owner = "runtime-owner",
+		label = "allowed model runtime gate",
+		steps = {
+			function(ctx)
+				return core.ai_model_ops.request("runtime model request", {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+					private_prompt = "synthetic private model prompt",
+					adapter = function(request)
+						table.insert(model_requests, request)
+						return {
+							ok = true,
+							message = "runtime model response",
+							adapter_name = "runtime-gate-model",
+							elapsed_us = 25000,
+						}
+					end,
+				})
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local allowed_model_task = core.get_ai_task("runtime-gate:model-success")
+	assert(allowed_model_task.status == "completed")
+	assert(allowed_model_task.last_result.operation == "ai_model.request")
+	assert(allowed_model_task.last_result.status == "success")
+	assert(allowed_model_task.last_result.message == "runtime model response")
+	assert(#model_requests == 1)
+	assert(model_requests[1].agent_id == "runtime_gate:http")
+	local after_gate_model_metrics = core.get_ai_runtime_metrics()
+	assert(after_gate_model_metrics.model_adapter_requests
+		== before_gate_model_metrics.model_adapter_requests + 1)
+
+	core.queue_ai_task({
+		task_id = "runtime-gate:import-denied",
+		agent_id = "runtime_gate:none",
+		owner = "runtime-owner",
+		label = "denied import runtime gate",
+		steps = {
+			function(ctx)
+				return core.ai_import_ops.plan({
+					source_class = "resource_pack",
+					dry_run = true,
+					planned_actions = {},
+				}, {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+				})
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local denied_import_task = core.get_ai_task("runtime-gate:import-denied")
+	assert(denied_import_task.status == "blocked")
+	assert(denied_import_task.last_result.operation == "ai_import.plan")
+	assert(denied_import_task.last_result.reason == "missing_capability")
+
+	core.queue_ai_task({
+		task_id = "runtime-gate:import-plan",
+		agent_id = "runtime_gate:import",
+		owner = "runtime-owner",
+		label = "allowed import runtime gate",
+		steps = {
+			function(ctx)
+				return core.ai_import_ops.plan({
+					source_class = "resource_pack",
+					dry_run = true,
+					planned_actions = {
+						{
+							action = "map_texture",
+							status = "partial",
+							required_capabilities = { "import.assets" },
+							mutation_cost = {
+								node_writes = 0,
+								media_files = 1,
+								manual_review_items = 0,
+							},
+						},
+					},
+				}, {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+				})
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local import_plan_task = core.get_ai_task("runtime-gate:import-plan")
+	assert(import_plan_task.status == "completed")
+	assert(import_plan_task.last_result.operation == "ai_import.plan")
+	assert(import_plan_task.last_result.status == "success")
+	assert(import_plan_task.last_result.import_plan.dry_run == true)
+	assert(import_plan_task.last_result.import_plan.assets_copied == false)
+	assert(import_plan_task.last_result.examined == 1)
+
+	local gate_audit = core.get_ai_runtime_audit({ limit = 30 })
+	local has_model_request = false
+	local has_import_plan = false
+	for _, record in ipairs(gate_audit) do
+		if record.event_type == "model.request"
+				and record.task_id == "runtime-gate:model-success" then
+			has_model_request = true
+			assert(record.private_payload == nil)
+			assert(record.payload_retained == false)
+		end
+		if record.event_type == "import.plan"
+				and record.task_id == "runtime-gate:import-plan" then
+			has_import_plan = true
+			assert(record.private_payload == nil)
+			assert(record.payload_retained == false)
+		end
+	end
+	assert(has_model_request == true)
+	assert(has_import_plan == true)
+end
+
+run_model_import_gate_tests()
+
 assert(core.registered_chatcommands.ai_runtime ~= nil)
 local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
 assert(command_ok == true)
@@ -1369,6 +1550,7 @@ assert(core.agent_has_capability(plugin_agent.agent_id, "world.read") == true)
 assert(core.agent_has_capability(plugin_agent.agent_id, "world.place") == true)
 assert(core.agent_has_capability(plugin_agent.agent_id, "entity.spawn") == true)
 assert(core.agent_has_capability(plugin_agent.agent_id, "entity.control") == true)
+assert(core.agent_has_capability(plugin_agent.agent_id, "http.llm") == true)
 
 local same_agent = core.ai_agent_plugin.ensure_player_agent("Wills")
 assert(same_agent.agent_id == plugin_agent.agent_id)

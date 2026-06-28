@@ -112,15 +112,15 @@ function plugin.ensure_player_agent(name)
 		display_name = "Nova Agent - " .. name,
 		owner = name,
 		plugin = "ai_agent_plugin",
-		capabilities = {
-			["world.read"] = true,
-			["world.place"] = true,
-			["world.remove"] = true,
-			["entity.spawn"] = true,
-			["entity.control"] = true,
-			["task.cancel"] = true,
-			["model.request"] = true,
-		},
+			capabilities = {
+				["world.read"] = true,
+				["world.place"] = true,
+				["world.remove"] = true,
+				["entity.spawn"] = true,
+				["entity.control"] = true,
+				["task.cancel"] = true,
+				["http.llm"] = true,
+			},
 		limits = {
 			max_nodes_per_step = settings.max_lights,
 			max_entities = 1,
@@ -343,52 +343,19 @@ end
 
 local function handle_model(name, prompt, context)
 	context = context or {}
-	core.record_ai_runtime_audit({
-		event_type = "model.request",
-		agent_id = agent_id_for(name),
-		message = "Model adapter requested.",
-		private_payload = {
-			prompt = context.private_prompt or prompt,
-		},
-	})
-	if not model_adapter then
-		return public_reply(name, "model", "blocked", "No model adapter is configured.")
-	end
-	local started_at = core.get_us_time and core.get_us_time() or 0
-	local ok, result = pcall(model_adapter, {
+	local result = core.ai_model_ops.request(prompt, {
 		agent_id = agent_id_for(name),
 		owner = name,
-		prompt = prompt,
+		task_id = context.task_id,
+		private_prompt = context.private_prompt,
+		adapter = model_adapter,
+		adapter_name = context.adapter_name or "ai_agent_plugin",
 		context = context,
 	})
-	if not ok then
-		result = {
-			ok = false,
-			message = "Model adapter failed.",
-			reason = "adapter_error",
-		}
-	end
-	local elapsed_us = result and result.elapsed_us
-	if not elapsed_us then
-		elapsed_us = started_at > 0 and core.get_us_time and (core.get_us_time() - started_at) or 0
-	end
-	local adapter_status = "failure"
-	if result and result.timeout then
-		adapter_status = "timeout"
-	elseif result and result.ok then
-		adapter_status = "success"
-	end
-	core.record_ai_model_adapter_result({
-		agent_id = agent_id_for(name),
-		owner_ref = name,
-		task_id = context.task_id,
-		adapter_name = result and result.adapter_name or context.adapter_name or "ai_agent_plugin",
-		status = adapter_status,
-		reason = result and result.reason,
-		elapsed_us = elapsed_us,
-	})
-	return public_reply(name, "model", result and result.ok and "success" or "blocked",
-		result and result.message or "Model adapter did not return a response.")
+	return public_reply(name, "model", result.ok and "success" or "blocked",
+		result.message or "Model adapter did not return a response.", {
+			reason = result.reason,
+		})
 end
 
 function plugin.handle_command(name, param, context)

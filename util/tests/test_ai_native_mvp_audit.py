@@ -96,7 +96,7 @@ class MvpAuditTests(unittest.TestCase):
             categories = {item["category"] for item in report["acceptance_audit"]}
             self.assertIn("already_proven", categories)
             self.assertIn("implemented_but_weakly_verified", categories)
-            self.assertIn("missing_runtime_behavior", categories)
+            self.assertNotIn("missing_runtime_behavior", categories)
             self.assertIn("compatibility_import_deferral", categories)
 
             acceptance_ids = {item["id"] for item in report["acceptance_audit"]}
@@ -145,6 +145,10 @@ class MvpAuditTests(unittest.TestCase):
                 "already_proven",
             )
             self.assertEqual(
+                audit_by_id["model-and-import-capability-boundaries"]["category"],
+                "already_proven",
+            )
+            self.assertEqual(
                 audit_by_id["compatibility-import-deferred"]["category"],
                 "compatibility_import_deferral",
             )
@@ -158,11 +162,10 @@ class MvpAuditTests(unittest.TestCase):
                 )
 
             follow_on_ids = [issue["id"] for issue in report["follow_on_issues"]]
-            self.assertGreaterEqual(len(follow_on_ids), 3)
+            self.assertGreaterEqual(len(follow_on_ids), 2)
             self.assertEqual(
-                follow_on_ids[:3],
+                follow_on_ids[:2],
                 [
-                    "mvp-model-import-capability-runtime",
                     "mvp-runtime-task-duration-metrics",
                     "mvp-agent-policy-profile",
                 ],
