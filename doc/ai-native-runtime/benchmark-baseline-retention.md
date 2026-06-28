@@ -139,6 +139,23 @@ Repeat the same flow for `low-power-server` only after backup-first readiness, k
 
 Do not promote either lane unless the clean-profile summary has `overall_status=pass`, `player_load_tick_probe.probe_status=pass`, `probe_kind=headless_client_load`, `headless_player_supported=true`, `synthetic_player_count>0`, and connected synthetic players equal attempted synthetic players.
 
+For entity-scale refreshes, review the generated `generic-demo-entity-benchmark-report.json` before promotion. The report must include `entity_scale_16`, and the clean-profile summary must show `entity_runtime_operations.max_entity_count >= 16`, `max_active_peak >= 16`, and `max_remaining_entities = 0`. Promote the local and `low-power-server` captures with labels that identify the scale refresh, then regenerate the scorecard and confirm `entity_scale_runtime_probe` is no longer ranked:
+
+```sh
+python3 util/ai_native_benchmark_promote.py \
+  --capture-dir local/benchmarks/local-mac/<date>/<commit>-scale16-local \
+  --output-root local/benchmarks \
+  --source-label reviewed-local-headless-scale16
+
+python3 util/ai_native_benchmark_promote.py \
+  --capture-dir local/benchmarks/low-power-server/<date>/<commit>-scale16-low-power \
+  --output-root local/benchmarks \
+  --source-label reviewed-low-power-headless-scale16
+
+python3 util/ai_native_runtime_gap_scorecard.py \
+  --output-root local/benchmarks
+```
+
 When a same-hardware baseline is available, pass it into the capture runner so it writes comparison files next to the branch reports:
 
 ```sh
