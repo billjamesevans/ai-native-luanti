@@ -245,6 +245,13 @@ if(INSTALL_DEVTEST)
 		PATTERN ".git*" EXCLUDE )
 endif()
 
+set(INSTALL_AI_RUNTIME_PROFILE TRUE CACHE BOOL "Install AI Runtime server profile")
+
+if(INSTALL_AI_RUNTIME_PROFILE)
+	install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/games/ai_runtime" DESTINATION "${SHAREDIR}/games/"
+		PATTERN ".git*" EXCLUDE )
+endif()
+
 if(BUILD_CLIENT)
 	install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/client/shaders" DESTINATION "${SHAREDIR}/client")
 	install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/textures/base/pack" DESTINATION "${SHAREDIR}/textures/base")
