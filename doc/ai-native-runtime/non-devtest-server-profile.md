@@ -44,5 +44,7 @@ Grant the local operator `server` privilege in the disposable world, then run:
 - This profile requires no provider prompt retention.
 - This profile requires no model-network access.
 - This profile is not a replacement for benchmark fixtures or engine unit tests.
+- This profile declares first-party agent capability grants in `games/ai_runtime/mods/ai_runtime_base/init.lua`.
+- This profile does not grant `admin.override`, `import.assets`, other-player teleport, or defensive-combat capabilities to player-owned first-party agents.
 
 Future proving-ground deployment should remain side by side and backup-first.

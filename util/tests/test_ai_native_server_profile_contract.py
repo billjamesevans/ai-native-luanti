@@ -52,6 +52,29 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
         self.assertNotRegex(profile_text, r"\bdevtest\b|testnodes:", re.I)
         self.assertNotRegex(profile_text, PRIVATE_PATTERNS)
 
+    def test_profile_declares_first_party_agent_capability_policy(self):
+        base_mod = BASE_MOD.read_text(encoding="utf-8")
+
+        self.assertIn("core.ai_agent_plugin.configure", base_mod)
+        self.assertIn("capabilities = {", base_mod)
+        for capability in (
+            "world.read",
+            "world.place",
+            "world.remove",
+            "entity.spawn",
+            "entity.control",
+            "task.cancel",
+            "http.llm",
+        ):
+            self.assertIn(f'["{capability}"] = true', base_mod)
+        for forbidden in (
+            "admin.override",
+            "import.assets",
+            "player.teleport.other",
+            "combat.defend",
+        ):
+            self.assertNotIn(forbidden, base_mod)
+
     def test_profile_is_tracked_despite_generated_games_ignore_rule(self):
         ignored = subprocess.run(
             ["git", "check-ignore", "-q", "games/ai_runtime/game.conf"],

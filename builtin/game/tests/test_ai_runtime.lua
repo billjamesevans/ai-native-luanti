@@ -1556,6 +1556,45 @@ core.ai_agent_plugin.configure({
 		["ai_runtime_test:hazard"] = true,
 	},
 	max_lights = 3,
+	capabilities = {
+		["world.read"] = true,
+		["entity.spawn"] = true,
+		["task.cancel"] = true,
+	},
+})
+
+function test_ai_runtime_profile_policy_capabilities()
+	local policy_agent = core.ai_agent_plugin.ensure_player_agent("ProfilePolicy")
+	assert(policy_agent.agent_id == "nova_agent:ProfilePolicy")
+	assert(core.agent_has_capability(policy_agent.agent_id, "world.read") == true)
+	assert(core.agent_has_capability(policy_agent.agent_id, "entity.spawn") == true)
+	assert(core.agent_has_capability(policy_agent.agent_id, "task.cancel") == true)
+	assert(core.agent_has_capability(policy_agent.agent_id, "world.place") == false)
+	assert(core.agent_has_capability(policy_agent.agent_id, "world.remove") == false)
+	assert(core.agent_has_capability(policy_agent.agent_id, "http.llm") == false)
+	assert(core.agent_has_capability(policy_agent.agent_id, "admin.override") == false)
+	assert(core.agent_has_capability(policy_agent.agent_id, "import.assets") == false)
+end
+
+test_ai_runtime_profile_policy_capabilities()
+test_ai_runtime_profile_policy_capabilities = nil
+
+core.ai_agent_plugin.configure({
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	repair_nodes = {
+		["ai_runtime_test:hazard"] = true,
+	},
+	max_lights = 3,
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
 })
 
 local plugin_agent = core.ai_agent_plugin.ensure_player_agent("Wills")
