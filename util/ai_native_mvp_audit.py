@@ -347,8 +347,8 @@ AUDIT_ITEMS = [
     {
         "id": "lag-pausing-budget-enforcement",
         "requirement": "Tasks should enforce server-step, node-write, wall-clock, and lag-based pause budgets.",
-        "category": "missing_runtime_behavior",
-        "verification_strength": "missing",
+        "category": "already_proven",
+        "verification_strength": "proven",
         "mvp_spec_refs": [
             "Task Queue: constrained by server-step budget, node-write budget, and wall-clock budget.",
             "Task Queue: pause when server lag exceeds configured thresholds.",
@@ -357,15 +357,28 @@ AUDIT_ITEMS = [
         "evidence_specs": [
             (
                 "builtin/game/ai_runtime.lua",
-                "Runtime has manual queue pausing and node-write budget enforcement.",
-                ["function core.set_ai_task_queue_paused", "max_node_writes_per_step", "node_write_budget_exceeded"],
+                "Runtime enforces manual pause, automatic lag pause, node-write budgets, and wall-clock budgets.",
+                [
+                    "function core.set_ai_task_queue_paused",
+                    "function core.set_ai_task_queue_lag_monitor",
+                    "max_node_writes_per_step",
+                    "max_wall_time_ms",
+                    "lag_threshold_exceeded",
+                    "wall_clock_budget_exceeded",
+                ],
+            ),
+            (
+                "builtin/game/tests/test_ai_runtime.lua",
+                "Focused runtime tests cover automatic lag pause/resume and wall-clock budget stop.",
+                ["task:auto-lag-paused", "task:wall-clock-budget", "wall_clock_budget_exceeded"],
             ),
             (
                 "doc/ai-native-runtime/task-queue-api.md",
-                "Task queue docs identify lag pause as a placeholder and node-write enforcement as result-reported.",
+                "Task queue docs describe lag monitor and wall-clock budget behavior.",
                 [
-                    "first placeholder for lag-based pausing",
-                    "It enforces node-write budgets only when step results report",
+                    "budget.max_wall_time_ms",
+                    "core.set_ai_task_queue_lag_monitor",
+                    "lag_threshold_exceeded",
                 ],
             ),
         ],
@@ -441,16 +454,8 @@ AUDIT_ITEMS = [
 
 FOLLOW_ON_ISSUES = [
     {
-        "id": "mvp-task-budget-lag-pausing",
-        "priority": 1,
-        "title": "Implement runtime wall-clock budgets and automatic lag-based task pausing",
-        "category": "missing_runtime_behavior",
-        "source_acceptance_ids": ["lag-pausing-budget-enforcement", "runtime-metrics"],
-        "why_now": "This is the highest-leverage runtime safety gap before larger AI tasks or import apply work.",
-    },
-    {
         "id": "mvp-first-party-agent-plugin-runtime",
-        "priority": 2,
+        "priority": 1,
         "title": "Promote first-party follow and come commands from state updates to bounded runtime behavior",
         "category": "missing_first_party_plugin_behavior",
         "source_acceptance_ids": ["first-party-follow-come-product-behavior"],
@@ -458,7 +463,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-player-teleport-combat-runtime",
-        "priority": 3,
+        "priority": 2,
         "title": "Add safe player teleport and defensive-combat capability runtime slices",
         "category": "missing_runtime_behavior",
         "source_acceptance_ids": ["player-teleport-and-combat-capabilities"],
@@ -466,7 +471,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-model-import-capability-runtime",
-        "priority": 4,
+        "priority": 3,
         "title": "Align http.llm and import.assets capability gates with runtime task execution",
         "category": "missing_runtime_behavior",
         "source_acceptance_ids": ["model-and-import-capability-boundaries"],
@@ -474,7 +479,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-runtime-task-duration-metrics",
-        "priority": 5,
+        "priority": 4,
         "title": "Expose task-duration metrics in the operator runtime snapshot",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["runtime-metrics"],
@@ -482,7 +487,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-agent-policy-profile",
-        "priority": 6,
+        "priority": 5,
         "title": "Add clean-profile policy tests for first-party agent capability grants",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["agent-identity-capabilities"],
