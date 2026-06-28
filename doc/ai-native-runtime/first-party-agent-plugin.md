@@ -19,7 +19,7 @@ The plugin uses:
 - `core.repair_agent.queue_apply_task` for rollback-backed repair apply tasks.
 - `core.ai_player_ops.defend` for bounded defensive actions when a profile grants `combat.defend`.
 - `core.ai_world_ops` indirectly through build and repair task surfaces.
-- `core.ai_entity_ops` for spawning and moving the player's bounded helper entity.
+- `core.ai_entity_ops` for spawning and moving the player's bounded helper entity during one-shot and continuous follow tasks.
 - `core.record_ai_runtime_audit` for model-adapter requests without retaining private prompts.
 - `core.get_ai_runtime_metrics`, `core.get_ai_task`, and `core.get_ai_runtime_audit` for status, task, audit, and rollback-review views.
 
@@ -39,7 +39,7 @@ Implemented deterministic commands:
 - `guide`, `help`: returns the available builder, repair, guide, and defender surfaces plus current task records.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
-- `follow`, `follow me`: queues bounded movement for the player's helper entity to the current player position.
+- `follow`, `follow me`, `follow N`: queues bounded continuous follow steps for the player's helper entity. Each task runs a finite number of server-step slices, recalculates the player's current position per slice, and moves through `core.ai_entity_ops.move` with per-step and total-distance budgets.
 - `come`, `come here`: queues bounded movement for the player's helper entity to the requested target position.
 - `light`, `place N lights`: queues a rollback-backed `build_agent` lights task.
 - `build plan`, `preview build`: returns a read-only marker build plan before mutation.
@@ -67,6 +67,11 @@ core.ai_agent_plugin.configure({
 	},
 	max_lights = 12,
 	max_entity_move_distance = 16,
+	max_follow_steps = 6,
+	max_follow_step_distance = 4,
+	max_follow_total_distance = 24,
+	max_follow_stop_distance = 1,
+	max_follow_wall_time_ms = 250,
 	max_defend_distance = 8,
 	capabilities = {
 		["world.read"] = true,
@@ -85,6 +90,8 @@ The default capability policy is empty. A game package or operator mod must decl
 The default node/entity settings are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
 
 `agent_entity_name` is the registered entity type used for queued bounded entity movement. The default uses the public demo helper fixture; a game package can configure a different registered entity without changing the engine fork.
+
+`max_follow_steps`, `max_follow_step_distance`, `max_follow_total_distance`, `max_follow_stop_distance`, and `max_follow_wall_time_ms` bound continuous follow. A follow task is still a normal player-owned AI task, so the player can cancel it with `cancel`/`stop`, and the task result exposes `ai_agent.follow_step` status, movement result, distance moved, skipped or blocked reasons, and path metrics.
 
 `capability_profile` is a short policy label such as `clean` or `operator`. It is copied into the registered agent limits for audit/debug visibility.
 
@@ -109,7 +116,8 @@ Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin 
 
 ## Current Limits
 
-- Follow and come use queued bounded entity movement. Full pathfinding and continuous follow ticks are later slices.
+- Follow uses a small direct-line pathfinding slice: each queued task step recomputes the player target, moves no more than the configured step distance, stops inside the configured follow distance, and blocks when the total movement budget would be exceeded. Richer obstacle-aware navigation remains a later slice.
+- Come remains a one-shot bounded helper-entity move.
 - Build remains small lights and marker tasks, not a showcase structure system.
 - Repair only applies configured repair rules around the requested target position.
 - Build and repair previews explain bounded plans, but approval workflow and richer plan editing remain later slices.
