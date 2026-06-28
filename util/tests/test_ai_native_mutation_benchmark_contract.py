@@ -44,6 +44,7 @@ REQUIRED_METRICS = {
     "avg_step_ms",
     "p95_step_ms",
     "max_lag_ms",
+    "node_writes",
     "node_writes_per_step",
     "skipped_positions",
     "rollback_records",
@@ -83,6 +84,14 @@ class MutationBenchmarkContractTests(unittest.TestCase):
                 self.assertFalse(scenario["fixture"]["requires_live_world"])
                 self.assertFalse(scenario["fixture"]["requires_private_assets"])
                 self.assertNotEqual(scenario["entry_point"]["command"], "")
+                node_writes = scenario["metrics"]["node_writes"]
+                self.assertIsInstance(node_writes, int)
+                self.assertGreaterEqual(node_writes, 0)
+                self.assertLessEqual(node_writes, scenario["fixture"]["node_count"])
+                if scenario["category"] in {"build", "repair_mutation"}:
+                    self.assertGreater(node_writes, 0)
+                else:
+                    self.assertEqual(node_writes, 0)
 
     def test_schema_declares_required_benchmark_report_fields(self):
         schema = self.load_json(SCHEMA)
@@ -143,6 +152,8 @@ class MutationBenchmarkContractTests(unittest.TestCase):
             "average step",
             "p95 step",
             "max lag",
+            "total node writes",
+            "node_writes",
             "must not merge",
             "local-mac",
             "low-power-server",

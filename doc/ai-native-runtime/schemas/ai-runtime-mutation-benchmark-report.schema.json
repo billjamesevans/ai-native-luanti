@@ -178,6 +178,7 @@
         "avg_step_ms",
         "p95_step_ms",
         "max_lag_ms",
+        "node_writes",
         "node_writes_per_step",
         "skipped_positions",
         "rollback_records",
@@ -210,6 +211,13 @@
         "node_writes_per_step": {
           "type": [
             "number",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "node_writes": {
+          "type": [
+            "integer",
             "null"
           ],
           "minimum": 0
