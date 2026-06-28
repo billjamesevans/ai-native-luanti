@@ -31,6 +31,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Safe world operations API](safe-world-ops-api.md)
 - [Safe entity operations API](safe-entity-ops-api.md)
 - [Safe player operations API](safe-player-ops-api.md)
+- [Model and import runtime gates](model-import-runtime-gates.md)
 - [Runtime metrics and audit API](metrics-audit-api.md)
 - [First-party agent plugin](first-party-agent-plugin.md)
 - [Family prototype plugin boundaries](family-prototype-plugin-boundaries.md)

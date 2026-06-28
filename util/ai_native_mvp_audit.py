@@ -442,8 +442,8 @@ AUDIT_ITEMS = [
     {
         "id": "model-and-import-capability-boundaries",
         "requirement": "http.llm and import.assets should have first-class runtime capability names and execution gates.",
-        "category": "missing_runtime_behavior",
-        "verification_strength": "missing",
+        "category": "already_proven",
+        "verification_strength": "proven",
         "mvp_spec_refs": [
             "Capabilities: http.llm and import.assets.",
             "Non-Goals: Do not implement Minecraft compatibility/import in this milestone.",
@@ -451,13 +451,45 @@ AUDIT_ITEMS = [
         "evidence_specs": [
             (
                 "builtin/game/ai_runtime.lua",
-                "Model adapter metrics and audits exist, but no http.llm task gate is first-class.",
-                ["function core.record_ai_model_adapter_result", "model_adapter_requests", "model.adapter"],
+                "Runtime exposes first-class model and import gates for queued task steps.",
+                [
+                    "core.ai_model_ops = {}",
+                    "core.ai_import_ops = {}",
+                    "function core.ai_model_ops.request",
+                    "function core.ai_import_ops.plan",
+                    "\"http.llm\"",
+                    "\"import.assets\"",
+                    "dry_run_required",
+                    "payload_rejected",
+                ],
             ),
             (
-                "util/ai_native_compat_dry_run.py",
-                "Compatibility planning records import.assets as inert dry-run capability evidence.",
-                ["import.assets", "dry_run", "planned_actions"],
+                "builtin/game/ai_agent_plugin.lua",
+                "First-party plugin model fallback goes through the http.llm runtime gate.",
+                ["\"http.llm\"", "core.ai_model_ops.request"],
+            ),
+            (
+                "builtin/game/tests/test_ai_runtime.lua",
+                "Focused runtime tests prove queued http.llm/import.assets allow and deny behavior.",
+                [
+                    "runtime-gate:model-denied",
+                    "runtime-gate:model-success",
+                    "runtime-gate:import-denied",
+                    "runtime-gate:import-plan",
+                    "core.ai_import_ops.plan",
+                ],
+            ),
+            (
+                "doc/ai-native-runtime/model-import-runtime-gates.md",
+                "Runtime gate docs describe capability checks, dry-run-only import planning, and public-safe non-goals.",
+                [
+                    "core.ai_model_ops.request",
+                    "core.ai_import_ops.plan",
+                    "http.llm",
+                    "import.assets",
+                    "No default model provider",
+                    "No copied assets",
+                ],
             ),
         ],
     },
@@ -488,16 +520,8 @@ AUDIT_ITEMS = [
 
 FOLLOW_ON_ISSUES = [
     {
-        "id": "mvp-model-import-capability-runtime",
-        "priority": 1,
-        "title": "Align http.llm and import.assets capability gates with runtime task execution",
-        "category": "missing_runtime_behavior",
-        "source_acceptance_ids": ["model-and-import-capability-boundaries"],
-        "why_now": "The model/import boundaries exist as docs and dry-run planning, but the runtime needs first-class gates before compatibility/import expands.",
-    },
-    {
         "id": "mvp-runtime-task-duration-metrics",
-        "priority": 2,
+        "priority": 1,
         "title": "Expose task-duration metrics in the operator runtime snapshot",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["runtime-metrics"],
@@ -505,7 +529,7 @@ FOLLOW_ON_ISSUES = [
     },
     {
         "id": "mvp-agent-policy-profile",
-        "priority": 3,
+        "priority": 2,
         "title": "Add clean-profile policy tests for first-party agent capability grants",
         "category": "implemented_but_weakly_verified",
         "source_acceptance_ids": ["agent-identity-capabilities"],
