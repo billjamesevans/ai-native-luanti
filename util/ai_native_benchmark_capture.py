@@ -347,6 +347,49 @@ def build_player_load_tick_probe(
     return probe
 
 
+def build_server_step_workload(
+    args,
+    listening: bool,
+    sample_times: list[float],
+    failure_notes: list[str],
+    warning_summary: dict,
+    log_error_count: int,
+) -> dict:
+    intervals = sample_interval_stats(sample_times)
+    server_exited = "server_exited_during_profile_sample" in failure_notes
+    failed_sample_count = 0
+    if not listening or server_exited or log_error_count > 0:
+        failed_sample_count = 1
+    attempted_sample_count = len(sample_times)
+    completed_sample_count = attempted_sample_count
+    if failed_sample_count:
+        completed_sample_count = max(0, completed_sample_count - failed_sample_count)
+    if attempted_sample_count <= 0 and failed_sample_count == 0:
+        failed_sample_count = 1
+    workload_status = "pass"
+    if failed_sample_count > 0 or completed_sample_count <= 0:
+        workload_status = "fail"
+    return {
+        "workload_status": workload_status,
+        "workload_kind": "server_step_liveness",
+        "requested_sample_seconds": args.profile_sample_seconds,
+        "sample_duration_seconds": (
+            round(sample_times[-1] - sample_times[0], 3)
+            if len(sample_times) >= 2
+            else 0.0
+        ),
+        "attempted_sample_count": attempted_sample_count,
+        "completed_sample_count": completed_sample_count,
+        "failed_sample_count": failed_sample_count,
+        "server_stayed_listening": listening and not server_exited,
+        **warning_summary,
+        "server_log_error_count": log_error_count,
+        "p95_sample_interval_ms": intervals["p95_sample_interval_ms"],
+        "max_sample_interval_ms": intervals["max_sample_interval_ms"],
+        "avg_sample_interval_ms": intervals["avg_sample_interval_ms"],
+    }
+
+
 def resolve_server_bin(server_bin: str) -> str:
     path = Path(server_bin)
     if path.is_absolute():
@@ -634,6 +677,24 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
             log_error_count,
             headless_player_summary,
         )
+    server_step_workload = build_server_step_workload(
+        args,
+        listening,
+        probe_sample_times,
+        failure_notes,
+        warning_summary,
+        log_error_count,
+    )
+    if server_step_workload["workload_status"] != "pass":
+        failure_notes.append("server_step_workload_failed")
+        server_step_workload = build_server_step_workload(
+            args,
+            listening,
+            probe_sample_times,
+            failure_notes,
+            warning_summary,
+            log_error_count,
+        )
     memory = {
         "max_rss_kb": max(rss_samples) if rss_samples else None,
         "rss_sample_count": len(rss_samples),
@@ -644,6 +705,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
     comparison_summary = {
         "startup": startup,
         "steady_tick_behavior": steady_tick_behavior,
+        "server_step_workload": server_step_workload,
         "player_load_tick_probe": player_load_tick_probe,
         "map_chunk_workload": map_workload,
         "entity_runtime_operations": entity_runtime,

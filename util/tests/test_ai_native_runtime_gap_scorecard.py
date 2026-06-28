@@ -185,6 +185,15 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                             "server_log_error_count": 0,
                             "note": "Idle clean-profile server sample; player-load tick probes remain follow-on work.",
                         },
+                        "server_step_workload": {
+                            "workload_status": "pass",
+                            "workload_kind": "server_step_liveness",
+                            "attempted_sample_count": 30,
+                            "completed_sample_count": 30,
+                            "failed_sample_count": 0,
+                            "p95_sample_interval_ms": 100.0,
+                            "max_sample_interval_ms": 120.0,
+                        },
                         "map_chunk_workload": {
                             "world_backend": "sqlite3",
                             "map_sqlite_bytes": 12288,
@@ -315,9 +324,15 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             }
             self.assertEqual(set(evidence_by_hardware), {"local-mac", "low-power-server"})
             for lane in evidence_by_hardware.values():
+                workload = lane["measurements"]["server_step_workload"]
+                self.assertEqual(workload["workload_status"], "pass")
+                self.assertEqual(workload["workload_kind"], "server_step_liveness")
+                self.assertGreater(workload["attempted_sample_count"], 0)
+                self.assertEqual(workload["failed_sample_count"], 0)
                 for section in (
                     "startup",
                     "clean_profile_server_health",
+                    "server_step_workload",
                     "player_load_tick_probe",
                     "mutation_write_throughput",
                     "demo_entity_runtime_cost",
