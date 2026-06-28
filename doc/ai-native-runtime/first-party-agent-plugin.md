@@ -13,12 +13,15 @@ The plugin is deliberately small. It is a runtime client, not a replacement for 
 The plugin uses:
 
 - `core.register_ai_agent` for one agent per player.
-- `core.queue_ai_task` for all world-changing work.
+- `core.queue_ai_task` for all task-backed work.
 - `core.cancel_ai_task` for player-owned cancellation.
-- `core.ai_world_ops` for node inspection, placement, removal, repair, and batch light placement.
+- `core.build_agent.define_task` for rollback-backed light and marker build tasks.
+- `core.repair_agent.queue_apply_task` for rollback-backed repair apply tasks.
+- `core.ai_player_ops.defend` for bounded defensive actions when a profile grants `combat.defend`.
+- `core.ai_world_ops` indirectly through build and repair task surfaces.
 - `core.ai_entity_ops` for spawning and moving the player's bounded helper entity.
 - `core.record_ai_runtime_audit` for model-adapter requests without retaining private prompts.
-- `core.get_ai_runtime_metrics` and `core.get_ai_task` for status and task views.
+- `core.get_ai_runtime_metrics`, `core.get_ai_task`, and `core.get_ai_runtime_audit` for status, task, audit, and rollback-review views.
 
 The plugin does not call raw `core.set_node`, `core.remove_node`, `core.bulk_set_node`, or hard-coded showcase builders.
 
@@ -33,13 +36,17 @@ The plugin registers three aliases:
 Implemented deterministic commands:
 
 - `status`: returns current state and runtime metrics.
+- `guide`, `help`: returns the available builder, repair, guide, and defender surfaces plus current task records.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
 - `follow`, `follow me`: queues bounded movement for the player's helper entity to the current player position.
 - `come`, `come here`: queues bounded movement for the player's helper entity to the requested target position.
-- `light`, `place N lights`: queues a bounded safe-world batch placement.
-- `build`, `build marker`, `marker`: queues a marker placement.
-- `repair`, `fix`: queues a conservative repair step for configured repair nodes.
+- `light`, `place N lights`: queues a rollback-backed `build_agent` lights task.
+- `build`, `build marker`, `marker`: queues a rollback-backed `build_agent` marker task.
+- `repair`, `fix`: queues a rollback-backed `repair_agent` apply task for configured repair nodes.
+- `defend`: queues a bounded defensive player task through `core.ai_player_ops.defend`.
+- `audit`, `history`: returns recent sanitized audit events for the player-owned agent.
+- `rollback`, `rollback review`: returns recent rollback audit summaries for the player-owned agent.
 
 Unknown prompts go to the configured model adapter. The adapter boundary is explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
 
@@ -58,6 +65,7 @@ core.ai_agent_plugin.configure({
 	},
 	max_lights = 12,
 	max_entity_move_distance = 16,
+	max_defend_distance = 8,
 	capabilities = {
 		["world.read"] = true,
 		["world.place"] = true,
@@ -80,6 +88,8 @@ The default node/entity settings are intentionally generic and may not match eve
 
 `capabilities` is the first-party grant policy for newly registered player agents. Clean profiles should declare it explicitly and should not include privileged capabilities such as `admin.override`, compatibility/import grants such as `import.assets`, or other-player controls unless that server profile is intentionally operator-only.
 
+`combat.defend` is intentionally absent from the clean `ai_runtime` profile. A server profile or plugin must opt into it before the `defend` command can complete successfully.
+
 ## Model Adapter
 
 The model adapter receives a small request table:
@@ -98,8 +108,10 @@ Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin 
 ## Current Limits
 
 - Follow and come use queued bounded entity movement. Full pathfinding and continuous follow ticks are later slices.
-- Build is a single configurable marker node, not a showcase structure system.
-- Repair only removes configured repair nodes at the target position.
+- Build remains small lights and marker tasks, not a showcase structure system.
+- Repair only applies configured repair rules around the requested target position.
+- Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
+- Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
 - The model adapter is a boundary only; no default network client is bundled.
 
 Those limits are intentional. The first milestone is proving clean runtime usage before expanding behavior.

@@ -18,6 +18,10 @@ core.ai_agent_plugin.configure({
 	},
 })
 
+core.ai_rollback_storage.configure({
+	enabled = true,
+})
+
 core.register_node("ai_runtime_base:stone", {
 	description = "AI Runtime Stone",
 	tiles = {texture},
