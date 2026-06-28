@@ -1,0 +1,518 @@
+#!/usr/bin/env python3
+"""Build a public-safe AI-native runtime gap scorecard from accepted baselines."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+RUNNER_VERSION = "ai-native-runtime-gap-scorecard:v1"
+DEFAULT_HARDWARE_CLASSES = ("local-mac", "low-power-server")
+REQUIRED_CLEAN_PROFILE_SECTIONS = (
+    "startup",
+    "steady_tick_behavior",
+    "map_chunk_workload",
+    "entity_runtime_operations",
+    "mutation_write_throughput",
+    "memory",
+    "failure_notes",
+)
+PRIVATE_PATTERNS = re.compile(
+    r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
+    r"sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|"
+    r"/Users/|/opt/|bill@",
+    re.I,
+)
+
+
+class ScorecardError(RuntimeError):
+    pass
+
+
+def utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
+
+
+def count_items(value) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, list):
+        return len(value)
+    return 1
+
+
+def max_metric(report: dict, metric_name: str):
+    values = []
+    for scenario in report.get("scenarios", []):
+        value = (scenario.get("metrics") or {}).get(metric_name)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            values.append(value)
+    return max(values) if values else None
+
+
+def sum_metric(report: dict, metric_name: str) -> float:
+    total = 0.0
+    for scenario in report.get("scenarios", []):
+        value = (scenario.get("metrics") or {}).get(metric_name)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            total += value
+    return total
+
+
+def count_metric_items(report: dict, metric_name: str) -> int:
+    return sum(
+        count_items((scenario.get("metrics") or {}).get(metric_name))
+        for scenario in report.get("scenarios", [])
+    )
+
+
+def summarize_mutation_report(report: dict) -> dict:
+    return {
+        "scenario_count": len(report.get("scenarios", [])),
+        "total_node_writes": sum_metric(report, "node_writes"),
+        "max_node_writes_per_step": max_metric(report, "node_writes_per_step"),
+        "total_rollback_records": sum_metric(report, "rollback_records"),
+        "warnings": count_metric_items(report, "warnings"),
+        "errors": count_metric_items(report, "errors"),
+    }
+
+
+def summarize_demo_report(report: dict) -> dict:
+    return {
+        "scenario_count": len(report.get("scenarios", [])),
+        "max_entity_count": max_metric(report, "entity_count"),
+        "max_active_peak": max_metric(report, "active_peak"),
+        "max_remaining_entities": max_metric(report, "remaining_entities"),
+        "warnings": count_metric_items(report, "warnings"),
+        "errors": count_metric_items(report, "errors"),
+    }
+
+
+def require_public_context(hardware_class: str, payload_name: str, payload: dict) -> None:
+    run_context = payload.get("run_context") or {}
+    for flag in (
+        "requires_private_world",
+        "requires_private_assets",
+        "requires_live_pi",
+        "requires_model_network",
+    ):
+        if run_context.get(flag) is True:
+            raise ScorecardError(f"{payload_name} for {hardware_class} has {flag}=true")
+
+
+def load_accepted_lane(output_root: Path, hardware_class: str) -> dict:
+    accepted_dir = output_root / hardware_class / "accepted"
+    manifest_path = accepted_dir / "accepted-baseline-manifest.json"
+    if not manifest_path.is_file():
+        raise ScorecardError(
+            f"accepted baseline missing for {hardware_class}; "
+            "run util/ai_native_benchmark_promote.py after reviewing a clean-profile capture."
+        )
+
+    manifest = load_json(manifest_path)
+    if (manifest.get("run_context") or {}).get("mode") != "accepted-local-baseline":
+        raise ScorecardError(
+            f"accepted baseline manifest for {hardware_class} is not mode=accepted-local-baseline; "
+            "rerun util/ai_native_benchmark_promote.py."
+        )
+    if manifest.get("hardware_class") != hardware_class:
+        raise ScorecardError(
+            f"accepted baseline hardware class mismatch for {hardware_class}: "
+            f"{manifest.get('hardware_class')!r}"
+        )
+    require_public_context(hardware_class, "accepted baseline manifest", manifest)
+
+    reports = manifest.get("reports") or {}
+    clean_profile_name = reports.get("clean_profile")
+    if clean_profile_name != "clean-profile-benchmark-summary.json":
+        raise ScorecardError(
+            f"clean_profile report missing for {hardware_class}; expected "
+            "clean-profile-benchmark-summary.json in accepted baseline. "
+            "Rerun util/ai_native_benchmark_promote.py from a capture using --game-profile ai_runtime."
+        )
+
+    required_reports = {
+        "mutation": reports.get("mutation", "mutation-benchmark-report.json"),
+        "demo_entity": reports.get("demo_entity", "generic-demo-entity-benchmark-report.json"),
+        "clean_profile": clean_profile_name,
+    }
+    loaded_reports = {}
+    for report_name, filename in required_reports.items():
+        path = accepted_dir / filename
+        if not path.is_file():
+            raise ScorecardError(f"{report_name} report missing for {hardware_class}: {filename}")
+        loaded_reports[report_name] = load_json(path)
+        require_public_context(hardware_class, report_name, loaded_reports[report_name])
+
+    clean_profile = loaded_reports["clean_profile"]
+    if clean_profile.get("overall_status") != "pass":
+        raise ScorecardError(f"clean_profile summary for {hardware_class} is not pass")
+    if (clean_profile.get("game_profile") or {}).get("gameid") != "ai_runtime":
+        raise ScorecardError(f"clean_profile summary for {hardware_class} is not gameid=ai_runtime")
+    comparison_summary = clean_profile.get("comparison_summary") or {}
+    missing_sections = [
+        section for section in REQUIRED_CLEAN_PROFILE_SECTIONS if section not in comparison_summary
+    ]
+    if missing_sections:
+        raise ScorecardError(
+            f"clean_profile summary incomplete for {hardware_class}; missing: "
+            f"{', '.join(missing_sections)}"
+        )
+
+    return {
+        "accepted_dir": accepted_dir,
+        "manifest": manifest,
+        "mutation": loaded_reports["mutation"],
+        "demo_entity": loaded_reports["demo_entity"],
+        "clean_profile": clean_profile,
+    }
+
+
+def measurement_status(lane: dict) -> str:
+    measurements = lane["measurements"]
+    health = measurements["clean_profile_server_health"]
+    if measurements["failure_notes"]:
+        return "needs-attention"
+    if health["server_log_error_count"] > 0 or health["process_exited_unexpectedly"]:
+        return "needs-attention"
+    if health["server_log_warning_count"] > 0:
+        return "watch"
+    return "ready"
+
+
+def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
+    manifest = accepted["manifest"]
+    clean_profile = accepted["clean_profile"]
+    summary = clean_profile["comparison_summary"]
+    mutation_summary = dict(summary.get("mutation_write_throughput") or {})
+    demo_summary = dict(summary.get("entity_runtime_operations") or {})
+    if not mutation_summary:
+        mutation_summary = summarize_mutation_report(accepted["mutation"])
+    if not demo_summary:
+        demo_summary = summarize_demo_report(accepted["demo_entity"])
+
+    steady = summary["steady_tick_behavior"]
+    startup = summary["startup"]
+    failure_notes = list(clean_profile.get("failure_notes") or summary.get("failure_notes") or [])
+    measurements = {
+        "startup": {
+            "listening": startup.get("listening"),
+            "time_to_listen_ms": startup.get("time_to_listen_ms"),
+            "startup_timeout_seconds": startup.get("startup_timeout_seconds"),
+        },
+        "clean_profile_server_health": {
+            "overall_status": clean_profile.get("overall_status"),
+            "process_exited_unexpectedly": steady.get("process_exited_unexpectedly"),
+            "server_log_warning_count": steady.get("server_log_warning_count", 0),
+            "server_log_error_count": steady.get("server_log_error_count", 0),
+            "idle_sample_seconds": steady.get("sample_seconds"),
+            "observed_uptime_seconds": steady.get("observed_uptime_seconds"),
+            "evidence_gap": "player-load tick probes remain follow-on work",
+        },
+        "mutation_write_throughput": mutation_summary,
+        "demo_entity_runtime_cost": demo_summary,
+        "map_chunk_workload": summary["map_chunk_workload"],
+        "memory": summary["memory"],
+        "failure_notes": failure_notes,
+    }
+    lane = {
+        "hardware_class": hardware_class,
+        "accepted_baseline": {
+            "logical_dir": f"local/benchmarks/{hardware_class}/accepted",
+            "luanti_commit": manifest.get("luanti_commit"),
+            "source_label": manifest.get("source_label"),
+            "source_capture": manifest.get("source_capture"),
+        },
+        "game_profile": clean_profile.get("game_profile") or {"gameid": "ai_runtime"},
+        "measurements": measurements,
+    }
+    lane["status"] = measurement_status(lane)
+    return lane
+
+
+def target_bands() -> list[dict]:
+    return [
+        {
+            "id": "startup_time",
+            "metric": "startup.time_to_listen_ms",
+            "target_by_hardware_class": {
+                "local-mac": "<=500",
+                "low-power-server": "<=1000",
+            },
+            "source": "project-target",
+            "rationale": "Fast clean-profile startup keeps agent iteration and server restarts practical.",
+        },
+        {
+            "id": "clean_profile_health",
+            "metric": "clean_profile_server_health",
+            "target": "listening=true, error_count=0, no unexpected process exit",
+            "source": "project-target",
+            "rationale": "The base AI runtime profile must be stable before compatibility/import expands.",
+        },
+        {
+            "id": "map_chunk_workload",
+            "metric": "map_chunk_workload",
+            "target": "non-empty probe coverage with bounded sqlite growth",
+            "source": "project-target",
+            "rationale": "Minecraft-parity work needs real map/chunk evidence, not only empty-world startup.",
+        },
+        {
+            "id": "mutation_throughput",
+            "metric": "mutation_write_throughput",
+            "target": "bounded node writes with rollback records before broader build tasks",
+            "source": "project-target",
+            "rationale": "AI build and repair work should scale through measured safe mutations.",
+        },
+        {
+            "id": "entity_runtime_cost",
+            "metric": "demo_entity_runtime_cost",
+            "target": "larger helper-entity loads with zero cleanup residue",
+            "source": "project-target",
+            "rationale": "Agent helpers and future creatures need repeatable entity-runtime evidence.",
+        },
+        {
+            "id": "memory",
+            "metric": "memory.max_rss_kb",
+            "target_by_hardware_class": {
+                "local-mac": "<=65536",
+                "low-power-server": "<=65536",
+            },
+            "source": "project-target",
+            "rationale": "Low base memory keeps room for agents, mods, and imported content.",
+        },
+    ]
+
+
+def build_gap(gap_id: str, priority: int, title: str, evidence: list[str], next_action: str) -> dict:
+    return {
+        "rank": priority,
+        "id": gap_id,
+        "status": "evidence_gap",
+        "title": title,
+        "evidence": evidence,
+        "next_action": next_action,
+    }
+
+
+def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
+    gaps = []
+    if any(lane["measurements"]["failure_notes"] for lane in lanes):
+        gaps.append(
+            build_gap(
+                "clean_profile_failure_notes",
+                1,
+                "Resolve accepted clean-profile failure notes",
+                [
+                    f"{lane['hardware_class']}: {', '.join(lane['measurements']['failure_notes'])}"
+                    for lane in lanes
+                    if lane["measurements"]["failure_notes"]
+                ],
+                "Refresh accepted clean-profile baselines only after failure notes are eliminated.",
+            )
+        )
+
+    gaps.append(
+        build_gap(
+            "player_load_tick_probe",
+            2,
+            "Add player-load and server-step probes",
+            [
+                f"{lane['hardware_class']}: clean profile currently records idle uptime only"
+                for lane in lanes
+            ],
+            "Add a bounded synthetic player/tick workload to clean-profile capture.",
+        )
+    )
+
+    if any(
+        (lane["measurements"]["map_chunk_workload"].get("mapblock_rows") or 0) == 0
+        for lane in lanes
+    ):
+        gaps.append(
+            build_gap(
+                "non_empty_map_chunk_workload",
+                3,
+                "Measure non-empty map/chunk workload",
+                [
+                    f"{lane['hardware_class']}: mapblock_rows="
+                    f"{lane['measurements']['map_chunk_workload'].get('mapblock_rows')}"
+                    for lane in lanes
+                ],
+                "Add a disposable mapgen or node-write probe that records mapblock rows and sqlite growth.",
+            )
+        )
+
+    if any(
+        (lane["measurements"]["demo_entity_runtime_cost"].get("max_entity_count") or 0) < 16
+        for lane in lanes
+    ):
+        gaps.append(
+            build_gap(
+                "entity_scale_runtime_probe",
+                4,
+                "Scale demo entity runtime coverage",
+                [
+                    f"{lane['hardware_class']}: max_entity_count="
+                    f"{lane['measurements']['demo_entity_runtime_cost'].get('max_entity_count')}"
+                    for lane in lanes
+                ],
+                "Add a larger helper-entity scenario before shipping creature or vehicle plugins.",
+            )
+        )
+
+    if any(
+        (lane["measurements"]["mutation_write_throughput"].get("total_node_writes") or 0) == 0
+        for lane in lanes
+    ):
+        gaps.append(
+            build_gap(
+                "mutation_total_write_measurement",
+                5,
+                "Record total node writes in mutation reports",
+                [
+                    f"{lane['hardware_class']}: total_node_writes="
+                    f"{lane['measurements']['mutation_write_throughput'].get('total_node_writes')}"
+                    for lane in lanes
+                ],
+                "Extend mutation scenarios to report total writes, not only per-step write budgets.",
+            )
+        )
+
+    if any(
+        (lane["measurements"]["clean_profile_server_health"].get("server_log_warning_count") or 0) > 0
+        for lane in lanes
+    ):
+        gaps.append(
+            build_gap(
+                "server_log_warning_cleanup",
+                6,
+                "Classify or eliminate clean-profile warnings",
+                [
+                    f"{lane['hardware_class']}: warning_count="
+                    f"{lane['measurements']['clean_profile_server_health'].get('server_log_warning_count')}"
+                    for lane in lanes
+                ],
+                "Split expected startup warnings from actionable warnings in clean-profile capture.",
+            )
+        )
+
+    return sorted(gaps, key=lambda item: item["rank"])
+
+
+def build_scorecard(output_root: Path, hardware_classes: list[str]) -> dict:
+    lanes = [
+        build_lane_evidence(hardware_class, load_accepted_lane(output_root, hardware_class))
+        for hardware_class in hardware_classes
+    ]
+    return {
+        "schema_version": 1,
+        "runner_version": RUNNER_VERSION,
+        "generated_at": utc_now(),
+        "overall_status": "gap-scorecard-ready",
+        "hardware_classes": hardware_classes,
+        "run_context": {
+            "mode": "accepted-clean-profile-gap-scorecard",
+            "requires_private_world": False,
+            "requires_private_assets": False,
+            "requires_live_pi": False,
+            "requires_model_network": False,
+        },
+        "target_policy": {
+            "summary": (
+                "Minecraft-parity target bands are project targets, not measurements copied "
+                "from proprietary Minecraft code, assets, server jars, or benchmark data."
+            ),
+            "measured_evidence_is_separate": True,
+        },
+        "target_bands": target_bands(),
+        "measured_evidence": lanes,
+        "ranked_gaps": build_ranked_gaps(lanes),
+        "privacy_scan": {
+            "status": "passed",
+            "scope": "scorecard JSON payload",
+            "blocked_patterns": [
+                "private hosts",
+                "private network addresses",
+                "local absolute paths",
+                "secrets",
+                "provider prompts",
+                "private showcase names",
+            ],
+        },
+        "notes": [
+            "Scorecard reads accepted clean-profile baselines only.",
+            "Generated scorecards are local benchmark artifacts by default.",
+            "Compatibility/import expansion should wait for the ranked runtime gaps to close.",
+        ],
+    }
+
+
+def scan_public_payload(payload: dict) -> list[str]:
+    serialized = json.dumps(payload, sort_keys=True)
+    return sorted({match.group(0) for match in PRIVATE_PATTERNS.finditer(serialized)})
+
+
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Build a clean-profile runtime gap scorecard from accepted local baselines."
+    )
+    parser.add_argument(
+        "--output-root",
+        default=str(ROOT / "local" / "benchmarks"),
+        help="Benchmark retention root. Default: local/benchmarks.",
+    )
+    parser.add_argument(
+        "--hardware-class",
+        action="append",
+        choices=DEFAULT_HARDWARE_CLASSES,
+        help="Hardware class to include. Repeatable. Default: local-mac and low-power-server.",
+    )
+    parser.add_argument(
+        "--output",
+        help="Output JSON path. Default: <output-root>/runtime-gap-scorecard.json.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> int:
+    args = parse_args(argv)
+    output_root = Path(args.output_root)
+    hardware_classes = args.hardware_class or list(DEFAULT_HARDWARE_CLASSES)
+    try:
+        scorecard = build_scorecard(output_root, list(hardware_classes))
+        private_matches = scan_public_payload(scorecard)
+        if private_matches:
+            raise ScorecardError(
+                "scorecard privacy scan failed: " + ", ".join(private_matches)
+            )
+        output_path = Path(args.output) if args.output else output_root / "runtime-gap-scorecard.json"
+        write_json(output_path, scorecard)
+    except (FileNotFoundError, json.JSONDecodeError, ScorecardError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    print(output_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

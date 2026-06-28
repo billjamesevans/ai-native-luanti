@@ -165,6 +165,30 @@ Do not write server names, private network addresses, world paths, player names,
 
 Clean-profile baselines guide Minecraft-parity work by showing which server-runtime gaps are real before compatibility/import code expands: startup cost, idle stability, map/chunk work, entity/runtime overhead, mutation/write throughput, memory, and failure modes. Compatibility changes should be judged against these measurements without importing proprietary Minecraft code or assets.
 
+## Runtime Gap Scorecard
+
+After both accepted clean-profile lanes exist, build the clean-profile runtime gap scorecard with:
+
+```sh
+python3 util/ai_native_runtime_gap_scorecard.py \
+  --output-root local/benchmarks
+```
+
+The default scorecard reads:
+
+- `local/benchmarks/local-mac/accepted/`
+- `local/benchmarks/low-power-server/accepted/`
+
+and writes the ignored local artifact:
+
+- `runtime-gap-scorecard.json`
+
+The report separates measured fork evidence from Minecraft-parity target bands. The measured section covers startup, clean-profile server health, mutation throughput, demo entity/runtime cost, map/chunk workload, memory, and failure notes. The target bands are project targets only; they do not use proprietary Minecraft code or assets, server jars, copied benchmarks, copied media, or closed gameplay data.
+
+Use the ranked gaps as the runtime hardening queue before compatibility/import expansion. The first expected gaps are player-load tick probes, non-empty map/chunk workload, larger entity-runtime probes, total mutation-write measurements, and clean-profile warning classification. If the scorecard refuses to run, refresh the missing accepted clean-profile baseline with `util/ai_native_benchmark_capture.py`, review it, and promote it with `util/ai_native_benchmark_promote.py`.
+
+The scorecard performs a focused privacy scan of the JSON payload before writing the artifact. Do not publish or commit scorecards that include private hosts, private network addresses, local absolute paths, secrets, provider prompts, private showcase names, copied media, or family-server operational details.
+
 ## Privacy Boundary
 
 Benchmark retention must avoid:
