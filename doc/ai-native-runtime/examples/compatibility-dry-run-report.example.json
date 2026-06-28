@@ -11,6 +11,96 @@
       "manifest_format_version": "2",
       "pack_name": "Synthetic Pack"
     },
+    "inventory": [
+      {
+        "entry_id": "entry:1",
+        "source_path": "manifest.json",
+        "source_kind": "metadata",
+        "size_bytes": 128,
+        "classification": "mapped",
+        "reason": "metadata_or_asset_reference",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      },
+      {
+        "entry_id": "entry:2",
+        "source_path": "textures/blocks/example.png",
+        "source_kind": "texture",
+        "size_bytes": 0,
+        "classification": "mapped",
+        "reason": "metadata_or_asset_reference",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      },
+      {
+        "entry_id": "entry:3",
+        "source_path": "textures/items/example_item.png",
+        "source_kind": "texture",
+        "size_bytes": 0,
+        "classification": "mapped",
+        "reason": "metadata_or_asset_reference",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      },
+      {
+        "entry_id": "entry:4",
+        "source_path": "textures/entity/example_entity.png",
+        "source_kind": "texture",
+        "size_bytes": 0,
+        "classification": "mapped",
+        "reason": "metadata_or_asset_reference",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      },
+      {
+        "entry_id": "entry:5",
+        "source_path": "entities/example.entity.json",
+        "source_kind": "entity",
+        "size_bytes": 96,
+        "classification": "blocked",
+        "reason": "requires_manual_review",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      },
+      {
+        "entry_id": "entry:6",
+        "source_path": "entities/example.visual.json",
+        "source_kind": "entity",
+        "size_bytes": 96,
+        "classification": "blocked",
+        "reason": "requires_manual_review",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      },
+      {
+        "entry_id": "entry:7",
+        "source_path": "scripts/main.js",
+        "source_kind": "behavior",
+        "size_bytes": 64,
+        "classification": "unsupported",
+        "reason": "behavior_script_not_supported",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      },
+      {
+        "entry_id": "entry:8",
+        "source_path": "entities/example.behavior.json",
+        "source_kind": "behavior",
+        "size_bytes": 96,
+        "classification": "unsupported",
+        "reason": "behavior_script_not_supported",
+        "required_capabilities": [
+          "import.assets"
+        ]
+      }
+    ],
     "content_hashes": [
       {
         "algorithm": "sha256",
@@ -94,7 +184,7 @@
       "recommendation": "Map the entity to a first-party agent or a manually authored mob definition."
     },
     {
-      "feature": "texture.asset_payload",
+      "feature": "texture.protected_asset_reference",
       "source_path": "textures/blocks/example.png",
       "status": "skipped",
       "reason": "protected_asset_policy",
