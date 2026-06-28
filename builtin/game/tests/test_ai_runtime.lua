@@ -1190,6 +1190,8 @@ assert(plugin_agent.owner == "Wills")
 assert(plugin_agent.plugin == "ai_agent_plugin")
 assert(core.agent_has_capability(plugin_agent.agent_id, "world.read") == true)
 assert(core.agent_has_capability(plugin_agent.agent_id, "world.place") == true)
+assert(core.agent_has_capability(plugin_agent.agent_id, "entity.spawn") == true)
+assert(core.agent_has_capability(plugin_agent.agent_id, "entity.control") == true)
 
 local same_agent = core.ai_agent_plugin.ensure_player_agent("Wills")
 assert(same_agent.agent_id == plugin_agent.agent_id)
@@ -1223,17 +1225,40 @@ assert(get_test_node(vector.add(plugin_base, { x = 0, y = 1, z = 0 })).name
 
 local follow_reply = core.ai_agent_plugin.handle_command("Wills", "follow me", {
 	pos = plugin_base,
+	spawn_entity = spawn_test_entity,
 })
 assert(follow_reply.ok == true)
+assert(follow_reply.status == "queued")
 assert(follow_reply.action == "follow")
+assert(follow_reply.task_id ~= nil)
 assert(core.ai_agent_plugin.get_player_state("Wills").mode == "follow")
+core.step_ai_tasks()
+local completed_follow = core.get_ai_task(follow_reply.task_id)
+assert(completed_follow.status == "completed")
+assert(completed_follow.last_result.operation == "ai_entity.move")
+assert(completed_follow.last_result.entity.entity_name == "ai_demo_benchmark:helper")
+assert(completed_follow.last_result.entity.pos.x == plugin_base.x)
+assert(completed_follow.last_result.entity.pos.y == plugin_base.y)
+assert(completed_follow.last_result.entity.pos.z == plugin_base.z)
+local follow_entity_id = completed_follow.last_result.entity.entity_id
+assert(follow_entity_id ~= nil)
+assert(core.ai_agent_plugin.get_player_state("Wills").entity_id == follow_entity_id)
 
 local come_reply = core.ai_agent_plugin.handle_command("Wills", "come", {
 	pos = vector.add(plugin_base, { x = 3, y = 0, z = 0 }),
+	spawn_entity = spawn_test_entity,
 })
 assert(come_reply.ok == true)
+assert(come_reply.status == "queued")
 assert(come_reply.action == "come")
 assert(core.ai_agent_plugin.get_player_state("Wills").target_pos.x == plugin_base.x + 3)
+core.step_ai_tasks()
+local completed_come = core.get_ai_task(come_reply.task_id)
+assert(completed_come.status == "completed")
+assert(completed_come.last_result.operation == "ai_entity.move")
+assert(completed_come.last_result.entity.entity_id == follow_entity_id)
+assert(completed_come.last_result.entity.pos.x == plugin_base.x + 3)
+assert(completed_come.last_result.metrics.distance == 3)
 
 local build_pos = test_pos(4210)
 set_test_node(build_pos, { name = "air" })

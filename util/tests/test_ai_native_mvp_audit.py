@@ -97,7 +97,6 @@ class MvpAuditTests(unittest.TestCase):
             self.assertIn("already_proven", categories)
             self.assertIn("implemented_but_weakly_verified", categories)
             self.assertIn("missing_runtime_behavior", categories)
-            self.assertIn("missing_first_party_plugin_behavior", categories)
             self.assertIn("compatibility_import_deferral", categories)
 
             acceptance_ids = {item["id"] for item in report["acceptance_audit"]}
@@ -139,7 +138,7 @@ class MvpAuditTests(unittest.TestCase):
             )
             self.assertEqual(
                 audit_by_id["first-party-follow-come-product-behavior"]["category"],
-                "missing_first_party_plugin_behavior",
+                "already_proven",
             )
             self.assertEqual(
                 audit_by_id["compatibility-import-deferred"]["category"],
@@ -159,10 +158,10 @@ class MvpAuditTests(unittest.TestCase):
             self.assertEqual(
                 follow_on_ids[:4],
                 [
-                    "mvp-first-party-agent-plugin-runtime",
                     "mvp-player-teleport-combat-runtime",
                     "mvp-model-import-capability-runtime",
                     "mvp-runtime-task-duration-metrics",
+                    "mvp-agent-policy-profile",
                 ],
             )
 
