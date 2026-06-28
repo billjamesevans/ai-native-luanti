@@ -7,6 +7,7 @@ import argparse
 import datetime as dt
 import hashlib
 import json
+import math
 import pathlib
 import sys
 import zipfile
@@ -39,10 +40,13 @@ SUMMARY_REQUIRED = (
 )
 MUTATION_COST_REQUIRED = (
     "node_writes",
+    "mapblock_churn",
     "media_files",
     "entity_definitions",
     "manual_review_items",
 )
+STRUCTURE_BYTES_PER_NODE_ESTIMATE = 64
+MAPBLOCK_NODE_VOLUME = 16 * 16 * 16
 SECTION_REQUIRED = ("name", "items_total", "status", "message")
 UNSUPPORTED_FEATURE_REQUIRED = (
     "feature",
@@ -388,7 +392,12 @@ def _section_status(name, count, unsupported_count):
     return "partial"
 
 
-def _sections(counts, unsupported_features):
+def _sections(counts, unsupported_features, structure_cost=None):
+    structure_cost = structure_cost or {
+        "node_writes": 0,
+        "mapblock_churn": 0,
+        "manual_review_items": 0,
+    }
     sections = []
     unsupported_by_name = {
         "entities": sum(1 for item in unsupported_features if item["feature"] == "entity.ai_goal"),
@@ -399,14 +408,21 @@ def _sections(counts, unsupported_features):
         if count == 0:
             continue
         status = _section_status(name, count, unsupported_by_name.get(name, 0))
+        section_counts = {
+            "items": count,
+        }
+        if name == "structures":
+            section_counts.update({
+                "estimated_node_writes": structure_cost["node_writes"],
+                "estimated_mapblock_churn": structure_cost["mapblock_churn"],
+                "manual_review_items": structure_cost["manual_review_items"],
+            })
         sections.append({
             "name": name,
             "items_total": count,
             "status": status,
             "message": _section_message(name, status),
-            "counts": {
-                "items": count,
-            },
+            "counts": section_counts,
         })
     if not sections:
         sections.append({
@@ -491,15 +507,58 @@ def _unsupported_features(entries, source_class):
 
 
 def _mutation_cost(counts, unsupported_count):
+    structure_cost = _structure_cost_from_counts(counts)
     return {
-        "node_writes": counts["structures"],
+        "node_writes": structure_cost["node_writes"],
+        "mapblock_churn": structure_cost["mapblock_churn"],
         "media_files": counts["textures"] + counts["sounds"] + counts["models"],
         "entity_definitions": counts["entities"],
-        "manual_review_items": unsupported_count + counts["models"] + counts["structures"] + counts["world"],
+        "manual_review_items": (
+            unsupported_count + counts["models"] + counts["world"]
+            + structure_cost["manual_review_items"]
+        ),
     }
 
 
-def _planned_actions(counts, unsupported_features):
+def _structure_cost(entries):
+    structure_entries = [
+        entry for entry in entries
+        if pathlib.PurePosixPath(entry["path"].lower()).suffix
+        in {".schem", ".schematic", ".mcstructure"}
+    ]
+    node_writes = sum(
+        max(1, math.ceil(entry["size"] / STRUCTURE_BYTES_PER_NODE_ESTIMATE))
+        for entry in structure_entries
+    )
+    return {
+        "structure_files": len(structure_entries),
+        "node_writes": node_writes,
+        "mapblock_churn": len(structure_entries)
+        if node_writes else 0,
+        "manual_review_items": len(structure_entries) * 2,
+        "calibration": {
+            "strategy": "synthetic_size_estimate",
+            "bytes_per_node": STRUCTURE_BYTES_PER_NODE_ESTIMATE,
+            "mapblock_node_volume": MAPBLOCK_NODE_VOLUME,
+            "notes": [
+                "Dry-run does not parse or copy source structure payloads.",
+                "Each structure file requires placement and palette review before apply.",
+            ],
+        },
+    }
+
+
+def _structure_cost_from_counts(counts):
+    structures = counts["structures"]
+    return {
+        "structure_files": structures,
+        "node_writes": structures,
+        "mapblock_churn": structures,
+        "manual_review_items": structures * 2,
+    }
+
+
+def _planned_actions(counts, unsupported_features, structure_cost):
     actions = []
     if counts["textures"]:
         actions.append(_action("map_texture", "partial", "Map user-owned texture references after rights are confirmed.", counts, 0))
@@ -510,7 +569,14 @@ def _planned_actions(counts, unsupported_features):
     if counts["entities"]:
         actions.append(_action("register_entity_stub", "partial", "Create placeholder entity definitions without imported behavior AI.", counts, 1))
     if counts["structures"]:
-        actions.append(_action("import_structure", "partial", "Estimate structure placement for a later apply phase.", counts, 1))
+        actions.append(_action(
+            "import_structure",
+            "partial",
+            "Estimate structure placement for a later apply phase.",
+            counts,
+            structure_cost["manual_review_items"],
+            structure_cost,
+        ))
     if unsupported_features:
         actions.append(_action("skip_feature", "skipped", "Record unsupported features without importing them.", counts, len(unsupported_features)))
     if not actions:
@@ -518,14 +584,19 @@ def _planned_actions(counts, unsupported_features):
     return actions
 
 
-def _action(action, status, description, counts, manual_review_items):
+def _action(action, status, description, counts, manual_review_items, structure_cost=None):
+    structure_cost = structure_cost or {
+        "node_writes": 0,
+        "mapblock_churn": 0,
+    }
     return {
         "action": action,
         "status": status,
         "description": description,
         "required_capabilities": ["import.assets"],
         "mutation_cost": {
-            "node_writes": 0,
+            "node_writes": structure_cost["node_writes"] if action == "import_structure" else 0,
+            "mapblock_churn": structure_cost["mapblock_churn"] if action == "import_structure" else 0,
             "media_files": counts["textures"] + counts["sounds"] + counts["models"],
             "entity_definitions": counts["entities"] if action == "register_entity_stub" else 0,
             "manual_review_items": manual_review_items,
@@ -550,6 +621,7 @@ def build_report(source):
     source_class, metadata = _metadata_for(source, entries)
     inventory = _source_inventory(entries, source_class)
     counts = _category_counts(entries)
+    structure_cost = _structure_cost(entries)
     unsupported_features = _unsupported_features(entries, source_class)
     unsupported_count = len(unsupported_features)
     partial_count = sum(1 for value in counts.values() if value > 0) - (1 if counts["metadata"] else 0)
@@ -581,11 +653,21 @@ def build_report(source):
             "unsupported": unsupported_count,
             "skipped": skipped_count,
             "unknown": 1 if source_class == "unknown" else 0,
-            "estimated_world_mutations": _mutation_cost(counts, unsupported_count),
+            "estimated_world_mutations": {
+                **_mutation_cost(counts, unsupported_count),
+                **{
+                    "node_writes": structure_cost["node_writes"],
+                    "mapblock_churn": structure_cost["mapblock_churn"],
+                    "manual_review_items": (
+                        unsupported_count + counts["models"] + counts["world"]
+                        + structure_cost["manual_review_items"]
+                    ),
+                },
+            },
         },
-        "sections": _sections(counts, unsupported_features),
+        "sections": _sections(counts, unsupported_features, structure_cost),
         "unsupported_features": unsupported_features,
-        "planned_actions": _planned_actions(counts, unsupported_features),
+        "planned_actions": _planned_actions(counts, unsupported_features, structure_cost),
         "safety": {
             "no_assets_copied": True,
             "no_world_mutation": True,
@@ -874,6 +956,7 @@ def build_apply_plan(report, request):
         "blocked_tasks": [],
         "mutation_cost_actual": {
             "node_writes": 0,
+            "mapblock_churn": 0,
             "media_files": 0,
             "entity_definitions": 0,
             "manual_review_items": 0,

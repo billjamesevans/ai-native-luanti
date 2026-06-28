@@ -97,6 +97,18 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(structure_inventory["example.mcstructure"]["source_kind"], "structure")
         self.assertEqual(structure_inventory["example.mcstructure"]["classification"], "blocked")
         self.assertEqual(structure["summary"]["estimated_world_mutations"]["node_writes"], 1)
+        self.assertEqual(structure["summary"]["estimated_world_mutations"]["mapblock_churn"], 1)
+        self.assertEqual(structure["summary"]["estimated_world_mutations"]["manual_review_items"], 2)
+        sections = {section["name"]: section for section in structure["sections"]}
+        self.assertEqual(sections["structures"]["counts"]["estimated_node_writes"], 1)
+        self.assertEqual(sections["structures"]["counts"]["estimated_mapblock_churn"], 1)
+        import_action = next(
+            action for action in structure["planned_actions"]
+            if action["action"] == "import_structure"
+        )
+        self.assertEqual(import_action["mutation_cost"]["node_writes"], 1)
+        self.assertEqual(import_action["mutation_cost"]["mapblock_churn"], 1)
+        self.assertEqual(import_action["mutation_cost"]["manual_review_items"], 2)
         self.assertIn(
             "import_structure",
             {action["action"] for action in structure["planned_actions"]},
@@ -241,6 +253,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
             "required_capabilities": ["import.assets"],
             "mutation_cost": {
                 "node_writes": 0,
+                "mapblock_churn": 0,
                 "media_files": 1 if action in {"map_texture", "map_sound"} else 0,
                 "entity_definitions": 1 if action == "register_entity_stub" else 0,
                 "manual_review_items": 1 if action == "skip_feature" else 0,
@@ -313,6 +326,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(summary["completed_tasks"], [])
         self.assertEqual(summary["blocked_tasks"], [])
         self.assertEqual(summary["mutation_cost_actual"]["node_writes"], 0)
+        self.assertEqual(summary["mutation_cost_actual"]["mapblock_churn"], 0)
         self.assertEqual(summary["mutation_cost_actual"]["media_files"], 0)
         self.assertEqual(summary["mutation_cost_actual"]["entity_definitions"], 0)
         self.assertEqual(summary["safety"]["world_mutation_executed"], False)

@@ -156,12 +156,17 @@
       "additionalProperties": false,
       "required": [
         "node_writes",
+        "mapblock_churn",
         "media_files",
         "entity_definitions",
         "manual_review_items"
       ],
       "properties": {
         "node_writes": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "mapblock_churn": {
           "type": "integer",
           "minimum": 0
         },
