@@ -16,6 +16,7 @@ The plugin uses:
 - `core.queue_ai_task` for all world-changing work.
 - `core.cancel_ai_task` for player-owned cancellation.
 - `core.ai_world_ops` for node inspection, placement, removal, repair, and batch light placement.
+- `core.ai_entity_ops` for spawning and moving the player's bounded helper entity.
 - `core.record_ai_runtime_audit` for model-adapter requests without retaining private prompts.
 - `core.get_ai_runtime_metrics` and `core.get_ai_task` for status and task views.
 
@@ -34,8 +35,8 @@ Implemented deterministic commands:
 - `status`: returns current state and runtime metrics.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
-- `follow`, `follow me`: records follow state for the player.
-- `come`, `come here`: records a target position.
+- `follow`, `follow me`: queues bounded movement for the player's helper entity to the current player position.
+- `come`, `come here`: queues bounded movement for the player's helper entity to the requested target position.
 - `light`, `place N lights`: queues a bounded safe-world batch placement.
 - `build`, `build marker`, `marker`: queues a marker placement.
 - `repair`, `fix`: queues a conservative repair step for configured repair nodes.
@@ -50,14 +51,18 @@ Games or server mods can configure game-specific nodes without changing the engi
 core.ai_agent_plugin.configure({
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
+	agent_entity_name = "ai_demo_benchmark:helper",
 	repair_nodes = {
 		["fire:basic_flame"] = true,
 	},
 	max_lights = 12,
+	max_entity_move_distance = 16,
 })
 ```
 
 The defaults are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
+
+`agent_entity_name` is the registered entity type used for queued bounded entity movement. The default uses the public demo helper fixture; a game package can configure a different registered entity without changing the engine fork.
 
 ## Model Adapter
 
@@ -76,8 +81,7 @@ Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin 
 
 ## Current Limits
 
-- No visible entity is spawned yet.
-- Follow and come commands update state only; movement/pathing is a later slice.
+- Follow and come use queued bounded entity movement. Full pathfinding and continuous follow ticks are later slices.
 - Build is a single configurable marker node, not a showcase structure system.
 - Repair only removes configured repair nodes at the target position.
 - The model adapter is a boundary only; no default network client is bundled.

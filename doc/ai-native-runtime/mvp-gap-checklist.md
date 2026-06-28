@@ -32,7 +32,7 @@ The generated JSON is local evidence under `local/benchmarks/`. This committed c
 | Protected and unsafe skips | `already_proven` | Protected, unbreakable, hazard, and sample reporting paths are tested. | Add player-proximity safety when player movement APIs land. |
 | Runtime metrics | `implemented_but_weakly_verified` | Queue and node-write counters exist; per-result elapsed time exists. | Add task-duration aggregates to operator metrics. |
 | Deterministic first-party plugin actions | `already_proven` | The plugin queues light, build, repair, cancel, tasks, and model fallback paths through runtime APIs. | Preserve the no raw world-write boundary. |
-| Follow/come product behavior | `missing_first_party_plugin_behavior` | Current follow and come commands store state only. | Implement bounded movement/pathing through runtime APIs. |
+| Follow/come product behavior | `already_proven` | Follow and come queue bounded helper-entity movement through `core.ai_entity_ops` and `core.queue_ai_task`. | Add continuous follow/pathfinding as a later gameplay slice. |
 | Lag pausing and budgets | `already_proven` | Manual pause, automatic lag threshold pausing, node-write budget checks, and wall-clock budget checks are covered in `TestAIRuntime`. | Keep measuring behavior under benchmark load. |
 | Player teleport and defensive combat | `missing_runtime_behavior` | Capabilities are in the MVP spec, but runtime APIs are not present. | Add default-deny safe APIs and tests. |
 | Model/import capability gates | `missing_runtime_behavior` | Model metrics and import dry-run planning exist. | Align `http.llm` and `import.assets` with runtime task gates. |
@@ -43,11 +43,11 @@ The generated JSON is local evidence under `local/benchmarks/`. This committed c
 Completed:
 
 - #95 `mvp-task-budget-lag-pausing`: implemented wall-clock budgets and automatic lag-based pausing.
+- #96 `mvp-first-party-agent-plugin-runtime`: made follow and come queue bounded runtime entity movement.
 
 Remaining:
 
-1. #96 `mvp-first-party-agent-plugin-runtime`: make follow and come real bounded runtime behavior.
-2. #97 `mvp-player-teleport-combat-runtime`: add safe player teleport and defensive-combat capability slices.
-3. #98 `mvp-model-import-capability-runtime`: align model and import capability gates with runtime task execution.
-4. #99 `mvp-runtime-task-duration-metrics`: expose task-duration aggregates in operator metrics.
-5. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
+1. #97 `mvp-player-teleport-combat-runtime`: add safe player teleport and defensive-combat capability slices.
+2. #98 `mvp-model-import-capability-runtime`: align model and import capability gates with runtime task execution.
+3. #99 `mvp-runtime-task-duration-metrics`: expose task-duration aggregates in operator metrics.
+4. #100 `mvp-agent-policy-profile`: add clean-profile policy tests for first-party agent capability grants.
