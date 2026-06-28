@@ -48,6 +48,25 @@ The default runner path requires no live server and writes ignored local files u
 - `generic-demo-entity-benchmark-report.json`
 - `benchmark-capture-manifest.json`
 
+For clean-profile baselines, run the capture after the one-command verification harness has passed and add `--game-profile ai_runtime`:
+
+```sh
+python3 util/ai_native_runtime_verify.py \
+  --hardware-class local-mac \
+  --luanti-commit "$(git rev-parse --short HEAD)"
+
+python3 util/ai_native_benchmark_capture.py \
+  --hardware-class local-mac \
+  --luanti-commit "$(git rev-parse --short HEAD)" \
+  --game-profile ai_runtime
+```
+
+The clean-profile capture starts a disposable local `ai_runtime` world and writes:
+
+- `clean-profile-benchmark-summary.json`
+
+That summary records the runner version, Luanti commit, hardware class, and game profile. Its public-safe comparison summary covers startup, idle steady tick behavior, map/chunk workload, entity/runtime operations, mutation/write throughput, memory, and failure notes. It must not include temporary paths, private worlds, provider prompts, player data, copied assets, live hostnames, or live service state.
+
 When a same-hardware baseline is available, pass it into the capture runner so it writes comparison files next to the branch reports:
 
 ```sh
@@ -72,11 +91,12 @@ The promotion command writes local ignored files under `local/benchmarks/<hardwa
 
 - `mutation-benchmark-report.json`
 - `generic-demo-entity-benchmark-report.json`
+- `clean-profile-benchmark-summary.json` when the reviewed capture used `--game-profile ai_runtime`
 - `accepted-baseline-manifest.json`
 
 The `accepted-baseline-manifest.json` stores only the commit label, hardware class, source capture label, generated timestamp, and report filenames. It must not contain absolute local paths, private worlds, media, secrets, provider prompts, player-private data, or live server state.
 
-You must not promote a capture when either report has `warnings`, `errors`, `requires_private_world`, `requires_private_assets`, `requires_live_pi`, or a mismatched hardware class. Low-power-server captures remain backup-first and should not be promoted unless the same backup-first review has been completed for the source capture.
+You must not promote a capture when either scenario report has `warnings`, `errors`, `requires_private_world`, `requires_private_assets`, `requires_live_pi`, or a mismatched hardware class. A clean-profile capture must also have `overall_status=pass`, `game_profile.gameid=ai_runtime`, empty failure notes, and no private or model-network requirements. Low-power-server captures remain backup-first and should not be promoted unless the same backup-first review has been completed for the source capture.
 
 ## Running The Branch Gate
 
@@ -130,6 +150,20 @@ Keep public docs and committed examples synthetic. Keep measured reports local u
 Delete or archive local measured reports when they are no longer needed for active branch review. Keep the accepted baseline for each hardware class until a newer clean baseline replaces it.
 
 Low-power server runs are not part of the default workflow. They require a backup-first operator pass, an idle server window, and explicit confirmation that the run does not depend on live private world state.
+
+Use the same logical lane for low-power proving-ground captures, but keep the evidence local and generic:
+
+```sh
+python3 util/ai_native_benchmark_capture.py \
+  --hardware-class low-power-server \
+  --luanti-commit "$(git rev-parse --short HEAD)" \
+  --game-profile ai_runtime \
+  --confirm-low-power-backup
+```
+
+Do not write server names, private network addresses, world paths, player names, coordinates, provider configuration, API keys, copied media, or family-showcase content into committed docs or benchmark artifacts. Low-power summaries are for comparing runtime shape against the same clean profile, not for publishing proving-ground operational details.
+
+Clean-profile baselines guide Minecraft-parity work by showing which server-runtime gaps are real before compatibility/import code expands: startup cost, idle stability, map/chunk work, entity/runtime overhead, mutation/write throughput, memory, and failure modes. Compatibility changes should be judged against these measurements without importing proprietary Minecraft code or assets.
 
 ## Privacy Boundary
 

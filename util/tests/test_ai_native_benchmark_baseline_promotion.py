@@ -149,6 +149,49 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
             self.assertEqual(branch_manifest["comparison_statuses"]["mutation"], "pass")
             self.assertEqual(branch_manifest["comparison_statuses"]["demo_entity"], "pass")
 
+    def test_promotes_clean_profile_summary_when_capture_contains_it(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root)
+            manifest_path = capture_dir / "benchmark-capture-manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["game_profile"] = "ai_runtime"
+            manifest["reports"]["clean_profile"] = "clean-profile-benchmark-summary.json"
+            manifest["profile_statuses"] = {"clean_profile": "pass"}
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            (capture_dir / "clean-profile-benchmark-summary.json").write_text(
+                json.dumps(
+                    {
+                        "schema_version": 1,
+                        "runner_version": "ai-native-clean-profile-benchmark:v1",
+                        "luanti_commit": "test-commit",
+                        "hardware_class": "local-mac",
+                        "overall_status": "pass",
+                        "game_profile": {"gameid": "ai_runtime"},
+                        "run_context": {
+                            "requires_private_world": False,
+                            "requires_private_assets": False,
+                            "requires_live_pi": False,
+                            "requires_model_network": False,
+                        },
+                        "failure_notes": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            self.promote(capture_dir, output_root)
+
+            accepted_dir = output_root / "local-mac" / "accepted"
+            accepted_manifest = json.loads(
+                (accepted_dir / "accepted-baseline-manifest.json").read_text(encoding="utf-8")
+            )
+            self.assertTrue((accepted_dir / "clean-profile-benchmark-summary.json").is_file())
+            self.assertEqual(
+                accepted_manifest["reports"]["clean_profile"],
+                "clean-profile-benchmark-summary.json",
+            )
+
     def test_refuses_private_or_warning_reports(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -179,6 +222,7 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
             "errors",
             "requires_private_world",
             "requires_live_pi",
+            "clean-profile-benchmark-summary.json",
             "backup-first",
         ):
             self.assertIn(phrase, body)
