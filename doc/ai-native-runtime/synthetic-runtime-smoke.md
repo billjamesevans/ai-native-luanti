@@ -61,11 +61,25 @@ The default project check is the AI runtime unit module:
 bin/luantiserver --run-unittests --test-module TestAIRuntime
 ```
 
-For branch work, run this after the benchmark gate:
+For branch work, run the focused smoke after the branch benchmark gate and `/ai_runtime_smoke`
+operator command checks:
 
 ```sh
 python3 util/ai_native_benchmark_gate.py --hardware-class local-mac
 bin/luantiserver --run-unittests --test-module TestAIRuntime
 ```
+
+For pre-PR work, prefer the one-command local harness:
+
+```sh
+python3 util/ai_native_runtime_verify.py --hardware-class local-mac
+```
+
+The harness runs the AI-native utility contracts, the branch benchmark gate, and the focused
+`TestAIRuntime` smoke in a repeatable order. It writes
+`ai-runtime-verification-manifest.json` under
+`local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
+failure reasons, and local artifact paths. The harness is synthetic-only: no live server, no
+private world, no private assets, no provider prompts, and no model-network calls.
 
 The smoke path requires no live server and does not touch the family proving-ground server. Any future low-power or family-server proving-ground run remains backup-first and must be explicitly requested.
