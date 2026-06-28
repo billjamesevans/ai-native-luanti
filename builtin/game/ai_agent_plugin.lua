@@ -319,6 +319,74 @@ local function handle_build(name, context)
 		}))
 end
 
+local function handle_build_plan(name, context)
+	context = context or {}
+	configure_product_surfaces()
+	local result = core.build_agent.plan({
+		kind = "marker",
+		task_id = context.task_id,
+		agent_id = agent_id_for(name),
+		owner = name,
+		world_id = context.world_id or "ai_agent_plugin",
+		origin = default_pos(context),
+		rollback_policy = context.rollback_policy,
+		sample_limit = context.sample_limit or settings.max_lights,
+	})
+	local plan = table.copy(result.plan or {})
+	plan.operation = result.operation
+	plan.status = result.status
+	plan.reason = result.reason
+	plan.message = result.message
+	plan.changed = result.changed
+	plan.examined = result.examined
+	plan.skipped = result.skipped
+	plan.samples = result.samples or {}
+	plan.metrics = result.metrics or {}
+	return public_reply(name, "build_plan", result.status, "Build plan returned without mutation.", {
+		plan = plan,
+		planned_node_writes = plan.metrics.planned_node_writes or 0,
+	})
+end
+
+local function compact_repair_plan(plan)
+	return {
+		ok = plan.ok,
+		status = plan.status,
+		operation = plan.operation,
+		agent_id = plan.agent_id,
+		task_id = plan.task_id,
+		changed = plan.changed,
+		examined = plan.examined,
+		skipped = plan.skipped,
+		reason = plan.reason,
+		message = plan.message,
+		candidate_count = #(plan.candidates or {}),
+		candidates = plan.candidates or {},
+		samples = plan.samples or {},
+		metrics = plan.metrics or {},
+		will_mutate = false,
+	}
+end
+
+local function handle_repair_plan(name, context)
+	context = context or {}
+	configure_product_surfaces()
+	local plan = core.repair_agent.plan_area(default_pos(context), {
+		agent_id = agent_id_for(name),
+		owner = name,
+		task_id = context.task_id,
+		radius = 0,
+		repair_nodes = settings.repair_nodes,
+		get_node = context.get_node,
+		sample_limit = context.sample_limit or settings.max_lights,
+	})
+	local compact = compact_repair_plan(plan)
+	return public_reply(name, "repair_plan", plan.status, "Repair plan returned without mutation.", {
+		plan = compact,
+		candidate_count = compact.candidate_count,
+	})
+end
+
 local function handle_repair(name, context)
 	context = context or {}
 	configure_product_surfaces()
@@ -397,7 +465,9 @@ local function handle_guide(name)
 			"tasks",
 			"cancel",
 			"light",
+			"build plan",
 			"build marker",
+			"repair plan",
 			"repair",
 			"defend",
 			"audit",
@@ -529,6 +599,14 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt:find("light", 1, true) then
 		return handle_light(name, prompt, context)
+	end
+	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
+			and (prompt:find("build", 1, true) or prompt:find("marker", 1, true)) then
+		return handle_build_plan(name, context)
+	end
+	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
+			and (prompt:find("repair", 1, true) or prompt:find("fix", 1, true)) then
+		return handle_repair_plan(name, context)
 	end
 	if prompt:find("repair", 1, true) or prompt:find("fix", 1, true) then
 		return handle_repair(name, context)
