@@ -82,4 +82,22 @@ The harness runs the AI-native utility contracts, the branch benchmark gate, and
 failure reasons, and local artifact paths. The harness is synthetic-only: no live server, no
 private world, no private assets, no provider prompts, and no model-network calls.
 
+Use the default synthetic-only verifier for fast feature branches that do not touch server-profile
+startup, packaging, or benchmark capture behavior.
+
+Use clean-profile verification when the branch changes runtime startup, server profile behavior,
+benchmark capture, low-power evidence, or pre-compatibility performance gates:
+
+```sh
+python3 util/ai_native_runtime_verify.py \
+  --hardware-class local-mac \
+  --game-profile ai_runtime
+```
+
+The clean-profile verifier keeps the normal branch gate and focused AI runtime unit smoke, and also
+routes `--game-profile ai_runtime` through benchmark capture. The run directory keeps
+`benchmark-gate-manifest.json`, `ai-runtime-verification-manifest.json`, and
+`clean-profile-benchmark-summary.json` together. It still uses a disposable local world and requires
+no live server, no private world, no private assets, no provider prompts, and no model-network calls.
+
 The smoke path requires no live server and does not touch the family proving-ground server. Any future low-power or family-server proving-ground run remains backup-first and must be explicitly requested.

@@ -70,6 +70,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(manifest["overall_status"], "pass")
             self.assertEqual(manifest["hardware_class"], "local-mac")
             self.assertEqual(manifest["luanti_commit"], "verify-success")
+            self.assertEqual(manifest["game_profile"], "sample-synthetic")
             self.assertEqual(
                 manifest["logical_run_dir"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success",
@@ -87,6 +88,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["benchmark_gate_manifest"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/benchmark-gate-manifest.json",
             )
+            self.assertNotIn("clean_profile_summary", manifest["artifact_paths"])
             self.assertFalse(manifest["run_context"]["requires_private_world"])
             self.assertFalse(manifest["run_context"]["requires_private_assets"])
             self.assertFalse(manifest["run_context"]["requires_live_pi"])
@@ -94,6 +96,68 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
 
             serialized = json.dumps(manifest, sort_keys=True)
             self.assertLess(len(serialized), 12000)
+            self.assertNotIn(str(output_root), serialized)
+            self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_clean_profile_mode_records_profile_artifact_without_losing_gate_manifest(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-clean-profile",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--game-profile",
+                    "ai_runtime",
+                ]
+            )
+            steps = harness.build_steps(args)
+            gate_step = steps[1]
+            self.assertIn("--game-profile", gate_step.actual_command)
+            self.assertIn("ai_runtime", gate_step.actual_command)
+            self.assertIn("--server-bin", gate_step.actual_command)
+            self.assertIn("bin/luantiserver", gate_step.manifest_command)
+
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=lambda _step: next(runs),
+                now_fn=lambda: "2026-06-28T12:02:00Z",
+            )
+
+            self.assertEqual(status, 0)
+            self.assertEqual(manifest["game_profile"], "ai_runtime")
+            self.assertEqual(
+                manifest["artifact_paths"]["benchmark_gate_manifest"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/benchmark-gate-manifest.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["clean_profile_summary"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/clean-profile-benchmark-summary.json",
+            )
+            self.assertIn("clean-profile verification", " ".join(manifest["notes"]))
+
+            serialized = json.dumps(manifest, sort_keys=True)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
@@ -157,6 +221,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "util/ai_native_runtime_verify.py",
             "ai-runtime-verification-manifest.json",
             "after the branch benchmark gate and `/ai_runtime_smoke`",
+            "--game-profile ai_runtime",
+            "clean-profile-benchmark-summary.json",
             "local/benchmarks/<hardware-class>/<date>/<commit>/",
             "no live server",
             "no model-network",
