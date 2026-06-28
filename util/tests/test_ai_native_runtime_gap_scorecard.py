@@ -35,6 +35,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
         warning_count=1,
         failure_notes=None,
         include_clean_profile=True,
+        include_player_probe=False,
     ):
         accepted = pathlib.Path(output_root) / hardware_class / "accepted"
         reports = {
@@ -192,6 +193,26 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     "failure_notes": failure_notes or [],
                 },
             )
+            if include_player_probe:
+                clean_profile_path = accepted / "clean-profile-benchmark-summary.json"
+                clean_profile = json.loads(clean_profile_path.read_text(encoding="utf-8"))
+                clean_profile["comparison_summary"]["player_load_tick_probe"] = {
+                    "probe_status": "pass",
+                    "probe_kind": "server_process_liveness",
+                    "probe_duration_seconds": 3.0,
+                    "sample_count": 30,
+                    "synthetic_player_count": 0,
+                    "headless_player_supported": False,
+                    "server_stayed_listening": True,
+                    "p95_sample_interval_ms": 100.0,
+                    "max_sample_interval_ms": 120.0,
+                    "server_log_warning_count": warning_count,
+                    "server_log_error_count": 0,
+                    "limitations": [
+                        "No headless-player client load path is wired yet; this probe measures bounded server-process liveness."
+                    ],
+                }
+                self.write_json(clean_profile_path, clean_profile)
         return accepted
 
     def run_scorecard(self, output_root, *extra_args, check=True):
@@ -216,8 +237,19 @@ class RuntimeGapScorecardTests(unittest.TestCase):
         self.assertTrue(CLI.is_file(), f"missing {CLI}")
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
-            self.write_accepted_baseline(output_root, "local-mac", startup_ms=195.0)
-            self.write_accepted_baseline(output_root, "low-power-server", startup_ms=62.0, max_rss_kb=24000)
+            self.write_accepted_baseline(
+                output_root,
+                "local-mac",
+                startup_ms=195.0,
+                include_player_probe=True,
+            )
+            self.write_accepted_baseline(
+                output_root,
+                "low-power-server",
+                startup_ms=62.0,
+                max_rss_kb=24000,
+                include_player_probe=True,
+            )
             report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
 
             completed = self.run_scorecard(output_root, "--output", str(report_path))
@@ -241,6 +273,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                 for section in (
                     "startup",
                     "clean_profile_server_health",
+                    "player_load_tick_probe",
                     "mutation_write_throughput",
                     "demo_entity_runtime_cost",
                     "map_chunk_workload",
@@ -255,11 +288,12 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             self.assertNotIn("target_bands", report["measured_evidence"][0])
 
             gap_ids = [gap["id"] for gap in report["ranked_gaps"]]
-            self.assertIn("player_load_tick_probe", gap_ids)
+            self.assertNotIn("player_load_tick_probe", gap_ids)
+            self.assertIn("headless_player_load_probe", gap_ids)
             self.assertIn("non_empty_map_chunk_workload", gap_ids)
             self.assertIn("mutation_total_write_measurement", gap_ids)
             self.assertLess(
-                gap_ids.index("player_load_tick_probe"),
+                gap_ids.index("headless_player_load_probe"),
                 gap_ids.index("mutation_total_write_measurement"),
             )
 
@@ -290,6 +324,23 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             self.assertIn("clean_profile report missing for low-power-server", completed.stderr)
             self.assertIn("clean-profile-benchmark-summary.json", completed.stderr)
 
+    def test_scorecard_keeps_probe_gap_when_clean_profile_has_no_probe_section(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(output_root, "local-mac")
+            self.write_accepted_baseline(output_root, "low-power-server")
+            report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
+
+            self.run_scorecard(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            gap_ids = [gap["id"] for gap in report["ranked_gaps"]]
+            self.assertIn("player_load_tick_probe", gap_ids)
+            for lane in report["measured_evidence"]:
+                probe = lane["measurements"]["player_load_tick_probe"]
+                self.assertEqual(probe["probe_status"], "missing")
+                self.assertIn("evidence_gap", probe)
+
     def test_docs_explain_scorecard_loop_and_privacy_boundary(self):
         for doc in (DOC, README):
             self.assertTrue(doc.is_file(), f"missing {doc}")
@@ -302,6 +353,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             "local/benchmarks/local-mac/accepted/",
             "local/benchmarks/low-power-server/accepted/",
             "clean-profile runtime gap scorecard",
+            "player-load/server-step probe",
             "startup",
             "mutation throughput",
             "demo entity/runtime cost",
@@ -310,6 +362,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             "failure notes",
             "Minecraft-parity target bands",
             "proprietary Minecraft code or assets",
+            "headless-player",
             "privacy scan",
         ):
             self.assertIn(phrase, combined)
