@@ -7,6 +7,11 @@ core.ai_agent_plugin.configure({
 	repair_nodes = {},
 	max_lights = 8,
 	max_entity_move_distance = 16,
+	max_follow_steps = 6,
+	max_follow_step_distance = 4,
+	max_follow_total_distance = 24,
+	max_follow_stop_distance = 1,
+	max_follow_wall_time_ms = 250,
 	capabilities = {
 		["world.read"] = true,
 		["world.place"] = true,
