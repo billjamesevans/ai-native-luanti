@@ -159,6 +159,23 @@ def build_steps(args) -> list[CommandStep]:
         if args.profile_port:
             actual_profile_args += ["--profile-port", str(args.profile_port)]
             manifest_profile_args += ["--profile-port", str(args.profile_port)]
+        if args.headless_player_command:
+            actual_profile_args += [
+                "--headless-player-command",
+                args.headless_player_command,
+                "--headless-player-count",
+                str(args.headless_player_count),
+                "--headless-player-timeout",
+                str(args.headless_player_timeout),
+            ]
+            manifest_profile_args += [
+                "--headless-player-command",
+                "<headless-player-command>",
+                "--headless-player-count",
+                str(args.headless_player_count),
+                "--headless-player-timeout",
+                str(args.headless_player_timeout),
+            ]
 
     steps = [
         CommandStep(
@@ -398,6 +415,26 @@ def parse_args(argv=None):
         "--profile-port",
         type=int,
         help="Optional UDP port for the disposable ai_runtime profile launch.",
+    )
+    parser.add_argument(
+        "--headless-player-command",
+        help=(
+            "Optional command template for disposable synthetic players during "
+            "clean-profile capture. Supported placeholders: {host}, {port}, "
+            "{name}, {server_log}, {duration_seconds}."
+        ),
+    )
+    parser.add_argument(
+        "--headless-player-count",
+        type=int,
+        default=1,
+        help="Synthetic player command instances to launch when --headless-player-command is supplied.",
+    )
+    parser.add_argument(
+        "--headless-player-timeout",
+        type=float,
+        default=2.0,
+        help="Seconds to wait while cleaning up each synthetic player process.",
     )
     parser.add_argument(
         "--python",

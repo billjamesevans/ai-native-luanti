@@ -82,6 +82,36 @@ while True:
         os.chmod(server, 0o755)
         return server
 
+    def write_fake_headless_player(self, tmpdir):
+        client = pathlib.Path(tmpdir) / "fake_headless_player.py"
+        client.write_text(
+            """#!/usr/bin/env python3
+import argparse
+import pathlib
+import sys
+import time
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--server-log", required=True)
+parser.add_argument("--name", required=True)
+parser.add_argument("--duration", type=float, default=0.02)
+parser.add_argument("--fail-suffix")
+args = parser.parse_args()
+
+if args.fail_suffix and args.name.endswith(args.fail_suffix):
+    sys.exit(7)
+
+log_path = pathlib.Path(args.server_log)
+with log_path.open("a", encoding="utf-8") as handle:
+    handle.write(f'2026-06-28 00:00:01: ACTION[Server]: {args.name} joins game.\\n')
+time.sleep(max(args.duration, 0.0))
+sys.exit(0)
+""",
+            encoding="utf-8",
+        )
+        os.chmod(client, 0o755)
+        return client
+
     def test_runner_writes_local_reports_and_private_safe_manifest(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -168,6 +198,94 @@ while True:
             self.assertNotIn(str(output), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
+    def test_runner_records_supported_headless_player_probe(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            fake_server = self.write_fake_profile_server(tmpdir)
+            fake_client = self.write_fake_headless_player(tmpdir)
+
+            completed, output, run_dir, manifest = self.run_capture(
+                "--game-profile",
+                "ai_runtime",
+                "--server-bin",
+                str(fake_server),
+                "--profile-sample-seconds",
+                "0.15",
+                "--profile-startup-timeout",
+                "2",
+                "--headless-player-command",
+                f"{sys.executable} {fake_client} --server-log {{server_log}} --name {{name}} --duration {{duration_seconds}}",
+                "--headless-player-count",
+                "2",
+                output_root=output_root,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            self.assertIsNotNone(manifest)
+            summary_path = run_dir / manifest["reports"]["clean_profile"]
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(summary["overall_status"], "pass")
+            self.assertEqual(summary["failure_notes"], [])
+
+            probe = summary["comparison_summary"]["player_load_tick_probe"]
+            self.assertEqual(probe["probe_status"], "pass")
+            self.assertEqual(probe["probe_kind"], "headless_client_load")
+            self.assertTrue(probe["headless_player_supported"])
+            self.assertEqual(probe["attempted_synthetic_player_count"], 2)
+            self.assertEqual(probe["connected_synthetic_player_count"], 2)
+            self.assertEqual(probe["synthetic_player_count"], 2)
+            self.assertEqual(probe["completed_synthetic_player_count"], 2)
+            self.assertEqual(probe["client_launch_failure_count"], 0)
+            self.assertIn(probe["cleanup_status"], ("complete", "terminated"))
+            self.assertIn("p95_sample_interval_ms", probe)
+            self.assertIn("max_sample_interval_ms", probe)
+
+            serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
+            self.assertNotIn(str(output), serialized)
+            self.assertNotIn(str(fake_client), serialized)
+            self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_runner_marks_partial_headless_player_probe_as_failed_profile(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            fake_server = self.write_fake_profile_server(tmpdir)
+            fake_client = self.write_fake_headless_player(tmpdir)
+
+            completed, _, run_dir, manifest = self.run_capture(
+                "--game-profile",
+                "ai_runtime",
+                "--server-bin",
+                str(fake_server),
+                "--profile-sample-seconds",
+                "0.15",
+                "--profile-startup-timeout",
+                "2",
+                "--headless-player-command",
+                f"{sys.executable} {fake_client} --server-log {{server_log}} --name {{name}} --duration {{duration_seconds}} --fail-suffix 2",
+                "--headless-player-count",
+                "2",
+                output_root=output_root,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 1)
+            self.assertIsNotNone(manifest)
+            self.assertEqual(manifest["profile_statuses"]["clean_profile"], "fail")
+            summary_path = run_dir / manifest["reports"]["clean_profile"]
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            self.assertEqual(summary["overall_status"], "fail")
+            self.assertIn("headless_player_probe_incomplete", summary["failure_notes"])
+
+            probe = summary["comparison_summary"]["player_load_tick_probe"]
+            self.assertEqual(probe["probe_status"], "partial")
+            self.assertEqual(probe["probe_kind"], "headless_client_load")
+            self.assertTrue(probe["headless_player_supported"])
+            self.assertEqual(probe["attempted_synthetic_player_count"], 2)
+            self.assertEqual(probe["connected_synthetic_player_count"], 1)
+            self.assertEqual(probe["synthetic_player_count"], 1)
+            self.assertEqual(probe["client_launch_failure_count"], 0)
+            self.assertIn(7, probe["client_exit_statuses"])
+
     def test_runner_writes_comparisons_when_baselines_are_supplied(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -237,6 +355,8 @@ while True:
             "clean-profile-benchmark-summary.json",
             "player_load_tick_probe",
             "server-step",
+            "--headless-player-command",
+            "headless_client_load",
             "benchmark-capture-manifest.json",
             "same-hardware baseline",
             "--game-profile ai_runtime",

@@ -36,6 +36,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
         failure_notes=None,
         include_clean_profile=True,
         include_player_probe=False,
+        player_probe=None,
     ):
         accepted = pathlib.Path(output_root) / hardware_class / "accepted"
         reports = {
@@ -193,10 +194,10 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     "failure_notes": failure_notes or [],
                 },
             )
-            if include_player_probe:
+            if include_player_probe or player_probe:
                 clean_profile_path = accepted / "clean-profile-benchmark-summary.json"
                 clean_profile = json.loads(clean_profile_path.read_text(encoding="utf-8"))
-                clean_profile["comparison_summary"]["player_load_tick_probe"] = {
+                clean_profile["comparison_summary"]["player_load_tick_probe"] = player_probe or {
                     "probe_status": "pass",
                     "probe_kind": "server_process_liveness",
                     "probe_duration_seconds": 3.0,
@@ -214,6 +215,28 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                 }
                 self.write_json(clean_profile_path, clean_profile)
         return accepted
+
+    def supported_headless_probe(self, synthetic_count=2):
+        return {
+            "probe_status": "pass",
+            "probe_kind": "headless_client_load",
+            "probe_duration_seconds": 3.0,
+            "requested_sample_seconds": 3.0,
+            "sample_count": 30,
+            "synthetic_player_count": synthetic_count,
+            "attempted_synthetic_player_count": synthetic_count,
+            "connected_synthetic_player_count": synthetic_count,
+            "completed_synthetic_player_count": synthetic_count,
+            "headless_player_supported": True,
+            "server_stayed_listening": True,
+            "server_log_warning_count": 0,
+            "server_log_error_count": 0,
+            "client_exit_statuses": [0] * synthetic_count,
+            "client_launch_failure_count": 0,
+            "cleanup_status": "complete",
+            "p95_sample_interval_ms": 100.0,
+            "max_sample_interval_ms": 120.0,
+        }
 
     def run_scorecard(self, output_root, *extra_args, check=True):
         completed = subprocess.run(
@@ -301,6 +324,70 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
+    def test_scorecard_clears_headless_gap_when_both_lanes_have_true_synthetic_players(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(
+                output_root,
+                "local-mac",
+                warning_count=0,
+                player_probe=self.supported_headless_probe(2),
+            )
+            self.write_accepted_baseline(
+                output_root,
+                "low-power-server",
+                warning_count=0,
+                player_probe=self.supported_headless_probe(1),
+            )
+            report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
+
+            self.run_scorecard(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            gap_ids = [gap["id"] for gap in report["ranked_gaps"]]
+            self.assertNotIn("player_load_tick_probe", gap_ids)
+            self.assertNotIn("player_load_tick_probe_failure", gap_ids)
+            self.assertNotIn("headless_player_load_probe", gap_ids)
+            for lane in report["measured_evidence"]:
+                probe = lane["measurements"]["player_load_tick_probe"]
+                self.assertEqual(probe["probe_kind"], "headless_client_load")
+                self.assertTrue(probe["headless_player_supported"])
+                self.assertGreater(probe["synthetic_player_count"], 0)
+
+    def test_scorecard_keeps_headless_gap_when_probe_has_partial_connection_evidence(self):
+        partial_probe = self.supported_headless_probe(2)
+        partial_probe.update(
+            {
+                "synthetic_player_count": 1,
+                "connected_synthetic_player_count": 1,
+                "completed_synthetic_player_count": 1,
+                "client_exit_statuses": [0, 7],
+                "cleanup_status": "complete",
+            }
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(
+                output_root,
+                "local-mac",
+                warning_count=0,
+                player_probe=self.supported_headless_probe(2),
+            )
+            self.write_accepted_baseline(
+                output_root,
+                "low-power-server",
+                warning_count=0,
+                player_probe=partial_probe,
+            )
+            report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
+
+            self.run_scorecard(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            gap_ids = [gap["id"] for gap in report["ranked_gaps"]]
+            self.assertIn("headless_player_load_probe", gap_ids)
+            self.assertNotIn("player_load_tick_probe_failure", gap_ids)
+
     def test_scorecard_refuses_missing_required_hardware_lane(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -363,6 +450,8 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             "Minecraft-parity target bands",
             "proprietary Minecraft code or assets",
             "headless-player",
+            "--headless-player-command",
+            "attempted and connected synthetic players",
             "privacy scan",
         ):
             self.assertIn(phrase, combined)

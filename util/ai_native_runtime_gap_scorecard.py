@@ -342,6 +342,27 @@ def measured_gap(gap_id: str, priority: int, title: str, evidence: list[str], ne
     return gap
 
 
+def has_complete_headless_player_evidence(probe: dict) -> bool:
+    if probe.get("probe_status") != "pass":
+        return False
+    if not probe.get("headless_player_supported"):
+        return False
+    synthetic = probe.get("synthetic_player_count") or 0
+    attempted = probe.get("attempted_synthetic_player_count")
+    connected = probe.get("connected_synthetic_player_count")
+    if attempted is None:
+        attempted = synthetic
+    if connected is None:
+        connected = synthetic
+    cleanup_status = probe.get("cleanup_status")
+    return (
+        synthetic > 0
+        and attempted > 0
+        and connected >= attempted
+        and cleanup_status in (None, "complete", "terminated")
+    )
+
+
 def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
     gaps = []
     if any(lane["measurements"]["failure_notes"] for lane in lanes):
@@ -393,11 +414,7 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
                 "Stabilize clean-profile sampling before adding heavier runtime workloads.",
             )
         )
-    elif any(
-        not probe.get("headless_player_supported")
-        or (probe.get("synthetic_player_count") or 0) == 0
-        for probe in player_probes
-    ):
+    elif any(not has_complete_headless_player_evidence(probe) for probe in player_probes):
         gaps.append(
             measured_gap(
                 "headless_player_load_probe",
@@ -406,6 +423,10 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
                 [
                     f"{lane['hardware_class']}: synthetic_player_count="
                     f"{lane['measurements']['player_load_tick_probe'].get('synthetic_player_count')}, "
+                    f"attempted_synthetic_player_count="
+                    f"{lane['measurements']['player_load_tick_probe'].get('attempted_synthetic_player_count')}, "
+                    f"connected_synthetic_player_count="
+                    f"{lane['measurements']['player_load_tick_probe'].get('connected_synthetic_player_count')}, "
                     f"headless_player_supported="
                     f"{lane['measurements']['player_load_tick_probe'].get('headless_player_supported')}"
                     for lane in lanes

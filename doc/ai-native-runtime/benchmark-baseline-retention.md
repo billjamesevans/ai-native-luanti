@@ -65,7 +65,33 @@ The clean-profile capture starts a disposable local `ai_runtime` world and write
 
 - `clean-profile-benchmark-summary.json`
 
-That summary records the runner version, Luanti commit, hardware class, and game profile. Its public-safe comparison summary covers startup, idle steady tick behavior, `player_load_tick_probe`, map/chunk workload, entity/runtime operations, mutation/write throughput, memory, and failure notes. The first player-load/server-step probe is a bounded server-process liveness probe: it records sample count, probe duration, p95/max sample interval, warning/error counts, whether the server stayed listening, and the current headless-player limitation. It must not include temporary paths, private worlds, provider prompts, player data, copied assets, live hostnames, or live service state.
+That summary records the runner version, Luanti commit, hardware class, and game profile. Its public-safe comparison summary covers startup, idle steady tick behavior, `player_load_tick_probe`, map/chunk workload, entity/runtime operations, mutation/write throughput, memory, and failure notes. Without a client command, the first player-load/server-step probe is a bounded server-process liveness probe: it records sample count, probe duration, p95/max sample interval, warning/error counts, whether the server stayed listening, and the current headless-player limitation. It must not include temporary paths, private worlds, provider prompts, player data, copied assets, live hostnames, or live service state.
+
+When a disposable client path is available, add `--headless-player-command` to the same clean-profile capture. The command is an operator-supplied template; the runner expands `{host}`, `{port}`, `{name}`, `{server_log}`, and `{duration_seconds}` for each synthetic player. The report stores only bounded evidence, not the command path: `probe_kind=headless_client_load`, attempted and connected synthetic players, completed synthetic players, client exit statuses, cleanup status, warning/error counts, sample intervals, and whether the server stayed listening.
+
+Example local command shape:
+
+```sh
+python3 util/ai_native_benchmark_capture.py \
+  --hardware-class local-mac \
+  --luanti-commit "$(git rev-parse --short HEAD)" \
+  --game-profile ai_runtime \
+  --headless-player-command '<client-command> --go --address {host} --port {port} --name {name}' \
+  --headless-player-count 2
+```
+
+Use the one-command verifier when refreshing branch evidence:
+
+```sh
+python3 util/ai_native_runtime_verify.py \
+  --hardware-class local-mac \
+  --luanti-commit "$(git rev-parse --short HEAD)" \
+  --game-profile ai_runtime \
+  --headless-player-command '<client-command> --go --address {host} --port {port} --name {name}' \
+  --headless-player-count 2
+```
+
+After the branch passes and the capture is reviewed, promote the refreshed local lane. Repeat the same flow for `low-power-server` only after backup-first readiness, keeping the family server side by side and passing `--confirm-low-power-backup`. Do not promote either lane unless the clean-profile summary has `overall_status=pass`, `player_load_tick_probe.probe_status=pass`, `headless_player_supported=true`, `synthetic_player_count>0`, and connected synthetic players equal attempted synthetic players.
 
 When a same-hardware baseline is available, pass it into the capture runner so it writes comparison files next to the branch reports:
 
@@ -186,6 +212,8 @@ and writes the ignored local artifact:
 The report separates measured fork evidence from Minecraft-parity target bands. The measured section covers startup, clean-profile server health, player-load/server-step probe evidence, mutation throughput, demo entity/runtime cost, map/chunk workload, memory, and failure notes. The target bands are project targets only; they do not use proprietary Minecraft code or assets, server jars, copied benchmarks, copied media, or closed gameplay data.
 
 Use the ranked gaps as the runtime hardening queue before compatibility/import expansion. The first expected gaps are missing player-load tick probes, true headless-player load after the server-step probe exists, non-empty map/chunk workload, larger entity-runtime probes, total mutation-write measurements, and clean-profile warning classification. If the scorecard refuses to run, refresh the missing accepted clean-profile baseline with `util/ai_native_benchmark_capture.py`, review it, and promote it with `util/ai_native_benchmark_promote.py`.
+
+The headless-player gap is cleared only when every accepted lane has complete public-safe evidence from `--headless-player-command`: the probe passes, `headless_player_supported=true`, `synthetic_player_count>0`, attempted and connected synthetic players match, and cleanup is complete or bounded. Partial evidence remains a ranked gap even if one synthetic player joined.
 
 The scorecard performs a focused privacy scan of the JSON payload before writing the artifact. Do not publish or commit scorecards that include private hosts, private network addresses, local absolute paths, secrets, provider prompts, private showcase names, copied media, or family-server operational details.
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shlex
 import socket
 import sqlite3
 import subprocess
@@ -121,6 +122,142 @@ def sample_interval_stats(sample_times: list[float]) -> dict:
     }
 
 
+def empty_headless_player_run() -> dict:
+    return {
+        "supported": False,
+        "attempted": 0,
+        "players": [],
+        "launch_failure_count": 0,
+    }
+
+
+def build_headless_player_command(
+    command_template: str,
+    *,
+    port: int,
+    name: str,
+    log_path: Path,
+    duration_seconds: float,
+) -> list[str]:
+    context = {
+        "host": "127.0.0.1",
+        "port": str(port),
+        "name": name,
+        "server_log": str(log_path),
+        "duration_seconds": f"{max(duration_seconds, 0.0):.3f}",
+    }
+    return [part.format(**context) for part in shlex.split(command_template)]
+
+
+def start_headless_players(args, port: int, log_path: Path) -> dict:
+    if not args.headless_player_command:
+        return empty_headless_player_run()
+
+    run = {
+        "supported": True,
+        "attempted": args.headless_player_count,
+        "players": [],
+        "launch_failure_count": 0,
+    }
+    for index in range(args.headless_player_count):
+        name = f"ai_probe_{index + 1}"
+        try:
+            command = build_headless_player_command(
+                args.headless_player_command,
+                port=port,
+                name=name,
+                log_path=log_path,
+                duration_seconds=args.profile_sample_seconds,
+            )
+            proc = subprocess.Popen(
+                command,
+                cwd=ROOT,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                text=True,
+            )
+        except (KeyError, OSError, ValueError) as exc:
+            run["launch_failure_count"] += 1
+            run["players"].append(
+                {
+                    "name": name,
+                    "process": None,
+                    "launch_error": exc.__class__.__name__,
+                }
+            )
+        else:
+            run["players"].append({"name": name, "process": proc, "launch_error": None})
+    return run
+
+
+def connected_synthetic_player_count(log_text: str, player_names: list[str]) -> int:
+    connected = 0
+    for name in player_names:
+        pattern = re.compile(rf"\b{re.escape(name)}\b.*\bjoins game\b", re.I)
+        if pattern.search(log_text):
+            connected += 1
+    return connected
+
+
+def finish_headless_players(args, run: dict, log_text: str) -> dict:
+    if not run.get("supported"):
+        return {
+            "headless_player_supported": False,
+            "attempted_synthetic_player_count": 0,
+            "connected_synthetic_player_count": 0,
+            "completed_synthetic_player_count": 0,
+            "client_exit_statuses": [],
+            "client_launch_failure_count": 0,
+            "cleanup_status": "not_started",
+        }
+
+    player_names = [player["name"] for player in run["players"]]
+    connected_count = connected_synthetic_player_count(log_text, player_names)
+    exit_statuses = []
+    completed_count = 0
+    killed_any = False
+    terminated_any = False
+
+    for player in run["players"]:
+        proc = player["process"]
+        if proc is None:
+            continue
+        status = proc.poll()
+        if status is None:
+            proc.terminate()
+            try:
+                status = proc.wait(timeout=args.headless_player_timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    status = proc.wait(timeout=args.headless_player_timeout)
+                except subprocess.TimeoutExpired:
+                    status = -9
+                killed_any = True
+            else:
+                terminated_any = True
+        exit_statuses.append(status)
+        if status == 0:
+            completed_count += 1
+
+    if killed_any:
+        cleanup_status = "killed"
+    elif terminated_any:
+        cleanup_status = "terminated"
+    else:
+        cleanup_status = "complete"
+
+    return {
+        "headless_player_supported": True,
+        "attempted_synthetic_player_count": run["attempted"],
+        "connected_synthetic_player_count": connected_count,
+        "completed_synthetic_player_count": completed_count,
+        "client_exit_statuses": exit_statuses,
+        "client_launch_failure_count": run["launch_failure_count"],
+        "cleanup_status": cleanup_status,
+    }
+
+
 def build_player_load_tick_probe(
     args,
     listening: bool,
@@ -128,12 +265,32 @@ def build_player_load_tick_probe(
     failure_notes: list[str],
     log_warning_count: int,
     log_error_count: int,
+    headless_player_run: dict | None = None,
 ) -> dict:
     intervals = sample_interval_stats(sample_times)
     server_stayed_listening = listening and "server_exited_during_profile_sample" not in failure_notes
-    return {
-        "probe_status": "pass" if server_stayed_listening and log_error_count == 0 else "fail",
-        "probe_kind": "server_process_liveness",
+    base_passed = server_stayed_listening and log_error_count == 0
+    headless = headless_player_run or finish_headless_players(args, empty_headless_player_run(), "")
+    headless_supported = headless.get("headless_player_supported") is True
+    attempted = headless.get("attempted_synthetic_player_count", 0)
+    connected = headless.get("connected_synthetic_player_count", 0)
+    launch_failures = headless.get("client_launch_failure_count", 0)
+
+    if not base_passed:
+        probe_status = "fail"
+    elif headless_supported and (
+        attempted <= 0
+        or connected <= 0
+        or connected < attempted
+        or launch_failures > 0
+    ):
+        probe_status = "partial" if connected > 0 else "fail"
+    else:
+        probe_status = "pass"
+
+    probe = {
+        "probe_status": probe_status,
+        "probe_kind": "headless_client_load" if headless_supported else "server_process_liveness",
         "probe_duration_seconds": (
             round(sample_times[-1] - sample_times[0], 3)
             if len(sample_times) >= 2
@@ -141,18 +298,22 @@ def build_player_load_tick_probe(
         ),
         "requested_sample_seconds": args.profile_sample_seconds,
         "sample_count": len(sample_times),
-        "synthetic_player_count": 0,
-        "headless_player_supported": False,
+        "synthetic_player_count": connected if headless_supported else 0,
+        "headless_player_supported": headless_supported,
         "server_stayed_listening": server_stayed_listening,
         "server_log_warning_count": log_warning_count,
         "server_log_error_count": log_error_count,
         "p95_sample_interval_ms": intervals["p95_sample_interval_ms"],
         "max_sample_interval_ms": intervals["max_sample_interval_ms"],
         "avg_sample_interval_ms": intervals["avg_sample_interval_ms"],
-        "limitations": [
-            "No headless-player client load path is wired yet; this probe measures bounded server-process liveness during clean-profile sampling.",
-        ],
     }
+    if headless_supported:
+        probe.update(headless)
+    else:
+        probe["limitations"] = [
+            "No headless-player client command was supplied; this probe measures bounded server-process liveness during clean-profile sampling.",
+        ]
+    return probe
 
 
 def resolve_server_bin(server_bin: str) -> str:
@@ -309,6 +470,12 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
     uptime_seconds = 0.0
     log_text = ""
     probe_sample_times = []
+    headless_player_run = empty_headless_player_run()
+    headless_player_summary = finish_headless_players(
+        args,
+        headless_player_run,
+        "",
+    )
 
     with tempfile.TemporaryDirectory(prefix="ai-runtime-profile-") as tmpdir:
         temp_root = Path(tmpdir)
@@ -359,6 +526,8 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
 
             if not listening:
                 failure_notes.append("server_did_not_reach_listening_state")
+            else:
+                headless_player_run = start_headless_players(args, port, log_path)
 
             sample_deadline = time.monotonic() + max(args.profile_sample_seconds, 0.0)
             while listening and time.monotonic() < sample_deadline:
@@ -371,6 +540,9 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
                 if rss is not None:
                     rss_samples.append(rss)
                 time.sleep(0.1)
+
+            log_text = read_text_if_exists(log_path)
+            headless_player_summary = finish_headless_players(args, headless_player_run, log_text)
 
             if proc.poll() is None:
                 proc.terminate()
@@ -415,7 +587,22 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         failure_notes,
         log_warning_count,
         log_error_count,
+        headless_player_summary,
     )
+    if (
+        player_load_tick_probe["headless_player_supported"]
+        and player_load_tick_probe["probe_status"] != "pass"
+    ):
+        failure_notes.append("headless_player_probe_incomplete")
+        player_load_tick_probe = build_player_load_tick_probe(
+            args,
+            listening,
+            probe_sample_times,
+            failure_notes,
+            log_warning_count,
+            log_error_count,
+            headless_player_summary,
+        )
     memory = {
         "max_rss_kb": max(rss_samples) if rss_samples else None,
         "rss_sample_count": len(rss_samples),
@@ -625,6 +812,26 @@ def parse_args(argv=None):
         help="Optional UDP port for the disposable ai_runtime profile launch.",
     )
     parser.add_argument(
+        "--headless-player-command",
+        help=(
+            "Optional command template for disposable synthetic players during "
+            "clean-profile capture. Supported placeholders: {host}, {port}, "
+            "{name}, {server_log}, {duration_seconds}."
+        ),
+    )
+    parser.add_argument(
+        "--headless-player-count",
+        type=int,
+        default=1,
+        help="Synthetic player command instances to launch when --headless-player-command is supplied.",
+    )
+    parser.add_argument(
+        "--headless-player-timeout",
+        type=float,
+        default=2.0,
+        help="Seconds to wait while cleaning up each synthetic player process.",
+    )
+    parser.add_argument(
         "--confirm-low-power-backup",
         action="store_true",
         help="Required for low-power-server capture to confirm backup-first readiness.",
@@ -640,6 +847,18 @@ def main(argv=None):
             "rerun with --confirm-low-power-backup after the target is backed up.",
             file=sys.stderr,
         )
+        return 2
+    if args.headless_player_command and args.game_profile != "ai_runtime":
+        print(
+            "--headless-player-command requires --game-profile ai_runtime.",
+            file=sys.stderr,
+        )
+        return 2
+    if args.headless_player_command and args.headless_player_count < 1:
+        print("--headless-player-count must be at least 1.", file=sys.stderr)
+        return 2
+    if args.headless_player_timeout <= 0:
+        print("--headless-player-timeout must be greater than 0.", file=sys.stderr)
         return 2
 
     date_part = path_part(args.date)
