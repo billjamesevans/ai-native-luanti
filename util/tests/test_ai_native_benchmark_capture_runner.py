@@ -51,15 +51,17 @@ class BenchmarkCaptureRunnerTests(unittest.TestCase):
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         return completed, output, run_dir, manifest
 
-    def write_fake_profile_server(self, tmpdir):
+    def write_fake_profile_server(self, tmpdir, warning_line=None):
         server = pathlib.Path(tmpdir) / "fake_luantiserver.py"
+        warning_literal = repr(warning_line)
         server.write_text(
-            """#!/usr/bin/env python3
+            f"""#!/usr/bin/env python3
 import pathlib
 import signal
 import sys
 import time
 
+warning_line = {warning_literal}
 args = sys.argv[1:]
 logfile = pathlib.Path(args[args.index("--logfile") + 1])
 gameid = args[args.index("--gameid") + 1]
@@ -69,10 +71,12 @@ for line in config.read_text(encoding="utf-8").splitlines():
     if line.startswith("port ="):
         port = line.split("=", 1)[1].strip()
 logfile.parent.mkdir(parents=True, exist_ok=True)
-logfile.write_text(
-    f'2026-06-28 00:00:00: ACTION[Main]: Server for gameid="{gameid}" listening on [::]:{port}.\\n',
-    encoding="utf-8",
-)
+lines = [
+    f'2026-06-28 00:00:00: ACTION[Main]: Server for gameid="{{gameid}}" listening on [::]:{{port}}.\\n',
+]
+if warning_line:
+    lines.append(warning_line + "\\n")
+logfile.write_text("".join(lines), encoding="utf-8")
 signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 while True:
     time.sleep(0.05)
@@ -245,6 +249,42 @@ sys.exit(0)
             self.assertNotIn(str(fake_client), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
+    def test_runner_classifies_known_clean_profile_warning_as_expected(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            fake_server = self.write_fake_profile_server(
+                tmpdir,
+                '2026-06-28 00:00:00: WARNING[Main]: No SHA256 known for builtin file "/tmp/profile/builtin/game/demo_entity_benchmark.lua"',
+            )
+
+            completed, _, run_dir, manifest = self.run_capture(
+                "--game-profile",
+                "ai_runtime",
+                "--server-bin",
+                str(fake_server),
+                "--profile-sample-seconds",
+                "0.1",
+                "--profile-startup-timeout",
+                "2",
+                output_root=output_root,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            summary_path = run_dir / manifest["reports"]["clean_profile"]
+            summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            steady = summary["comparison_summary"]["steady_tick_behavior"]
+            self.assertEqual(steady["server_log_warning_count"], 1)
+            self.assertEqual(steady["expected_server_log_warning_count"], 1)
+            self.assertEqual(steady["actionable_server_log_warning_count"], 0)
+            self.assertEqual(
+                steady["expected_warning_kinds"],
+                ["run_in_place_builtin_sha_missing"],
+            )
+            probe = summary["comparison_summary"]["player_load_tick_probe"]
+            self.assertEqual(probe["server_log_warning_count"], 1)
+            self.assertEqual(probe["expected_server_log_warning_count"], 1)
+            self.assertEqual(probe["actionable_server_log_warning_count"], 0)
+
     def test_runner_marks_partial_headless_player_probe_as_failed_profile(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -357,6 +397,9 @@ sys.exit(0)
             "server-step",
             "--headless-player-command",
             "headless_client_load",
+            "expected_server_log_warning_count",
+            "actionable_server_log_warning_count",
+            "expected_warning_kinds",
             "-DENABLE_SOUND=FALSE",
             "video_driver = null",
             "bin/luanti --config",
