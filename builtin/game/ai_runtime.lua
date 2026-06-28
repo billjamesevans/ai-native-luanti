@@ -3,6 +3,8 @@ core.registered_ai_tasks = {}
 core.ai_world_ops = {}
 core.ai_entity_ops = {}
 core.ai_player_ops = {}
+core.ai_model_ops = {}
+core.ai_import_ops = {}
 core.ai_rollback_storage = {}
 
 local ai_task_queue = {}
@@ -166,6 +168,7 @@ local ai_runtime_metrics = {
 	blocked_operations = 0,
 	pending_model_requests = 0,
 	pending_http_requests = 0,
+	model_runtime_requests = 0,
 	model_adapter_requests = 0,
 	model_adapter_successes = 0,
 	model_adapter_failures = 0,
@@ -184,6 +187,7 @@ local ai_runtime_metrics = {
 	entity_cleanups = 0,
 	player_teleports = 0,
 	combat_defends = 0,
+	import_plans = 0,
 	entities_by_type = {},
 }
 local ai_task_status_order = {
@@ -507,6 +511,231 @@ local function finish_action_result(result, status, reason, message)
 		end
 	end
 	return result
+end
+
+local function runtime_gate_options(options, operation)
+	assert(type(options) == "table", "Runtime gate options must be a table")
+	check_string(options.agent_id, "agent_id")
+	local agent = core.get_ai_agent(options.agent_id)
+	local owner = options.owner or options.owner_ref or agent and agent.owner
+	if owner then
+		check_string(owner, "owner")
+	end
+	return agent, owner, make_action_result(operation, options)
+end
+
+local function finish_runtime_gate_result(result, status, reason, message)
+	return finish_action_result(result, status, reason, message)
+end
+
+local function runtime_gate_denied(options, operation, capability, event_type)
+	local result = make_action_result(operation, options)
+	local capability_result = core.check_agent_capability(options.agent_id, capability)
+	if capability_result.ok then
+		return nil
+	end
+	result.skipped = 1
+	core.record_ai_runtime_audit({
+		event_type = event_type,
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		operation = operation,
+		status = "blocked",
+		reason = capability_result.reason,
+		message = capability_result.message,
+		skipped = result.skipped,
+	})
+	return finish_runtime_gate_result(result, "blocked",
+		capability_result.reason, capability_result.message)
+end
+
+function core.ai_model_ops.request(prompt, options)
+	check_string(prompt, "prompt")
+	options = options or {}
+	local _, owner, result = runtime_gate_options(options, "ai_model.request")
+	local denied = runtime_gate_denied(options, "ai_model.request", "http.llm", "model.request")
+	if denied then
+		return denied
+	end
+	local adapter = options.adapter
+	if adapter == nil then
+		result.skipped = 1
+		core.record_ai_runtime_audit({
+			event_type = "model.request",
+			agent_id = result.agent_id,
+			task_id = result.task_id,
+			operation = result.operation,
+			status = "blocked",
+			reason = "model_adapter_unavailable",
+			message = "No model adapter is configured.",
+			skipped = result.skipped,
+		})
+		return finish_runtime_gate_result(result, "blocked", "model_adapter_unavailable",
+			"No model adapter is configured.")
+	end
+	assert(type(adapter) == "function", "Field 'adapter' must be a function")
+
+	increment_metric("model_runtime_requests")
+	core.record_ai_runtime_audit({
+		event_type = "model.request",
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		actor = owner,
+		operation = result.operation,
+		status = "running",
+		reason = "model_adapter_requested",
+		message = "Model adapter requested.",
+		private_payload = {
+			prompt = options.private_prompt or prompt,
+		},
+	})
+
+	local started_at = core.get_us_time and core.get_us_time() or 0
+	local ok, adapter_result = pcall(adapter, {
+		agent_id = options.agent_id,
+		owner = owner,
+		prompt = prompt,
+		context = options.context or {},
+		task_id = options.task_id,
+	})
+	if not ok then
+		adapter_result = {
+			ok = false,
+			message = "Model adapter failed.",
+			reason = "adapter_error",
+		}
+	end
+	local elapsed_us = adapter_result and adapter_result.elapsed_us
+	if not elapsed_us then
+		elapsed_us = started_at > 0 and core.get_us_time and (core.get_us_time() - started_at) or 0
+	end
+	local adapter_status = "failure"
+	if adapter_result and adapter_result.timeout then
+		adapter_status = "timeout"
+	elseif adapter_result and adapter_result.ok then
+		adapter_status = "success"
+	end
+	core.record_ai_model_adapter_result({
+		agent_id = options.agent_id,
+		owner_ref = owner,
+		task_id = options.task_id,
+		adapter_name = adapter_result and adapter_result.adapter_name
+			or options.adapter_name or "model_adapter",
+		status = adapter_status,
+		reason = adapter_result and adapter_result.reason,
+		elapsed_us = elapsed_us,
+	})
+
+	result.examined = 1
+	result.metrics.elapsed_us = elapsed_us
+	if adapter_result and adapter_result.response ~= nil then
+		result.response = adapter_result.response
+	end
+	local message = adapter_result and adapter_result.message
+		or "Model adapter did not return a response."
+	if adapter_result and adapter_result.ok then
+		return finish_runtime_gate_result(result, "success", "model_response", message)
+	end
+	result.skipped = 1
+	return finish_runtime_gate_result(result, "blocked",
+		adapter_result and adapter_result.reason or "model_adapter_failed", message)
+end
+
+local function import_action_requires_capability(action)
+	local capabilities = action.required_capabilities or {}
+	for _, capability in ipairs(capabilities) do
+		if capability == "import.assets" then
+			return true
+		end
+	end
+	return false
+end
+
+function core.ai_import_ops.plan(plan, options)
+	assert(type(plan) == "table", "Import plan must be a table")
+	options = options or {}
+	local _, owner, result = runtime_gate_options(options, "ai_import.plan")
+	local denied = runtime_gate_denied(options, "ai_import.plan", "import.assets", "import.plan")
+	if denied then
+		return denied
+	end
+	if plan.asset_payload ~= nil or plan.private_payload ~= nil then
+		result.skipped = 1
+		core.record_ai_runtime_audit({
+			event_type = "import.plan",
+			agent_id = result.agent_id,
+			task_id = result.task_id,
+			actor = owner,
+			operation = result.operation,
+			status = "blocked",
+			reason = "payload_rejected",
+			message = "Import planning cannot retain asset payloads.",
+			skipped = result.skipped,
+		})
+		return finish_runtime_gate_result(result, "blocked", "payload_rejected",
+			"Import planning cannot retain asset payloads.")
+	end
+	if plan.dry_run ~= true or plan.assets_copied == true then
+		result.skipped = 1
+		core.record_ai_runtime_audit({
+			event_type = "import.plan",
+			agent_id = result.agent_id,
+			task_id = result.task_id,
+			actor = owner,
+			operation = result.operation,
+			status = "blocked",
+			reason = "dry_run_required",
+			message = "Import planning is dry-run only in this runtime milestone.",
+			skipped = result.skipped,
+		})
+		return finish_runtime_gate_result(result, "blocked", "dry_run_required",
+			"Import planning is dry-run only in this runtime milestone.")
+	end
+
+	local actions = plan.planned_actions or {}
+	assert(type(actions) == "table", "Field 'planned_actions' must be a table")
+	for _, action in ipairs(actions) do
+		assert(type(action) == "table", "Import planned actions must be tables")
+		if not import_action_requires_capability(action) then
+			result.skipped = 1
+			core.record_ai_runtime_audit({
+				event_type = "import.plan",
+				agent_id = result.agent_id,
+				task_id = result.task_id,
+				actor = owner,
+				operation = result.operation,
+				status = "blocked",
+				reason = "import_capability_marker_required",
+				message = "Every import action must require import.assets.",
+				skipped = result.skipped,
+			})
+			return finish_runtime_gate_result(result, "blocked",
+				"import_capability_marker_required",
+				"Every import action must require import.assets.")
+		end
+	end
+
+	result.examined = #actions
+	result.import_plan = {
+		dry_run = true,
+		source_class = plan.source_class,
+		planned_actions = table.copy(actions),
+		assets_copied = false,
+	}
+	increment_metric("import_plans")
+	core.record_ai_runtime_audit({
+		event_type = "import.plan",
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		actor = owner,
+		operation = result.operation,
+		status = "success",
+		reason = "import_plan_recorded",
+		message = "Import dry-run plan recorded.",
+		examined = result.examined,
+	})
+	return finish_runtime_gate_result(result, "success", "import_plan_recorded",
+		"Import dry-run plan recorded.")
 end
 
 local function sample_limit(options)

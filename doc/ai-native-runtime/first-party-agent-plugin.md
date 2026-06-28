@@ -77,7 +77,7 @@ core.ai_agent_plugin.set_model_adapter(function(request)
 end)
 ```
 
-Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin records a `model.request` audit event before calling the adapter, but private prompt payloads are not retained unless the runtime audit settings are explicitly changed.
+Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin calls model adapters through `core.ai_model_ops.request`, so the agent must have `http.llm`. The runtime records a `model.request` audit event before calling the adapter, but private prompt payloads are not retained unless the runtime audit settings are explicitly changed.
 
 ## Current Limits
 
