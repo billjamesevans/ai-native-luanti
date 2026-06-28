@@ -148,7 +148,30 @@ Initial action types:
 - `import_structure`: estimate structure placement or conversion.
 - `skip_feature`: record an explicit skip.
 
-Each action should include an estimated `mutation_cost` with counts such as node writes, media files, entity definitions, or manual review items.
+Each action should include an estimated `mutation_cost` with counts such as node writes, mapblock churn, media files, entity definitions, or manual review items.
+
+## Structure Cost Calibration
+
+Structure sources are still dry-run only. The reporter must not parse proprietary structure payloads, copy structures into the fork, or place nodes in a world during calibration.
+
+For public-safe synthetic fixtures, structure cost is estimated from file inventory metadata:
+
+- `node_writes`: conservative estimated placed-node count.
+- `mapblock_churn`: estimated count of touched mapblocks.
+- `manual_review_items`: placement and palette review items that an operator must approve before apply.
+
+The `structures` section exposes `estimated_node_writes`, `estimated_mapblock_churn`, and `manual_review_items`. The `import_structure` planned action repeats the calibrated cost in its `mutation_cost`.
+
+Use the dry-run reporter as the local structure benchmark:
+
+```sh
+python3 util/ai_native_compat_dry_run.py \
+  util/tests/fixtures/compat/structure/example.mcstructure \
+  --output local/benchmarks/compat-structure-cost-report.json \
+  --summary
+```
+
+The output is ignored local evidence. It must remain public-safe: no proprietary structures, no family worlds, no asset payloads, and no world mutation.
 
 ## Safety Requirements
 
