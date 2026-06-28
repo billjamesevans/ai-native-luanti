@@ -133,6 +133,10 @@ class MvpAuditTests(unittest.TestCase):
                 "already_proven",
             )
             self.assertEqual(
+                audit_by_id["runtime-metrics"]["category"],
+                "already_proven",
+            )
+            self.assertEqual(
                 audit_by_id["first-party-deterministic-plugin"]["category"],
                 "already_proven",
             )
@@ -162,11 +166,10 @@ class MvpAuditTests(unittest.TestCase):
                 )
 
             follow_on_ids = [issue["id"] for issue in report["follow_on_issues"]]
-            self.assertGreaterEqual(len(follow_on_ids), 2)
+            self.assertGreaterEqual(len(follow_on_ids), 1)
             self.assertEqual(
-                follow_on_ids[:2],
+                follow_on_ids[:1],
                 [
-                    "mvp-runtime-task-duration-metrics",
                     "mvp-agent-policy-profile",
                 ],
             )
