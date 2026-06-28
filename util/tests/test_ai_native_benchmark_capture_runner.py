@@ -11,6 +11,8 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CLI = ROOT / "util" / "ai_native_benchmark_capture.py"
 DOC = ROOT / "doc" / "ai-native-runtime" / "benchmark-baseline-retention.md"
+sys.path.insert(0, str(ROOT / "util"))
+import ai_native_benchmark_capture as benchmark_capture
 
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
@@ -193,6 +195,9 @@ sys.exit(0)
             self.assertEqual(probe["probe_kind"], "server_process_liveness")
             self.assertEqual(probe["synthetic_player_count"], 0)
             self.assertFalse(probe["headless_player_supported"])
+            self.assertFalse(probe["latency_proxy_supported"])
+            self.assertEqual(probe["latency_probe_kind"], "not_measured")
+            self.assertEqual(probe["join_latency_proxy_ms"]["sample_count"], 0)
             self.assertTrue(probe["server_stayed_listening"])
             self.assertGreaterEqual(probe["sample_count"], 1)
             self.assertIn("p95_sample_interval_ms", probe)
@@ -221,6 +226,34 @@ sys.exit(0)
             serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_synthetic_mapblock_workload_adds_rows_when_spawn_blocks_exist(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            world_dir = pathlib.Path(tmpdir) / "world"
+            map_db = world_dir / "map.sqlite"
+            map_db.parent.mkdir(parents=True)
+            import sqlite3
+
+            with sqlite3.connect(map_db) as conn:
+                conn.execute(
+                    "CREATE TABLE blocks ("
+                    "x INTEGER, y INTEGER, z INTEGER, data BLOB NOT NULL, "
+                    "PRIMARY KEY (x, z, y))"
+                )
+                for index in range(4):
+                    conn.execute(
+                        "INSERT INTO blocks (x, y, z, data) VALUES (?, ?, ?, ?)",
+                        (index, 0, 0, b"preexisting-mapgen-row"),
+                    )
+                conn.commit()
+
+            workload = benchmark_capture.run_synthetic_mapblock_workload(world_dir)
+
+            self.assertEqual(workload["workload_status"], "pass")
+            self.assertEqual(workload["mapblock_rows_before"], 4)
+            self.assertEqual(workload["mapblock_rows_after"], 8)
+            self.assertEqual(workload["mapblock_rows_created"], 4)
+            self.assertEqual(workload["error_count"], 0)
 
     def test_runner_records_supported_headless_player_probe(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -261,6 +294,15 @@ sys.exit(0)
             self.assertEqual(probe["completed_synthetic_player_count"], 2)
             self.assertEqual(probe["client_launch_failure_count"], 0)
             self.assertIn(probe["cleanup_status"], ("complete", "terminated"))
+            self.assertTrue(probe["latency_proxy_supported"])
+            self.assertEqual(probe["latency_probe_kind"], "headless_join_log_observation")
+            latency = probe["join_latency_proxy_ms"]
+            self.assertEqual(latency["sample_count"], 2)
+            self.assertGreaterEqual(latency["min"], 0)
+            self.assertGreaterEqual(latency["p50"], 0)
+            self.assertGreaterEqual(latency["p95"], 0)
+            self.assertGreaterEqual(latency["max"], latency["min"])
+            self.assertGreaterEqual(latency["avg"], 0)
             self.assertIn("p95_sample_interval_ms", probe)
             self.assertIn("max_sample_interval_ms", probe)
 
@@ -344,6 +386,8 @@ sys.exit(0)
             self.assertEqual(probe["connected_synthetic_player_count"], 1)
             self.assertEqual(probe["synthetic_player_count"], 1)
             self.assertEqual(probe["client_launch_failure_count"], 0)
+            self.assertTrue(probe["latency_proxy_supported"])
+            self.assertEqual(probe["join_latency_proxy_ms"]["sample_count"], 1)
             self.assertIn(7, probe["client_exit_statuses"])
 
     def test_runner_writes_comparisons_when_baselines_are_supplied(self):

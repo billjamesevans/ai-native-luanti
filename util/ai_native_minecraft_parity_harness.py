@@ -118,11 +118,12 @@ def comparison_dimensions() -> list[dict]:
             "id": "latency",
             "title": "Latency",
             "measured_metric_paths": [
-                "server_step_workload.p95_sample_interval_ms",
-                "player_load_tick_probe.p95_sample_interval_ms",
+                "player_load_tick_probe.join_latency_proxy_ms.p95",
+                "player_load_tick_probe.join_latency_proxy_ms.max",
+                "player_load_tick_probe.latency_proxy_supported",
             ],
             "target_kind": "project_target",
-            "public_safe_source": "server-step interval proxy; network RTT remains future work",
+            "public_safe_source": "headless client join-log observation proxy; network RTT remains future work",
         },
     ]
 
@@ -191,13 +192,19 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
     connected = player_probe.get("connected_synthetic_player_count")
     if connected is None:
         connected = synthetic_count
+    headless_supported = player_probe.get("headless_player_supported") is True
     true_player_load = (
         player_probe.get("probe_status") == "pass"
-        and player_probe.get("headless_player_supported") is True
+        and headless_supported
         and synthetic_count > 0
         and connected >= synthetic_count
     )
-    probe_status = "measured" if true_player_load else "proxy_only"
+    if true_player_load:
+        probe_status = "measured"
+    elif headless_supported:
+        probe_status = "measured_failure"
+    else:
+        probe_status = "proxy_only"
     facts.append(
         result(
             "player_join_liveness",
@@ -214,13 +221,25 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
         )
     )
     if not true_player_load:
+        if headless_supported:
+            title = "Fix failing synthetic player join evidence"
+            evidence = (
+                f"probe_status={player_probe.get('probe_status')} "
+                f"attempted={player_probe.get('attempted_synthetic_player_count')} "
+                f"connected={connected}"
+            )
+            next_action = "Stabilize the headless client probe and keep partial joins out of accepted baselines."
+        else:
+            title = "Replace liveness proxy with true synthetic player joins"
+            evidence = f"probe_kind={player_probe.get('probe_kind')} synthetic_player_count={synthetic_count}"
+            next_action = "Wire a public-safe headless client command into benchmark capture for this hardware lane."
         gaps.append(
             gap(
                 hardware_class,
                 "player_join_liveness",
-                "Replace liveness proxy with true synthetic player joins",
-                f"probe_kind={player_probe.get('probe_kind')} synthetic_player_count={synthetic_count}",
-                "Wire a public-safe headless client command into benchmark capture for this hardware lane.",
+                title,
+                evidence,
+                next_action,
             )
         )
 
@@ -374,7 +393,29 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
         )
     )
 
+    join_latency = player_probe.get("join_latency_proxy_ms") or {}
+    latency_ready = (
+        player_probe.get("probe_status") == "pass"
+        and player_probe.get("latency_proxy_supported") is True
+        and (join_latency.get("sample_count") or 0) > 0
+        and metric_status(join_latency.get("p95"))
+    )
+    if latency_ready:
+        latency_status = "measured"
+    elif headless_supported and player_probe.get("probe_status") != "pass":
+        latency_status = "measured_failure"
+    else:
+        latency_status = "proxy_only"
     latency_metrics = {
+        "latency_probe_kind": player_probe.get("latency_probe_kind"),
+        "latency_proxy_supported": player_probe.get("latency_proxy_supported"),
+        "join_latency_proxy_ms": {
+            "sample_count": join_latency.get("sample_count"),
+            "p50": join_latency.get("p50"),
+            "p95": join_latency.get("p95"),
+            "max": join_latency.get("max"),
+            "avg": join_latency.get("avg"),
+        },
         "server_step_p95_sample_interval_ms": workload.get("p95_sample_interval_ms"),
         "server_step_max_sample_interval_ms": workload.get("max_sample_interval_ms"),
         "player_probe_p95_sample_interval_ms": player_probe.get("p95_sample_interval_ms"),
@@ -383,20 +424,39 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
     facts.append(
         result(
             "latency",
-            "proxy_only",
+            latency_status,
             latency_metrics,
-            "server-step interval proxy; no network RTT benchmark yet",
+            (
+                "headless join-log observation latency proxy"
+                if latency_ready
+                else "server-step interval proxy; no join latency benchmark yet"
+            ),
         )
     )
-    gaps.append(
-        gap(
-            hardware_class,
-            "latency",
-            "Add true client/server latency evidence",
-            "network_rtt_ms is not measured by accepted clean-profile capture",
-            "Add a public-safe headless client latency probe after synthetic player joins are stable.",
+    if not latency_ready:
+        if latency_status == "measured_failure":
+            title = "Fix failing headless latency evidence"
+            evidence = (
+                f"probe_status={player_probe.get('probe_status')} "
+                f"latency_proxy_supported={player_probe.get('latency_proxy_supported')}"
+            )
+            next_action = "Stabilize synthetic player joins before promoting latency evidence."
+        else:
+            title = "Add headless join-latency evidence"
+            evidence = (
+                f"latency_probe_kind={player_probe.get('latency_probe_kind')} "
+                f"latency_proxy_supported={player_probe.get('latency_proxy_supported')}"
+            )
+            next_action = "Run benchmark capture with a public-safe headless client command for this hardware lane."
+        gaps.append(
+            gap(
+                hardware_class,
+                "latency",
+                title,
+                evidence,
+                next_action,
+            )
         )
-    )
 
     return facts, gaps
 
