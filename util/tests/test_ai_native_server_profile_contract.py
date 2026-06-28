@@ -10,6 +10,7 @@ GAME_CONF = PROFILE_DIR / "game.conf"
 README = PROFILE_DIR / "README.md"
 BASE_MOD = PROFILE_DIR / "mods" / "ai_runtime_base" / "init.lua"
 DOC = ROOT / "doc" / "ai-native-runtime" / "non-devtest-server-profile.md"
+CAPABILITY_PROFILES_DOC = ROOT / "doc" / "ai-native-runtime" / "agent-capability-profiles.md"
 RUNTIME_README = ROOT / "doc" / "ai-native-runtime" / "README.md"
 GITIGNORE = ROOT / ".gitignore"
 CMAKE = ROOT / "CMakeLists.txt"
@@ -56,6 +57,7 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
         base_mod = BASE_MOD.read_text(encoding="utf-8")
 
         self.assertIn("core.ai_agent_plugin.configure", base_mod)
+        self.assertIn('capability_profile = "clean"', base_mod)
         self.assertIn("capabilities = {", base_mod)
         for capability in (
             "world.read",
@@ -110,6 +112,26 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
             self.assertIn(phrase, body)
         self.assertIn("non-devtest-server-profile.md", readme)
         self.assertNotRegex(body, r"\bdevtest\b|testnodes:", re.I)
+        self.assertNotRegex(body, PRIVATE_PATTERNS)
+
+    def test_capability_profiles_are_documented_and_public_safe(self):
+        self.assertTrue(CAPABILITY_PROFILES_DOC.is_file(), f"missing {CAPABILITY_PROFILES_DOC}")
+        body = CAPABILITY_PROFILES_DOC.read_text(encoding="utf-8")
+        readme = RUNTIME_README.read_text(encoding="utf-8")
+
+        for phrase in (
+            "Clean Profile",
+            "Operator Profile",
+            "Family-Plugin Profile",
+            "capability_profile = \"clean\"",
+            "capability_profile = \"operator\"",
+            "admin.override",
+            "audit",
+            "explicit opt-in",
+            "outside the core engine fork",
+        ):
+            self.assertIn(phrase, body)
+        self.assertIn("agent-capability-profiles.md", readme)
         self.assertNotRegex(body, PRIVATE_PATTERNS)
 
 

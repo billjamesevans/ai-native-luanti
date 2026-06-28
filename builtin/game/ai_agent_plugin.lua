@@ -6,16 +6,9 @@ local player_task_ids = {}
 local player_entity_ids = {}
 local task_sequence = 0
 local model_adapter = nil
-local default_capabilities = {
-	["world.read"] = true,
-	["world.place"] = true,
-	["world.remove"] = true,
-	["entity.spawn"] = true,
-	["entity.control"] = true,
-	["task.cancel"] = true,
-	["http.llm"] = true,
-}
+local default_capabilities = {}
 local settings = {
+	capability_profile = nil,
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
 	agent_entity_name = "ai_demo_benchmark:helper",
@@ -90,6 +83,11 @@ end
 
 function plugin.configure(options)
 	options = options or {}
+	if options.capability_profile then
+		assert(type(options.capability_profile) == "string"
+			and options.capability_profile ~= "", "Capability profile must be a non-empty string")
+		settings.capability_profile = options.capability_profile
+	end
 	if options.light_node then
 		settings.light_node = options.light_node
 	end
@@ -128,6 +126,7 @@ function plugin.ensure_player_agent(name)
 		plugin = "ai_agent_plugin",
 		capabilities = table.copy(settings.capabilities),
 		limits = {
+			capability_profile = settings.capability_profile,
 			max_nodes_per_step = settings.max_lights,
 			max_entities = 1,
 			max_entity_move_distance = settings.max_entity_move_distance,
