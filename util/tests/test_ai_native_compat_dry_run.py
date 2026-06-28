@@ -236,6 +236,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 "max_entity_definitions": 5,
                 "max_node_writes_total": 0,
                 "max_node_writes_per_step": 0,
+                "max_mapblock_churn_total": 0,
                 "max_manual_review_items": 10,
                 "max_wall_time_ms": 5000,
             },
@@ -300,6 +301,9 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 self.assertEqual(definition["source_action"]["action"], action)
                 self.assertEqual(definition["source_action"]["status"], report["planned_actions"][index]["status"])
                 self.assertIn("import.assets", definition["required_capabilities"])
+                if action == "import_structure":
+                    self.assertIn("world.place", definition["required_capabilities"])
+                    self.assertIn("world.batch", definition["required_capabilities"])
                 self.assertEqual(definition["budget"]["max_steps_per_step"], 1)
                 for budget_key, budget_value in request["budget"].items():
                     self.assertEqual(definition["budget"][budget_key], budget_value)
@@ -309,9 +313,92 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 self.assertEqual(definition["rollback"]["world_mutating"], requires_safe_world_ops)
                 self.assertTrue(definition["inert"])
                 self.assertEqual(definition["queue_state"], "not_queued")
+                self.assertEqual(definition["runtime_handoff"]["status"], "staging_noop")
+                self.assertFalse(definition["runtime_handoff"]["mutation_enabled"])
+                self.assertEqual(definition["calibrated_cost"]["node_writes"], 0)
+                self.assertIn("estimated_wall_time_ms", definition["calibrated_cost"])
+                self.assertEqual(definition["provenance"]["report_id"], "synthetic-report")
+                self.assertEqual(definition["provenance"]["dry_run_action"], action)
                 self.assertNotIn("steps", definition)
 
         self.assertNotIn("payload", json.dumps(task_definitions).lower())
+
+    def test_structure_apply_prototype_preserves_cost_and_provenance(self):
+        report = build_report(self.fixture_root / "structure" / "example.mcstructure")
+        action_index = next(
+            index for index, action in enumerate(report["planned_actions"])
+            if action["action"] == "import_structure"
+        )
+        request = self.build_apply_request(report, action_indexes=(action_index,))
+        request["budget"].update({
+            "max_node_writes_total": 1,
+            "max_node_writes_per_step": 1,
+            "max_mapblock_churn_total": 1,
+            "max_manual_review_items": 2,
+            "max_wall_time_ms": 5000,
+        })
+        request["rollback_policy"]["policy"] = "manifest_only"
+
+        task_definitions = build_apply_task_definitions(report, request)
+        summary = build_apply_plan(report, request)
+
+        self.assertEqual(len(task_definitions), 1)
+        definition = task_definitions[0]
+        self.assertEqual(definition["label"], "compat.structure.place")
+        self.assertEqual(definition["mutation_class"], "world_mutating")
+        self.assertTrue(definition["requires_safe_world_ops"])
+        self.assertTrue(definition["inert"])
+        self.assertEqual(definition["queue_state"], "not_queued")
+        self.assertEqual(definition["runtime_handoff"]["status"], "staging_noop")
+        self.assertFalse(definition["runtime_handoff"]["mutation_enabled"])
+        self.assertIn("import.assets", definition["required_capabilities"])
+        self.assertIn("world.place", definition["required_capabilities"])
+        self.assertIn("world.batch", definition["required_capabilities"])
+        self.assertEqual(definition["rollback"]["policy"], "manifest_only")
+        self.assertTrue(definition["rollback"]["metadata_required"])
+        self.assertEqual(definition["calibrated_cost"]["node_writes"], 1)
+        self.assertEqual(definition["calibrated_cost"]["mapblock_churn"], 1)
+        self.assertEqual(definition["calibrated_cost"]["manual_review_items"], 2)
+        self.assertGreater(definition["calibrated_cost"]["estimated_wall_time_ms"], 0)
+        self.assertEqual(definition["provenance"]["source_class"], "structure")
+        self.assertEqual(
+            definition["provenance"]["source_reference"]["inventory_hash"],
+            report["source"]["content_hashes"][0]["value"],
+        )
+        self.assertEqual(summary["status"], "planned")
+        self.assertEqual(summary["queued_tasks"], [])
+        self.assertFalse(summary["safety"]["world_mutation_executed"])
+        self.assertEqual(summary["mutation_cost_actual"]["node_writes"], 0)
+        self.assertEqual(validate_apply_summary(summary), [])
+
+    def test_structure_apply_rejects_over_budget_request(self):
+        report = build_report(self.fixture_root / "structure" / "example.mcstructure")
+        action_index = next(
+            index for index, action in enumerate(report["planned_actions"])
+            if action["action"] == "import_structure"
+        )
+        request = self.build_apply_request(report, action_indexes=(action_index,))
+        request["rollback_policy"]["policy"] = "manifest_only"
+
+        with self.assertRaisesRegex(ValueError, "budget.max_node_writes_total"):
+            build_apply_task_definitions(report, request)
+
+    def test_structure_apply_rejects_no_mutation_rollback_policy(self):
+        report = build_report(self.fixture_root / "structure" / "example.mcstructure")
+        action_index = next(
+            index for index, action in enumerate(report["planned_actions"])
+            if action["action"] == "import_structure"
+        )
+        request = self.build_apply_request(report, action_indexes=(action_index,))
+        request["budget"].update({
+            "max_node_writes_total": 1,
+            "max_node_writes_per_step": 1,
+            "max_mapblock_churn_total": 1,
+            "max_manual_review_items": 2,
+        })
+
+        with self.assertRaisesRegex(ValueError, "manifest_only or snapshot"):
+            build_apply_task_definitions(report, request)
 
     def test_apply_plan_builds_no_mutation_summary(self):
         report = build_report(self.fixture_root / "bedrock_pack")

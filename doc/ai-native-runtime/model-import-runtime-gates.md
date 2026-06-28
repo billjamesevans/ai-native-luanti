@@ -70,5 +70,5 @@ Both operations are designed for queued runtime steps:
 - No provider API keys or provider prompts.
 - No copied assets.
 - No private worlds or private player data.
-- No compatibility apply phase.
+- No world-mutating compatibility apply execution.
 - No proprietary Minecraft behavior.
