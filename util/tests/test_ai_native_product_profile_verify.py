@@ -61,11 +61,53 @@ class AIProductProfileVerifierTests(unittest.TestCase):
             for entry in inventory
             if entry["loaded_by_default_product_profile"] is True
         }
-        self.assertEqual(default_loaded, {"ai_runtime_game", "ai_runtime_base", "ai_operator_status"})
+        self.assertEqual(
+            default_loaded,
+            {
+                "ai_runtime_game",
+                "ai_runtime_base",
+                "ai_operator_status",
+                "ai_operator_task_control",
+            },
+        )
         for entry in inventory:
             if entry["category"] != "product_runtime" and entry["name"] != "ai_runtime_base":
                 self.assertFalse(entry["loaded_by_default_product_profile"], entry)
                 self.assertTrue(entry["requires_explicit_dev_or_test_lane"], entry)
+
+    def test_manifest_declares_required_clean_runtime_command_surfaces(self):
+        manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+
+        surfaces = {surface["name"]: surface for surface in manifest["required_runtime_surfaces"]}
+
+        self.assertEqual(
+            set(surfaces),
+            {"ai_operator_status", "ai_operator_task_control"},
+        )
+        self.assertEqual(
+            surfaces["ai_operator_status"],
+            {
+                "name": "ai_operator_status",
+                "source_file": "builtin/game/ai_operator_status.lua",
+                "command": "ai_runtime_operator_status",
+                "privilege": "server",
+                "mutation_scope": "read_only_status",
+                "loaded_by_default_product_profile": True,
+                "public_safe_output_required": True,
+            },
+        )
+        self.assertEqual(
+            surfaces["ai_operator_task_control"],
+            {
+                "name": "ai_operator_task_control",
+                "source_file": "builtin/game/ai_operator_task_control.lua",
+                "command": "ai_runtime_operator_task_control",
+                "privilege": "server",
+                "mutation_scope": "receipt_gated_task_queue_only",
+                "loaded_by_default_product_profile": True,
+                "public_safe_output_required": True,
+            },
+        )
 
     def test_builtin_fixture_modules_require_explicit_dev_settings_before_load(self):
         init_lua = BUILTIN_INIT.read_text(encoding="utf-8")
@@ -109,6 +151,23 @@ class AIProductProfileVerifierTests(unittest.TestCase):
         self.assertEqual(surfaces["ai_demo_entity_benchmark"]["default_enabled"], False)
         self.assertEqual(surfaces["ai_runtime_smoke"]["status"], "gated")
         self.assertEqual(surfaces["ai_demo_entity_benchmark"]["status"], "gated")
+        runtime_surfaces = {surface["name"]: surface for surface in report["required_runtime_surfaces"]}
+        self.assertEqual(
+            {
+                name: surface["status"]
+                for name, surface in runtime_surfaces.items()
+            },
+            {
+                "ai_operator_status": "present",
+                "ai_operator_task_control": "present",
+            },
+        )
+        for surface in runtime_surfaces.values():
+            self.assertTrue(surface["loaded_by_default_product_profile"])
+            self.assertTrue(surface["command_registered"])
+            self.assertTrue(surface["server_privilege_required"])
+            self.assertTrue(surface["public_safe_output_required"])
+        self.assertTrue(report["safety"]["runtime_surfaces_available"])
 
     def test_cli_writes_machine_readable_report(self):
         verifier = load_verifier_module()

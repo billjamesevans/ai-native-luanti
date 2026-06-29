@@ -18,6 +18,11 @@ PRIVATE_PATTERNS = re.compile(
     r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|/Users/",
     re.I,
 )
+RUNTIME_SOURCE_PRIVATE_PATTERNS = re.compile(
+    r"192\.168(?:\.\d{1,3}){2}|(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|"
+    r"/Users/[A-Za-z0-9._-]+",
+    re.I,
+)
 
 
 def _read_json(path):
@@ -63,6 +68,50 @@ def _surface_status(root, surface):
     }
 
 
+def _runtime_surface_status(root, surface):
+    source_file = root / surface["source_file"]
+    init_file = root / BUILTIN_INIT
+    body = source_file.read_text(encoding="utf-8") if source_file.is_file() else ""
+    init_body = init_file.read_text(encoding="utf-8") if init_file.is_file() else ""
+    module_name = pathlib.Path(surface["source_file"]).name
+    load_expr = f'dofile(gamepath .. "{module_name}")'
+    command_expr = f'core.register_chatcommand("{surface["command"]}"'
+    privilege = surface["privilege"]
+    privilege_re = re.compile(r"privs\s*=\s*\{[^}]*\b" + re.escape(privilege) + r"\s*=\s*true")
+    loaded_by_default = load_expr in init_body
+    command_registered = command_expr in body
+    server_privilege_required = privilege_re.search(body) is not None
+    public_safe_source = RUNTIME_SOURCE_PRIVATE_PATTERNS.search(body) is None
+    public_safe_required = surface.get("public_safe_output_required") is True
+    status = "present"
+    if not (
+        source_file.is_file()
+        and loaded_by_default
+        and command_registered
+        and server_privilege_required
+        and public_safe_source
+        and public_safe_required
+        and surface.get("loaded_by_default_product_profile") is True
+    ):
+        status = "violation"
+    return {
+        "name": surface["name"],
+        "source_file": surface["source_file"],
+        "command": surface["command"],
+        "privilege": privilege,
+        "mutation_scope": surface["mutation_scope"],
+        "loaded_by_default_product_profile": loaded_by_default
+        and surface.get("loaded_by_default_product_profile") is True,
+        "public_safe_output_required": public_safe_required,
+        "status": status,
+        "source_file_present": source_file.is_file(),
+        "module_loaded_by_default": loaded_by_default,
+        "command_registered": command_registered,
+        "server_privilege_required": server_privilege_required,
+        "public_safe_source": public_safe_source,
+    }
+
+
 def _profile_private_matches(root):
     matches = []
     for path in sorted((root / PROFILE_DIR).rglob("*")):
@@ -80,6 +129,10 @@ def build_report(root):
     actual_mods = _profile_mods(root)
     expected_mods = sorted(manifest["product_mods"])
     surfaces = [_surface_status(root, surface) for surface in manifest["explicit_dev_surfaces"]]
+    runtime_surfaces = [
+        _runtime_surface_status(root, surface)
+        for surface in manifest.get("required_runtime_surfaces", [])
+    ]
     startup_inventory = manifest["startup_inventory"]
 
     violations = []
@@ -95,6 +148,13 @@ def build_report(root):
                 "kind": "dev_surface_not_gated",
                 "surface": surface["name"],
                 "setting": surface["setting"],
+            })
+    for surface in runtime_surfaces:
+        if surface["status"] != "present":
+            violations.append({
+                "kind": "required_runtime_surface_missing_or_invalid",
+                "surface": surface["name"],
+                "command": surface["command"],
             })
     private_matches = _profile_private_matches(root)
     if private_matches:
@@ -126,6 +186,7 @@ def build_report(root):
             "product_mods": actual_mods,
         },
         "startup_inventory": startup_inventory,
+        "required_runtime_surfaces": runtime_surfaces,
         "explicit_dev_surfaces": surfaces,
         "test_only_files": manifest["test_only_files"],
         "test_only_paths": manifest["test_only_paths"],
@@ -146,6 +207,8 @@ def build_report(root):
                     "unit_test_helper",
                 }
             ),
+            "runtime_surfaces_available": bool(runtime_surfaces)
+            and all(surface["status"] == "present" for surface in runtime_surfaces),
         },
     }
 
