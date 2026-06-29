@@ -67,9 +67,14 @@ Implemented deterministic commands:
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `task <task_id>`, `task status <task_id>`: returns one remembered
   player-owned plugin task by id without exposing unrelated runtime tasks.
+- `pending`, `pending plan`, `plan`, `review plan`: returns the current
+  player-owned pending build or repair approval without queuing mutation.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
 - `cancel <task_id>`, `stop <task_id>`: cancels one remembered player-owned
   plugin task and reports before/after status.
+- `discard`, `discard plan`, `reject`, `deny`, `discard <approval_id>`:
+  clears the current pending approval before mutation. Targeted discard tokens
+  must match the pending action or approval id.
 - `approve`, `approve build`, `approve repair`, `approve <approval_id>`:
   queues the latest pending build or repair plan after the player has seen the
   preview. Approval ids are emitted by the preview/chat response so players can
@@ -104,7 +109,9 @@ Targeted task and approval commands are deliberately scoped to remembered
 player-owned plugin tasks and the current player's pending approval. They do not
 provide a general runtime task browser, do not bypass `core.cancel_ai_task`
 owner checks, and do not approve mutation without the same rollback-backed build
-or repair task path.
+or repair task path. Pending-plan review and discard are read-only/player-local:
+they expose only the current pending approval summary and can only clear that
+player's unqueued build or repair plan before mutation.
 
 Unknown prompts go to the configured model adapter. The adapter boundary is explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
 
@@ -196,8 +203,9 @@ payloads, or raw asset payloads are blocked with `adapter_payload_rejected`.
 - Come remains a one-shot bounded helper-entity move.
 - Build remains small lights and marker tasks, not a showcase structure system.
 - Repair only applies configured repair rules around the requested target position.
-- Build and repair commands now create pending previews first; explicit
-  approval queues the mutation. Richer plan editing remains a later slice.
+- Build and repair commands now create pending previews first; players can
+  review or discard the current pending plan, and explicit approval queues the
+  mutation. Richer parameter editing remains a later slice.
 - Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
 - Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
 - Importer behavior is dry-run-only and depends on an operator-supplied plan;
