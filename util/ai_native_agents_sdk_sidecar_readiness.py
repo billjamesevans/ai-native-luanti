@@ -103,7 +103,8 @@ def _tool_powers_safe(tool_powers: Any) -> bool:
         for power in tool_powers
         if isinstance(power, dict)
     }
-    if "WebSearchTool" not in names or "summarize_runtime_capabilities" not in names:
+    required = {"WebSearchTool", "summarize_runtime_capabilities", "classify_world_action"}
+    if not required.issubset(names):
         return False
     for power in tool_powers:
         if not isinstance(power, dict):

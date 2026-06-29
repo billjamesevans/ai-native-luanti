@@ -40,6 +40,7 @@ The harness defines these comparison dimensions:
 - world-edit throughput
 - persistence
 - mod/plugin ergonomics
+- agent tool powers
 - operator visibility
 - recovery
 - memory
@@ -66,6 +67,7 @@ not measured Minecraft internals:
 | world-edit throughput | at least 1 rollback-backed node write, at least 1 rollback record, max 16 writes per step, 0 warnings, 0 errors |
 | persistence | map SQLite bytes are nonzero and at least 1 rollback record exists |
 | mod/plugin ergonomics | first-party agent loop and `ai_runtime_scale_gate` pass with at least 2 queued/completed agent tasks, and compatibility inventory discovery is ready with at least 1 source and 1 planned action |
+| agent tool powers | Agents SDK sidecar readiness passes, `tool_powers` declares `summarize_runtime_capabilities`, `classify_world_action`, and `WebSearchTool`, every listed power has `direct_world_mutation=false`, and `world_mutation_authority=luanti` |
 | operator visibility | operator status, task control, and receipt-gated task control are present |
 | recovery | at least 1 rollback record and task-control actions do not mutate the world |
 | memory | at least 2 RSS samples and `max_rss_kb <= 262144` |
@@ -78,7 +80,7 @@ the alpha bar, relaxes an unrealistic threshold, or adds a new measurement path.
 Target changes must not cite proprietary Minecraft code, server jars,
 marketplace assets, private worlds, or private benchmark captures.
 
-Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, headless join-log latency proxies when a synthetic client command is supplied, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, persistence and rollback metadata, operator status/task-control probes, memory sampling, and bounded process CPU sampling.
+Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, headless join-log latency proxies when a synthetic client command is supplied, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, persistence and rollback metadata, operator status/task-control probes, memory sampling, bounded process CPU sampling, and the Agents SDK sidecar readiness report.
 
 The scenarios are safe to run locally and on the Pi side-by-side service. They use disposable `ai_runtime` worlds, public-safe synthetic clients and fixtures, rollback-backed mutation reports, and operator command probes. They do not require a private world or proprietary Minecraft assets.
 
@@ -92,6 +94,14 @@ First-party agent-loop proof comes from `comparison_summary.first_party_agent_pr
 
 Compatibility import inventory proof comes from `local/benchmarks/compatibility-import-inventory-discovery-report.json`. The harness treats it as plugin evidence only when the report is `ready_for_import_preview`, remains dry-run-only, records no copied assets or world mutation, redacts source paths, rejects raw/private payloads, and avoids proprietary Minecraft code, server jars, and closed gameplay data.
 
+Agent tool-power proof comes from `local/benchmarks/agents-sdk-sidecar-readiness.json`.
+The harness treats it as first-party plugin evidence only when the sidecar reports
+passing readiness, declares `tool_powers` for deterministic function tools and
+hosted web lookup, and proves that no sidecar tool directly mutates the Luanti
+world. Agents may reason, call tools, and look up current public information
+through the Agents SDK sidecar, but world edits still have to return through the
+engine task preview, approval, rollback, and audit path.
+
 ## Public-Safe Source Policy
 
 Allowed inputs:
@@ -100,6 +110,7 @@ Allowed inputs:
 - generic demo entity fixtures
 - rollback-backed synthetic mutation workloads
 - local accepted benchmark reports under `local/benchmarks`
+- Agents SDK sidecar readiness reports
 - operator-supplied external references when they are recorded as references only
 
 Not allowed:
