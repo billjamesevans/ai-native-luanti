@@ -1,0 +1,348 @@
+{
+  "generated_at": "2026-06-29T09:03:27Z",
+  "inventory_input_format": {
+    "accepted_source_classes": [
+      "java_resource_pack",
+      "bedrock_resource_pack",
+      "bedrock_behavior_pack",
+      "luanti_mod",
+      "structure",
+      "world"
+    ],
+    "path_policy": "package_relative_or_redacted",
+    "payload_policy": "metadata_and_references_only",
+    "required_capabilities": [
+      "import.assets"
+    ]
+  },
+  "mode": "import_inventory_discovery",
+  "readiness": {
+    "blocking_reasons": [],
+    "compatibility_import_inventory_ready": true
+  },
+  "report_version": 1,
+  "root": {
+    "path_policy": "redacted",
+    "source_count": 5
+  },
+  "safety": {
+    "dry_run_only": true,
+    "no_assets_copied": true,
+    "no_private_paths": true,
+    "no_raw_payloads": true,
+    "no_world_mutation": true,
+    "source_paths_redacted": true,
+    "uses_copied_server_jars_or_game_data": false,
+    "uses_proprietary_minecraft_code_or_assets": false
+  },
+  "sources": [
+    {
+      "estimated_world_mutations": {
+        "entity_definitions": 0,
+        "manual_review_items": 1,
+        "mapblock_churn": 0,
+        "media_files": 1,
+        "node_writes": 0
+      },
+      "inventory_classification_counts": {
+        "blocked": 1,
+        "partial": 0,
+        "skipped": 0,
+        "supported": 1,
+        "unsupported": 0
+      },
+      "inventory_count": 2,
+      "license_status": "user_supplied",
+      "path_policy": "external_reference",
+      "planned_actions": [
+        {
+          "action": "copy_asset_reference",
+          "mutation_class": "metadata_only",
+          "required_capabilities": [
+            "import.assets"
+          ],
+          "requires_safe_world_ops": false,
+          "status": "partial"
+        }
+      ],
+      "planned_actions_count": 1,
+      "provenance": {
+        "content_hash": "66f5abe6cdcedd04441e5a0827850b9d2894c78b726ad2d58c0e8ad8556667c9",
+        "path_policy": "external_reference",
+        "redacted_id": "source:1",
+        "report_path": "001-bedrock_asset_pack.json"
+      },
+      "report_path": "001-bedrock_asset_pack.json",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "risk_level": "low",
+      "section_status_counts": {
+        "blocked": 0,
+        "partial": 1,
+        "skipped": 0,
+        "supported": 1,
+        "unsupported": 0
+      },
+      "source_class": "bedrock_resource_pack",
+      "source_id": "bedrock_asset_pack",
+      "status": "partial",
+      "unsupported_feature_count": 0
+    },
+    {
+      "estimated_world_mutations": {
+        "entity_definitions": 0,
+        "manual_review_items": 1,
+        "mapblock_churn": 0,
+        "media_files": 1,
+        "node_writes": 0
+      },
+      "inventory_classification_counts": {
+        "blocked": 1,
+        "partial": 0,
+        "skipped": 0,
+        "supported": 1,
+        "unsupported": 1
+      },
+      "inventory_count": 3,
+      "license_status": "user_supplied",
+      "path_policy": "external_reference",
+      "planned_actions": [
+        {
+          "action": "copy_asset_reference",
+          "mutation_class": "metadata_only",
+          "required_capabilities": [
+            "import.assets"
+          ],
+          "requires_safe_world_ops": false,
+          "status": "partial"
+        }
+      ],
+      "planned_actions_count": 1,
+      "provenance": {
+        "content_hash": "d45a666ebb5be8a130b33f2ca8a9f5e3d206bd55dcc5563cd22c5f9168c45f71",
+        "path_policy": "external_reference",
+        "redacted_id": "source:2",
+        "report_path": "002-java_pack.json"
+      },
+      "report_path": "002-java_pack.json",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "risk_level": "low",
+      "section_status_counts": {
+        "blocked": 0,
+        "partial": 1,
+        "skipped": 0,
+        "supported": 1,
+        "unsupported": 0
+      },
+      "source_class": "java_resource_pack",
+      "source_id": "java_pack",
+      "status": "partial",
+      "unsupported_feature_count": 0
+    },
+    {
+      "estimated_world_mutations": {
+        "entity_definitions": 0,
+        "manual_review_items": 0,
+        "mapblock_churn": 0,
+        "media_files": 0,
+        "node_writes": 0
+      },
+      "inventory_classification_counts": {
+        "blocked": 0,
+        "partial": 0,
+        "skipped": 0,
+        "supported": 2,
+        "unsupported": 0
+      },
+      "inventory_count": 2,
+      "license_status": "user_supplied",
+      "path_policy": "external_reference",
+      "planned_actions": [
+        {
+          "action": "skip_feature",
+          "mutation_class": "none",
+          "required_capabilities": [
+            "import.assets"
+          ],
+          "requires_safe_world_ops": false,
+          "status": "skipped"
+        }
+      ],
+      "planned_actions_count": 1,
+      "provenance": {
+        "content_hash": "c0cb0ce77f4641d049bad2ba55d1c4293b8da0c5413e0fe9b4ec2ab517210d79",
+        "path_policy": "external_reference",
+        "redacted_id": "source:3",
+        "report_path": "003-luanti_mod.json"
+      },
+      "report_path": "003-luanti_mod.json",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "risk_level": "low",
+      "section_status_counts": {
+        "blocked": 0,
+        "partial": 0,
+        "skipped": 0,
+        "supported": 1,
+        "unsupported": 0
+      },
+      "source_class": "luanti_mod",
+      "source_id": "luanti_mod",
+      "status": "supported",
+      "unsupported_feature_count": 0
+    },
+    {
+      "estimated_world_mutations": {
+        "entity_definitions": 0,
+        "manual_review_items": 4,
+        "mapblock_churn": 3,
+        "media_files": 0,
+        "node_writes": 5
+      },
+      "inventory_classification_counts": {
+        "blocked": 1,
+        "partial": 0,
+        "skipped": 0,
+        "supported": 0,
+        "unsupported": 0
+      },
+      "inventory_count": 1,
+      "license_status": "user_supplied",
+      "path_policy": "external_reference",
+      "planned_actions": [
+        {
+          "action": "import_structure",
+          "mutation_class": "world_mutating",
+          "required_capabilities": [
+            "import.assets"
+          ],
+          "requires_safe_world_ops": true,
+          "status": "partial"
+        },
+        {
+          "action": "skip_feature",
+          "mutation_class": "none",
+          "required_capabilities": [
+            "import.assets"
+          ],
+          "requires_safe_world_ops": false,
+          "status": "skipped"
+        }
+      ],
+      "planned_actions_count": 2,
+      "provenance": {
+        "content_hash": "ce0ceddfded082d0da3de382736d95ae365704a30593611dc6c42b2b627be3ac",
+        "path_policy": "external_reference",
+        "redacted_id": "source:4",
+        "report_path": "004-open_platform.ai-schematic-preflight.json.json"
+      },
+      "report_path": "004-open_platform.ai-schematic-preflight.json.json",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "risk_level": "high",
+      "section_status_counts": {
+        "blocked": 0,
+        "partial": 1,
+        "skipped": 0,
+        "supported": 0,
+        "unsupported": 0
+      },
+      "source_class": "structure",
+      "source_id": "open_platform.ai-schematic-preflight.json",
+      "status": "partial",
+      "unsupported_feature_count": 2
+    },
+    {
+      "estimated_world_mutations": {
+        "entity_definitions": 0,
+        "manual_review_items": 2,
+        "mapblock_churn": 0,
+        "media_files": 0,
+        "node_writes": 0
+      },
+      "inventory_classification_counts": {
+        "blocked": 1,
+        "partial": 0,
+        "skipped": 0,
+        "supported": 0,
+        "unsupported": 0
+      },
+      "inventory_count": 1,
+      "license_status": "user_supplied",
+      "path_policy": "external_reference",
+      "planned_actions": [
+        {
+          "action": "skip_feature",
+          "mutation_class": "none",
+          "required_capabilities": [
+            "import.assets"
+          ],
+          "requires_safe_world_ops": false,
+          "status": "skipped"
+        }
+      ],
+      "planned_actions_count": 1,
+      "provenance": {
+        "content_hash": "413593589c266f24a46503445012d3f674bd58c4a766e3e9c5bfbec7b144e48e",
+        "path_policy": "external_reference",
+        "redacted_id": "source:5",
+        "report_path": "005-world_export.json"
+      },
+      "report_path": "005-world_export.json",
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "risk_level": "high",
+      "section_status_counts": {
+        "blocked": 0,
+        "partial": 1,
+        "skipped": 0,
+        "supported": 0,
+        "unsupported": 0
+      },
+      "source_class": "world",
+      "source_id": "world_export",
+      "status": "blocked",
+      "unsupported_feature_count": 1
+    }
+  ],
+  "status": "ready_for_import_preview",
+  "summary": {
+    "blocking_reasons": [],
+    "by_source_class": {
+      "bedrock_resource_pack": 1,
+      "java_resource_pack": 1,
+      "luanti_mod": 1,
+      "structure": 1,
+      "world": 1
+    },
+    "compatibility_import_inventory_ready": true,
+    "inventory_classification_counts": {
+      "blocked": 4,
+      "partial": 0,
+      "skipped": 0,
+      "supported": 4,
+      "unsupported": 1
+    },
+    "inventory_items_total": 9,
+    "manual_review_items_total": 8,
+    "planned_actions_total": 6,
+    "required_capabilities": [
+      "import.assets"
+    ],
+    "source_status_counts": {
+      "blocked": 1,
+      "partial": 3,
+      "skipped": 0,
+      "supported": 1,
+      "unsupported": 0
+    },
+    "sources_total": 5,
+    "unsupported_features_total": 3
+  }
+}

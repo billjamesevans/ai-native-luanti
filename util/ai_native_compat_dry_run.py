@@ -9,12 +9,14 @@ import hashlib
 import json
 import math
 import pathlib
+import re
 import sys
 import zipfile
 
 
 REPORT_VERSION = 1
 BATCH_INVENTORY_QUEUE_VERSION = 1
+IMPORT_INVENTORY_DISCOVERY_REPORT_VERSION = 1
 APPLY_REQUEST_VERSION = 1
 APPLY_SUMMARY_VERSION = 1
 ADAPTER_APPLY_SMOKE_VERSION = 1
@@ -243,6 +245,26 @@ PLANNED_ACTION_TASK_MAPPINGS = {
         "requires_safe_world_ops": False,
     },
 }
+DISCOVERY_CLASSIFICATIONS = ("supported", "partial", "unsupported", "skipped", "blocked")
+DISCOVERY_ACCEPTED_SOURCE_CLASSES = (
+    "java_resource_pack",
+    "bedrock_resource_pack",
+    "bedrock_behavior_pack",
+    "luanti_mod",
+    "structure",
+    "world",
+)
+PRIVATE_DISCOVERY_PATTERNS = re.compile(
+    r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
+    r"/Users/|/opt/|asset_payload|raw_asset_payload|copied_protected_content|"
+    r"family_voxelibre",
+    re.I,
+)
+DISCOVERY_READY_BLOCKERS = (
+    "private_source_reference_rejected",
+    "source_classification_failed",
+    "empty_inventory_root",
+)
 
 
 def _utc_now():
@@ -1400,6 +1422,335 @@ def build_batch_inventory_queue(root, reports_dir=None):
             "no_private_paths": True,
         },
     }
+
+
+def _zero_discovery_counts():
+    return {name: 0 for name in DISCOVERY_CLASSIFICATIONS}
+
+
+def _inventory_discovery_classification(entry):
+    classification = entry.get("classification")
+    if classification == "mapped":
+        return "supported"
+    if classification == "blocked":
+        return "blocked"
+    if classification in {"unsupported", "unknown"}:
+        return "unsupported"
+    return "partial"
+
+
+def _source_discovery_status(report):
+    source_class = report["source"]["source_class"]
+    if source_class == "unknown":
+        return "blocked"
+    if source_class == "world":
+        return "blocked"
+    if any(item.get("severity") == "error" for item in report["unsupported_features"]):
+        return "blocked"
+
+    inventory_counts = _zero_discovery_counts()
+    for entry in report["source"]["inventory"]:
+        inventory_counts[_inventory_discovery_classification(entry)] += 1
+    if inventory_counts["blocked"] or inventory_counts["unsupported"]:
+        return "partial"
+    if report["summary"]["estimated_world_mutations"]["manual_review_items"] > 0:
+        return "partial"
+    if any(section.get("status") == "partial" for section in report["sections"]):
+        return "partial"
+    if report["source"]["inventory"]:
+        return "supported"
+    if all(action["action"] == "skip_feature" for action in report["planned_actions"]):
+        return "skipped"
+    return "unsupported"
+
+
+def _planned_action_discovery_summary(action):
+    mapping = PLANNED_ACTION_TASK_MAPPINGS.get(action.get("action"), {})
+    return {
+        "action": action.get("action"),
+        "status": action.get("status"),
+        "mutation_class": mapping.get("mutation_class", "unknown"),
+        "requires_safe_world_ops": mapping.get("requires_safe_world_ops", False),
+        "required_capabilities": list(action.get("required_capabilities") or []),
+    }
+
+
+def _source_classification_counts(report):
+    counts = _zero_discovery_counts()
+    for entry in report["source"]["inventory"]:
+        counts[_inventory_discovery_classification(entry)] += 1
+    return counts
+
+
+def _source_section_counts(report):
+    counts = _zero_discovery_counts()
+    for section in report["sections"]:
+        status = section.get("status")
+        if status in counts:
+            counts[status] += 1
+    return counts
+
+
+def _discovery_source_row(index, report, report_path):
+    status = _source_discovery_status(report)
+    capabilities = _batch_required_capabilities(report)
+    inventory_counts = _source_classification_counts(report)
+    section_counts = _source_section_counts(report)
+    return {
+        "source_id": report["source"]["source_id"],
+        "source_class": report["source"]["source_class"],
+        "status": status,
+        "license_status": report["source"]["license_status"],
+        "path_policy": report["source"]["path_policy"],
+        "risk_level": report["summary"]["risk_level"],
+        "inventory_count": len(report["source"]["inventory"]),
+        "inventory_classification_counts": inventory_counts,
+        "section_status_counts": section_counts,
+        "unsupported_feature_count": len(report["unsupported_features"]),
+        "planned_actions_count": len(report["planned_actions"]),
+        "planned_actions": [
+            _planned_action_discovery_summary(action)
+            for action in report["planned_actions"]
+        ],
+        "estimated_world_mutations": report["summary"]["estimated_world_mutations"],
+        "required_capabilities": capabilities,
+        "provenance": {
+            "redacted_id": f"source:{index}",
+            "content_hash": report["source"].get("content_hashes", [{}])[0].get("value"),
+            "path_policy": report["source"]["path_policy"],
+            "report_path": report_path,
+        },
+        "report_path": report_path,
+    }
+
+
+def _private_source_reference(source):
+    path = pathlib.Path(source)
+    candidates = [path.name]
+    try:
+        if path.is_dir():
+            candidates.extend(
+                _normalized_relpath(item.relative_to(path))
+                for item in path.rglob("*")
+                if item.is_file()
+            )
+        else:
+            candidates.append(path.suffix)
+    except OSError:
+        return True
+    return any(PRIVATE_DISCOVERY_PATTERNS.search(value) for value in candidates)
+
+
+def _blocked_discovery_source_row(index, reason):
+    counts = _zero_discovery_counts()
+    counts["blocked"] = 1
+    return {
+        "source_id": f"redacted-private-source:{index}" if reason == "private_source_reference_rejected" else f"blocked-source:{index}",
+        "source_class": "unknown",
+        "status": "blocked",
+        "license_status": "blocked",
+        "path_policy": "redacted",
+        "risk_level": "high",
+        "inventory_count": 0,
+        "inventory_classification_counts": counts,
+        "section_status_counts": _zero_discovery_counts(),
+        "unsupported_feature_count": 1,
+        "planned_actions_count": 0,
+        "planned_actions": [],
+        "estimated_world_mutations": {
+            "node_writes": 0,
+            "mapblock_churn": 0,
+            "media_files": 0,
+            "entity_definitions": 0,
+            "manual_review_items": 1,
+        },
+        "required_capabilities": ["import.assets"],
+        "provenance": {
+            "redacted_id": f"source:{index}",
+            "content_hash": None,
+            "path_policy": "redacted",
+            "report_path": None,
+        },
+        "report_path": None,
+        "blocked_reason": reason,
+    }
+
+
+def _discovery_summary(rows):
+    by_source_class = {}
+    source_status_counts = _zero_discovery_counts()
+    inventory_classification_counts = _zero_discovery_counts()
+    capabilities = set()
+    for row in rows:
+        by_source_class[row["source_class"]] = by_source_class.get(row["source_class"], 0) + 1
+        source_status_counts[row["status"]] += 1
+        for classification, count in row["inventory_classification_counts"].items():
+            inventory_classification_counts[classification] += count
+        capabilities.update(row.get("required_capabilities") or [])
+    blocking_reasons = sorted({
+        row.get("blocked_reason")
+        for row in rows
+        if row.get("blocked_reason") in DISCOVERY_READY_BLOCKERS
+    })
+    if not rows:
+        blocking_reasons.append("empty_inventory_root")
+    return {
+        "compatibility_import_inventory_ready": not blocking_reasons,
+        "sources_total": len(rows),
+        "by_source_class": by_source_class,
+        "source_status_counts": source_status_counts,
+        "inventory_classification_counts": inventory_classification_counts,
+        "inventory_items_total": sum(row["inventory_count"] for row in rows),
+        "unsupported_features_total": sum(row["unsupported_feature_count"] for row in rows),
+        "planned_actions_total": sum(row["planned_actions_count"] for row in rows),
+        "manual_review_items_total": sum(
+            row["estimated_world_mutations"]["manual_review_items"] for row in rows
+        ),
+        "required_capabilities": sorted(capabilities),
+        "blocking_reasons": blocking_reasons,
+    }
+
+
+def build_import_inventory_discovery_report(root, reports_dir=None):
+    """Build an aggregate public-safe compatibility/import inventory discovery report."""
+    reports_root = pathlib.Path(reports_dir) if reports_dir else None
+    if reports_root:
+        reports_root.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    for index, source in enumerate(_batch_source_candidates(root), start=1):
+        if _private_source_reference(source):
+            rows.append(_blocked_discovery_source_row(index, "private_source_reference_rejected"))
+            continue
+        try:
+            report = build_report(source)
+            report_path = None
+            if reports_root:
+                report_path = _safe_report_filename(index, report["source"]["source_id"])
+                (reports_root / report_path).write_text(
+                    json.dumps(report, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+            rows.append(_discovery_source_row(index, report, report_path))
+        except (OSError, ValueError, json.JSONDecodeError):
+            rows.append(_blocked_discovery_source_row(index, "source_classification_failed"))
+
+    summary = _discovery_summary(rows)
+    ready = summary["compatibility_import_inventory_ready"]
+    report = {
+        "report_version": IMPORT_INVENTORY_DISCOVERY_REPORT_VERSION,
+        "mode": "import_inventory_discovery",
+        "generated_at": _utc_now(),
+        "status": "ready_for_import_preview" if ready else "blocked",
+        "inventory_input_format": {
+            "accepted_source_classes": list(DISCOVERY_ACCEPTED_SOURCE_CLASSES),
+            "path_policy": "package_relative_or_redacted",
+            "payload_policy": "metadata_and_references_only",
+            "required_capabilities": ["import.assets"],
+        },
+        "root": {
+            "path_policy": "redacted",
+            "source_count": len(rows),
+        },
+        "summary": summary,
+        "readiness": {
+            "compatibility_import_inventory_ready": ready,
+            "blocking_reasons": summary["blocking_reasons"],
+        },
+        "sources": rows,
+        "safety": {
+            "dry_run_only": True,
+            "no_assets_copied": True,
+            "no_world_mutation": True,
+            "source_paths_redacted": True,
+            "no_raw_payloads": True,
+            "no_private_paths": True,
+            "uses_proprietary_minecraft_code_or_assets": False,
+            "uses_copied_server_jars_or_game_data": False,
+        },
+    }
+    serialized = json.dumps(report, sort_keys=True)
+    if PRIVATE_DISCOVERY_PATTERNS.search(serialized):
+        raise ValueError("inventory discovery report contains private or raw payload references")
+    return report
+
+
+def validate_import_inventory_discovery_report(report):
+    errors = []
+    if report.get("report_version") != IMPORT_INVENTORY_DISCOVERY_REPORT_VERSION:
+        errors.append("report_version must be 1")
+    if report.get("mode") != "import_inventory_discovery":
+        errors.append("mode must be import_inventory_discovery")
+    if report.get("status") not in {"ready_for_import_preview", "blocked"}:
+        errors.append("status must be ready_for_import_preview or blocked")
+    summary = report.get("summary")
+    if not isinstance(summary, dict):
+        errors.append("summary must be an object")
+        summary = {}
+    for field in (
+        "compatibility_import_inventory_ready",
+        "sources_total",
+        "by_source_class",
+        "source_status_counts",
+        "inventory_classification_counts",
+        "inventory_items_total",
+        "planned_actions_total",
+        "required_capabilities",
+    ):
+        if field not in summary:
+            errors.append(f"summary.{field} is required")
+    for counts_name in ("source_status_counts", "inventory_classification_counts"):
+        counts = summary.get(counts_name) or {}
+        for classification in DISCOVERY_CLASSIFICATIONS:
+            if classification not in counts:
+                errors.append(f"summary.{counts_name}.{classification} is required")
+    if "import.assets" not in (summary.get("required_capabilities") or []):
+        errors.append("summary.required_capabilities must include import.assets")
+    safety = report.get("safety") or {}
+    for field in (
+        "dry_run_only",
+        "no_assets_copied",
+        "no_world_mutation",
+        "source_paths_redacted",
+        "no_raw_payloads",
+        "no_private_paths",
+    ):
+        if safety.get(field) is not True:
+            errors.append(f"safety.{field} must be true")
+    for field in (
+        "uses_proprietary_minecraft_code_or_assets",
+        "uses_copied_server_jars_or_game_data",
+    ):
+        if safety.get(field) is not False:
+            errors.append(f"safety.{field} must be false")
+    sources = report.get("sources")
+    if not isinstance(sources, list):
+        errors.append("sources must be an array")
+        sources = []
+    if summary.get("sources_total") != len(sources):
+        errors.append("summary.sources_total must match sources length")
+    for index, source in enumerate(sources):
+        for field in (
+            "source_id",
+            "source_class",
+            "status",
+            "inventory_count",
+            "inventory_classification_counts",
+            "planned_actions",
+            "required_capabilities",
+            "provenance",
+            "report_path",
+        ):
+            if field not in source:
+                errors.append(f"sources[{index}].{field} is required")
+        if source.get("status") not in DISCOVERY_CLASSIFICATIONS:
+            errors.append(f"sources[{index}].status is invalid")
+        if "import.assets" not in (source.get("required_capabilities") or []):
+            errors.append(f"sources[{index}].required_capabilities must include import.assets")
+    serialized = json.dumps(report, sort_keys=True)
+    if PRIVATE_DISCOVERY_PATTERNS.search(serialized):
+        errors.append("report contains private or raw payload references")
+    return errors
 
 
 def _require_mapping(errors, value, path):
@@ -3228,10 +3579,26 @@ def _print_batch_inventory_summary(queue):
     )
 
 
+def _print_import_inventory_discovery_summary(report):
+    summary = report["summary"]
+    print(
+        "inventory_discovery={status} sources={sources} inventory_items={items} "
+        "partial={partial} blocked={blocked} planned_actions={actions}".format(
+            status=report["status"],
+            sources=summary["sources_total"],
+            items=summary["inventory_items_total"],
+            partial=summary["source_status_counts"].get("partial", 0),
+            blocked=summary["source_status_counts"].get("blocked", 0),
+            actions=summary["planned_actions_total"],
+        )
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="User-owned pack, structure, or world source to inspect.")
     parser.add_argument("--batch-inventory", help="Directory of user-owned sources to inventory as a dry-run queue.")
+    parser.add_argument("--inventory-discovery", help="Directory of user-owned sources to classify for import preview readiness.")
     parser.add_argument("--reports-dir", help="Directory for per-source dry-run reports used with --batch-inventory.")
     parser.add_argument("--apply-plan", help="Dry-run report JSON to plan for apply without mutation.")
     parser.add_argument("--adapter-apply-smoke", help="Dry-run report JSON to turn into a reviewed adapter apply smoke.")
@@ -3248,6 +3615,7 @@ def main(argv=None):
     try:
         selected_modes = [
             bool(args.batch_inventory),
+            bool(args.inventory_discovery),
             bool(args.apply_plan),
             bool(args.adapter_apply_smoke),
             bool(args.review_adapter_smoke),
@@ -3256,12 +3624,12 @@ def main(argv=None):
         ]
         if sum(selected_modes) > 1:
             raise ValueError(
-                "--batch-inventory, --apply-plan, --adapter-apply-smoke, --review-adapter-smoke, "
-                "--promotion-package, and --asset-promotion-package "
+                "--batch-inventory, --inventory-discovery, --apply-plan, --adapter-apply-smoke, "
+                "--review-adapter-smoke, --promotion-package, and --asset-promotion-package "
                 "cannot be used together"
             )
-        if args.reports_dir and not args.batch_inventory:
-            raise ValueError("--reports-dir is only valid with --batch-inventory")
+        if args.reports_dir and not (args.batch_inventory or args.inventory_discovery):
+            raise ValueError("--reports-dir is only valid with --batch-inventory or --inventory-discovery")
         if (args.adapter_smoke or args.adapter_review) and not args.promotion_package:
             raise ValueError("--adapter-smoke and --adapter-review are only valid with --promotion-package")
         if args.batch_inventory:
@@ -3269,6 +3637,13 @@ def main(argv=None):
                 raise ValueError("--reports-dir is required with --batch-inventory")
             payload_obj = build_batch_inventory_queue(
                 args.batch_inventory,
+                reports_dir=args.reports_dir,
+            )
+        elif args.inventory_discovery:
+            if not args.reports_dir:
+                raise ValueError("--reports-dir is required with --inventory-discovery")
+            payload_obj = build_import_inventory_discovery_report(
+                args.inventory_discovery,
                 reports_dir=args.reports_dir,
             )
         elif args.asset_promotion_package:
@@ -3320,6 +3695,8 @@ def main(argv=None):
             sys.stdout.write(payload)
         if args.summary and args.batch_inventory:
             _print_batch_inventory_summary(payload_obj)
+        elif args.summary and args.inventory_discovery:
+            _print_import_inventory_discovery_summary(payload_obj)
         elif args.summary and args.review_adapter_smoke:
             _print_adapter_smoke_review_summary(payload_obj)
         elif args.summary and args.asset_promotion_package:
