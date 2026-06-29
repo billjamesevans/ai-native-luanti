@@ -43,6 +43,9 @@ if core.settings:get_bool("ai_runtime.enable_model_adapter_probe_command", false
 	dofile(gamepath .. "ai_model_adapter_plugin.lua")
 end
 dofile(gamepath .. "ai_agent_plugin.lua")
+if core.settings:get_bool("ai_runtime.enable_agents_sdk_adapter", false) then
+	dofile(gamepath .. "ai_agents_sdk_adapter_plugin.lua")
+end
 dofile(gamepath .. "chat.lua")
 dofile(commonpath .. "information_formspecs.lua")
 dofile(gamepath .. "static_spawn.lua")

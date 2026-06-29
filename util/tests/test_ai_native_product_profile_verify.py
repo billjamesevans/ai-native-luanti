@@ -36,6 +36,7 @@ class AIProductProfileVerifierTests(unittest.TestCase):
                 "ai_runtime_smoke": "ai_runtime.enable_smoke_command",
                 "ai_demo_entity_benchmark": "ai_runtime.enable_demo_benchmark_command",
                 "ai_model_adapter_probe": "ai_runtime.enable_model_adapter_probe_command",
+                "ai_agents_sdk_adapter": "ai_runtime.enable_agents_sdk_adapter",
             },
         )
         self.assertIn("builtin/game/tests/test_ai_runtime.lua", manifest["test_only_files"])
@@ -126,6 +127,10 @@ class AIProductProfileVerifierTests(unittest.TestCase):
             'core.settings:get_bool("ai_runtime.enable_model_adapter_probe_command", false)',
             init_lua,
         )
+        self.assertIn(
+            'core.settings:get_bool("ai_runtime.enable_agents_sdk_adapter", false)',
+            init_lua,
+        )
         self.assertLess(
             init_lua.find('core.settings:get_bool("ai_runtime.enable_smoke_command", false)'),
             init_lua.find('dofile(gamepath .. "ai_runtime_smoke.lua")'),
@@ -139,6 +144,14 @@ class AIProductProfileVerifierTests(unittest.TestCase):
                 'core.settings:get_bool("ai_runtime.enable_model_adapter_probe_command", false)'
             ),
             init_lua.find('dofile(gamepath .. "ai_model_adapter_plugin.lua")'),
+        )
+        self.assertLess(
+            init_lua.find('dofile(gamepath .. "ai_agent_plugin.lua")'),
+            init_lua.find('dofile(gamepath .. "ai_agents_sdk_adapter_plugin.lua")'),
+        )
+        self.assertLess(
+            init_lua.find('core.settings:get_bool("ai_runtime.enable_agents_sdk_adapter", false)'),
+            init_lua.find('dofile(gamepath .. "ai_agents_sdk_adapter_plugin.lua")'),
         )
 
     def test_verifier_reports_clean_product_profile_and_gated_dev_surfaces(self):
@@ -174,9 +187,11 @@ class AIProductProfileVerifierTests(unittest.TestCase):
         self.assertEqual(surfaces["ai_runtime_smoke"]["default_enabled"], False)
         self.assertEqual(surfaces["ai_demo_entity_benchmark"]["default_enabled"], False)
         self.assertEqual(surfaces["ai_model_adapter_probe"]["default_enabled"], False)
+        self.assertEqual(surfaces["ai_agents_sdk_adapter"]["default_enabled"], False)
         self.assertEqual(surfaces["ai_runtime_smoke"]["status"], "gated")
         self.assertEqual(surfaces["ai_demo_entity_benchmark"]["status"], "gated")
         self.assertEqual(surfaces["ai_model_adapter_probe"]["status"], "gated")
+        self.assertEqual(surfaces["ai_agents_sdk_adapter"]["status"], "gated")
         runtime_surfaces = {surface["name"]: surface for surface in report["required_runtime_surfaces"]}
         self.assertEqual(
             {
