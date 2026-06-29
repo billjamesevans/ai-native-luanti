@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "gameid": "ai_runtime",
+  "product_mods": [
+    "ai_runtime_base"
+  ],
+  "startup_inventory": [
+    {
+      "name": "ai_runtime_game",
+      "category": "product_runtime",
+      "path": "games/ai_runtime/game.conf",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "default product-facing game profile"
+    },
+    {
+      "name": "ai_runtime_base",
+      "category": "first_party_plugin",
+      "path": "games/ai_runtime/mods/ai_runtime_base",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "minimal first-party runtime profile and capability policy"
+    },
+    {
+      "name": "ai_runtime_smoke",
+      "category": "unit_test_helper",
+      "path": "builtin/game/ai_runtime_smoke.lua",
+      "loaded_by_default_product_profile": false,
+      "requires_explicit_dev_or_test_lane": true,
+      "purpose": "synthetic task-loop smoke helper and operator command"
+    },
+    {
+      "name": "ai_demo_entity_benchmark",
+      "category": "benchmark_fixture",
+      "path": "builtin/game/demo_entity_benchmark.lua",
+      "loaded_by_default_product_profile": false,
+      "requires_explicit_dev_or_test_lane": true,
+      "purpose": "generic demo entity benchmark fixture and operator command"
+    },
+    {
+      "name": "compatibility_fixture_samples",
+      "category": "compatibility_fixture",
+      "path": "util/tests/fixtures/compat",
+      "loaded_by_default_product_profile": false,
+      "requires_explicit_dev_or_test_lane": true,
+      "purpose": "metadata-only Java and Bedrock compatibility dry-run fixtures"
+    },
+    {
+      "name": "ai_runtime_lua_unittest",
+      "category": "unit_test_helper",
+      "path": "builtin/game/tests/test_ai_runtime.lua",
+      "loaded_by_default_product_profile": false,
+      "requires_explicit_dev_or_test_lane": true,
+      "purpose": "engine unit-test coverage for AI runtime Lua contracts"
+    }
+  ],
+  "explicit_dev_surfaces": [
+    {
+      "name": "ai_runtime_smoke",
+      "setting": "ai_runtime.enable_smoke_command",
+      "source_file": "builtin/game/ai_runtime_smoke.lua",
+      "command": "ai_runtime_smoke",
+      "default_enabled": false,
+      "purpose": "synthetic task-loop smoke command"
+    },
+    {
+      "name": "ai_demo_entity_benchmark",
+      "setting": "ai_runtime.enable_demo_benchmark_command",
+      "source_file": "builtin/game/demo_entity_benchmark.lua",
+      "command": "ai_demo_entity_benchmark",
+      "default_enabled": false,
+      "purpose": "generic demo entity benchmark command"
+    }
+  ],
+  "test_only_files": [
+    "builtin/game/tests/test_ai_runtime.lua"
+  ],
+  "test_only_paths": [
+    "util/tests/fixtures/compat",
+    "util/tests"
+  ]
+}

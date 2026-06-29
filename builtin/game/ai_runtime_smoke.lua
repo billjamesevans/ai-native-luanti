@@ -7,8 +7,9 @@ local DEFAULT_WORLD_ID = "synthetic-smoke-world"
 local DEFAULT_BUILD_NODE = "ai_runtime_smoke:marker"
 local DEFAULT_REPAIR_NODE = "ai_runtime_smoke:repair_marker"
 local MAX_COMMAND_OUTPUT_BYTES = 12000
+local dev_command_enabled = core.settings:get_bool("ai_runtime.enable_smoke_command", false)
 
-if core.register_node and core.registered_nodes then
+if dev_command_enabled and core.register_node and core.registered_nodes then
 	if not core.registered_nodes[DEFAULT_BUILD_NODE] then
 		core.register_node(":" .. DEFAULT_BUILD_NODE, {
 			description = "AI Runtime Smoke Marker",
@@ -521,11 +522,13 @@ function smoke.run_command(param)
 	return true, smoke.encode_summary(smoke.run_scenario(options))
 end
 
-core.register_chatcommand("ai_runtime_smoke", {
-	params = "[mode=success|blocked] [origin=N] [x=N] [y=N] [z=N]",
-	description = "Run the synthetic AI runtime smoke scenario and return a bounded JSON summary.",
-	privs = { server = true },
-	func = function(_, param)
-		return smoke.run_command(param)
-	end,
-})
+if dev_command_enabled then
+	core.register_chatcommand("ai_runtime_smoke", {
+		params = "[mode=success|blocked] [origin=N] [x=N] [y=N] [z=N]",
+		description = "Run the synthetic AI runtime smoke scenario and return a bounded JSON summary.",
+		privs = { server = true },
+		func = function(_, param)
+			return smoke.run_command(param)
+		end,
+	})
+end
