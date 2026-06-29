@@ -293,6 +293,20 @@ local function public_reply(name, action, status, message, extra)
 	return extra
 end
 
+local function surface_gated_reply(name, surface_id, action)
+	local surface = product_surface(surface_id)
+	plugin.ensure_surface_agent(name, surface_id)
+	return public_reply(name, action, "blocked",
+		surface.display_name .. " is not enabled for this capability profile.", {
+			surface_id = surface_id,
+			reason = "surface_capability_not_granted",
+			required_capabilities = table.copy(surface.required_capabilities or {}),
+			granted_capabilities = granted_capability_list_for(surface),
+			required_capabilities_granted = false,
+			default_clean_profile_grant = surface.default_clean_profile_grant,
+		})
+end
+
 local function append(list, value)
 	list[#list + 1] = value
 end
@@ -371,6 +385,18 @@ local function append_task_details(lines, result)
 	end
 	if result.reason then
 		append(lines, "reason=" .. tostring(result.reason))
+	end
+	if type(result.required_capabilities) == "table" then
+		append(lines, "required_capabilities="
+			.. join_limited(result.required_capabilities, 8))
+	end
+	if result.required_capabilities_granted ~= nil then
+		append(lines, "required_capabilities_granted="
+			.. tostring(result.required_capabilities_granted))
+	end
+	if result.default_clean_profile_grant then
+		append(lines, "default_clean_profile_grant="
+			.. tostring(result.default_clean_profile_grant))
 	end
 end
 
@@ -2202,6 +2228,9 @@ local function handle_import_plan(name, context)
 	context = context or {}
 	context.max_node_writes_per_step = 0
 	context.surface_id = "importer"
+	if not surface_required_capabilities_granted(product_surface("importer")) then
+		return surface_gated_reply(name, "importer", "import_plan")
+	end
 	local agent_id = surface_agent_id_for(name, "importer")
 	plugin.ensure_surface_agent(name, "importer")
 	return queue_plugin_task(name, "import_plan", "import dry-run plan", {
@@ -2431,6 +2460,9 @@ end
 local function handle_defend(name, context)
 	context = context or {}
 	context.surface_id = "defender"
+	if not surface_required_capabilities_granted(product_surface("defender")) then
+		return surface_gated_reply(name, "defender", "defend")
+	end
 	local agent_id = surface_agent_id_for(name, "defender")
 	plugin.ensure_surface_agent(name, "defender")
 	return queue_plugin_task(name, "defend", "defend player", {
