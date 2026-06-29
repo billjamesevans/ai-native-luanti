@@ -2,6 +2,7 @@ import contextlib
 import io
 import json
 import pathlib
+import shutil
 import sys
 import tempfile
 import unittest
@@ -859,6 +860,85 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 stdout.getvalue(),
             )
             self.assertIn("asset_tasks=1", stdout.getvalue())
+
+    def make_batch_fixture_root(self, tmpdir):
+        batch_root = pathlib.Path(tmpdir) / "batch"
+        batch_root.mkdir()
+        shutil.copytree(self.fixture_root / "java_pack", batch_root / "java_pack")
+        shutil.copytree(self.fixture_root / "luanti_mod", batch_root / "luanti_mod")
+        shutil.copy2(
+            self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json",
+            batch_root / "open_platform.ai-schematic-preflight.json",
+        )
+        return batch_root
+
+    def test_batch_inventory_queue_scans_mixed_public_safe_sources(self):
+        builder = getattr(compat, "build_batch_inventory_queue", None)
+        self.assertTrue(callable(builder), "batch inventory queue builder is missing")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            batch_root = self.make_batch_fixture_root(tmpdir)
+            reports_dir = pathlib.Path(tmpdir) / "reports"
+
+            queue = builder(batch_root, reports_dir=reports_dir)
+
+        self.assertEqual(queue["queue_version"], 1)
+        self.assertEqual(queue["mode"], "batch_inventory")
+        self.assertEqual(queue["summary"]["sources_total"], 3)
+        self.assertEqual(queue["summary"]["by_source_class"]["java_resource_pack"], 1)
+        self.assertEqual(queue["summary"]["by_source_class"]["luanti_mod"], 1)
+        self.assertEqual(queue["summary"]["by_source_class"]["structure"], 1)
+        self.assertEqual(queue["summary"]["by_status"]["manual_review"], 2)
+        self.assertEqual(queue["summary"]["by_status"]["mappable"], 1)
+        self.assertTrue(queue["safety"]["dry_run_only"])
+        self.assertTrue(queue["safety"]["no_assets_copied"])
+        self.assertTrue(queue["safety"]["no_world_mutation"])
+        self.assertTrue(queue["safety"]["source_paths_redacted"])
+        self.assertTrue(queue["safety"]["no_raw_payloads"])
+        self.assertTrue(queue["safety"]["no_private_paths"])
+
+        by_class = {item["source_class"]: item for item in queue["sources"]}
+        self.assertEqual(by_class["structure"]["status"], "manual_review")
+        self.assertEqual(by_class["structure"]["planned_actions_count"], 2)
+        self.assertEqual(by_class["structure"]["manual_review_items"], 4)
+        self.assertEqual(by_class["luanti_mod"]["status"], "mappable")
+        self.assertEqual(by_class["luanti_mod"]["inventory_count"], 2)
+        for item in queue["sources"]:
+            self.assertFalse(pathlib.PurePosixPath(item["report_path"]).is_absolute())
+            self.assertIn("import.assets", item["required_capabilities"])
+        serialized = json.dumps(queue)
+        self.assertNotIn(str(self.fixture_root), serialized)
+        self.assertNotIn("minecraftpi", serialized.lower())
+        self.assertNotIn("family_voxelibre", serialized)
+        self.assertNotIn("asset_payload", serialized.lower())
+
+    def test_batch_inventory_cli_writes_queue_and_reports(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            batch_root = self.make_batch_fixture_root(tmpdir)
+            reports_dir = tmpdir / "reports"
+            queue_path = tmpdir / "queue.json"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "--batch-inventory", str(batch_root),
+                    "--reports-dir", str(reports_dir),
+                    "--output", str(queue_path),
+                    "--summary",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            queue = json.loads(queue_path.read_text(encoding="utf-8"))
+            self.assertEqual(queue["mode"], "batch_inventory")
+            self.assertEqual(queue["summary"]["sources_total"], 3)
+            self.assertIn("batch_sources=3", stdout.getvalue())
+            report_paths = [reports_dir / item["report_path"] for item in queue["sources"]]
+            self.assertTrue(all(path.is_file() for path in report_paths))
+            for path in report_paths:
+                report = json.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(report["mode"], "dry_run")
+                self.assertEqual(validate_report(report), [])
 
     def synthetic_planned_action(self, action, status="partial"):
         return {
