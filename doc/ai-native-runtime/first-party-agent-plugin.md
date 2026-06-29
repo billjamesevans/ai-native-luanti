@@ -41,13 +41,17 @@ Implemented deterministic commands:
 - `guide`, `help`: returns the available builder, repair, guide, defender, and `importer` surfaces plus current task records.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
+- `approve`, `approve build`, `approve repair`: queues the latest pending
+  build or repair plan after the player has seen the preview.
 - `follow`, `follow me`, `follow N`: queues bounded continuous follow steps for the player's helper entity. Each task runs a finite number of server-step slices, recalculates the player's current position per slice, and moves through `core.ai_entity_ops.move` with per-step and total-distance budgets.
 - `come`, `come here`: queues bounded movement for the player's helper entity to the requested target position.
 - `light`, `place N lights`: queues a rollback-backed `build_agent` lights task.
 - `build plan`, `preview build`: returns a read-only marker build plan before mutation.
-- `build`, `build marker`, `marker`: queues a rollback-backed `build_agent` marker task.
+- `build`, `build marker`, `marker`: creates a pending read-only marker build
+  plan; `approve` queues the rollback-backed `build_agent` marker task.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
-- `repair`, `fix`: queues a rollback-backed `repair_agent` apply task for configured repair nodes.
+- `repair`, `fix`: creates a pending read-only repair plan for configured
+  repair nodes; `approve` queues the rollback-backed `repair_agent` apply task.
 - `defend`: queues a bounded defensive player task through `core.ai_player_ops.defend`.
 - `import plan`, `import preview`, `import inventory`: queues a dry-run-only
   Importer task through `core.ai_import_ops.plan`. The task records an
@@ -135,7 +139,8 @@ Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin 
 - Come remains a one-shot bounded helper-entity move.
 - Build remains small lights and marker tasks, not a showcase structure system.
 - Repair only applies configured repair rules around the requested target position.
-- Build and repair previews explain bounded plans, but approval workflow and richer plan editing remain later slices.
+- Build and repair commands now create pending previews first; explicit
+  approval queues the mutation. Richer plan editing remains a later slice.
 - Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
 - Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
 - Importer behavior is dry-run-only and depends on an operator-supplied plan;
