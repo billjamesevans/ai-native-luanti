@@ -78,6 +78,44 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             cadence_names,
             ["pre_pr_local_gate", "benchmark_review", "pi_promotion"],
         )
+        checklist = report["release_candidate_checklist"]
+        self.assertEqual(
+            checklist["candidate_id_source"]["command"],
+            ["git", "rev-parse", "--short", "HEAD"],
+        )
+        phase_names = [phase["name"] for phase in checklist["phases"]]
+        self.assertEqual(
+            phase_names,
+            [
+                "clean_checkout_package",
+                "local_runtime_evidence",
+                "compatibility_and_parity_review",
+                "pi_side_by_side_promotion",
+                "release_closeout",
+            ],
+        )
+        pi_phase = next(
+            phase for phase in checklist["phases"]
+            if phase["name"] == "pi_side_by_side_promotion"
+        )
+        self.assertEqual(
+            pi_phase["deploy_boundary"],
+            {
+                "family_service": "luanti-family.service",
+                "family_port": "30000/udp",
+                "fork_service": "ai-native-luanti-test.service",
+                "fork_port": "30001/udp",
+                "mode": "side_by_side_test_service_only",
+            },
+        )
+        self.assertIn(
+            "spacebase",
+            checklist["public_boundary"]["excluded_content"],
+        )
+        self.assertIn(
+            "copied proprietary assets",
+            checklist["public_boundary"]["private_artifacts_not_committed"],
+        )
         self.assertEqual(report["clean_profile_package"]["status"], "pass")
         self.assertEqual(report["clean_profile_package"]["profile"]["gameid"], "ai_runtime")
         self.assertTrue(
@@ -146,6 +184,7 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             self.assertEqual(report["status"], "pass")
             self.assertTrue(report["safety"]["public_sample_data_only"])
             self.assertTrue(report["safety"]["clean_profile_package_verified"])
+            self.assertIn("release_candidate_checklist", report)
 
 
 if __name__ == "__main__":

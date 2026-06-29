@@ -37,6 +37,12 @@ the expected cadence, ranked next-issue queue, and public boundary. Local
 artifacts belong under `local/benchmarks` unless a maintainer explicitly
 promotes reviewed public-safe evidence.
 
+The same report also emits `release_candidate_checklist`. Treat that section as
+the repeatable alpha-candidate packet: it records the candidate commit command,
+clean-checkout gates, local runtime evidence, compatibility/parity review,
+backup-first Pi side-by-side promotion requirements, release closeout evidence,
+and the public/private content boundary.
+
 ## Pi Promotion Loop
 
 Pi promotion is an operator lane, not a contributor default. Promote only after
