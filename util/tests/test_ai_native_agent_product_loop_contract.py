@@ -43,6 +43,8 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "`task <task_id>`",
             "`cancel <task_id>`",
             "`approve <approval_id>`",
+            "`pending plan`",
+            "`discard <approval_id>`",
             "`defend`",
             "`import plan`",
             "`follow N`",
