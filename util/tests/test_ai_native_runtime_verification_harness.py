@@ -281,6 +281,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "follow_total_distance_moved": 2,
                     "follow_node_writes": 0,
                     "follow_pathfinder_used": False,
+                    "stay_status": "success",
+                    "stay_cancelled": 1,
+                    "stay_before_status": "running",
+                    "stay_after_status": "cancelled",
+                    "stay_mode": "stay",
+                    "stay_entity_retained": True,
                 },
                 "targeted_reviews": {
                     "audit_status": "success",
@@ -316,6 +322,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "targeted_rollback_review_checked": True,
                     "targeted_rollback_record_review_checked": True,
                     "follow_command_checked": True,
+                    "stay_command_checked": True,
                     "defender_command_checked": True,
                     "import_preview_checked": True,
                     "operator_status_checked": True,
@@ -323,9 +330,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             },
             "operator_status_snapshot": {
                 "status": "ready",
-                "tasks_total": 6,
+                "tasks_total": 7,
                 "completed_tasks": 5,
-                "cancelled_tasks": 1,
+                "cancelled_tasks": 2,
                 "rollback_records_available": 2,
                 "import_reviews_total": 1,
                 "operator_control_recommendations_total": 3,
@@ -344,6 +351,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "targeted_audit_review_count": 1,
                 "targeted_rollback_review_count": 2,
                 "follow_command_count": 1,
+                "stay_command_count": 1,
                 "status_context_count": 1,
                 "node_writes_verified": 5,
                 "transient_blocked_outcomes": 1,
@@ -1192,6 +1200,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_follow_checked"]
             )
             self.assertTrue(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_stay_checked"]
+            )
+            self.assertTrue(
                 manifest["agent_product_loop_live_evidence"][
                     "agent_product_loop_status_context_checked"
                 ]
@@ -1250,13 +1261,19 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_stay_commands"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
                     "agent_product_loop_status_contexts"
                 ],
                 1,
             )
             self.assertGreaterEqual(
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_operator_status_tasks"],
-                6,
+                7,
             )
             self.assertEqual(
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_final_blocked_or_unsafe"],
