@@ -3969,6 +3969,17 @@ assert(pending_plan_text:find("status=success action=pending_plan", 1, true))
 assert(pending_plan_text:find("pending=build", 1, true))
 assert(pending_plan_text:find("approval_id=" .. discard_approval_id, 1, true))
 
+local status_chat_ok, status_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "status")
+assert(status_chat_ok == true)
+assert(status_chat_text:find("status=success action=status", 1, true))
+assert(status_chat_text:find("surfaces=builder=ready", 1, true))
+assert(status_chat_text:find("defender=gated", 1, true))
+assert(status_chat_text:find("known_tasks=0", 1, true))
+assert(status_chat_text:find("tasks=none", 1, true))
+assert(status_chat_text:find("pending=build", 1, true))
+assert(status_chat_text:find("approval_id=" .. discard_approval_id, 1, true))
+
 local edit_plan_ok, edit_plan_text = core.registered_chatcommands.nova.func(
 	"ChatUser", "edit plan platform width 2 depth 1")
 assert(edit_plan_ok == true)
