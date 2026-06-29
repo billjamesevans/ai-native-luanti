@@ -41,6 +41,18 @@ Live server command:
 
 The live command requires `server` privilege and returns compact JSON with `package_kind = "ai_native_operator_status_package"`. It summarizes registered agents, task counts, recent rollback/import audit availability, optional benchmark gates, `operator_control`, and product-profile hygiene. It rejects unknown parameters and accepts `generated_at=...` and `max_bytes=N` for reproducible checks.
 
+Focused read-only views are available on the same command:
+
+```text
+/ai_runtime_operator_status view=tasks limit=12 max_bytes=5000
+/ai_runtime_operator_status view=task task_id=<task-id> max_bytes=5000
+/ai_runtime_operator_status view=audit limit=12 max_bytes=5000
+/ai_runtime_operator_status view=rollback limit=12 max_bytes=5000
+/ai_runtime_operator_status view=imports limit=12 max_bytes=5000
+```
+
+Each focused response uses `package_kind = "ai_native_operator_status_view"`, repeats the explicit byte bound, and keeps `read_only`, `no_task_queue_mutation`, `no_world_mutation`, `no_rollback_execution`, and `no_import_promotion_execution` safety flags. `view=task` requires `task_id`; unsupported views and missing required arguments are refused instead of falling back to a broader command.
+
 ## Boundary
 
 The package is intentionally not a web dashboard. It is the stable report contract that a future CLI/dashboard can consume after the runtime surfaces mature.
@@ -70,7 +82,7 @@ python3 util/ai_native_operator_control_report.py \
 
 Use `--format text` for a concise human-readable report. Both formats preserve the dry-run-only boundary, list stable target IDs, target kinds, current statuses, and safe next actions, and reject recommendations that advertise mutating actions. The adapter remains public-safe: it redacts private paths, private hosts or IPs, provider prompts, raw asset payload fields, and family-showcase names.
 
-`util/ai_native_runtime_verify.py` writes `ai-runtime-operator-control-report.json` as a sibling artifact whenever it captures or generates an operator-status package. The verification manifest records the report path and pass/fail status so local and low-power lanes prove the adapter works against live operator-status evidence.
+`util/ai_native_runtime_verify.py` writes `ai-runtime-operator-control-report.json` as a sibling artifact whenever it captures or generates an operator-status package. The live command probe also calls the focused task-list, task-detail, audit-review, rollback-review, and import-review views in a disposable world and records `operator_ux_command_probe` evidence on the retained status artifact. The verification manifest records the report path, pass/fail status, focused view checks, refusal-path check, and max focused-view output bytes so local and low-power lanes prove the adapter works against live operator-status evidence.
 
 ## Operator Action Approval Plan
 

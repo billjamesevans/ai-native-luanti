@@ -90,7 +90,11 @@ profile loads fixture mods by default, enables dev surfaces without explicit set
 operator-status step launches a
 disposable `ai_runtime` world with a temporary probe worldmod, executes the registered
 `/ai_runtime_operator_status` command function, writes `ai-runtime-operator-status-live.json`, and
-records source_kind = `live_command` with direct command execution evidence. It also derives
+records source_kind = `live_command` with direct command execution evidence. The same disposable
+probe seeds synthetic operator state after capturing the default package, calls focused read-only
+`view=tasks`, `view=task`, `view=audit`, `view=rollback`, and `view=imports` command modes, checks
+invalid-view refusals, and records compact `operator_ux_command_probe` evidence without changing
+the default package status. It also derives
 `ai-runtime-operator-control-report.json` with `util/ai_native_operator_control_report.py` so the
 run keeps both the raw package and the operator-facing report adapter. It then derives
 `ai-runtime-operator-action-approval-plan.json` with
