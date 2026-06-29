@@ -280,7 +280,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--headless-player-count",
         type=int,
-        default=1,
+        default=2,
         help="Synthetic player command instances to launch when --headless-player-command is supplied.",
     )
     parser.add_argument(

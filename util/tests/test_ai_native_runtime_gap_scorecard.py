@@ -217,6 +217,49 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                             "warnings": 0,
                             "errors": 0,
                         },
+                        "first_party_agent_product_loop": {
+                            "product_loop_status": "pass",
+                            "scenario_id": "first_party_agent_product_loop_approval",
+                            "approval_plan_count": 2,
+                            "approved_task_count": 2,
+                            "guide_command_checked": 1,
+                            "tasks_command_checked": 1,
+                            "cancel_command_checked": 1,
+                            "audit_review_checked": 1,
+                            "rollback_review_checked": 1,
+                            "defender_command_checked": 1,
+                            "import_preview_checked": 1,
+                            "blocked_or_unsafe_outcomes": 0,
+                            "queued_task_count": 2,
+                            "completed_task_count": 2,
+                            "blocked_task_count": 0,
+                            "node_writes": 2,
+                            "node_writes_per_step": 1,
+                            "mapblock_churn": 1,
+                            "rollback_records": 2,
+                            "avg_task_duration_ms": 2.3,
+                            "p95_task_duration_ms": 3.0,
+                            "max_task_lag_ms": 3.6,
+                            "warning_count": 0,
+                            "error_count": 0,
+                        },
+                        "ai_runtime_scale_gate": {
+                            "scale_gate_status": "pass",
+                            "gate_kind": "ai_runtime_multi_player_multi_agent_scale",
+                            "synthetic_disposable_only": True,
+                            "required_synthetic_player_count": 2,
+                            "required_concurrent_task_count": 2,
+                            "requirements": {
+                                "multi_player_headless_load": True,
+                                "concurrent_first_party_tasks": True,
+                                "bounded_task_durations": True,
+                                "bounded_write_and_rollback": True,
+                                "bounded_entity_lane": True,
+                                "server_step_clean": True,
+                                "resource_samples_present": True,
+                                "no_warnings_or_errors": True,
+                            },
+                        },
                         "memory": {
                             "max_rss_kb": max_rss_kb,
                             "rss_sample_count": 30,
@@ -389,7 +432,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                 output_root,
                 "low-power-server",
                 warning_count=0,
-                player_probe=self.supported_headless_probe(1),
+                player_probe=self.supported_headless_probe(2),
             )
             report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
 
@@ -404,7 +447,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                 probe = lane["measurements"]["player_load_tick_probe"]
                 self.assertEqual(probe["probe_kind"], "headless_client_load")
                 self.assertTrue(probe["headless_player_supported"])
-                self.assertGreater(probe["synthetic_player_count"], 0)
+                self.assertGreaterEqual(probe["synthetic_player_count"], 2)
 
     def test_scorecard_clears_cpu_gap_when_both_lanes_have_cpu_evidence(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -416,7 +459,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     warning_count=0,
                     expected_warning_count=0,
                     actionable_warning_count=0,
-                    player_probe=self.supported_headless_probe(1),
+                    player_probe=self.supported_headless_probe(2),
                     mapblock_rows=4,
                     demo_entity_count=16,
                     mutation_total_node_writes=11,
@@ -480,7 +523,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     expected_warning_count=1,
                     actionable_warning_count=0,
                     mapblock_rows=128,
-                    player_probe=self.supported_headless_probe(1),
+                    player_probe=self.supported_headless_probe(2),
                     demo_entity_count=16,
                     mutation_total_node_writes=11,
                     cpu_evidence=True,
@@ -506,7 +549,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                 expected_warning_count=1,
                 actionable_warning_count=0,
                 mapblock_rows=128,
-                player_probe=self.supported_headless_probe(1),
+                player_probe=self.supported_headless_probe(2),
                 demo_entity_count=16,
                 mutation_total_node_writes=11,
             )
@@ -517,7 +560,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                 expected_warning_count=0,
                 actionable_warning_count=1,
                 mapblock_rows=128,
-                player_probe=self.supported_headless_probe(1),
+                player_probe=self.supported_headless_probe(2),
                 demo_entity_count=16,
                 mutation_total_node_writes=11,
             )

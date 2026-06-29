@@ -77,16 +77,16 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
                 "probe_status": "pass",
                 "probe_kind": "headless_client_load",
                 "headless_player_supported": True,
-                "synthetic_player_count": 1,
-                "attempted_synthetic_player_count": 1,
-                "connected_synthetic_player_count": 1,
-                "completed_synthetic_player_count": 1,
+                "synthetic_player_count": 2,
+                "attempted_synthetic_player_count": 2,
+                "connected_synthetic_player_count": 2,
+                "completed_synthetic_player_count": 2,
                 "client_launch_failure_count": 0,
                 "cleanup_status": "complete",
                 "latency_proxy_supported": True,
                 "latency_probe_kind": "headless_join_log_observation",
                 "join_latency_proxy_ms": {
-                    "sample_count": 1,
+                    "sample_count": 2,
                     "min": 100.0,
                     "p50": 100.0,
                     "p95": 100.0,
@@ -113,8 +113,35 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
                 "defender_command_checked": 1,
                 "import_preview_checked": 1,
                 "blocked_or_unsafe_outcomes": 0,
+                "queued_task_count": 2,
+                "completed_task_count": 2,
+                "blocked_task_count": 0,
+                "node_writes": 2,
+                "node_writes_per_step": 1,
+                "mapblock_churn": 1,
+                "rollback_records": 2,
+                "avg_task_duration_ms": 2.3,
+                "p95_task_duration_ms": 3.0,
+                "max_task_lag_ms": 3.6,
                 "warning_count": 0,
                 "error_count": 0,
+            },
+            "ai_runtime_scale_gate": {
+                "scale_gate_status": "pass",
+                "gate_kind": "ai_runtime_multi_player_multi_agent_scale",
+                "synthetic_disposable_only": True,
+                "required_synthetic_player_count": 2,
+                "required_concurrent_task_count": 2,
+                "requirements": {
+                    "multi_player_headless_load": True,
+                    "concurrent_first_party_tasks": True,
+                    "bounded_task_durations": True,
+                    "bounded_write_and_rollback": True,
+                    "bounded_entity_lane": True,
+                    "server_step_clean": True,
+                    "resource_samples_present": True,
+                    "no_warnings_or_errors": True,
+                },
             },
             "cpu": {
                 "sample_status": "measured",
@@ -374,6 +401,9 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
                         "defender_command_checked": 1,
                         "import_preview_checked": 1,
                         "blocked_or_unsafe_outcomes": 1,
+                        "queued_task_count": 1,
+                        "completed_task_count": 1,
+                        "rollback_records": 1,
                         "warning_count": 0,
                         "error_count": 0,
                     },
@@ -388,6 +418,9 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
             self.assertIn("approval_plan_count must be at least 2", completed.stderr)
             self.assertIn("approved_task_count must be at least 2", completed.stderr)
             self.assertIn("blocked_or_unsafe_outcomes must be 0", completed.stderr)
+            self.assertIn("queued_task_count must be at least 2", completed.stderr)
+            self.assertIn("completed_task_count must be at least 2", completed.stderr)
+            self.assertIn("rollback_records must be at least 2", completed.stderr)
 
     def test_refuses_private_or_warning_reports(self):
         with tempfile.TemporaryDirectory() as tmpdir:

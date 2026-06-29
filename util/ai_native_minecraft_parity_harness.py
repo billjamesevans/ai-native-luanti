@@ -66,8 +66,8 @@ TARGET_BANDS = {
     },
     "player_join_liveness": {
         "headless_player_required": True,
-        "synthetic_player_count_min": 1,
-        "connected_synthetic_player_count_min": 1,
+        "synthetic_player_count_min": 2,
+        "connected_synthetic_player_count_min": 2,
         "server_stayed_listening_required": True,
     },
     "server_step_stability": {
@@ -99,6 +99,9 @@ TARGET_BANDS = {
     },
     "mod_plugin_ergonomics": {
         "first_party_agent_product_loop_required": True,
+        "first_party_agent_queue_depth_min": 2,
+        "first_party_agent_completed_tasks_min": 2,
+        "first_party_agent_scale_gate_required": True,
         "compatibility_import_inventory_required": True,
         "compatibility_import_sources_min": 1,
         "compatibility_import_planned_actions_min": 1,
@@ -411,6 +414,12 @@ def has_first_party_agent_product_loop_evidence(product_loop: dict) -> bool:
             numeric_metric(product_loop.get(metric)) >= threshold
             for metric, threshold in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS.items()
         )
+        and numeric_metric(product_loop.get("queued_task_count")) >= 2
+        and numeric_metric(product_loop.get("completed_task_count")) >= 2
+        and numeric_metric(product_loop.get("rollback_records")) >= 2
+        and product_loop.get("avg_task_duration_ms") is not None
+        and product_loop.get("p95_task_duration_ms") is not None
+        and product_loop.get("max_task_lag_ms") is not None
         and numeric_metric(product_loop.get("blocked_or_unsafe_outcomes")) == 0
         and numeric_metric(product_loop.get("warning_count")) == 0
         and numeric_metric(product_loop.get("error_count")) == 0
@@ -458,6 +467,7 @@ def dimension_results(
     entity = measurements["demo_entity_runtime_cost"]
     mutation = measurements["mutation_write_throughput"]
     first_party_product_loop = measurements.get("first_party_agent_product_loop") or {}
+    scale_gate = measurements.get("ai_runtime_scale_gate") or {}
     memory = measurements["memory"]
     cpu = measurements["cpu"]
 
@@ -733,6 +743,10 @@ def dimension_results(
     first_party_agent_loop_ready = has_first_party_agent_product_loop_evidence(
         first_party_product_loop
     )
+    first_party_scale_gate_ready = (
+        scale_gate.get("scale_gate_status") == "pass"
+        and scale_gate.get("synthetic_disposable_only") is True
+    )
     compatibility_import_inventory = (
         compatibility_import_inventory or compatibility_import_inventory_missing()
     )
@@ -761,14 +775,19 @@ def dimension_results(
         result(
             "mod_plugin_ergonomics",
             "measured" if (
-                first_party_agent_loop_ready and compatibility_import_plugin_ready
+                first_party_agent_loop_ready
+                and first_party_scale_gate_ready
+                and compatibility_import_plugin_ready
             ) else "partial",
             {
                 "clean_profile_capability_policy": True,
                 "first_party_agent_loop_ready": first_party_agent_loop_ready,
+                "first_party_agent_scale_gate_ready": first_party_scale_gate_ready,
                 "compatibility_import_plugin_ready": compatibility_import_plugin_ready,
                 "target_band_passed": (
-                    first_party_agent_loop_ready and compatibility_import_plugin_ready
+                    first_party_agent_loop_ready
+                    and first_party_scale_gate_ready
+                    and compatibility_import_plugin_ready
                 ),
                 "compatibility_import_inventory": {
                     "status": compatibility_import_inventory.get("status"),
@@ -798,22 +817,38 @@ def dimension_results(
                     "blocked_or_unsafe_outcomes": first_party_product_loop.get(
                         "blocked_or_unsafe_outcomes"
                     ),
+                    "queued_task_count": first_party_product_loop.get("queued_task_count"),
+                    "completed_task_count": first_party_product_loop.get("completed_task_count"),
+                    "rollback_records": first_party_product_loop.get("rollback_records"),
+                    "avg_task_duration_ms": first_party_product_loop.get("avg_task_duration_ms"),
+                    "p95_task_duration_ms": first_party_product_loop.get("p95_task_duration_ms"),
+                    "max_task_lag_ms": first_party_product_loop.get("max_task_lag_ms"),
+                },
+                "ai_runtime_scale_gate": {
+                    "scale_gate_status": scale_gate.get("scale_gate_status"),
+                    "required_synthetic_player_count": scale_gate.get(
+                        "required_synthetic_player_count"
+                    ),
+                    "required_concurrent_task_count": scale_gate.get(
+                        "required_concurrent_task_count"
+                    ),
+                    "synthetic_disposable_only": scale_gate.get("synthetic_disposable_only"),
                 },
             },
             plugin_evidence,
         )
     )
-    if not first_party_agent_loop_ready:
+    if not first_party_agent_loop_ready or not first_party_scale_gate_ready:
         gaps.append(
             gap(
                 hardware_class,
                 "mod_plugin_ergonomics",
-                "Prove first-party agent product loop in accepted lanes",
+                "Prove first-party agent scale gate in accepted lanes",
                 (
-                    "first-party commands exist but accepted benchmark lanes do not yet exercise "
-                    "build/repair approval, guide, tasks, audit, rollback, defender, and importer preview"
+                    "accepted benchmark lanes must prove multi-player headless load plus "
+                    "concurrent first-party task queue, duration, write, entity, CPU, and RSS evidence"
                 ),
-                "Add local and low-power-server benchmark captures for the first-party agent loop.",
+                "Refresh accepted lanes with ai_runtime_scale_gate=pass.",
             )
         )
     if not compatibility_import_plugin_ready:

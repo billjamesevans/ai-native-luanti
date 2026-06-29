@@ -199,7 +199,7 @@ time.sleep(max(args.duration, 0.0))
                     "--headless-player-command",
                     f"{sys.executable} {fake_client} --server-log {{server_log}} --name {{name}} --duration {{duration_seconds}}",
                     "--headless-player-count",
-                    "1",
+                    "2",
                 ],
                 cwd=ROOT,
                 text=True,
@@ -219,7 +219,7 @@ time.sleep(max(args.duration, 0.0))
             probe = summary["comparison_summary"]["player_load_tick_probe"]
             self.assertEqual(probe["probe_status"], "pass")
             self.assertEqual(probe["probe_kind"], "headless_client_load")
-            self.assertEqual(probe["synthetic_player_count"], 1)
+            self.assertEqual(probe["synthetic_player_count"], 2)
 
     def test_gate_fails_when_branch_regresses_accepted_baseline(self):
         with tempfile.TemporaryDirectory() as tmpdir:
