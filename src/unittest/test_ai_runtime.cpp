@@ -25,6 +25,7 @@ void TestAIRuntime::runTests(IGameDef *gamedef)
 
 	g_settings->setBool("ai_runtime.enable_smoke_command", true);
 	g_settings->setBool("ai_runtime.enable_demo_benchmark_command", true);
+	g_settings->setBool("ai_runtime.enable_model_adapter_probe_command", true);
 	server.createScripting();
 	try {
 		std::string builtin = Server::getBuiltinLuaPath() + DIR_DELIM;
@@ -35,12 +36,14 @@ void TestAIRuntime::runTests(IGameDef *gamedef)
 	} catch (ModError &e) {
 		g_settings->setBool("ai_runtime.enable_smoke_command", false);
 		g_settings->setBool("ai_runtime.enable_demo_benchmark_command", false);
+		g_settings->setBool("ai_runtime.enable_model_adapter_probe_command", false);
 		rawstream << e.what() << std::endl;
 		num_tests_failed = 1;
 		return;
 	}
 	g_settings->setBool("ai_runtime.enable_smoke_command", false);
 	g_settings->setBool("ai_runtime.enable_demo_benchmark_command", false);
+	g_settings->setBool("ai_runtime.enable_model_adapter_probe_command", false);
 
 	TEST(testLuaContractsLoaded);
 }

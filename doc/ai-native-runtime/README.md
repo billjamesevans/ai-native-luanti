@@ -40,6 +40,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Safe player operations API](safe-player-ops-api.md)
 - [Model and import runtime gates](model-import-runtime-gates.md)
 - [Model adapter contract](model-adapter-contract.md)
+- [Model adapter plugin scaffold](model-adapter-plugin-scaffold.md)
 - [Runtime metrics and audit API](metrics-audit-api.md)
 - [First-party agent plugin](first-party-agent-plugin.md)
 - [Family prototype plugin boundaries](family-prototype-plugin-boundaries.md)
@@ -70,6 +71,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Live operator task-control command: `/ai_runtime_operator_task_control`
 - Alpha release package gate: `python3 util/ai_native_alpha_release_gate.py`
 - Model adapter contract gate: `python3 util/ai_native_model_adapter_contract.py`
+- Optional model adapter scaffold: enable `ai_runtime.enable_model_adapter_probe_command` and run `/ai_model_adapter_probe`
 - One-command local pre-PR verification with clean-profile workload evidence: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime`
 - Synthetic-only utility fallback: add `--game-profile sample-synthetic`
 - Strict headless-player verification: add `--require-headless-player-probe` with a disposable `--headless-player-command`
