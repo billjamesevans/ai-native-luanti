@@ -387,12 +387,17 @@ end
 local function profile_hygiene()
 	local smoke_enabled = core.settings:get_bool("ai_runtime.enable_smoke_command", false)
 	local benchmark_enabled = core.settings:get_bool("ai_runtime.enable_demo_benchmark_command", false)
+	local model_adapter_probe_enabled =
+		core.settings:get_bool("ai_runtime.enable_model_adapter_probe_command", false)
 	local current_dev_surfaces = {}
 	if smoke_enabled then
 		current_dev_surfaces[#current_dev_surfaces + 1] = "ai_runtime_smoke"
 	end
 	if benchmark_enabled then
 		current_dev_surfaces[#current_dev_surfaces + 1] = "ai_demo_entity_benchmark"
+	end
+	if model_adapter_probe_enabled then
+		current_dev_surfaces[#current_dev_surfaces + 1] = "ai_model_adapter_probe"
 	end
 	local gameid = "ai_runtime"
 	if core.get_game_info then

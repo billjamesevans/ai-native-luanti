@@ -11,6 +11,7 @@ README = PROFILE_DIR / "README.md"
 BASE_MOD = PROFILE_DIR / "mods" / "ai_runtime_base" / "init.lua"
 SMOKE_LUA = ROOT / "builtin" / "game" / "ai_runtime_smoke.lua"
 DEMO_BENCHMARK_LUA = ROOT / "builtin" / "game" / "demo_entity_benchmark.lua"
+MODEL_ADAPTER_PLUGIN_LUA = ROOT / "builtin" / "game" / "ai_model_adapter_plugin.lua"
 AI_RUNTIME_UNITTEST = ROOT / "src" / "unittest" / "test_ai_runtime.cpp"
 DOC = ROOT / "doc" / "ai-native-runtime" / "non-devtest-server-profile.md"
 CAPABILITY_PROFILES_DOC = ROOT / "doc" / "ai-native-runtime" / "agent-capability-profiles.md"
@@ -60,14 +61,20 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
     def test_fixture_and_benchmark_commands_require_explicit_dev_settings(self):
         self.assertTrue(SMOKE_LUA.is_file(), f"missing {SMOKE_LUA}")
         self.assertTrue(DEMO_BENCHMARK_LUA.is_file(), f"missing {DEMO_BENCHMARK_LUA}")
+        self.assertTrue(MODEL_ADAPTER_PLUGIN_LUA.is_file(), f"missing {MODEL_ADAPTER_PLUGIN_LUA}")
         self.assertTrue(AI_RUNTIME_UNITTEST.is_file(), f"missing {AI_RUNTIME_UNITTEST}")
 
         smoke_lua = SMOKE_LUA.read_text(encoding="utf-8")
         demo_lua = DEMO_BENCHMARK_LUA.read_text(encoding="utf-8")
+        adapter_lua = MODEL_ADAPTER_PLUGIN_LUA.read_text(encoding="utf-8")
         unittest_cpp = AI_RUNTIME_UNITTEST.read_text(encoding="utf-8")
 
         self.assertIn('core.settings:get_bool("ai_runtime.enable_smoke_command", false)', smoke_lua)
         self.assertIn('core.settings:get_bool("ai_runtime.enable_demo_benchmark_command", false)', demo_lua)
+        self.assertIn(
+            'core.settings:get_bool("ai_runtime.enable_model_adapter_probe_command", false)',
+            adapter_lua,
+        )
         self.assertLess(
             smoke_lua.find('core.settings:get_bool("ai_runtime.enable_smoke_command", false)'),
             smoke_lua.find('core.register_chatcommand("ai_runtime_smoke"'),
@@ -76,8 +83,18 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
             demo_lua.find('core.settings:get_bool("ai_runtime.enable_demo_benchmark_command", false)'),
             demo_lua.find('core.register_chatcommand("ai_demo_entity_benchmark"'),
         )
+        self.assertLess(
+            adapter_lua.find(
+                'core.settings:get_bool("ai_runtime.enable_model_adapter_probe_command", false)'
+            ),
+            adapter_lua.find('core.register_chatcommand("ai_model_adapter_probe"'),
+        )
         self.assertIn('g_settings->setBool("ai_runtime.enable_smoke_command", true)', unittest_cpp)
         self.assertIn('g_settings->setBool("ai_runtime.enable_demo_benchmark_command", true)', unittest_cpp)
+        self.assertIn(
+            'g_settings->setBool("ai_runtime.enable_model_adapter_probe_command", true)',
+            unittest_cpp,
+        )
 
     def test_profile_declares_first_party_agent_capability_policy(self):
         base_mod = BASE_MOD.read_text(encoding="utf-8")
