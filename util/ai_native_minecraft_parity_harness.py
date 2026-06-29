@@ -515,16 +515,31 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
                 "first_party_agent_loop_ready": False,
                 "compatibility_import_plugin_ready": False,
             },
-            "clean runtime profile exists; richer first-party agent/import plugins remain open",
+            "clean runtime profile exists; first-party agent and import inventory proof remain open",
         )
     )
     gaps.append(
         gap(
             hardware_class,
             "mod_plugin_ergonomics",
-            "Finish first-party agent and import plugin ergonomics",
-            "clean runtime profile is available but Builder/Repair/Guide/Defender and import UX are still roadmap items",
-            "Complete first-party plugin loop and compatibility inventory issues.",
+            "Prove first-party agent product loop in accepted lanes",
+            (
+                "first-party commands exist but accepted benchmark lanes do not yet exercise "
+                "build/repair approval, guide, tasks, audit, rollback, defender, and importer preview"
+            ),
+            "Add local and low-power-server benchmark captures for the first-party agent loop.",
+        )
+    )
+    gaps.append(
+        gap(
+            hardware_class,
+            "mod_plugin_ergonomics",
+            "Build compatibility import inventory discovery",
+            (
+                "Importer is dry-run plan-only; public-safe inventory discovery and richer "
+                "compatibility reports remain open"
+            ),
+            "Complete public-safe import inventory discovery and report classification work.",
         )
     )
 
