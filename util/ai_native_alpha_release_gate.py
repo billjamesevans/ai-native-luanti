@@ -85,7 +85,110 @@ REQUIRED_DOCS = [
             "Public-safe sample data",
         ],
     },
+    {
+        "path": "doc/ai-native-runtime/project-operating-loop.md",
+        "kind": "project_operating_loop",
+        "phrases": [
+            "ranked next-issue queue",
+            "python3 util/ai_native_alpha_release_gate.py",
+            "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
+            "python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks",
+            "#253",
+            "#254",
+            "#255",
+            "#256",
+            "#257",
+            "spacebase",
+            "themepark",
+            "disneyland100",
+            "side-by-side",
+        ],
+    },
 ]
+
+PROJECT_OPERATING_LOOP = {
+    "cadence": [
+        {
+            "name": "pre_pr_local_gate",
+            "commands": [
+                ["python3", "util/ai_native_alpha_release_gate.py"],
+                [
+                    "python3",
+                    "util/ai_native_runtime_verify.py",
+                    "--hardware-class",
+                    "local-mac",
+                    "--game-profile",
+                    "ai_runtime",
+                ],
+            ],
+            "purpose": "prove the clean ai_runtime contributor package and local runtime evidence before opening a PR",
+        },
+        {
+            "name": "benchmark_review",
+            "commands": [
+                [
+                    "python3",
+                    "util/ai_native_minecraft_parity_harness.py",
+                    "--output-root",
+                    "local/benchmarks",
+                ]
+            ],
+            "purpose": "keep Minecraft-parity targets current without retaining proprietary benchmark payloads",
+        },
+        {
+            "name": "pi_promotion",
+            "commands": [
+                [
+                    "python3",
+                    "util/ai_native_low_power_pi_evidence.py",
+                    "--ssh-target",
+                    "<operator-supplied-target>",
+                    "--confirm-backup-first",
+                    "--soak-target",
+                    "quick",
+                ]
+            ],
+            "purpose": "promote only after backup-first side-by-side deployment preserves the family server",
+        },
+    ],
+    "ranked_next_issue_queue": [
+        {
+            "issue": "#253",
+            "title": "Promoted Pi one-hour and overnight evidence for current alpha",
+            "when": "after current evidence lane clears",
+            "gate": "backup-first side-by-side Pi deploy and low-power evidence",
+        },
+        {
+            "issue": "#254",
+            "title": "First-party AI agent productization lane",
+            "when": "parallel local work while Pi evidence is occupied",
+            "gate": "live product-loop probe and one-command local verifier",
+        },
+        {
+            "issue": "#255",
+            "title": "Compatibility import scale-up after staged apply pilot",
+            "when": "after runtime/product loop evidence stays clean",
+            "gate": "dry-run or approval-gated apply with rollback metadata",
+        },
+        {
+            "issue": "#256",
+            "title": "Minecraft parity benchmark expansion",
+            "when": "after accepted local and low-power lanes are refreshed",
+            "gate": "public-safe parity harness with actionable scorecard",
+        },
+        {
+            "issue": "#257",
+            "title": "Contributor release automation and project operating loop",
+            "when": "continuously after each milestone slice",
+            "gate": "alpha gate docs/templates/report remain complete",
+        },
+    ],
+    "public_boundary": {
+        "family_server_role": "private proving ground only",
+        "fork_lane": "side-by-side ai_runtime alpha lane",
+        "excluded_content": ["spacebase", "themepark", "disneyland100"],
+    },
+}
 
 REQUIRED_ISSUE_TEMPLATES = [
     {
@@ -270,6 +373,7 @@ def build_report(root: pathlib.Path | str) -> dict:
                 },
             ],
         },
+        "project_operating_loop": PROJECT_OPERATING_LOOP,
         "clean_profile_package": clean_profile_package,
         "docs": docs,
         "issue_templates": issue_templates,
