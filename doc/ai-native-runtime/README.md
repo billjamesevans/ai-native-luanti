@@ -71,6 +71,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - First-party agent product-loop live probe: `python3 util/ai_native_agent_product_loop_live_probe.py --root . --server-bin bin/luantiserver --output local/benchmarks/agent-product-loop-live.json --generated-at 2026-06-29T00:00:00Z`
 - Compatibility import staging pilot: `python3 util/ai_native_compat_import_staging_pilot.py --root . --server-bin bin/luantiserver --output local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json --generated-at 2026-06-29T00:00:00Z`
 - Live operator status command: `/ai_runtime_operator_status`
+- Focused operator status views: `/ai_runtime_operator_status view=tasks`, `view=task task_id=<task-id>`, `view=audit`, `view=rollback`, `view=imports`
 - Live operator task-control command: `/ai_runtime_operator_task_control`
 - Alpha release package gate: `python3 util/ai_native_alpha_release_gate.py`
 - Model adapter contract gate: `python3 util/ai_native_model_adapter_contract.py`
