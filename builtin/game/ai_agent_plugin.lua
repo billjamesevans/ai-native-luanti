@@ -660,6 +660,37 @@ local function handle_repair(name, context)
 	})
 end
 
+local function default_import_plan(context)
+	context = context or {}
+	if context.import_plan then
+		return context.import_plan
+	end
+	return {
+		source = {
+			source_id = context.source_id or "agent-import-dry-run",
+			source_class = context.source_class or "unknown",
+			inventory = {},
+			content_hashes = {},
+		},
+		dry_run = true,
+		planned_actions = {},
+	}
+end
+
+local function handle_import_plan(name, context)
+	context = context or {}
+	context.max_node_writes_per_step = 0
+	return queue_plugin_task(name, "import_plan", "import dry-run plan", {
+		function()
+			return core.ai_import_ops.plan(default_import_plan(context), {
+				agent_id = agent_id_for(name),
+				owner = name,
+				task_id = context.task_id,
+			})
+		end,
+	}, context)
+end
+
 local function compact_audit_record(record)
 	return {
 		event_type = record.event_type,
@@ -695,6 +726,7 @@ local function handle_guide(name)
 			repair = true,
 			guide = true,
 			defender = true,
+			importer = true,
 		},
 		commands = {
 			"status",
@@ -707,6 +739,7 @@ local function handle_guide(name)
 			"repair plan",
 			"repair",
 			"defend",
+			"import plan",
 			"audit",
 			"rollback",
 		},
@@ -846,6 +879,11 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt:find("defend", 1, true) then
 		return handle_defend(name, context)
+	end
+	if prompt:find("import", 1, true)
+			and (prompt:find("plan", 1, true) or prompt:find("preview", 1, true)
+				or prompt:find("inventory", 1, true)) then
+		return handle_import_plan(name, context)
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
 		return handle_build(name, context)

@@ -3973,6 +3973,7 @@ assert(guide_reply.surfaces.builder == true)
 assert(guide_reply.surfaces.repair == true)
 assert(guide_reply.surfaces.guide == true)
 assert(guide_reply.surfaces.defender == true)
+assert(guide_reply.surfaces.importer == true)
 assert(type(guide_reply.commands) == "table")
 
 local audit_reply = core.ai_agent_plugin.handle_command("Wills", "audit", {})
@@ -4046,6 +4047,73 @@ assert(completed_defend.last_result.operation == "ai_player.defend")
 assert(completed_defend.last_result.reason == "hostile_target_defended")
 assert(completed_defend.last_result.changed == 1)
 assert(defended == true)
+
+core.ai_agent_plugin.configure({
+	capability_profile = "operator",
+	capabilities = {
+		["import.assets"] = true,
+		["task.cancel"] = true,
+	},
+})
+
+local importer_plan_reply = core.ai_agent_plugin.handle_command("Importer", "import plan", {
+	import_plan = {
+		source = {
+			source_id = "agent-import-synthetic-pack",
+			source_class = "bedrock_resource_pack",
+			inventory = {
+				{
+					entry_id = "entry:agent-import:1",
+					source_path = "textures/agent_import.png",
+					source_kind = "texture",
+					classification = "mapped",
+					reason = "metadata_or_asset_reference",
+					required_capabilities = { "import.assets" },
+				},
+			},
+			content_hashes = {
+				{
+					algorithm = "sha256",
+					value = string.rep("1", 64),
+					purpose = "synthetic agent import inventory hash",
+				},
+			},
+		},
+		dry_run = true,
+		planned_actions = {
+			{
+				action = "map_texture",
+				status = "partial",
+				required_capabilities = { "import.assets" },
+				provenance = {
+					source_id = "agent-import-synthetic-pack",
+					inventory_refs = { "entry:agent-import:1" },
+					classification = "mapped",
+				},
+				mutation_cost = {
+					node_writes = 0,
+					media_files = 1,
+					manual_review_items = 1,
+				},
+			},
+		},
+	},
+})
+assert(importer_plan_reply.ok == true)
+assert(importer_plan_reply.action == "import_plan")
+assert(importer_plan_reply.status == "queued")
+assert(importer_plan_reply.task_id ~= nil)
+core.step_ai_tasks()
+local completed_importer_plan = core.get_ai_task(importer_plan_reply.task_id)
+assert(completed_importer_plan.status == "completed")
+assert(completed_importer_plan.last_result.operation == "ai_import.plan")
+assert(completed_importer_plan.last_result.import_plan.dry_run == true)
+assert(completed_importer_plan.last_result.import_plan.assets_copied == false)
+assert(completed_importer_plan.last_result.import_plan.source_id == "agent-import-synthetic-pack")
+assert(completed_importer_plan.last_result.import_plan.inventory_count == 1)
+assert(completed_importer_plan.last_result.import_plan.planned_actions[1].action == "map_texture")
+assert(completed_importer_plan.last_result.changed == 0)
+assert(completed_importer_plan.last_result.skipped == 0)
 
 core.ai_agent_plugin.configure({
 	capability_profile = "clean",
