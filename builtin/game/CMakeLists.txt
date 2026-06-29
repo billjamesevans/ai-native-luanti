@@ -1,6 +1,7 @@
 set(BUILTIN_GAME_SRCS
 	game/ai_runtime.lua
 	game/ai_operator_status.lua
+	game/ai_operator_task_control.lua
 	game/ai_runtime_commands.lua
 	game/repair_agent.lua
 	game/build_agent.lua

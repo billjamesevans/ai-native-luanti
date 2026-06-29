@@ -17,6 +17,7 @@ import ai_native_benchmark_capture
 import ai_native_operator_action_approval_plan
 import ai_native_operator_action_approval_receipt
 import ai_native_operator_task_control_executor
+import ai_native_operator_task_control_command_probe
 import ai_native_operator_task_control_live_probe
 import ai_native_operator_control_report
 
@@ -31,6 +32,7 @@ OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.j
 OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-receipt.json"
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
+OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-task-control-command-result.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -160,6 +162,10 @@ def operator_action_execution_result_artifact_path(args) -> Path:
 
 def operator_task_control_live_result_artifact_path(args) -> Path:
     return physical_run_dir(args) / OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME
+
+
+def operator_task_control_command_result_artifact_path(args) -> Path:
+    return physical_run_dir(args) / OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME
 
 
 def operator_status_artifact_name(args) -> str:
@@ -296,6 +302,7 @@ def build_steps(args) -> list[CommandStep]:
         ),
         build_operator_status_step(args),
         build_operator_task_control_live_step(args),
+        build_operator_task_control_command_step(args),
         CommandStep(
             "ai_runtime_focused_tests",
             "Focused AI runtime unit smoke",
@@ -427,6 +434,44 @@ def build_operator_task_control_live_step(args) -> CommandStep:
             str(args.operator_task_control_live_result_max_bytes),
             "--timeout",
             str(args.operator_task_control_live_timeout),
+        ),
+    )
+
+
+def build_operator_task_control_command_step(args) -> CommandStep:
+    return CommandStep(
+        "operator_task_control_command_probe",
+        "Receipt-gated task control command probe in disposable ai_runtime world",
+        [
+            args.python,
+            "util/ai_native_operator_task_control_command_probe.py",
+            "--root",
+            ".",
+            "--server-bin",
+            args.server_bin,
+            "--output",
+            str(operator_task_control_command_result_artifact_path(args)),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.operator_task_control_command_result_max_bytes),
+            "--timeout",
+            str(args.operator_task_control_command_timeout),
+        ],
+        python_manifest_command(
+            "util/ai_native_operator_task_control_command_probe.py",
+            "--root",
+            ".",
+            "--server-bin",
+            server_manifest_bin(args.server_bin),
+            "--output",
+            logical_path(args, OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.operator_task_control_command_result_max_bytes),
+            "--timeout",
+            str(args.operator_task_control_command_timeout),
         ),
     )
 
@@ -695,6 +740,36 @@ def operator_task_control_live_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def operator_task_control_command_evidence(args) -> tuple[dict, list[str]]:
+    path = operator_task_control_command_result_artifact_path(args)
+    source_path = logical_path(args, OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME)
+    evidence = {
+        "operator_task_control_command_status": "fail",
+        "operator_task_control_command_path": source_path,
+        "source_kind": "disposable_live_ai_runtime_command_probe",
+        "live_command": "/ai_runtime_operator_task_control",
+        "direct_command_execution": True,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("operator_task_control_command_probe artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        evidence.update(
+            ai_native_operator_task_control_command_probe.validate_command_result(
+                payload,
+                max_bytes=args.operator_task_control_command_result_max_bytes,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"operator_task_control_command_probe artifact invalid: {type(exc).__name__}")
+    evidence["operator_task_control_command_status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def build_step_manifest(step: CommandStep, result: CommandRun, max_output_chars: int) -> dict:
     status = "pass" if result.returncode == 0 else "fail"
     payload = {
@@ -754,6 +829,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME,
             )
+        if step.id == "operator_task_control_command_probe":
+            artifact_paths["operator_task_control_command_result"] = logical_path(
+                args,
+                OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME,
+            )
 
     operator_evidence = None
     if operator_status_step_ran:
@@ -764,6 +844,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     if any(step.id == "operator_task_control_live_probe" for step, _ in command_results):
         operator_task_control_live, live_failures = operator_task_control_live_evidence(args)
         failure_reasons.extend(live_failures)
+
+    operator_task_control_command = None
+    if any(step.id == "operator_task_control_command_probe" for step, _ in command_results):
+        operator_task_control_command, command_failures = operator_task_control_command_evidence(args)
+        failure_reasons.extend(command_failures)
 
     manifest = {
         "schema_version": 1,
@@ -803,6 +888,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         manifest["operator_status_evidence"] = operator_evidence
     if operator_task_control_live is not None:
         manifest["operator_task_control_live_evidence"] = operator_task_control_live
+    if operator_task_control_command is not None:
+        manifest["operator_task_control_command_evidence"] = operator_task_control_command
     return manifest
 
 
@@ -975,6 +1062,18 @@ def parse_args(argv=None):
         type=float,
         default=20.0,
         help="Seconds to wait for the disposable operator task-control live probe.",
+    )
+    parser.add_argument(
+        "--operator-task-control-command-result-max-bytes",
+        type=int,
+        default=22000,
+        help="Maximum byte budget for the operator task-control command result artifact.",
+    )
+    parser.add_argument(
+        "--operator-task-control-command-timeout",
+        type=float,
+        default=20.0,
+        help="Seconds to wait for the disposable operator task-control command probe.",
     )
     return parser.parse_args(argv)
 
