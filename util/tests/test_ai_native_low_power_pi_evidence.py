@@ -95,6 +95,16 @@ class FakeRunner:
                 "rss_sample_count": 3,
                 "max_rss_kb": 196608,
             },
+            "compat_import_staging_pilot_evidence": {
+                "compat_import_staging_pilot_status": "pass",
+                "compat_import_inventory_ready": True,
+                "compat_import_node_writes": 4,
+                "compat_import_mapblock_churn": 1,
+                "compat_import_refusal_gates": [
+                    "max_node_writes_total",
+                    "max_mapblock_churn_total",
+                ],
+            },
             "failure_reasons": [],
         }
 
@@ -205,6 +215,17 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             "pass",
         )
         self.assertEqual(
+            manifest["runtime_verification_evidence"]["compat_import_staging_pilot_status"],
+            "pass",
+        )
+        self.assertTrue(
+            manifest["runtime_verification_evidence"]["compat_import_inventory_ready"],
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["compat_import_node_writes"],
+            4,
+        )
+        self.assertEqual(
             manifest["runtime_verification_evidence"]["avg_process_cpu_percent"],
             14.5,
         )
@@ -231,6 +252,10 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             manifest["soak_evidence"]["resource_budgets"]["max_fork_restarts"],
             0,
         )
+        self.assertEqual(manifest["soak_evidence"]["target"]["name"], "quick")
+        self.assertTrue(manifest["soak_evidence"]["target"]["duration_met"])
+        self.assertEqual(manifest["soak_evidence"]["target"]["next_target"], "one-hour")
+        self.assertEqual(manifest["ranked_follow_up_issue_seeds"], [])
         self.assertEqual(manifest["failure_reasons"], [])
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
 
@@ -464,6 +489,60 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertIn("memory_rss_budget_exceeded", manifest["failure_reasons"])
         self.assertIn("actionable_warning_budget_exceeded", manifest["failure_reasons"])
         self.assertIn("server_log_error_budget_exceeded", manifest["failure_reasons"])
+        self.assertEqual(
+            [issue["severity"] for issue in manifest["ranked_follow_up_issue_seeds"][:3]],
+            ["P1", "P1", "P2"],
+        )
+        self.assertEqual(
+            manifest["ranked_follow_up_issue_seeds"][0]["source_failure"],
+            "fork_restart_budget_exceeded",
+        )
+        self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
+
+    def test_one_hour_soak_target_requires_elapsed_duration(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                    "--soak-target",
+                    "one-hour",
+                    "--soak-iterations",
+                    "2",
+                ]
+            )
+            fake_runner = FakeRunner(module)
+            monotonic_values = iter([100.0, 220.0])
+
+            exit_code, _, manifest = module.run(
+                args,
+                runner=fake_runner,
+                now_fn=lambda: "2026-06-29T10:00:00Z",
+                monotonic_fn=lambda: next(monotonic_values),
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(manifest["soak_evidence"]["target"]["name"], "one-hour")
+        self.assertEqual(
+            manifest["soak_evidence"]["target"]["minimum_duration_seconds"],
+            3600.0,
+        )
+        self.assertEqual(manifest["soak_evidence"]["target"]["elapsed_seconds"], 120.0)
+        self.assertFalse(manifest["soak_evidence"]["target"]["duration_met"])
+        self.assertEqual(manifest["soak_evidence"]["target"]["next_target"], "overnight")
+        self.assertIn("soak_target_duration_not_met", manifest["failure_reasons"])
+        self.assertEqual(
+            manifest["ranked_follow_up_issue_seeds"][0]["source_failure"],
+            "soak_target_duration_not_met",
+        )
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
 
     def test_reads_remote_manifest_even_when_remote_verifier_exits_nonzero(self):
@@ -533,6 +612,8 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertIn("ai_native_low_power_pi_evidence.py", alpha_gate)
         self.assertIn("--confirm-backup-first", alpha_gate)
         self.assertIn("--soak-iterations", alpha_gate)
+        self.assertIn("--soak-target one-hour", alpha_gate)
+        self.assertIn("--soak-target overnight", alpha_gate)
         self.assertIn("max_avg_cpu_percent", alpha_gate)
         self.assertIn("max_rss_mb", alpha_gate)
 
