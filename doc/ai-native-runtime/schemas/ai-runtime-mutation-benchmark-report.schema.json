@@ -100,7 +100,8 @@
             "build",
             "repair_scan",
             "repair_mutation",
-            "rollback"
+            "rollback",
+            "compat_structure"
           ]
         },
         "description": {
@@ -180,6 +181,7 @@
         "max_lag_ms",
         "node_writes",
         "node_writes_per_step",
+        "mapblock_churn",
         "skipped_positions",
         "rollback_records",
         "ai_runtime_counters",
@@ -216,6 +218,13 @@
           "minimum": 0
         },
         "node_writes": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "mapblock_churn": {
           "type": [
             "integer",
             "null"

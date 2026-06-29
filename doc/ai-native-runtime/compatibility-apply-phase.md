@@ -222,7 +222,7 @@ This command:
 - Validates approved `import_structure` actions against node-write, mapblock-churn, manual-review, wall-clock, and rollback budgets.
 - Requires staging plus `manifest_only` or `snapshot` rollback policy before a structure handoff can be defined.
 - Emits inert task definitions that preserve calibrated structure cost, redacted source provenance, required `import.assets`/world capabilities, and `mutation_enabled = false`.
-- Marks approved `import_structure` definitions with the staged runtime entrypoint `core.ai_import_ops.define_structure_apply_task`.
+- Marks approved `import_structure` definitions with staged runtime entrypoints such as `core.ai_import_ops.define_structure_apply_task` and `core.ai_import_ops.define_chunked_structure_apply_task`.
 - Emits an apply summary with `status = planned`.
 
 The command does not queue runnable world-write steps or mutate a world.
@@ -244,11 +244,11 @@ Each generated task definition includes:
 - Rollback policy and metadata requirements.
 - Source planned-action metadata for review.
 
-`import_structure` maps to `compat.structure.place`, has `mutation_class = world_mutating`, and sets `requires_safe_world_ops = true`. Apply-plan output remains definition-only, but the runtime now exposes `core.ai_import_ops.define_structure_apply_task` for staged execution in disposable worlds.
+`import_structure` maps to `compat.structure.place`, has `mutation_class = world_mutating`, and sets `requires_safe_world_ops = true`. Apply-plan output remains definition-only, but the runtime now exposes `core.ai_import_ops.define_structure_apply_task` and `core.ai_import_ops.define_chunked_structure_apply_task` for staged execution in disposable worlds.
 
 ## Current Structure Runtime Executor
 
-`core.ai_import_ops.define_structure_apply_task(def)` creates a queueable staged structure apply task for synthetic or operator-reviewed structure placements. This is the first mutating compatibility path and is intentionally narrow.
+`core.ai_import_ops.define_structure_apply_task(def)` creates a queueable staged structure apply task for synthetic or operator-reviewed structure placements. `core.ai_import_ops.define_chunked_structure_apply_task(def)` slices the same placement list into bounded task steps. This is the first mutating compatibility path and is intentionally narrow.
 
 Required runtime gates:
 
@@ -258,10 +258,14 @@ Required runtime gates:
 - `allow_mutation = true`.
 - Rollback policy must be `manifest_only`, `manifest`, `chunked`, or `snapshot`.
 - Rollback metadata must persist before any node write.
-- `max_node_writes_per_step`, `max_mapblock_churn_total`, and the task queue wall-clock budget must be explicit and enforced.
+- `max_node_writes_total`, `max_node_writes_per_step`, `max_mapblock_churn_total`, and the task queue wall-clock budget must be explicit and enforced.
 
 Execution calls `core.run_ai_world_mutation_with_rollback`, then places nodes through `core.ai_world_ops.batch_place`. Failed rollback persistence blocks before mutation. Budget failures block before rollback and before mutation. Protected-area or safe-world-op failures can persist rollback metadata first, then block with `changed = 0`.
 
-`core.ai_import_ops.build_apply_summary(options)` inspects queued runtime task ids and separates `queued_tasks`, `running_tasks`, `completed_tasks`, and `blocked_tasks`. It reports actual node writes, mapblock churn, rollback records, audit count, and keeps `assets_remain_operator_supplied = true` plus `dry_run_report_unchanged = true`.
+Chunked execution writes one rollback record per chunk before that chunk's node writes. Each chunk record carries `chunk_index`, `chunk_count`, `first_position_index`, and `position_count`. If a later chunk blocks, prior successful chunks and rollback records remain available for operator review.
+
+`core.ai_import_ops.plan_structure_rollback(options)` reads persisted rollback chunk references through `core.ai_rollback_storage.inspect` and returns a no-mutation rollback plan. It reports inspected records, missing records, chunk metadata, planned node-write count, and mapblock churn, but it never reverts nodes. Revert execution remains a later reviewed milestone.
+
+`core.ai_import_ops.build_apply_summary(options)` inspects queued runtime task ids and separates `queued_tasks`, `running_tasks`, `completed_tasks`, and `blocked_tasks`. It reports actual node writes, mapblock churn, elapsed runtime, rollback records, audit count, and keeps `assets_remain_operator_supplied = true` plus `dry_run_report_unchanged = true`.
 
 This executor is for disposable staging worlds and synthetic fixtures only. Showcase worlds, private family-server content, copied Minecraft assets, secrets, and local paths remain outside the fork.

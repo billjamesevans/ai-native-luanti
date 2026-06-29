@@ -78,6 +78,23 @@ SCENARIOS = [
             "world_ref": "world:synthetic-benchmark",
         },
     },
+    {
+        "scenario_id": "compat_structure_chunked_apply",
+        "category": "compat_structure",
+        "description": "Apply a synthetic reviewed structure fixture through chunked compatibility import tasks.",
+        "entry_point": {
+            "command": "bin/luantiserver --run-unittests --test-module TestAIRuntime",
+            "runtime_path": "builtin/game/ai_runtime.lua",
+            "server_action": "core.ai_import_ops.queue_chunked_structure_apply_task",
+        },
+        "fixture": {
+            "synthetic": True,
+            "requires_live_world": False,
+            "requires_private_assets": False,
+            "node_count": 5,
+            "world_ref": "world:synthetic-compat-staging",
+        },
+    },
 ]
 
 SAMPLE_METRICS = {
@@ -87,6 +104,7 @@ SAMPLE_METRICS = {
         "max_lag_ms": 3.0,
         "node_writes": 8,
         "node_writes_per_step": 8,
+        "mapblock_churn": 1,
         "skipped_positions": 0,
         "rollback_records": 1,
         "ai_runtime_counters": {
@@ -105,6 +123,7 @@ SAMPLE_METRICS = {
         "max_lag_ms": 2.0,
         "node_writes": 0,
         "node_writes_per_step": 0,
+        "mapblock_churn": 0,
         "skipped_positions": 2,
         "rollback_records": 0,
         "ai_runtime_counters": {
@@ -123,6 +142,7 @@ SAMPLE_METRICS = {
         "max_lag_ms": 2.9,
         "node_writes": 3,
         "node_writes_per_step": 4,
+        "mapblock_churn": 1,
         "skipped_positions": 1,
         "rollback_records": 1,
         "ai_runtime_counters": {
@@ -141,6 +161,7 @@ SAMPLE_METRICS = {
         "max_lag_ms": 1.4,
         "node_writes": 0,
         "node_writes_per_step": 0,
+        "mapblock_churn": 0,
         "skipped_positions": 0,
         "rollback_records": 1,
         "ai_runtime_counters": {
@@ -148,6 +169,25 @@ SAMPLE_METRICS = {
             "completed_tasks": 0,
             "blocked_tasks": 0,
             "rollback_write_attempts": 1,
+            "rollback_write_failures": 0,
+        },
+        "warnings": [],
+        "errors": [],
+    },
+    "compat_structure_chunked_apply": {
+        "avg_step_ms": 2.1,
+        "p95_step_ms": 2.8,
+        "max_lag_ms": 3.4,
+        "node_writes": 5,
+        "node_writes_per_step": 2,
+        "mapblock_churn": 5,
+        "skipped_positions": 0,
+        "rollback_records": 3,
+        "ai_runtime_counters": {
+            "queued_tasks": 1,
+            "completed_tasks": 1,
+            "blocked_tasks": 0,
+            "rollback_write_attempts": 3,
             "rollback_write_failures": 0,
         },
         "warnings": [],
@@ -161,6 +201,7 @@ PLANNED_METRICS = {
     "max_lag_ms": None,
     "node_writes": None,
     "node_writes_per_step": None,
+    "mapblock_churn": None,
     "skipped_positions": None,
     "rollback_records": None,
     "ai_runtime_counters": {
@@ -194,6 +235,11 @@ REGRESSION_GATES = [
         "metric": "node_writes_per_step",
         "condition": "must stay inside the scenario write budget",
         "merge_rule": "must not merge if bounded writes are bypassed",
+    },
+    {
+        "metric": "mapblock_churn",
+        "condition": "must be measured for structure and map/chunk mutation scenarios",
+        "merge_rule": "must not merge if mapblock churn is missing",
     },
     {
         "metric": "node_writes",

@@ -19,6 +19,7 @@ EXPECTED_SCENARIOS = {
     "repair_scan_readonly",
     "repair_mutation_rollback",
     "rollback_record_write",
+    "compat_structure_chunked_apply",
 }
 
 REQUIRED_REPORT_FIELDS = {
@@ -46,6 +47,7 @@ REQUIRED_METRICS = {
     "max_lag_ms",
     "node_writes",
     "node_writes_per_step",
+    "mapblock_churn",
     "skipped_positions",
     "rollback_records",
     "ai_runtime_counters",
@@ -88,10 +90,15 @@ class MutationBenchmarkContractTests(unittest.TestCase):
                 self.assertIsInstance(node_writes, int)
                 self.assertGreaterEqual(node_writes, 0)
                 self.assertLessEqual(node_writes, scenario["fixture"]["node_count"])
-                if scenario["category"] in {"build", "repair_mutation"}:
+                mapblock_churn = scenario["metrics"]["mapblock_churn"]
+                self.assertIsInstance(mapblock_churn, int)
+                self.assertGreaterEqual(mapblock_churn, 0)
+                if scenario["category"] in {"build", "repair_mutation", "compat_structure"}:
                     self.assertGreater(node_writes, 0)
                 else:
                     self.assertEqual(node_writes, 0)
+                if scenario["category"] == "compat_structure":
+                    self.assertGreater(mapblock_churn, 0)
 
     def test_schema_declares_required_benchmark_report_fields(self):
         schema = self.load_json(SCHEMA)
@@ -149,11 +156,13 @@ class MutationBenchmarkContractTests(unittest.TestCase):
             "repair_scan_readonly",
             "repair_mutation_rollback",
             "rollback_record_write",
+            "compat_structure_chunked_apply",
             "average step",
             "p95 step",
             "max lag",
             "total node writes",
             "node_writes",
+            "mapblock_churn",
             "must not merge",
             "local-mac",
             "low-power-server",
