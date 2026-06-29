@@ -796,6 +796,23 @@ assert(get_test_node(batch_two).name == "air")
 assert(get_test_node(batch_three).name == "air")
 core.is_protected = old_is_protected
 
+local batch_param_pos = test_pos(4153)
+set_test_node(batch_param_pos, { name = "air" })
+local batch_param_place = core.ai_world_ops.batch_place({
+	{
+		pos = batch_param_pos,
+		node = {
+			name = "ai_runtime_test:stone",
+			param1 = 7,
+			param2 = 9,
+		},
+	},
+}, safe_options)
+assert_action_result(batch_param_place, true, "success", "ai_world.batch_place")
+assert(get_test_node(batch_param_pos).name == "ai_runtime_test:stone")
+assert(get_test_node(batch_param_pos).param1 == 7)
+assert(get_test_node(batch_param_pos).param2 == 9)
+
 local batch_remove = core.ai_world_ops.batch_remove({ batch_one, unbreakable_pos }, safe_options)
 assert_action_result(batch_remove, true, "partial", "ai_world.batch_remove")
 assert(batch_remove.changed == 1)
@@ -1607,6 +1624,29 @@ local function run_compat_structure_apply_tests()
 			["world.place"] = true,
 		},
 	})
+	core.register_ai_agent({
+		agent_id = "compat_rollback:runtime",
+		display_name = "Compatibility Runtime Rollback Agent",
+		owner = "compat-operator",
+		plugin = "compat_import_test",
+		capabilities = {
+			["rollback.execute"] = true,
+			["admin.override"] = true,
+			["world.place"] = true,
+			["world.batch"] = true,
+		},
+	})
+	core.register_ai_agent({
+		agent_id = "compat_rollback:no_admin",
+		display_name = "Compatibility Rollback Missing Admin Agent",
+		owner = "compat-operator",
+		plugin = "compat_import_test",
+		capabilities = {
+			["rollback.execute"] = true,
+			["world.place"] = true,
+			["world.batch"] = true,
+		},
+	})
 
 	local apply_base = test_pos(4500)
 	local function structure_placements(origin)
@@ -2057,6 +2097,7 @@ local function run_compat_structure_apply_tests()
 	assert(rollback_plan.metrics.mapblock_churn >= 3)
 	assert(rollback_plan.rollback_records[1].storage_ref:find(
 		"rollback://compat-chunk/", 1, true))
+	assert(rollback_plan.rollback_records[1].record.record_id ~= nil)
 
 	local missing_readback = core.ai_import_ops.plan_structure_rollback({
 		agent_id = "compat_import:runtime",
@@ -2075,6 +2116,331 @@ local function run_compat_structure_apply_tests()
 	assert(missing_readback.changed == 0)
 	assert(#missing_readback.rollback_records == 2)
 	assert(#missing_readback.rollback_plan.missing_records == 1)
+
+	local rollback_execute_records = {}
+	local writes_before_rollback_success = structure_writes
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		inspect_record = function(storage_ref)
+			return chunk_storage[storage_ref]
+		end,
+		persist_record = function(record)
+			local expected_writes_before = { 0, 1, 3 }
+			local ordinal = #rollback_execute_records + 1
+			assert(structure_writes == writes_before_rollback_success
+				+ expected_writes_before[ordinal])
+			rollback_execute_records[#rollback_execute_records + 1] = record
+			return {
+				ok = true,
+				storage_ref = "rollback://compat-rollback/" .. record.record_id,
+			}
+		end,
+	})
+	local rollback_definition =
+		core.ai_import_ops.define_chunked_structure_rollback_task({
+			task_id = "compat-rollback:success",
+			agent_id = "compat_rollback:runtime",
+			owner = "compat-operator",
+			source_task_id = "compat-structure:chunked-success",
+			world_id = "staging-world",
+			staging = true,
+			explicit_approval = true,
+			allow_mutation = true,
+			rollback_policy = "chunked",
+			get_node = get_test_node,
+			set_node = counting_structure_set_node,
+			max_node_writes_total = 5,
+			max_node_writes_per_step = 2,
+			max_mapblock_churn_total = 5,
+			max_wall_time_ms = 5000,
+		})
+	assert(rollback_definition.required_capabilities["rollback.execute"] == true)
+	assert(rollback_definition.required_capabilities["admin.override"] == true)
+	assert(rollback_definition.required_capabilities["world.place"] == true)
+	assert(rollback_definition.required_capabilities["world.batch"] == true)
+	assert(rollback_definition.metadata.reverse_order == true)
+	core.queue_ai_task(rollback_definition)
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-rollback:success").status == "running")
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-rollback:success").status == "running")
+	core.step_ai_tasks()
+	local rollback_success = core.get_ai_task("compat-rollback:success")
+	assert(rollback_success.status == "completed")
+	assert(rollback_success.progress.current == 3)
+	assert(rollback_success.progress.total == 3)
+	assert(rollback_success.last_result.operation == "ai_import.rollback_execute")
+	assert(rollback_success.last_result.changed == 2)
+	assert(rollback_success.last_result.metrics.rollback_records == 1)
+	assert(rollback_success.last_result.source_rollback_record_id
+		== chunk_records[1].record_id)
+	assert(#rollback_execute_records == 3)
+	assert(rollback_execute_records[1].chunk.chunk_index == 2)
+	assert(rollback_execute_records[2].chunk.chunk_index == 1)
+	assert(rollback_execute_records[3].chunk.chunk_index == 0)
+	assert(structure_writes == writes_before_rollback_success + 5)
+	for _, placement in ipairs(chunk_placements) do
+		assert(get_test_node(placement.pos).name == "air")
+	end
+
+	local writes_before_missing_rollback_execute = structure_writes
+	local unexpected_rollback_persist = 0
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		inspect_record = function()
+			return nil
+		end,
+		persist_record = function()
+			unexpected_rollback_persist = unexpected_rollback_persist + 1
+			error("rollback must not be written when source rollback records are missing")
+		end,
+	})
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = "compat-rollback:missing-record",
+		agent_id = "compat_rollback:runtime",
+		owner = "compat-operator",
+		rollback_refs = {
+			"rollback://compat-chunk/missing",
+		},
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_total = 5,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 5,
+	})
+	core.step_ai_tasks()
+	local missing_record_rollback = core.get_ai_task(
+		"compat-rollback:missing-record")
+	assert(missing_record_rollback.status == "blocked")
+	assert(missing_record_rollback.last_result.reason
+		== "rollback_records_unavailable")
+	assert(structure_writes == writes_before_missing_rollback_execute)
+	assert(unexpected_rollback_persist == 0)
+
+	local writes_before_no_approval_rollback = structure_writes
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		persist_record = function()
+			error("rollback must not be written without explicit approval")
+		end,
+	})
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = "compat-rollback:no-approval",
+		agent_id = "compat_rollback:runtime",
+		owner = "compat-operator",
+		rollback_records = {
+			chunk_records[1],
+		},
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = false,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 2,
+	})
+	core.step_ai_tasks()
+	local no_approval_rollback = core.get_ai_task("compat-rollback:no-approval")
+	assert(no_approval_rollback.status == "blocked")
+	assert(no_approval_rollback.last_result.reason == "approval_required")
+	assert(no_approval_rollback.last_result.changed == 0)
+	assert(structure_writes == writes_before_no_approval_rollback)
+
+	local writes_before_no_admin_rollback = structure_writes
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		persist_record = function()
+			error("rollback must not be written without admin override")
+		end,
+	})
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = "compat-rollback:no-admin",
+		agent_id = "compat_rollback:no_admin",
+		owner = "compat-operator",
+		rollback_records = {
+			chunk_records[1],
+		},
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 2,
+	})
+	core.step_ai_tasks()
+	local no_admin_rollback = core.get_ai_task("compat-rollback:no-admin")
+	assert(no_admin_rollback.status == "blocked")
+	assert(no_admin_rollback.last_result.reason == "admin_override_required")
+	assert(no_admin_rollback.last_result.changed == 0)
+	assert(structure_writes == writes_before_no_admin_rollback)
+
+	local writes_before_rollback_budget = structure_writes
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		persist_record = function()
+			error("rollback must not be written for over-budget rollback")
+		end,
+	})
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = "compat-rollback:total-over-budget",
+		agent_id = "compat_rollback:runtime",
+		owner = "compat-operator",
+		rollback_records = chunk_records,
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 5,
+	})
+	core.step_ai_tasks()
+	local rollback_total_budget = core.get_ai_task(
+		"compat-rollback:total-over-budget")
+	assert(rollback_total_budget.status == "blocked")
+	assert(rollback_total_budget.last_result.reason
+		== "node_write_total_budget_exceeded")
+	assert(rollback_total_budget.last_result.changed == 0)
+	assert(structure_writes == writes_before_rollback_budget)
+
+	local protected_rollback_records = {}
+	local protected_rollback_pos = chunk_records[1].previous_nodes[2].pos
+	local old_rollback_protected = core.is_protected
+	core.is_protected = function(pos, name)
+		return name == "compat-operator" and pos.x == protected_rollback_pos.x
+	end
+	local writes_before_protected_rollback = structure_writes
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		persist_record = function(record)
+			protected_rollback_records[#protected_rollback_records + 1] = record
+			return {
+				ok = true,
+				storage_ref = "rollback://compat-rollback-protected/" .. record.record_id,
+			}
+		end,
+	})
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = "compat-rollback:protected",
+		agent_id = "compat_rollback:runtime",
+		owner = "compat-operator",
+		rollback_records = {
+			chunk_records[1],
+		},
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 2,
+	})
+	core.step_ai_tasks()
+	core.is_protected = old_rollback_protected
+	local protected_rollback = core.get_ai_task("compat-rollback:protected")
+	assert(protected_rollback.status == "completed")
+	assert(protected_rollback.last_result.operation == "ai_import.rollback_execute")
+	assert(protected_rollback.last_result.status == "partial")
+	assert(protected_rollback.last_result.changed == 1)
+	assert(protected_rollback.last_result.skipped == 1)
+	assert(protected_rollback.last_result.samples[1].reason == "protected_area")
+	assert(#protected_rollback_records == 1)
+	assert(structure_writes == writes_before_protected_rollback + 1)
+
+	local summary_rollback_records = {}
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		persist_record = function(record)
+			summary_rollback_records[#summary_rollback_records + 1] = record
+			return {
+				ok = true,
+				storage_ref = "rollback://compat-rollback-summary/" .. record.record_id,
+			}
+		end,
+	})
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = "compat-rollback:running",
+		agent_id = "compat_rollback:runtime",
+		owner = "compat-operator",
+		rollback_records = {
+			chunk_records[2],
+			chunk_records[3],
+		},
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_total = 3,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 3,
+	})
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = "compat-rollback:queued",
+		agent_id = "compat_rollback:runtime",
+		owner = "compat-operator",
+		rollback_records = {
+			chunk_records[1],
+		},
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 2,
+	})
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-rollback:running").status == "running")
+	assert(core.get_ai_task("compat-rollback:queued").status == "queued")
+	local rollback_summary = core.ai_import_ops.build_rollback_summary({
+		rollback_id = "rollback-runtime:final",
+		task_ids = {
+			"compat-rollback:success",
+			"compat-rollback:no-approval",
+			"compat-rollback:protected",
+			"compat-rollback:running",
+			"compat-rollback:queued",
+		},
+	})
+	assert(rollback_summary.status == "blocked")
+	assert(#rollback_summary.completed_tasks == 2)
+	assert(#rollback_summary.blocked_tasks == 1)
+	assert(#rollback_summary.running_tasks == 1)
+	assert(#rollback_summary.queued_tasks == 1)
+	assert(rollback_summary.mutation_cost_actual.node_writes >= 7)
+	assert(rollback_summary.mutation_cost_actual.mapblock_churn >= 7)
+	assert(#rollback_summary.rollback_records >= 5)
+	assert(#rollback_summary.source_rollback_records >= 5)
+	assert(rollback_summary.safety.rollback_of_rollback_required == true)
+	assert(rollback_summary.safety.world_mutation_executed == true)
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-rollback:running").status == "completed")
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-rollback:queued").status == "completed")
 	core.ai_rollback_storage.configure(nil)
 
 	local chunk_over_budget_origin = vector.add(apply_base, { x = 256, y = 0, z = 0 })

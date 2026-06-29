@@ -20,6 +20,7 @@ EXPECTED_SCENARIOS = {
     "repair_mutation_rollback",
     "rollback_record_write",
     "compat_structure_chunked_apply",
+    "compat_structure_rollback_execute",
 }
 
 REQUIRED_REPORT_FIELDS = {
@@ -157,6 +158,7 @@ class MutationBenchmarkContractTests(unittest.TestCase):
             "repair_mutation_rollback",
             "rollback_record_write",
             "compat_structure_chunked_apply",
+            "compat_structure_rollback_execute",
             "average step",
             "p95 step",
             "max lag",
