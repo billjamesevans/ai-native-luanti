@@ -11,11 +11,13 @@ UTIL_DIR = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(UTIL_DIR))
 
 from ai_native_compat_dry_run import (
+    build_adapter_apply_smoke,
     build_apply_plan,
     build_apply_task_definitions,
     build_report,
     build_structure_adapter_report,
     main,
+    validate_adapter_apply_smoke,
     validate_apply_summary,
     validate_report,
 )
@@ -291,6 +293,27 @@ class CompatibilityDryRunTests(unittest.TestCase):
             },
         }
 
+    def build_adapter_smoke_request(self, report):
+        action_index = next(
+            index for index, action in enumerate(report["planned_actions"])
+            if action["action"] == "import_structure"
+        )
+        request = self.build_apply_request(report, action_indexes=(action_index,))
+        request["target_world"] = {
+            "world_id": "disposable-staging-world",
+            "staging": True,
+            "disposable": True,
+        }
+        request["budget"].update({
+            "max_node_writes_total": 5,
+            "max_node_writes_per_step": 2,
+            "max_mapblock_churn_total": 3,
+            "max_manual_review_items": 3,
+            "max_wall_time_ms": 5000,
+        })
+        request["rollback_policy"]["policy"] = "chunked"
+        return request
+
     def synthetic_planned_action(self, action, status="partial"):
         return {
             "action": action,
@@ -493,6 +516,118 @@ class CompatibilityDryRunTests(unittest.TestCase):
         serialized = json.dumps(task_definitions)
         self.assertNotIn("payload", serialized.lower())
         self.assertNotIn(str(self.fixture_root), serialized)
+
+    def test_adapter_apply_smoke_consumes_structure_adapter_handoff(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        request = self.build_adapter_smoke_request(report)
+
+        smoke = build_adapter_apply_smoke(report, request)
+
+        self.assertEqual(validate_adapter_apply_smoke(smoke), [])
+        self.assertEqual(smoke["mode"], "adapter_apply_smoke")
+        self.assertEqual(smoke["status"], "ready")
+        self.assertEqual(smoke["target_world"]["world_id"], "disposable-staging-world")
+        self.assertTrue(smoke["target_world"]["staging"])
+        self.assertTrue(smoke["target_world"]["disposable"])
+        self.assertEqual(smoke["mutation_cost_expected"]["node_writes"], 5)
+        self.assertEqual(smoke["mutation_cost_expected"]["mapblock_churn"], 3)
+        self.assertEqual(len(smoke["apply_tasks"]), 1)
+        self.assertEqual(len(smoke["rollback_tasks"]), 1)
+        apply_task = smoke["apply_tasks"][0]
+        self.assertEqual(
+            apply_task["entrypoint"],
+            "core.ai_import_ops.define_chunked_structure_apply_task",
+        )
+        self.assertEqual(apply_task["placement_count"], 5)
+        self.assertEqual(apply_task["chunk_size"], 2)
+        self.assertEqual(apply_task["chunk_count"], 3)
+        self.assertEqual(len(apply_task["placements"]), 5)
+        self.assertTrue(apply_task["explicit_approval"])
+        self.assertTrue(apply_task["allow_mutation"])
+        self.assertEqual(apply_task["rollback_policy"], "chunked")
+        self.assertIn("get_node", apply_task["operator_supplied_runtime_hooks"])
+        self.assertIn("persist_record", apply_task["operator_supplied_runtime_hooks"])
+        self.assertNotIn("asset_payload", json.dumps(smoke).lower())
+        self.assertNotIn("private_payload", json.dumps(smoke).lower())
+        self.assertNotIn(str(self.fixture_root), json.dumps(smoke))
+
+        self.assertEqual(
+            smoke["rollback_plan"]["entrypoint"],
+            "core.ai_import_ops.plan_structure_rollback",
+        )
+        self.assertEqual(smoke["rollback_plan"]["source_task_ids"], [apply_task["task_id"]])
+        self.assertFalse(smoke["rollback_plan"]["will_mutate"])
+        rollback_task = smoke["rollback_tasks"][0]
+        self.assertEqual(
+            rollback_task["entrypoint"],
+            "core.ai_import_ops.queue_chunked_structure_rollback_task",
+        )
+        self.assertEqual(rollback_task["source_task_id"], apply_task["task_id"])
+        self.assertTrue(rollback_task["explicit_approval"])
+        self.assertTrue(rollback_task["allow_mutation"])
+        self.assertEqual(rollback_task["rollback_policy"], "chunked")
+        self.assertIn("inspect_record", rollback_task["operator_supplied_runtime_hooks"])
+        self.assertEqual(
+            smoke["operator_summary"]["expected_apply_chunks"],
+            3,
+        )
+        self.assertFalse(smoke["safety"]["world_mutation_executed"])
+        self.assertTrue(smoke["safety"]["no_live_family_world_mutation"])
+
+    def test_adapter_apply_smoke_rejects_missing_approval_and_non_staging_target(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        request = self.build_adapter_smoke_request(report)
+        missing_approval = json.loads(json.dumps(request))
+        missing_approval["approved_actions"] = []
+        with self.assertRaisesRegex(ValueError, "approved_actions must contain"):
+            build_adapter_apply_smoke(report, missing_approval)
+
+        non_staging = json.loads(json.dumps(request))
+        non_staging["target_world"]["staging"] = False
+        with self.assertRaisesRegex(ValueError, "target_world.staging"):
+            build_adapter_apply_smoke(report, non_staging)
+
+        not_disposable = json.loads(json.dumps(request))
+        not_disposable["target_world"]["disposable"] = False
+        with self.assertRaisesRegex(ValueError, "target_world.disposable"):
+            build_adapter_apply_smoke(report, not_disposable)
+
+        live_family = json.loads(json.dumps(request))
+        live_family["target_world"]["world_id"] = "family_voxelibre"
+        with self.assertRaisesRegex(ValueError, "live family world"):
+            build_adapter_apply_smoke(report, live_family)
+
+    def test_adapter_apply_smoke_cli_writes_machine_readable_review_manifest(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        request = self.build_adapter_smoke_request(report)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            report_path = tmpdir / "dry-run.json"
+            request_path = tmpdir / "apply-request.json"
+            smoke_path = tmpdir / "adapter-smoke.json"
+            report_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+            request_path.write_text(json.dumps(request, indent=2, sort_keys=True), encoding="utf-8")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "--adapter-apply-smoke", str(report_path),
+                    "--approval", str(request_path),
+                    "--output", str(smoke_path),
+                    "--summary",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
+            self.assertEqual(validate_adapter_apply_smoke(smoke), [])
+            self.assertIn("smoke=ready_for_disposable_staging_smoke", stdout.getvalue())
+            self.assertIn("expected_writes=5", stdout.getvalue())
 
     def test_structure_apply_rejects_over_budget_request(self):
         report = build_report(self.fixture_root / "structure" / "example.mcstructure")
