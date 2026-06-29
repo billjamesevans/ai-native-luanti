@@ -82,6 +82,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - One-command product-profile artifact: `ai-runtime-product-profile-hygiene.json`
 - Clean-profile runtime gap scorecard: `python3 util/ai_native_runtime_gap_scorecard.py --output-root local/benchmarks`
 - Minecraft-parity comparison report: `python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks`
+- Alpha baseline review: `python3 util/ai_native_alpha_baseline_review.py --output-root local/benchmarks`
 - MVP gap audit: `python3 util/ai_native_mvp_audit.py --scorecard local/benchmarks/runtime-gap-scorecard.json --output local/benchmarks/ai-native-mvp-audit.json`
 - [AI runtime server profile](non-devtest-server-profile.md)
 - [Baseline status](baseline-status.md)
