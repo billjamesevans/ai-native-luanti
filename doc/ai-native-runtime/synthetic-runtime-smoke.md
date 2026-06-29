@@ -167,9 +167,12 @@ The verifier validates `clean-profile-benchmark-summary.json` before the overall
 The derived `clean_profile_evidence` section requires `overall_status = pass`,
 `game_profile.gameid = ai_runtime`, no `failure_notes`, no private/live context flags, passing
 `server_step_workload`, passing `player_load_tick_probe`, passing `map_chunk_workload`, and measured
-CPU samples with `cpu_sample_count >= 2`. By default the player-load evidence may be either a
-bounded `server_process_liveness` fallback or a measured `headless_client_load` probe. Promotion and
-release-candidate lanes should use the strict headless-player gate:
+CPU samples with `cpu_sample_count >= 2`. It also records `actionable_warning_count` and
+`unsafe_operation_count`; both must be zero, so unclassified clean-profile warnings or unsafe
+operation leakage fail the verifier even if the benchmark command exits successfully. By default the
+player-load evidence may be either a bounded `server_process_liveness` fallback or a measured
+`headless_client_load` probe. Promotion and release-candidate lanes should use the strict
+headless-player gate:
 
 ```sh
 python3 util/ai_native_runtime_verify.py \

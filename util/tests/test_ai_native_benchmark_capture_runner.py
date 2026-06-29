@@ -178,6 +178,10 @@ sys.exit(0)
             self.assertEqual(summary["server_launch"]["gameid"], "ai_runtime")
             self.assertEqual(summary["overall_status"], "pass")
             self.assertEqual(summary["failure_notes"], [])
+            self.assertEqual(
+                summary["comparison_summary"]["mutation_write_throughput"]["unsafe_operations"],
+                0,
+            )
             for key in (
                 "startup",
                 "steady_tick_behavior",
@@ -354,6 +358,32 @@ sys.exit(0)
             self.assertEqual(probe["server_log_warning_count"], 1)
             self.assertEqual(probe["expected_server_log_warning_count"], 1)
             self.assertEqual(probe["actionable_server_log_warning_count"], 0)
+
+    def test_runner_classifies_run_in_place_sha_mismatch_warnings_as_expected(self):
+        log_text = "\n".join(
+            [
+                '2026-06-29 00:00:00: WARNING[Main]: SHA256 of builtin file "/tmp/profile/builtin/game/init.lua" does not match.',
+                "2026-06-29 00:00:00: WARNING[Main]: Expected: abc123",
+                "2026-06-29 00:00:00: WARNING[Main]: Found:    def456",
+                '2026-06-29 00:00:00: WARNING[Main]: SHA256 of builtin file "/tmp/profile/builtin/game/ai_runtime.lua" does not match.',
+                "2026-06-29 00:00:00: WARNING[Main]: Expected: abc123",
+                "2026-06-29 00:00:00: WARNING[Main]: Found:    def456",
+                '2026-06-29 00:00:00: WARNING[Main]: No SHA256 known for builtin file "/tmp/profile/builtin/game/ai_operator_task_control.lua"',
+            ]
+        )
+
+        summary = benchmark_capture.classify_profile_log_warnings(log_text)
+
+        self.assertEqual(summary["server_log_warning_count"], 7)
+        self.assertEqual(summary["expected_server_log_warning_count"], 7)
+        self.assertEqual(summary["actionable_server_log_warning_count"], 0)
+        self.assertEqual(
+            summary["expected_warning_kinds"],
+            [
+                "run_in_place_builtin_sha_changed",
+                "run_in_place_builtin_sha_missing",
+            ],
+        )
 
     def test_runner_marks_partial_headless_player_probe_as_failed_profile(self):
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -434,6 +434,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "completed_sample_count": 3,
                     "failed_sample_count": 0,
                     "server_stayed_listening": True,
+                    "server_log_warning_count": 0,
+                    "expected_server_log_warning_count": 0,
+                    "actionable_server_log_warning_count": 0,
+                    "expected_warning_kinds": [],
                     "server_log_error_count": 0,
                 },
                 "player_load_tick_probe": player_probe,
@@ -449,6 +453,17 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "cpu_sample_count": 3,
                     "avg_process_cpu_percent": 2.0,
                     "max_interval_cpu_percent": 4.0,
+                },
+                "entity_runtime_operations": {
+                    "report_family": "demo_entity",
+                    "warnings": 0,
+                    "errors": 0,
+                },
+                "mutation_write_throughput": {
+                    "report_family": "mutation",
+                    "warnings": 0,
+                    "errors": 0,
+                    "unsafe_operations": 0,
                 },
             },
         }
@@ -915,6 +930,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(manifest["clean_profile_evidence"]["mapblock_rows_created"], 4)
             self.assertEqual(manifest["clean_profile_evidence"]["cpu_status"], "measured")
             self.assertEqual(manifest["clean_profile_evidence"]["cpu_sample_count"], 3)
+            self.assertEqual(manifest["clean_profile_evidence"]["actionable_warning_count"], 0)
+            self.assertEqual(manifest["clean_profile_evidence"]["unsafe_operation_count"], 0)
             self.assertEqual(
                 manifest["artifact_paths"]["operator_status_live_command"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-status-live.json",
@@ -1216,6 +1233,175 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertIn("clean_profile_summary overall_status is not pass", joined_reasons)
             self.assertIn("clean_profile_summary failure_notes present", joined_reasons)
             self.assertIn("clean_profile_summary server_step_workload missing", joined_reasons)
+
+    def test_clean_profile_actionable_warnings_fail_manifest_even_if_gate_exits_zero(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-clean-profile-warning-failure",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--game-profile",
+                    "ai_runtime",
+                ]
+            )
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-clean-profile-warning-failure/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            def run_step(step):
+                if step.id == "product_profile_hygiene":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_product_profile_artifact(output_path)
+                if step.id == "branch_benchmark_gate":
+                    summary_path = self.clean_profile_summary_path_for_step(step)
+                    self.write_clean_profile_summary_artifact(summary_path)
+                    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+                    for section_name in (
+                        "steady_tick_behavior",
+                        "server_step_workload",
+                        "player_load_tick_probe",
+                    ):
+                        section = payload["comparison_summary"].setdefault(section_name, {})
+                        section["server_log_warning_count"] = 1
+                        section["expected_server_log_warning_count"] = 0
+                        section["actionable_server_log_warning_count"] = 1
+                        section["expected_warning_kinds"] = []
+                    summary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                if step.id in {"operator_status_live_command", "operator_status_package"}:
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_status_artifact(output_path)
+                if step.id == "operator_task_control_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_live_artifact(output_path)
+                if step.id == "operator_task_control_command_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_command_artifact(output_path)
+                return next(runs)
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=run_step,
+                now_fn=lambda: "2026-06-28T12:09:00Z",
+            )
+
+            self.assertEqual(status, 1)
+            self.assertEqual(manifest["clean_profile_evidence"]["status"], "fail")
+            self.assertEqual(manifest["clean_profile_evidence"]["actionable_warning_count"], 3)
+            self.assertIn(
+                "clean_profile_summary actionable server log warnings present",
+                " ".join(manifest["failure_reasons"]),
+            )
+
+    def test_clean_profile_unsafe_operation_leakage_fails_manifest_even_if_gate_exits_zero(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-clean-profile-unsafe-failure",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--game-profile",
+                    "ai_runtime",
+                ]
+            )
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-clean-profile-unsafe-failure/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            def run_step(step):
+                if step.id == "product_profile_hygiene":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_product_profile_artifact(output_path)
+                if step.id == "branch_benchmark_gate":
+                    summary_path = self.clean_profile_summary_path_for_step(step)
+                    self.write_clean_profile_summary_artifact(summary_path)
+                    payload = json.loads(summary_path.read_text(encoding="utf-8"))
+                    payload["comparison_summary"]["mutation_write_throughput"]["unsafe_operations"] = 2
+                    summary_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+                if step.id in {"operator_status_live_command", "operator_status_package"}:
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_status_artifact(output_path)
+                if step.id == "operator_task_control_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_live_artifact(output_path)
+                if step.id == "operator_task_control_command_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_command_artifact(output_path)
+                return next(runs)
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=run_step,
+                now_fn=lambda: "2026-06-28T12:10:00Z",
+            )
+
+            self.assertEqual(status, 1)
+            self.assertEqual(manifest["clean_profile_evidence"]["status"], "fail")
+            self.assertEqual(manifest["clean_profile_evidence"]["unsafe_operation_count"], 2)
+            self.assertIn(
+                "clean_profile_summary unsafe operation leakage present",
+                " ".join(manifest["failure_reasons"]),
+            )
 
     def test_clean_profile_headless_requirement_rejects_liveness_fallback(self):
         harness = load_harness_module()
@@ -1599,6 +1785,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "player_load_tick_probe",
             "map_chunk_workload",
             "cpu_sample_count",
+            "actionable_warning_count",
+            "unsafe_operation_count",
             "local/benchmarks/<hardware-class>/<date>/<commit>/",
             "no family server",
             "no model-network",
