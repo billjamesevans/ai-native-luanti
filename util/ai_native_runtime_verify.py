@@ -999,6 +999,7 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
     else:
         attempted_players = player_probe.get("attempted_synthetic_player_count")
         connected_players = player_probe.get("connected_synthetic_player_count")
+        completed_players = player_probe.get("completed_synthetic_player_count")
         join_latency = (
             player_probe.get("join_latency_proxy_ms")
             if isinstance(player_probe.get("join_latency_proxy_ms"), dict)
@@ -1010,7 +1011,10 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
             "headless_player_supported": player_probe.get("headless_player_supported") is True,
             "attempted_synthetic_player_count": attempted_players,
             "connected_synthetic_player_count": connected_players,
+            "completed_synthetic_player_count": completed_players,
             "latency_proxy_supported": player_probe.get("latency_proxy_supported") is True,
+            "latency_probe_kind": sanitize_text(str(player_probe.get("latency_probe_kind", ""))),
+            "join_latency_proxy_sample_count": join_latency.get("sample_count"),
         })
         if player_probe.get("probe_status") != "pass":
             reasons.append("clean_profile_summary player_load_tick_probe status is not pass")
