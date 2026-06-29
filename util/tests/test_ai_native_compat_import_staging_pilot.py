@@ -8,7 +8,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 CLI = ROOT / "util" / "ai_native_compat_import_staging_pilot.py"
-FIXTURE = ROOT / "util" / "tests" / "fixtures" / "compat" / "public_structure" / "open_platform.ai-structure.json"
+FIXTURE = ROOT / "util" / "tests" / "fixtures" / "compat" / "public_structure" / "larger_staging_rehearsal.ai-structure.json"
 
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
@@ -54,17 +54,17 @@ def sample_payload():
             "dry_run": {
                 "report_id": "public-safe-structure-staging-pilot",
                 "report_version": 1,
-                "source_id": "open_platform.ai-structure.json",
+                "source_id": "larger_staging_rehearsal.ai-structure.json",
                 "source_class": "structure",
                 "license_status": "user_supplied",
                 "planned_actions_count": 2,
                 "import_action_index": 0,
                 "estimated_world_mutations": {
-                    "node_writes": 5,
-                    "mapblock_churn": 3,
+                    "node_writes": 18,
+                    "mapblock_churn": 10,
                     "media_files": 0,
                     "entity_definitions": 0,
-                    "manual_review_items": 1,
+                    "manual_review_items": 2,
                 },
                 "apply_plan_status": "planned",
             },
@@ -74,33 +74,40 @@ def sample_payload():
                 "machine_promotable": True,
                 "promotion_status": "ready_for_operator_promotion",
             },
+            "compatibility_policy": {
+                "world_imports_metadata_only": True,
+                "world_conversion_apply_allowed": False,
+                "resource_pack_asset_promotion_no_mutation": True,
+                "resource_pack_requires_operator_supplied_rights_confirmed": True,
+                "asset_bytes_copied": False,
+            },
             "apply": {
                 "task_id": "compat:public-safe-structure-staging-pilot:0:apply-smoke",
                 "task_status": "completed",
-                "step_count": 3,
-                "progress_current": 3,
-                "progress_total": 3,
+                "step_count": 5,
+                "progress_current": 5,
+                "progress_total": 5,
                 "apply_summary_status": "completed",
                 "completed_task_count": 1,
-                "node_writes_actual": 5,
-                "mapblock_churn_actual": 3,
-                "rollback_record_count": 3,
-                "node_writes_verified": 5,
+                "node_writes_actual": 18,
+                "mapblock_churn_actual": 10,
+                "rollback_record_count": 5,
+                "node_writes_verified": 18,
                 "param_round_trip_checked": True,
             },
             "rollback": {
                 "plan_status": "success",
-                "apply_rollback_ref_count": 3,
-                "plan_record_count": 3,
-                "planned_node_writes": 5,
-                "planned_mapblock_churn": 3,
+                "apply_rollback_ref_count": 5,
+                "plan_record_count": 5,
+                "planned_node_writes": 18,
+                "planned_mapblock_churn": 10,
                 "task_id": "compat:public-safe-structure-staging-pilot:0:rollback-smoke",
                 "task_status": "completed",
-                "step_count": 3,
-                "progress_current": 3,
-                "progress_total": 3,
-                "nodes_reverted": 5,
-                "rollback_execution_records": 3,
+                "step_count": 5,
+                "progress_current": 5,
+                "progress_total": 5,
+                "nodes_reverted": 18,
+                "rollback_execution_records": 5,
             },
         },
         "refusal_gates": {
@@ -152,15 +159,15 @@ def sample_payload():
         },
         "benchmark_coverage": {
             "status": "pass",
-            "expected_node_writes": 5,
-            "actual_node_writes": 5,
-            "expected_mapblock_churn": 3,
-            "actual_mapblock_churn": 3,
-            "expected_apply_chunks": 3,
-            "actual_apply_chunks": 3,
-            "max_node_writes_total": 5,
-            "max_node_writes_per_step": 2,
-            "max_mapblock_churn_total": 3,
+            "expected_node_writes": 18,
+            "actual_node_writes": 18,
+            "expected_mapblock_churn": 10,
+            "actual_mapblock_churn": 10,
+            "expected_apply_chunks": 5,
+            "actual_apply_chunks": 5,
+            "max_node_writes_total": 18,
+            "max_node_writes_per_step": 4,
+            "max_mapblock_churn_total": 10,
             "over_budget_refused": True,
             "mapblock_churn_recorded": True,
         },
@@ -201,10 +208,17 @@ class CompatImportStagingPilotTests(unittest.TestCase):
             context["context_kind"],
             "ai_native_compat_import_staging_pilot_context",
         )
+        self.assertEqual(
+            context["fixture"]["source_id"],
+            "larger_staging_rehearsal.ai-structure.json",
+        )
         self.assertEqual(context["inventory"]["status"], "ready_for_import_preview")
         self.assertTrue(context["inventory"]["ready"])
         self.assertEqual(context["dry_run"]["source_class"], "structure")
         self.assertEqual(context["dry_run"]["license_status"], "user_supplied")
+        self.assertTrue(context["compatibility_policy"]["world_imports_metadata_only"])
+        self.assertTrue(context["compatibility_policy"]["resource_pack_asset_promotion_no_mutation"])
+        self.assertFalse(context["compatibility_policy"]["world_conversion_apply_allowed"])
         self.assertEqual(context["operator_review"]["smoke_status"], "ready")
         self.assertEqual(context["operator_review"]["review_status"], "ready")
         self.assertTrue(context["operator_review"]["machine_promotable"])
@@ -212,9 +226,9 @@ class CompatImportStagingPilotTests(unittest.TestCase):
             context["operator_review"]["promotion_status"],
             "ready_for_operator_promotion",
         )
-        self.assertEqual(context["apply_task"]["chunk_count"], 3)
-        self.assertEqual(context["apply_task"]["placement_count"], 5)
-        self.assertEqual(context["expected"]["mapblock_churn"], 3)
+        self.assertEqual(context["apply_task"]["chunk_count"], 5)
+        self.assertEqual(context["apply_task"]["placement_count"], 18)
+        self.assertEqual(context["expected"]["mapblock_churn"], 10)
         serialized = json.dumps(context)
         self.assertIsNone(PRIVATE_PATTERNS.search(serialized))
 
@@ -224,9 +238,18 @@ class CompatImportStagingPilotTests(unittest.TestCase):
         evidence = pilot.validate_live_result(sample_payload())
 
         self.assertEqual(evidence["compat_import_staging_pilot_status"], "pass")
-        self.assertEqual(evidence["compat_import_node_writes"], 5)
-        self.assertEqual(evidence["compat_import_mapblock_churn"], 3)
+        self.assertEqual(evidence["compat_import_node_writes"], 18)
+        self.assertEqual(evidence["compat_import_mapblock_churn"], 10)
+        self.assertEqual(evidence["compat_import_apply_chunks"], 5)
         self.assertEqual(evidence["compat_import_refusal_gates"], 5)
+
+    def test_validate_live_result_rejects_missing_metadata_only_policy(self):
+        pilot = load_pilot_module()
+        payload = sample_payload()
+        payload["workflow"]["compatibility_policy"]["world_imports_metadata_only"] = False
+
+        with self.assertRaisesRegex(ValueError, "world_imports_metadata_only"):
+            pilot.validate_live_result(payload)
 
     def test_validate_live_result_rejects_missing_refusal_gate(self):
         pilot = load_pilot_module()
@@ -255,9 +278,17 @@ class CompatImportStagingPilotTests(unittest.TestCase):
     def test_validate_live_result_rejects_mutation_budget_drift(self):
         pilot = load_pilot_module()
         payload = sample_payload()
-        payload["benchmark_coverage"]["actual_mapblock_churn"] = 2
+        payload["benchmark_coverage"]["actual_mapblock_churn"] = 9
 
         with self.assertRaisesRegex(ValueError, "actual_mapblock_churn"):
+            pilot.validate_live_result(payload)
+
+    def test_validate_live_result_rejects_small_structure_smoke(self):
+        pilot = load_pilot_module()
+        payload = sample_payload()
+        payload["benchmark_coverage"]["expected_node_writes"] = 5
+
+        with self.assertRaisesRegex(ValueError, "expected_node_writes"):
             pilot.validate_live_result(payload)
 
     def test_validate_live_result_does_not_mutate_input_payload(self):

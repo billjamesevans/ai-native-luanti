@@ -19,11 +19,14 @@ import ai_native_compat_dry_run as compat
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = ROOT / "util" / "tests" / "fixtures" / "compat" / "public_structure" / "open_platform.ai-structure.json"
+FIXTURE = ROOT / "util" / "tests" / "fixtures" / "compat" / "public_structure" / "larger_staging_rehearsal.ai-structure.json"
 PILOT_ARTIFACT_NAME = "ai-runtime-compat-import-staging-pilot-result.json"
 PILOT_STATUS_NAME = "ai-runtime-compat-import-staging-pilot-status.json"
 PILOT_MOD_NAME = "ai_compat_import_staging_pilot"
 DEFAULT_MAX_BYTES = 30000
+MIN_REHEARSAL_NODE_WRITES = 18
+MIN_REHEARSAL_MAPBLOCK_CHURN = 10
+MIN_REHEARSAL_APPLY_CHUNKS = 5
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[^\s\"']+"),
@@ -74,6 +77,8 @@ def import_action_index(report: dict) -> int:
 def build_apply_request(report: dict) -> dict:
     index = import_action_index(report)
     action = report["planned_actions"][index]
+    mutation_cost = action["mutation_cost"]
+    adapter = action["structure_adapter"]
     inventory_hash = report["source"]["content_hashes"][0]["value"]
     return {
         "request_version": 1,
@@ -100,9 +105,9 @@ def build_apply_request(report: dict) -> dict:
         "budget": {
             "max_media_files": 10,
             "max_entity_definitions": 5,
-            "max_node_writes_total": 5,
-            "max_node_writes_per_step": 2,
-            "max_mapblock_churn_total": 3,
+            "max_node_writes_total": mutation_cost["node_writes"],
+            "max_node_writes_per_step": adapter["recommended_chunk_size"],
+            "max_mapblock_churn_total": mutation_cost["mapblock_churn"],
             "max_manual_review_items": 3,
             "max_wall_time_ms": 5000,
         },
@@ -170,6 +175,13 @@ def build_pilot_context(fixture: Path, generated_at: str) -> dict:
             "machine_promotable": review["machine_gate"]["promotable"],
             "promotion_status": package["status"],
         },
+        "compatibility_policy": {
+            "world_imports_metadata_only": True,
+            "world_conversion_apply_allowed": False,
+            "resource_pack_asset_promotion_no_mutation": True,
+            "resource_pack_requires_operator_supplied_rights_confirmed": True,
+            "asset_bytes_copied": False,
+        },
         "apply_task": apply_task,
         "rollback_task": rollback_task,
         "expected": {
@@ -209,7 +221,7 @@ def write_probe_world(world_dir: Path, context: dict, generated_at: str, max_byt
             "local context = core.parse_json(" + lua_string(context_json) + ")",
             "if type(context) ~= \"table\" then error(\"pilot context failed to parse\") end",
             "local test_node = \"ai_runtime_test:stone\"",
-            "local offset = { x = 0, y = 12, z = 120 }",
+            "local offset = { x = 0, y = 12, z = 128 }",
             "local rollback_storage = {}",
             "local structure_writes = 0",
             "",
@@ -315,7 +327,7 @@ def write_probe_world(world_dir: Path, context: dict, generated_at: str, max_byt
             "",
             "local function reset_nodes(placements)",
             "  if core.load_area then",
-            "    core.load_area({ x = -2, y = 10, z = 118 }, { x = 420, y = 14, z = 122 })",
+            "    core.load_area({ x = -2, y = 10, z = 126 }, { x = 460, y = 14, z = 168 })",
             "  end",
             "  for _, placement in ipairs(placements) do",
             "    core.set_node(placement.pos, { name = \"air\" })",
@@ -459,7 +471,7 @@ def write_probe_world(world_dir: Path, context: dict, generated_at: str, max_byt
             "    source_reference = apply_task.source_reference,",
             "    persist_record = persist_probe_record,",
             "  })",
-            "  local apply_status, apply_steps = step_until_final(apply_task.task_id, 8)",
+            "  local apply_status, apply_steps = step_until_final(apply_task.task_id, math.max(8, context.expected.chunk_count + 4))",
             "  local completed_apply = core.get_ai_task(apply_task.task_id)",
             "  local apply_summary = core.ai_import_ops.build_apply_summary({",
             "    apply_id = \"apply-runtime:compat-staging-pilot\",",
@@ -504,7 +516,7 @@ def write_probe_world(world_dir: Path, context: dict, generated_at: str, max_byt
             "    max_mapblock_churn_total = rollback_task.max_mapblock_churn_total,",
             "    max_wall_time_ms = rollback_task.max_wall_time_ms,",
             "  })",
-            "  local rollback_status, rollback_steps = step_until_final(rollback_task.task_id, 8)",
+            "  local rollback_status, rollback_steps = step_until_final(rollback_task.task_id, math.max(8, context.expected.chunk_count + 4))",
             "  local completed_rollback = core.get_ai_task(rollback_task.task_id)",
             "  local nodes_reverted = count_verified_nodes(placements, \"air\")",
             "  local rollback_records_after = 0",
@@ -533,6 +545,7 @@ def write_probe_world(world_dir: Path, context: dict, generated_at: str, max_byt
             "      inventory = context.inventory,",
             "      dry_run = context.dry_run,",
             "      operator_review = context.operator_review,",
+            "      compatibility_policy = context.compatibility_policy,",
             "      apply = {",
             "        task_id = apply_task.task_id,",
             "        task_status = apply_status,",
@@ -680,6 +693,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         if isinstance(workflow.get("operator_review"), dict)
         else {}
     )
+    compatibility_policy = (
+        workflow.get("compatibility_policy")
+        if isinstance(workflow.get("compatibility_policy"), dict)
+        else {}
+    )
     apply = workflow.get("apply") if isinstance(workflow.get("apply"), dict) else {}
     rollback = workflow.get("rollback") if isinstance(workflow.get("rollback"), dict) else {}
 
@@ -696,8 +714,12 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("compat import staging pilot dry-run license status is invalid")
     if dry_run.get("apply_plan_status") != "planned":
         raise ValueError("compat import staging pilot apply plan did not remain inert")
-    estimated = dry_run.get("estimated_world_mutations") or {}
-    if estimated.get("node_writes") != 5 or estimated.get("mapblock_churn") != 3:
+    estimated = dry_run.get("estimated_world_mutations") if isinstance(dry_run.get("estimated_world_mutations"), dict) else {}
+    estimated_node_writes = estimated.get("node_writes")
+    estimated_mapblock_churn = estimated.get("mapblock_churn")
+    if not isinstance(estimated_node_writes, int) or estimated_node_writes < MIN_REHEARSAL_NODE_WRITES:
+        raise ValueError("compat import staging pilot dry-run mutation estimate is invalid")
+    if not isinstance(estimated_mapblock_churn, int) or estimated_mapblock_churn < MIN_REHEARSAL_MAPBLOCK_CHURN:
         raise ValueError("compat import staging pilot dry-run mutation estimate is invalid")
 
     if review.get("smoke_status") != "ready":
@@ -708,39 +730,26 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("compat import staging pilot was not machine promotable")
     if review.get("promotion_status") != "ready_for_operator_promotion":
         raise ValueError("compat import staging pilot promotion evidence was not ready")
+    for field in (
+        "world_imports_metadata_only",
+        "resource_pack_asset_promotion_no_mutation",
+        "resource_pack_requires_operator_supplied_rights_confirmed",
+    ):
+        _require_bool(compatibility_policy, field)
+    for field in ("world_conversion_apply_allowed", "asset_bytes_copied"):
+        if compatibility_policy.get(field) is not False:
+            raise ValueError(f"compat import staging pilot compatibility policy {field} must be false")
 
     if apply.get("task_status") != "completed":
         raise ValueError("compat import staging pilot apply task did not complete")
     if apply.get("apply_summary_status") != "completed":
         raise ValueError("compat import staging pilot apply summary did not complete")
-    for field, expected in (
-        ("progress_current", 3),
-        ("progress_total", 3),
-        ("node_writes_actual", 5),
-        ("mapblock_churn_actual", 3),
-        ("rollback_record_count", 3),
-        ("node_writes_verified", 5),
-    ):
-        if apply.get(field) != expected:
-            raise ValueError(f"compat import staging pilot apply {field} is invalid")
     _require_bool(apply, "param_round_trip_checked")
 
     if rollback.get("plan_status") != "success":
         raise ValueError("compat import staging pilot rollback plan did not pass")
-    for field, expected in (
-        ("apply_rollback_ref_count", 3),
-        ("plan_record_count", 3),
-        ("planned_node_writes", 5),
-        ("task_status", "completed"),
-        ("progress_current", 3),
-        ("progress_total", 3),
-        ("nodes_reverted", 5),
-        ("rollback_execution_records", 3),
-    ):
-        if rollback.get(field) != expected:
-            raise ValueError(f"compat import staging pilot rollback {field} is invalid")
-    if rollback.get("planned_mapblock_churn", 0) < 3:
-        raise ValueError("compat import staging pilot rollback mapblock churn missing")
+    if rollback.get("task_status") != "completed":
+        raise ValueError("compat import staging pilot rollback task did not complete")
 
     gates = payload.get("refusal_gates") if isinstance(payload.get("refusal_gates"), dict) else {}
     expected_gates = {
@@ -768,21 +777,55 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     )
     if benchmark.get("status") != "pass":
         raise ValueError("compat import staging pilot benchmark coverage did not pass")
+    expected_node_writes = benchmark.get("expected_node_writes")
+    expected_mapblock_churn = benchmark.get("expected_mapblock_churn")
+    expected_apply_chunks = benchmark.get("expected_apply_chunks")
+    if not isinstance(expected_node_writes, int) or expected_node_writes < MIN_REHEARSAL_NODE_WRITES:
+        raise ValueError("compat import staging pilot benchmark expected_node_writes is too small")
+    if not isinstance(expected_mapblock_churn, int) or expected_mapblock_churn < MIN_REHEARSAL_MAPBLOCK_CHURN:
+        raise ValueError("compat import staging pilot benchmark expected_mapblock_churn is too small")
+    if not isinstance(expected_apply_chunks, int) or expected_apply_chunks < MIN_REHEARSAL_APPLY_CHUNKS:
+        raise ValueError("compat import staging pilot benchmark expected_apply_chunks is too small")
+    if estimated_node_writes != expected_node_writes or estimated_mapblock_churn != expected_mapblock_churn:
+        raise ValueError("compat import staging pilot dry-run mutation estimate is invalid")
     for field, expected in (
-        ("expected_node_writes", 5),
-        ("actual_node_writes", 5),
-        ("expected_mapblock_churn", 3),
-        ("actual_mapblock_churn", 3),
-        ("expected_apply_chunks", 3),
-        ("actual_apply_chunks", 3),
-        ("max_node_writes_total", 5),
-        ("max_node_writes_per_step", 2),
-        ("max_mapblock_churn_total", 3),
+        ("actual_node_writes", expected_node_writes),
+        ("actual_mapblock_churn", expected_mapblock_churn),
+        ("actual_apply_chunks", expected_apply_chunks),
+        ("max_node_writes_total", expected_node_writes),
+        ("max_mapblock_churn_total", expected_mapblock_churn),
     ):
         if benchmark.get(field) != expected:
             raise ValueError(f"compat import staging pilot benchmark {field} is invalid")
+    max_per_step = benchmark.get("max_node_writes_per_step")
+    if not isinstance(max_per_step, int) or max_per_step <= 0 or max_per_step >= expected_node_writes:
+        raise ValueError("compat import staging pilot benchmark max_node_writes_per_step is invalid")
     _require_bool(benchmark, "over_budget_refused")
     _require_bool(benchmark, "mapblock_churn_recorded")
+
+    for field, expected in (
+        ("progress_current", expected_apply_chunks),
+        ("progress_total", expected_apply_chunks),
+        ("node_writes_actual", expected_node_writes),
+        ("mapblock_churn_actual", expected_mapblock_churn),
+        ("rollback_record_count", expected_apply_chunks),
+        ("node_writes_verified", expected_node_writes),
+    ):
+        if apply.get(field) != expected:
+            raise ValueError(f"compat import staging pilot apply {field} is invalid")
+    for field, expected in (
+        ("apply_rollback_ref_count", expected_apply_chunks),
+        ("plan_record_count", expected_apply_chunks),
+        ("planned_node_writes", expected_node_writes),
+        ("progress_current", expected_apply_chunks),
+        ("progress_total", expected_apply_chunks),
+        ("nodes_reverted", expected_node_writes),
+        ("rollback_execution_records", expected_apply_chunks),
+    ):
+        if rollback.get(field) != expected:
+            raise ValueError(f"compat import staging pilot rollback {field} is invalid")
+    if rollback.get("planned_mapblock_churn", 0) < expected_mapblock_churn:
+        raise ValueError("compat import staging pilot rollback mapblock churn missing")
 
     safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
     for field in (
