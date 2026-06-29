@@ -55,7 +55,9 @@ operator or optional plugin profiles.
 The clean profile must expose the product runtime surfaces operators need before
 agent plugins become richer:
 
-- `/ai_runtime_operator_status` returns bounded public-safe runtime status.
+- `/ai_runtime_operator_status` returns bounded public-safe runtime status and
+  focused read-only `view=tasks`, `view=task`, `view=audit`, `view=rollback`,
+  and `view=imports` summaries.
 - `/ai_runtime_operator_task_control` applies receipt-gated task cancel/retry
   decisions only.
 

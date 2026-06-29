@@ -96,6 +96,20 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "truncated": False,
             },
         }
+        if source == "live_command":
+            package["operator_ux_command_probe"] = {
+                "status": "pass",
+                "command": "/ai_runtime_operator_status",
+                "read_only_views": True,
+                "task_list_checked": True,
+                "task_detail_checked": True,
+                "audit_review_checked": True,
+                "rollback_review_checked": True,
+                "import_review_checked": True,
+                "refusal_checked": True,
+                "views_checked_total": 5,
+                "max_view_output_bytes": 2400,
+            }
         path.write_text(json.dumps(package, indent=2), encoding="utf-8")
 
     def write_operator_task_control_live_artifact(self, path):
@@ -950,6 +964,32 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["operator_status_evidence"]["operator_control_recommendations"],
                 1,
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_ux_command_probe_status"],
+                "pass",
+            )
+            self.assertTrue(
+                manifest["operator_status_evidence"]["operator_ux_task_list_checked"]
+            )
+            self.assertTrue(
+                manifest["operator_status_evidence"]["operator_ux_task_detail_checked"]
+            )
+            self.assertTrue(
+                manifest["operator_status_evidence"]["operator_ux_audit_review_checked"]
+            )
+            self.assertTrue(
+                manifest["operator_status_evidence"]["operator_ux_rollback_review_checked"]
+            )
+            self.assertTrue(
+                manifest["operator_status_evidence"]["operator_ux_import_review_checked"]
+            )
+            self.assertTrue(
+                manifest["operator_status_evidence"]["operator_ux_refusal_checked"]
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_ux_views_checked_total"],
+                5,
             )
             self.assertEqual(
                 manifest["operator_status_evidence"]["operator_control_report_status"],

@@ -1094,6 +1094,100 @@ assert(not operator_command_message:find("spacebase", 1, true))
 assert(not operator_command_message:find("themepark", 1, true))
 assert(not operator_command_message:find("private_prompt", 1, true))
 assert(not operator_command_message:find("asset_payload", 1, true))
+
+assert(type(core.build_ai_operator_status_view) == "function")
+local task_view = core.build_ai_operator_status_view({
+	view = "task",
+	task_id = "operator-status:queued",
+	generated_at = "2026-06-29T00:00:00Z",
+	max_bytes = 4000,
+})
+assert(task_view.package_kind == "ai_native_operator_status_view")
+assert(task_view.view == "task")
+assert(task_view.status == "ready")
+assert(task_view.runtime_context.command == "/ai_runtime_operator_status")
+assert(task_view.runtime_context.mutation_performed == false)
+assert(task_view.runtime_context.world_mutation_performed == false)
+assert(task_view.safety.read_only == true)
+assert(task_view.safety.no_task_queue_mutation == true)
+assert(task_view.safety.no_world_mutation == true)
+assert(task_view.safety.no_rollback_execution == true)
+assert(task_view.safety.no_import_promotion_execution == true)
+assert(task_view.summary.task_found == true)
+assert(task_view.task.task_id == "operator-status:queued")
+assert(task_view.task.status == "queued")
+assert(task_view.bounds.output_bytes <= task_view.bounds.max_bytes)
+local task_view_json = core.write_json(task_view)
+assert(not task_view_json:find("/Users/", 1, true))
+assert(not task_view_json:find("minecraftpi", 1, true))
+assert(not task_view_json:find("192.168", 1, true))
+assert(not task_view_json:find("spacebase", 1, true))
+assert(not task_view_json:find("themepark", 1, true))
+assert(not task_view_json:find("private_prompt", 1, true))
+assert(not task_view_json:find("asset_payload", 1, true))
+
+local view_before_metrics = core.get_ai_runtime_operator_metrics()
+local views_to_check = {
+	{
+		name = "tasks",
+		param = "view=tasks generated_at=2026-06-29T00:00:00Z max_bytes=5000 limit=5",
+		required = "\"tasks\"",
+	},
+	{
+		name = "task",
+		param = "view=task task_id=operator-status:queued generated_at=2026-06-29T00:00:00Z max_bytes=5000",
+		required = "\"task_found\":true",
+	},
+	{
+		name = "audit",
+		param = "view=audit generated_at=2026-06-29T00:00:00Z max_bytes=5000 limit=10",
+		required = "\"audit_records_total\"",
+	},
+	{
+		name = "rollback",
+		param = "view=rollback generated_at=2026-06-29T00:00:00Z max_bytes=5000 limit=10",
+		required = "\"rollback_records_total\"",
+	},
+	{
+		name = "imports",
+		param = "view=imports generated_at=2026-06-29T00:00:00Z max_bytes=5000 limit=10",
+		required = "\"import_reviews_total\"",
+	},
+}
+for _, view_case in ipairs(views_to_check) do
+	local ok, message = core.registered_chatcommands.ai_runtime_operator_status.func(
+		"admin",
+		view_case.param)
+	assert(ok == true)
+	assert(#message <= 5000)
+	assert(message:find("\"package_kind\":\"ai_native_operator_status_view\"", 1, true))
+	assert(message:find("\"view\":\"" .. view_case.name .. "\"", 1, true))
+	assert(message:find("\"read_only\":true", 1, true))
+	assert(message:find("\"no_world_mutation\":true", 1, true))
+	assert(message:find("\"no_rollback_execution\":true", 1, true))
+	assert(message:find("\"no_import_promotion_execution\":true", 1, true))
+	assert(message:find(view_case.required, 1, true))
+	assert(not message:find("/Users/", 1, true))
+	assert(not message:find("minecraftpi", 1, true))
+	assert(not message:find("192.168", 1, true))
+	assert(not message:find("spacebase", 1, true))
+	assert(not message:find("themepark", 1, true))
+	assert(not message:find("private_prompt", 1, true))
+	assert(not message:find("asset_payload", 1, true))
+end
+local view_after_metrics = core.get_ai_runtime_operator_metrics()
+assert(view_after_metrics.node_writes == view_before_metrics.node_writes)
+assert(view_after_metrics.tasks_cancelled == view_before_metrics.tasks_cancelled)
+assert(view_after_metrics.tasks_retried == view_before_metrics.tasks_retried)
+assert(view_after_metrics.rollback_records_written == view_before_metrics.rollback_records_written)
+local missing_task_ok, missing_task_message =
+	core.registered_chatcommands.ai_runtime_operator_status.func("admin", "view=task")
+assert(missing_task_ok == false)
+assert(missing_task_message:find("task_id", 1, true))
+local bad_view_ok, bad_view_message =
+	core.registered_chatcommands.ai_runtime_operator_status.func("admin", "view=execute")
+assert(bad_view_ok == false)
+assert(bad_view_message:find("view must be", 1, true))
 local compact_command_ok, compact_command_message =
 	core.registered_chatcommands.ai_runtime_operator_status.func(
 		"admin",
