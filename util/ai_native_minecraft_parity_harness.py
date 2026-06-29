@@ -18,7 +18,7 @@ RUNNER_VERSION = "ai-native-minecraft-parity-harness:v1"
 DEFAULT_HARDWARE_CLASSES = ("local-mac", "low-power-server")
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
-    r"sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|"
+    r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|"
     r"/Users/|/opt/|bill@",
     re.I,
 )

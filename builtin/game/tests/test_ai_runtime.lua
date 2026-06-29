@@ -187,6 +187,50 @@ assert(running_cancel.status == "cancelled")
 assert(core.step_ai_tasks().ran == 0)
 assert(#cancelled_events == 1)
 
+do
+	local retry_attempts = 0
+	core.queue_ai_task({
+		task_id = "task:retry-live",
+		agent_id = "nova:emma",
+		owner = "emma",
+		label = "retry live task",
+		steps = {
+			function()
+				retry_attempts = retry_attempts + 1
+				if retry_attempts == 1 then
+					return {
+						ok = false,
+						status = "blocked",
+						reason = "temporary_block",
+						message = "Temporary block for retry contract.",
+					}
+				end
+				return { ok = true, status = "success", changed = 0 }
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	assert(core.get_ai_task("task:retry-live").status == "blocked")
+	local retry_denied = core.retry_ai_task("task:retry-live", "nova:disabled")
+	assert(retry_denied.ok == false)
+	assert(retry_denied.status == "permission_denied")
+	local retry_result = core.retry_ai_task("task:retry-live", "emma")
+	assert(retry_result.ok == true)
+	assert(retry_result.status == "queued")
+	assert(retry_result.reason == "task_retried")
+	local retry_queued = core.get_ai_task("task:retry-live")
+	assert(retry_queued.status == "queued")
+	assert(retry_queued.progress.current == 0)
+	assert(retry_queued.retry_count == 1)
+	core.step_ai_tasks()
+	local retry_completed = core.get_ai_task("task:retry-live")
+	assert(retry_completed.status == "completed")
+	assert(retry_attempts == 2)
+	local retry_completed_again = core.retry_ai_task("task:retry-live", "emma")
+	assert(retry_completed_again.ok == false)
+	assert(retry_completed_again.status == "completed")
+end
+
 local lag_events = {}
 core.queue_ai_task({
 	task_id = "task:lag-paused",
@@ -840,9 +884,9 @@ core.record_ai_runtime_audit({
 
 local metrics = core.get_ai_runtime_metrics()
 assert(type(metrics) == "table")
-assert(metrics.tasks_queued == 7)
-assert(metrics.task_steps_run == 7)
-assert(metrics.tasks_completed == 3)
+assert(metrics.tasks_queued == 8)
+assert(metrics.task_steps_run == 9)
+assert(metrics.tasks_completed == 4)
 assert(metrics.tasks_cancelled == 2)
 assert(metrics.tasks_unsafe == 2)
 assert(metrics.queue_length == 0)
@@ -3209,6 +3253,7 @@ assert(audit_has("capability.admin_override", nil))
 assert(audit_has("task.started", "task:lights"))
 assert(audit_has("task.completed", "task:lights"))
 assert(audit_has("task.cancelled", "task:queued-cancel"))
+assert(audit_has("task.retried", "task:retry-live"))
 assert(audit_has("task.unsafe", "task:write-budget"))
 assert(audit_has("world.unsafe", nil))
 

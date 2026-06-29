@@ -12,7 +12,7 @@ DOC = ROOT / "doc" / "ai-native-runtime" / "operator-status-package.md"
 README = ROOT / "doc" / "ai-native-runtime" / "README.md"
 PRIVATE_PATTERNS = re.compile(
     r"/Users/|minecraftpi|192\.168|spacebase|themepark|showcase100|"
-    r"disneyland100|sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|"
+    r"disneyland100|(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|"
     r"private_prompt|asset_payload",
     re.I,
 )

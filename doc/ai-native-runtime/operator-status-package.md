@@ -52,7 +52,7 @@ The output must stay public-safe:
 - no provider prompts;
 - no raw assets or asset payloads;
 - no family-world coordinates;
-- no `spacebase`, `themepark`, `showcase100`, or `disneyland100` content.
+- no private family-showcase content.
 
 Runtime sections are summaries, not raw records. Rollback and import entries show ids, statuses, and review state; they do not embed rollback node snapshots, source asset bytes, or live-world payloads.
 
@@ -124,6 +124,22 @@ Execution is task cancel/retry only. Approved task cancel and retry receipt entr
 The executor preserves the same public-safe boundary as the earlier artifacts: no rollback execution, no import promotion execution, no world mutation, no structure apply, no raw assets, no provider prompts, and no family-world coordinates. It is not a rollback executor, import applier, world editor, or live family-server control path.
 
 `util/ai_native_runtime_verify.py` writes `ai-runtime-operator-action-execution-result.json` as the final operator-control artifact in the local and low-power verifier chain. The manifest records `operator_action_execution_status`, path, output bytes, and item count so side-by-side fork runs prove receipt-gated task control without touching private worlds or family-server state.
+
+## Disposable Live Task Control Probe
+
+`util/ai_native_operator_task_control_live_probe.py` is the next probe after synthetic task-state execution. It launches a disposable live `ai_runtime` queue probe, seeds bounded test tasks in that temporary world, feeds a receipt-gated cancel/retry decision set through the live queue controls, and writes `ai-runtime-operator-task-control-live-result.json`:
+
+```sh
+python3 util/ai_native_operator_task_control_live_probe.py \
+  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-task-control-live-result.json \
+  --generated-at 2026-06-29T00:00:00Z
+```
+
+This is task cancel/retry only. It proves that approved task decisions can cancel a running task and retry a blocked task in a disposable live queue while denied, rollback, and import entries are rejected. The artifact records before/after task status, retry count, executed/rejected counts, and public-safe safety flags.
+
+The probe preserves the same production boundary as the rest of the operator chain: no rollback execution, no import promotion execution, no structure apply, no world mutation, no raw assets, no provider prompts, no family-world coordinates, and no family-server task control. It is a disposable live `ai_runtime` queue probe, not a family-server control surface.
+
+`util/ai_native_runtime_verify.py` records the live probe as `operator_task_control_live_evidence`, including artifact path, output bytes, decision count, executed/rejected totals, and world-mutation status. The verifier fails if the artifact is missing, oversized, private, not receipt-gated, not disposable-live-queue scoped, or reports world mutation.
 
 ## Product Use
 
