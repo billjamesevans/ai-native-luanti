@@ -23,6 +23,7 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
     def test_alpha_package_docs_and_templates_exist(self):
         expected_paths = [
             "doc/ai-native-runtime/alpha-release-gate.md",
+            "doc/ai-native-runtime/operator-alpha-release-runbook.md",
             "doc/ai-native-runtime/clean-ai-runtime-install.md",
             "doc/ai-native-runtime/public-safe-sample-data-policy.md",
             "doc/ai-native-runtime/release-notes-template.md",
@@ -76,6 +77,7 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
 
         for link in [
             "alpha-release-gate.md",
+            "operator-alpha-release-runbook.md",
             "clean-ai-runtime-install.md",
             "public-safe-sample-data-policy.md",
             "release-notes-template.md",
