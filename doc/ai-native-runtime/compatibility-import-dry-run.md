@@ -69,10 +69,12 @@ The report may include redacted source names and content hashes, but it should n
 The machine-readable report schema lives at:
 
 - [`schemas/compatibility-dry-run-report.schema.json`](schemas/compatibility-dry-run-report.schema.json)
+- [`schemas/compatibility-inventory-discovery-report.schema.json`](schemas/compatibility-inventory-discovery-report.schema.json)
 
 A synthetic Bedrock-style example lives at:
 
 - [`examples/compatibility-dry-run-report.example.json`](examples/compatibility-dry-run-report.example.json)
+- [`examples/compatibility-inventory-discovery-report.example.json`](examples/compatibility-inventory-discovery-report.example.json)
 
 Additional public-safe examples cover the current structure and Luanti-mod lanes:
 
@@ -241,6 +243,34 @@ cost, and one of these review statuses:
 Batch inventory is still dry-run-only. It does not copy assets, execute apply,
 queue runtime tasks, mutate worlds, or bypass approval, rollback, write-budget,
 and staging-world gates.
+
+## Import Inventory Discovery
+
+The public-safe discovery report turns a batch scan into a parity-ready import
+preview artifact:
+
+```sh
+python3 util/ai_native_compat_dry_run.py \
+  --inventory-discovery /path/to/user-owned-import-sources \
+  --reports-dir local/compat-reports \
+  --output local/benchmarks/compatibility-import-inventory-discovery-report.json \
+  --summary
+```
+
+The report classifies source-level and inventory-level content as `supported`,
+`partial`, `unsupported`, `skipped`, or `blocked`. It accepts user-owned Java and
+Bedrock pack metadata, Luanti mods, metadata-only structure/schematic preflights,
+and world-export metadata. It records source class counts, content-hash
+provenance, required capabilities, and planned actions that can later become
+`core.ai_import_ops` queued work. It remains metadata-and-reference-only:
+private-looking source names are redacted and blocked, asset bytes are never
+embedded, and whole-world imports stay blocked until a future conversion path is
+reviewed.
+
+When the report is written at
+`local/benchmarks/compatibility-import-inventory-discovery-report.json`, the
+Minecraft-parity harness can use it to clear the compatibility-import inventory
+action without claiming proprietary Minecraft benchmark evidence.
 
 ## Safety Requirements
 

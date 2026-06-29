@@ -23,6 +23,7 @@ from ai_native_compat_dry_run import (
     review_adapter_apply_smoke,
     validate_adapter_apply_smoke,
     validate_apply_summary,
+    validate_import_inventory_discovery_report,
     validate_report,
 )
 
@@ -569,6 +570,37 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 self.assertNotIn("family_voxelibre", serialized)
                 self.assertNotIn("asset_payload", serialized.lower())
 
+    def test_public_inventory_discovery_schema_and_example_cover_import_preview(self):
+        schema_path = (
+            UTIL_DIR.parent / "doc" / "ai-native-runtime" / "schemas"
+            / "compatibility-inventory-discovery-report.schema.json"
+        )
+        example_path = (
+            UTIL_DIR.parent / "doc" / "ai-native-runtime" / "examples"
+            / "compatibility-inventory-discovery-report.example.json"
+        )
+        self.assertTrue(schema_path.is_file(), "inventory discovery schema is missing")
+        self.assertTrue(example_path.is_file(), "inventory discovery example is missing")
+
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        self.assertEqual(schema["title"], "Compatibility Import Inventory Discovery Report")
+        self.assertIn("inventory_input_format", schema["required"])
+        self.assertIn("readiness", schema["required"])
+        self.assertIn(
+            "ready_for_import_preview",
+            schema["properties"]["status"]["enum"],
+        )
+
+        report = json.loads(example_path.read_text(encoding="utf-8"))
+        self.assertEqual(report["mode"], "import_inventory_discovery")
+        self.assertEqual(validate_import_inventory_discovery_report(report), [])
+        self.assertTrue(report["summary"]["compatibility_import_inventory_ready"])
+        serialized = json.dumps(report, sort_keys=True)
+        self.assertNotIn(str(self.fixture_root), serialized)
+        self.assertNotIn("minecraftpi", serialized.lower())
+        self.assertNotIn("family_voxelibre", serialized)
+        self.assertNotIn("asset_payload", serialized.lower())
+
     def test_validator_rejects_missing_required_fields(self):
         report = build_report(self.fixture_root / "java_pack")
         del report["summary"]["risk_level"]
@@ -872,6 +904,19 @@ class CompatibilityDryRunTests(unittest.TestCase):
         )
         return batch_root
 
+    def make_discovery_fixture_root(self, tmpdir):
+        batch_root = pathlib.Path(tmpdir) / "discovery"
+        batch_root.mkdir()
+        shutil.copytree(self.fixture_root / "java_pack", batch_root / "java_pack")
+        shutil.copytree(self.fixture_root / "bedrock_asset_pack", batch_root / "bedrock_asset_pack")
+        shutil.copytree(self.fixture_root / "luanti_mod", batch_root / "luanti_mod")
+        shutil.copytree(self.fixture_root / "world_export", batch_root / "world_export")
+        shutil.copy2(
+            self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json",
+            batch_root / "open_platform.ai-schematic-preflight.json",
+        )
+        return batch_root
+
     def test_batch_inventory_queue_scans_mixed_public_safe_sources(self):
         builder = getattr(compat, "build_batch_inventory_queue", None)
         self.assertTrue(callable(builder), "batch inventory queue builder is missing")
@@ -939,6 +984,120 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 report = json.loads(path.read_text(encoding="utf-8"))
                 self.assertEqual(report["mode"], "dry_run")
                 self.assertEqual(validate_report(report), [])
+
+    def test_import_inventory_discovery_report_classifies_public_safe_sources(self):
+        builder = getattr(compat, "build_import_inventory_discovery_report", None)
+        self.assertTrue(callable(builder), "inventory discovery report builder is missing")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            batch_root = self.make_discovery_fixture_root(tmpdir)
+            reports_dir = pathlib.Path(tmpdir) / "reports"
+
+            report = builder(batch_root, reports_dir=reports_dir)
+            report_paths = [reports_dir / item["report_path"] for item in report["sources"]]
+            self.assertTrue(all(path.is_file() for path in report_paths))
+
+        self.assertEqual(report["report_version"], 1)
+        self.assertEqual(report["mode"], "import_inventory_discovery")
+        self.assertEqual(report["status"], "ready_for_import_preview")
+        self.assertTrue(report["summary"]["compatibility_import_inventory_ready"])
+        self.assertEqual(report["summary"]["sources_total"], 5)
+        for source_class in (
+            "java_resource_pack",
+            "bedrock_resource_pack",
+            "luanti_mod",
+            "structure",
+            "world",
+        ):
+            self.assertIn(source_class, report["summary"]["by_source_class"])
+            self.assertIn(
+                source_class,
+                report["inventory_input_format"]["accepted_source_classes"],
+            )
+        for classification in ("supported", "partial", "unsupported", "skipped", "blocked"):
+            self.assertIn(classification, report["summary"]["source_status_counts"])
+            self.assertIn(classification, report["summary"]["inventory_classification_counts"])
+        self.assertGreater(report["summary"]["source_status_counts"]["supported"], 0)
+        self.assertGreater(report["summary"]["source_status_counts"]["partial"], 0)
+        self.assertGreater(report["summary"]["source_status_counts"]["blocked"], 0)
+        self.assertGreater(report["summary"]["planned_actions_total"], 0)
+        self.assertIn("import.assets", report["summary"]["required_capabilities"])
+        self.assertTrue(report["safety"]["dry_run_only"])
+        self.assertTrue(report["safety"]["no_assets_copied"])
+        self.assertTrue(report["safety"]["no_world_mutation"])
+        self.assertTrue(report["safety"]["source_paths_redacted"])
+        self.assertTrue(report["safety"]["no_raw_payloads"])
+        self.assertTrue(report["safety"]["no_private_paths"])
+
+        by_class = {item["source_class"]: item for item in report["sources"]}
+        self.assertEqual(by_class["luanti_mod"]["status"], "supported")
+        self.assertEqual(by_class["structure"]["status"], "partial")
+        self.assertEqual(by_class["world"]["status"], "blocked")
+        for item in report["sources"]:
+            self.assertIn("provenance", item)
+            self.assertIn("content_hash", item["provenance"])
+            self.assertFalse(pathlib.PurePosixPath(item["report_path"]).is_absolute())
+            self.assertIn("import.assets", item["required_capabilities"])
+            self.assertIsInstance(item["planned_actions"], list)
+        self.assertEqual(validate_import_inventory_discovery_report(report), [])
+
+        serialized = json.dumps(report, sort_keys=True)
+        self.assertNotIn(str(batch_root), serialized)
+        self.assertNotIn("minecraftpi", serialized.lower())
+        self.assertNotIn("family_voxelibre", serialized)
+        self.assertNotIn("asset_payload", serialized.lower())
+        self.assertNotIn("raw_asset_payload", serialized.lower())
+
+    def test_inventory_discovery_blocks_private_source_references_without_leaking_names(self):
+        builder = getattr(compat, "build_import_inventory_discovery_report", None)
+        self.assertTrue(callable(builder), "inventory discovery report builder is missing")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            batch_root = pathlib.Path(tmpdir) / "discovery"
+            private_source = batch_root / "minecraftpi.home-private-pack"
+            private_source.mkdir(parents=True)
+            (private_source / "pack.mcmeta").write_text(
+                json.dumps({"pack": {"pack_format": 15, "description": "private"}}),
+                encoding="utf-8",
+            )
+
+            report = builder(batch_root)
+
+        self.assertEqual(report["summary"]["sources_total"], 1)
+        source = report["sources"][0]
+        self.assertEqual(source["status"], "blocked")
+        self.assertEqual(source["blocked_reason"], "private_source_reference_rejected")
+        self.assertIsNone(source["report_path"])
+        self.assertTrue(source["source_id"].startswith("redacted-private-source:"))
+        self.assertFalse(report["summary"]["compatibility_import_inventory_ready"])
+        self.assertIn("private_source_reference_rejected", report["readiness"]["blocking_reasons"])
+        self.assertEqual(validate_import_inventory_discovery_report(report), [])
+        self.assertNotIn("minecraftpi", json.dumps(report).lower())
+
+    def test_inventory_discovery_cli_writes_report_and_source_reports(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            batch_root = self.make_discovery_fixture_root(tmpdir)
+            reports_dir = tmpdir / "reports"
+            output = tmpdir / "inventory-discovery.json"
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "--inventory-discovery", str(batch_root),
+                    "--reports-dir", str(reports_dir),
+                    "--output", str(output),
+                    "--summary",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["mode"], "import_inventory_discovery")
+            self.assertEqual(validate_import_inventory_discovery_report(report), [])
+            self.assertIn("inventory_discovery=ready_for_import_preview", stdout.getvalue())
+            self.assertIn("sources=5", stdout.getvalue())
+            self.assertTrue(all((reports_dir / item["report_path"]).is_file()
+                for item in report["sources"]))
 
     def synthetic_planned_action(self, action, status="partial"):
         return {

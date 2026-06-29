@@ -287,6 +287,77 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stderr)
         return completed
 
+    def write_import_inventory_discovery_report(self, output_root):
+        self.write_json(
+            pathlib.Path(output_root) / "compatibility-import-inventory-discovery-report.json",
+            {
+                "report_version": 1,
+                "mode": "import_inventory_discovery",
+                "status": "ready_for_import_preview",
+                "summary": {
+                    "compatibility_import_inventory_ready": True,
+                    "sources_total": 4,
+                    "inventory_items_total": 9,
+                    "planned_actions_total": 6,
+                    "by_source_class": {
+                        "java_resource_pack": 1,
+                        "luanti_mod": 1,
+                        "structure": 1,
+                        "world": 1,
+                    },
+                    "source_status_counts": {
+                        "supported": 1,
+                        "partial": 2,
+                        "unsupported": 0,
+                        "skipped": 0,
+                        "blocked": 1,
+                    },
+                    "inventory_classification_counts": {
+                        "supported": 4,
+                        "partial": 0,
+                        "unsupported": 1,
+                        "skipped": 0,
+                        "blocked": 4,
+                    },
+                    "required_capabilities": ["import.assets"],
+                },
+                "readiness": {
+                    "compatibility_import_inventory_ready": True,
+                    "blocking_reasons": [],
+                },
+                "sources": [
+                    {
+                        "source_id": "source:java_pack",
+                        "source_class": "java_resource_pack",
+                        "status": "partial",
+                        "inventory_count": 2,
+                        "planned_actions_count": 2,
+                        "required_capabilities": ["import.assets"],
+                        "report_path": "001-source-java_pack.json",
+                    },
+                    {
+                        "source_id": "source:luanti_mod",
+                        "source_class": "luanti_mod",
+                        "status": "supported",
+                        "inventory_count": 2,
+                        "planned_actions_count": 1,
+                        "required_capabilities": ["import.assets"],
+                        "report_path": "002-source-luanti_mod.json",
+                    },
+                ],
+                "safety": {
+                    "dry_run_only": True,
+                    "no_assets_copied": True,
+                    "no_world_mutation": True,
+                    "source_paths_redacted": True,
+                    "no_raw_payloads": True,
+                    "no_private_paths": True,
+                    "uses_proprietary_minecraft_code_or_assets": False,
+                    "uses_copied_server_jars_or_game_data": False,
+                },
+            },
+        )
+
     def test_harness_writes_public_safe_comparison_report_with_required_dimensions(self):
         self.assertTrue(CLI.is_file(), f"missing {CLI}")
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -512,6 +583,41 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertEqual(
                 report["actionable_scorecard"][0]["title"],
                 "Build compatibility import inventory discovery",
+            )
+
+    def test_harness_clears_import_inventory_gap_when_discovery_report_is_ready(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(
+                output_root,
+                headless_players=True,
+                mapblock_rows=256,
+                entity_count=16,
+                total_node_writes=11,
+                cpu_evidence=True,
+                first_party_loop=True,
+            )
+            self.write_import_inventory_discovery_report(output_root)
+            report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
+
+            self.run_harness(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            results = {
+                item["dimension_id"]: item
+                for item in report["measured_facts"][0]["dimension_results"]
+            }
+            plugin = results["mod_plugin_ergonomics"]
+            self.assertTrue(plugin["metrics"]["first_party_agent_loop_ready"])
+            self.assertTrue(plugin["metrics"]["compatibility_import_plugin_ready"])
+            self.assertEqual(
+                plugin["metrics"]["compatibility_import_inventory"]["status"],
+                "ready_for_import_preview",
+            )
+            self.assertEqual(report["actionable_scorecard"], [])
+            self.assertEqual(
+                report["gap_summary_by_area"]["first_party_plugin"]["scorecard_status"],
+                "pass",
             )
 
     def test_harness_marks_partial_headless_evidence_as_measured_failure(self):
