@@ -391,6 +391,17 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             for gap in report["qualitative_minecraft_parity_gaps"]:
                 self.assertIn("gap_area", gap)
                 self.assertIn("scorecard_status", gap)
+            self.assertIn("actionable_scorecard", report)
+            self.assertGreater(len(report["actionable_scorecard"]), 0)
+            first_action = report["actionable_scorecard"][0]
+            self.assertEqual(first_action["rank"], 1)
+            self.assertIn("action_id", first_action)
+            self.assertIn(first_action["scorecard_status"], {"fail", "warn"})
+            self.assertIn("hardware_classes", first_action)
+            self.assertIn("dimension_ids", first_action)
+            self.assertIn("next_action", first_action)
+            self.assertIn("suggested_issue_title", first_action)
+            self.assertTrue(first_action["blocks_minecraft_parity"])
             serialized = json.dumps(report, sort_keys=True)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
@@ -440,6 +451,11 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertNotIn("world_edit_throughput", gap_ids)
             self.assertNotIn("cpu", gap_ids)
             self.assertNotIn("latency", gap_ids)
+            self.assertEqual(len(report["actionable_scorecard"]), 1)
+            self.assertEqual(
+                report["actionable_scorecard"][0]["dimension_ids"],
+                ["mod_plugin_ergonomics"],
+            )
 
     def test_harness_marks_partial_headless_evidence_as_measured_failure(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -492,6 +508,48 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             }
             self.assertIn("Fix failing synthetic player join evidence", gaps["player_join_liveness"]["title"])
             self.assertIn("Fix failing headless latency evidence", gaps["latency"]["title"])
+
+    def test_actionable_scorecard_groups_same_gap_across_hardware_lanes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            for hardware_class in ("local-mac", "low-power-server"):
+                self.write_accepted_baseline(
+                    output_root,
+                    hardware_class=hardware_class,
+                    headless_players=True,
+                    mapblock_rows=256,
+                    entity_count=16,
+                    total_node_writes=11,
+                    cpu_evidence=True,
+                )
+            report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(CLI),
+                    "--output-root",
+                    str(output_root),
+                    "--output",
+                    str(report_path),
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            plugin_actions = [
+                item for item in report["actionable_scorecard"]
+                if item["dimension_ids"] == ["mod_plugin_ergonomics"]
+            ]
+            self.assertEqual(len(plugin_actions), 1)
+            self.assertEqual(
+                plugin_actions[0]["hardware_classes"],
+                ["local-mac", "low-power-server"],
+            )
+            self.assertEqual(plugin_actions[0]["gap_count"], 2)
 
     def test_docs_explain_public_safe_harness_and_retention(self):
         for doc in (DOC, README):
