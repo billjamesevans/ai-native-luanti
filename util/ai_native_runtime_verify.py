@@ -1211,7 +1211,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         ]
         + (
             [
-                "Opt-in clean-profile verification records a disposable ai_runtime server capture.",
+                "Default clean-profile verification records a disposable ai_runtime server capture.",
             ]
             if args.game_profile == "ai_runtime"
             else []
@@ -1277,7 +1277,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--game-profile",
         choices=("sample-synthetic", "ai_runtime"),
-        default="sample-synthetic",
+        default="ai_runtime",
         help="Optional clean server profile to launch through the benchmark gate.",
     )
     parser.add_argument(
