@@ -261,6 +261,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "node_after": "air",
                     "rollback_record_count": 1,
                 },
+                "pending_declines": {
+                    "cancel_plan_pending_status": "pending_approval",
+                    "cancel_plan_status": "success",
+                    "cancel_plan_action": "discard_approval",
+                    "cancel_plan_approval_id": "approval:cancel-plan",
+                    "cancel_plan_pending_after_status": "blocked",
+                    "no_pending_status": "pending_approval",
+                    "no_status": "success",
+                    "no_action": "discard_approval",
+                    "no_approval_id": "approval:no",
+                    "no_pending_after_status": "blocked",
+                },
                 "task_control": {
                     "cancel_checked": True,
                     "cancel_before_status": "queued",
@@ -331,6 +343,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "rollback_review_checked": True,
                     "pending_plan_review_checked": True,
                     "plan_edit_checked": True,
+                    "pending_decline_alias_checked": True,
                     "targeted_audit_review_checked": True,
                     "targeted_rollback_review_checked": True,
                     "targeted_rollback_record_review_checked": True,
@@ -370,6 +383,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "clean_gated_command_count": 2,
                 "status_context_count": 1,
                 "commands_alias_count": 1,
+                "pending_decline_alias_count": 2,
                 "node_writes_verified": 5,
                 "transient_blocked_outcomes": 1,
                 "final_blocked_or_unsafe_outcomes": 0,
@@ -1232,6 +1246,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "agent_product_loop_commands_alias_checked"
                 ]
             )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_pending_decline_alias_checked"
+                ]
+            )
             self.assertEqual(
                 manifest["agent_product_loop_live_evidence"][
                     "agent_product_loop_follow_helper_entity"
@@ -1323,6 +1342,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "agent_product_loop_commands_aliases"
                 ],
                 1,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_pending_decline_aliases"
+                ],
+                2,
             )
             self.assertGreaterEqual(
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_operator_status_tasks"],
