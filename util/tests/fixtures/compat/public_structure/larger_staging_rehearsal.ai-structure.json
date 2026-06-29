@@ -1,0 +1,54 @@
+{
+  "format_kind": "ai_native_public_structure",
+  "format_version": 1,
+  "name": "larger-public-staging-rehearsal",
+  "structure_format": "ai_native_structure_v1",
+  "recommended_chunk_size": 4,
+  "license": {
+    "status": "user_supplied",
+    "rights_confirmed": true
+  },
+  "dimensions": {
+    "x": 50,
+    "y": 1,
+    "z": 34
+  },
+  "palette": {
+    "stone": "ai_runtime_test:stone",
+    "marker": "ai_runtime_test:stone"
+  },
+  "placements": [
+    { "pos": { "x": 0, "y": 0, "z": 0 }, "node": "stone" },
+    { "pos": { "x": 5, "y": 0, "z": 0 }, "node": "marker", "param1": 3, "param2": 7 },
+    { "pos": { "x": 15, "y": 0, "z": 0 }, "node": "stone" },
+    { "pos": { "x": 15, "y": 0, "z": 33 }, "node": "stone" },
+    { "pos": { "x": 0, "y": 0, "z": 16 }, "node": "stone" },
+    { "pos": { "x": 8, "y": 0, "z": 20 }, "node": "marker" },
+    { "pos": { "x": 16, "y": 0, "z": 16 }, "node": "stone" },
+    { "pos": { "x": 24, "y": 0, "z": 22 }, "node": "marker" },
+    { "pos": { "x": 16, "y": 0, "z": 0 }, "node": "stone" },
+    { "pos": { "x": 23, "y": 0, "z": 0 }, "node": "marker" },
+    { "pos": { "x": 31, "y": 0, "z": 0 }, "node": "stone" },
+    { "pos": { "x": 31, "y": 0, "z": 33 }, "node": "stone" },
+    { "pos": { "x": 32, "y": 0, "z": 0 }, "node": "stone" },
+    { "pos": { "x": 40, "y": 0, "z": 0 }, "node": "marker" },
+    { "pos": { "x": 32, "y": 0, "z": 16 }, "node": "stone" },
+    { "pos": { "x": 41, "y": 0, "z": 24 }, "node": "marker" },
+    { "pos": { "x": 49, "y": 0, "z": 0 }, "node": "stone" },
+    { "pos": { "x": 49, "y": 0, "z": 33 }, "node": "stone" }
+  ],
+  "unsupported_fields": [
+    {
+      "field": "entities",
+      "reason": "requires_manual_review",
+      "message": "Structure entities are inventoried but not converted by the public-safe adapter.",
+      "recommendation": "Create equivalent Luanti entities manually after staged node apply is reviewed."
+    },
+    {
+      "field": "block_entities",
+      "reason": "requires_manual_review",
+      "message": "Block entities are metadata-only in this rehearsal.",
+      "recommendation": "Review generated Luanti equivalents in a future issue before enabling conversion."
+    }
+  ]
+}

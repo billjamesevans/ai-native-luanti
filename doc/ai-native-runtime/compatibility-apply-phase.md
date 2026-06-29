@@ -211,7 +211,7 @@ python3 util/ai_native_compat_import_staging_pilot.py \
 	--generated-at 2026-06-29T00:00:00Z
 ```
 
-The pilot runs the public-safe structure fixture through inventory discovery, dry-run reporting, apply-plan validation, adapter smoke, operator review, and promotion evidence construction before launching a disposable `ai_runtime` staging world. Inside that disposable world it queues the reviewed chunked apply task through `core.ai_import_ops`, verifies five node writes across three chunks, records mapblock churn, reads rollback records back, executes rollback, and verifies the nodes reverted.
+The pilot runs the public-safe structure fixture through inventory discovery, dry-run reporting, apply-plan validation, adapter smoke, operator review, and promotion evidence construction before launching a disposable `ai_runtime` staging world. Inside that disposable world it queues the reviewed chunked apply task through `core.ai_import_ops`, verifies 18 node writes across five chunks and 10 touched mapblocks, records five rollback records, executes five rollback chunks, and verifies the nodes reverted. The pilot keeps world imports metadata-only and resource-pack promotion non-mutating unless a future operator-supplied, rights-confirmed asset path explicitly enables a narrower lane.
 
 The same live artifact records refusal gates for missing approval, missing rollback policy, unsafe/private payloads, non-staging targets, and over-budget writes. The one-command verifier runs this pilot by default and retains the bounded artifact as `ai-runtime-compat-import-staging-pilot-result.json`.
 
