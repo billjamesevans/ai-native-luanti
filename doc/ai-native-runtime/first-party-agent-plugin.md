@@ -200,12 +200,18 @@ Follow can use an operator-supplied `find_path(current_pos, target_pos, options)
 `capabilities` is the first-party grant policy for newly registered player agents. Clean profiles should declare it explicitly and should not include privileged capabilities such as `admin.override`, compatibility/import grants such as `import.assets`, or other-player controls unless that server profile is intentionally operator-only.
 
 `combat.defend` is intentionally absent from the clean `ai_runtime` profile. A server profile or plugin must opt into it before the `defend` command can complete successfully.
+In the clean profile, direct `defend` requests fail fast with
+`surface_capability_not_granted` and report the required `combat.defend`
+capability before any task is queued.
 
 `import.assets` is also absent from the clean `ai_runtime` profile. Operator
 profiles can opt into it for dry-run-only Importer planning. Importer execution
 is still plan-only in this first-party loop; structure apply, import promotion,
 asset copying, and world mutation remain outside this command and belong to the
 compatibility/import pipeline.
+In the clean profile, direct `import plan`, `import preview`, or
+`import inventory` requests fail fast with `surface_capability_not_granted` and
+report the required `import.assets` capability before any task is queued.
 
 ## Model Adapter
 
