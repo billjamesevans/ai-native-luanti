@@ -13,6 +13,10 @@ Runtime entrypoint: `core.ai_model_ops.request`
 
 Agent plugin entrypoint: `core.ai_agent_plugin.set_model_adapter`
 
+Optional scaffold: [`model-adapter-plugin-scaffold.md`](model-adapter-plugin-scaffold.md)
+documents the disabled-by-default mock probe used to verify this contract
+without provider credentials or network calls.
+
 ## Request Envelope
 
 Adapters receive a table matching
