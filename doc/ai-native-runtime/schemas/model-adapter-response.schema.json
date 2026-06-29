@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billjamesevans/ai-native-luanti/doc/ai-native-runtime/schemas/model-adapter-response.schema.json",
+  "title": "AI-native model adapter response",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "response_kind",
+    "ok",
+    "message",
+    "adapter_name"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "response_kind": {
+      "const": "ai_native_model_adapter_response"
+    },
+    "ok": {
+      "type": "boolean"
+    },
+    "message": {
+      "type": "string",
+      "minLength": 1
+    },
+    "adapter_name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "reason": {
+      "type": "string"
+    },
+    "elapsed_us": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "timeout": {
+      "type": "boolean"
+    },
+    "response": {
+      "type": "object"
+    }
+  }
+}

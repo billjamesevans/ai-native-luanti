@@ -610,6 +610,148 @@ local function runtime_gate_denied(options, operation, capability, event_type)
 		capability_result.reason, capability_result.message)
 end
 
+local function model_adapter_bound(value, fallback, minimum, maximum)
+	local result = tonumber(value)
+	if result == nil then
+		result = fallback
+	end
+	result = math.max(minimum, result)
+	if maximum then
+		result = math.min(maximum, result)
+	end
+	return result
+end
+
+local function model_adapter_safe_scalar(value)
+	local value_type = type(value)
+	return value_type == "string" or value_type == "number" or value_type == "boolean"
+end
+
+local function compact_model_context(context, max_keys)
+	if type(context) ~= "table" then
+		return {}
+	end
+	local result = {}
+	local count = 0
+	for key, value in pairs(context) do
+		if count >= max_keys then
+			break
+		end
+		if type(key) == "string"
+				and key ~= "private_prompt"
+				and key ~= "adapter"
+				and key ~= "api_key"
+				and key ~= "headers"
+				and key ~= "request_body" then
+			if model_adapter_safe_scalar(value) then
+				result[key] = value
+				count = count + 1
+			elseif type(value) == "table"
+					and type(value.x) == "number"
+					and type(value.y) == "number"
+					and type(value.z) == "number" then
+				result[key] = {
+					x = value.x,
+					y = value.y,
+					z = value.z,
+				}
+				count = count + 1
+			end
+		end
+	end
+	return result
+end
+
+local function build_model_adapter_request(prompt, options, owner)
+	local max_response_bytes = model_adapter_bound(options.max_response_bytes, 4000, 1, 24000)
+	local max_context_keys = model_adapter_bound(options.max_context_keys, 16, 0, 64)
+	return {
+		schema_version = 1,
+		request_kind = "ai_native_model_adapter_request",
+		adapter_contract = "provider_neutral_v1",
+		agent_id = options.agent_id,
+		owner = owner,
+		task_id = options.task_id,
+		public_prompt = prompt,
+		context = compact_model_context(options.context or {}, max_context_keys),
+		safety = {
+			public_safe_request = true,
+			private_input_retained = false,
+			no_provider_credentials = true,
+			no_raw_media_payloads = true,
+		},
+		bounds = {
+			max_response_bytes = max_response_bytes,
+			max_context_keys = max_context_keys,
+		},
+	}
+end
+
+local function model_adapter_result_has_forbidden_payload(value, depth)
+	if type(value) ~= "table" then
+		return false
+	end
+	depth = depth or 0
+	if depth > 6 then
+		return true
+	end
+	for key, child in pairs(value) do
+		if type(key) == "string" then
+			if key == "private_payload"
+					or key == "private_prompt"
+					or key == "raw_provider_response"
+					or key == "raw_provider_request"
+					or key == "raw_asset_payload"
+					or key == "asset_payload"
+					or key == "provider_credentials"
+					or key == "api_key"
+					or key == "headers"
+					or key == "request_body" then
+				return true
+			end
+		end
+		if type(child) == "table"
+				and model_adapter_result_has_forbidden_payload(child, depth + 1) then
+			return true
+		end
+	end
+	return false
+end
+
+local function bounded_model_adapter_message(message, max_response_bytes)
+	if message == nil then
+		return nil
+	end
+	local text = tostring(message)
+	if #text <= max_response_bytes then
+		return text
+	end
+	return text:sub(1, max_response_bytes) .. "...<truncated>"
+end
+
+local function normalize_model_adapter_result(adapter_result, max_response_bytes)
+	if type(adapter_result) ~= "table" then
+		return {
+			ok = false,
+			message = "Model adapter returned an invalid response.",
+			reason = "adapter_result_invalid",
+		}
+	end
+	if model_adapter_result_has_forbidden_payload(adapter_result) then
+		return {
+			ok = false,
+			message = "Model adapter response contained unsafe payload fields.",
+			reason = "adapter_payload_rejected",
+			adapter_name = adapter_result.adapter_name,
+			elapsed_us = adapter_result.elapsed_us,
+		}
+	end
+	local normalized = table.copy(adapter_result)
+	normalized.message = bounded_model_adapter_message(adapter_result.message,
+		max_response_bytes)
+	return normalized
+end
+
 function core.ai_model_ops.request(prompt, options)
 	check_string(prompt, "prompt")
 	options = options or {}
@@ -652,13 +794,8 @@ function core.ai_model_ops.request(prompt, options)
 	})
 
 	local started_at = core.get_us_time and core.get_us_time() or 0
-	local ok, adapter_result = pcall(adapter, {
-		agent_id = options.agent_id,
-		owner = owner,
-		prompt = prompt,
-		context = options.context or {},
-		task_id = options.task_id,
-	})
+	local request = build_model_adapter_request(prompt, options, owner)
+	local ok, adapter_result = pcall(adapter, request)
 	if not ok then
 		adapter_result = {
 			ok = false,
@@ -666,6 +803,8 @@ function core.ai_model_ops.request(prompt, options)
 			reason = "adapter_error",
 		}
 	end
+	adapter_result = normalize_model_adapter_result(adapter_result,
+		request.bounds.max_response_bytes)
 	local elapsed_us = adapter_result and adapter_result.elapsed_us
 	if not elapsed_us then
 		elapsed_us = started_at > 0 and core.get_us_time and (core.get_us_time() - started_at) or 0

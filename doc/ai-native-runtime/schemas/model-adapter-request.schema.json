@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billjamesevans/ai-native-luanti/doc/ai-native-runtime/schemas/model-adapter-request.schema.json",
+  "title": "AI-native model adapter request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "request_kind",
+    "adapter_contract",
+    "agent_id",
+    "owner",
+    "public_prompt",
+    "context",
+    "safety",
+    "bounds"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1
+    },
+    "request_kind": {
+      "const": "ai_native_model_adapter_request"
+    },
+    "adapter_contract": {
+      "const": "provider_neutral_v1"
+    },
+    "agent_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "owner": {
+      "type": "string",
+      "minLength": 1
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "public_prompt": {
+      "type": "string",
+      "minLength": 1
+    },
+    "context": {
+      "type": "object",
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean",
+          "object"
+        ]
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "public_safe_request",
+        "private_input_retained",
+        "no_provider_credentials",
+        "no_raw_media_payloads"
+      ],
+      "properties": {
+        "public_safe_request": {
+          "const": true
+        },
+        "private_input_retained": {
+          "const": false
+        },
+        "no_provider_credentials": {
+          "const": true
+        },
+        "no_raw_media_payloads": {
+          "const": true
+        }
+      }
+    },
+    "bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_response_bytes",
+        "max_context_keys"
+      ],
+      "properties": {
+        "max_response_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_context_keys": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

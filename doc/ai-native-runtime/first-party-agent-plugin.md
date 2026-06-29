@@ -120,18 +120,30 @@ compatibility/import pipeline.
 
 ## Model Adapter
 
-The model adapter receives a small request table:
+The model adapter receives the provider-neutral request envelope documented in
+[Model adapter contract](model-adapter-contract.md):
 
 ```lua
 core.ai_agent_plugin.set_model_adapter(function(request)
+	assert(request.request_kind == "ai_native_model_adapter_request")
 	return {
+		schema_version = 1,
+		response_kind = "ai_native_model_adapter_response",
 		ok = true,
 		message = "response text",
+		adapter_name = "example-adapter",
 	}
 end)
 ```
 
-Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin calls model adapters through `core.ai_model_ops.request`, so the agent must have `http.llm`. The runtime records a `model.request` audit event before calling the adapter, but private prompt payloads are not retained unless the runtime audit settings are explicitly changed.
+Request fields include `agent_id`, `owner`, `public_prompt`, `context`,
+`safety`, and `bounds`. The plugin calls model adapters through
+`core.ai_model_ops.request`, so the agent must have `http.llm`. The runtime
+records a `model.request` audit event before calling the adapter, but private
+prompt payloads are not forwarded through the adapter request envelope and are
+not retained unless the runtime audit settings are explicitly changed. Adapter
+responses that include raw provider payloads, credentials, headers, private
+payloads, or raw asset payloads are blocked with `adapter_payload_rejected`.
 
 ## Current Limits
 
