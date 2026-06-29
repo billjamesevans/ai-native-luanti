@@ -18,6 +18,7 @@ APPLY_REQUEST_VERSION = 1
 APPLY_SUMMARY_VERSION = 1
 ADAPTER_APPLY_SMOKE_VERSION = 1
 ADAPTER_APPLY_SMOKE_REVIEW_VERSION = 1
+STRUCTURE_IMPORT_PROMOTION_PACKAGE_VERSION = 1
 TOP_LEVEL_REQUIRED = (
     "report_version",
     "mode",
@@ -168,6 +169,13 @@ ADAPTER_APPLY_REVIEW_REQUIRED_ROLLBACK_HOOKS = (
     "set_node",
     "persist_record",
     "inspect_record",
+)
+PROMOTION_PACKAGE_REQUIRED_CAPABILITIES = (
+    "import.assets",
+    "world.place",
+    "world.batch",
+    "rollback.execute",
+    "admin.override",
 )
 PLANNED_ACTION_TASK_MAPPINGS = {
     "copy_asset_reference": {
@@ -1748,6 +1756,313 @@ def review_adapter_apply_smoke(smoke):
     }
 
 
+def _assert_promotion_target_world(target_world, field_prefix):
+    if not isinstance(target_world, dict):
+        raise ValueError(f"{field_prefix} is required for promotion package")
+    world_id = str(target_world.get("world_id") or "")
+    if not world_id:
+        raise ValueError(f"{field_prefix}.world_id is required for promotion package")
+    if target_world.get("staging") is not True:
+        raise ValueError(f"{field_prefix}.staging must be true for promotion package")
+    if target_world.get("disposable") is not True:
+        raise ValueError(f"{field_prefix}.disposable must be true for promotion package")
+    if world_id in ADAPTER_APPLY_FORBIDDEN_WORLD_IDS:
+        raise ValueError("promotion package cannot target the live family world")
+    return {
+        "world_id": world_id,
+        "staging": True,
+        "disposable": True,
+    }
+
+
+def _assert_same_target_world(expected, candidate, field_prefix):
+    candidate_world = _assert_promotion_target_world(candidate, field_prefix)
+    if candidate_world != expected:
+        raise ValueError(f"{field_prefix} must match the approved promotion target")
+
+
+def _public_safe_structure_adapter_actions(approved_actions):
+    public_safe_actions = []
+    for action_index, requested, planned in approved_actions:
+        if planned["action"] != "import_structure":
+            continue
+        adapter = planned.get("structure_adapter")
+        if not isinstance(adapter, dict) or adapter.get("public_safe") is not True:
+            raise ValueError("promotion package requires a public-safe structure adapter")
+        if adapter.get("adapter_kind") != PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND:
+            raise ValueError("promotion package requires a public-safe structure adapter")
+        public_safe_actions.append((action_index, requested, planned, adapter))
+    if not public_safe_actions:
+        raise ValueError("promotion package requires a public-safe structure adapter action")
+    return public_safe_actions
+
+
+def _assert_review_ready(smoke, supplied_review):
+    if not isinstance(supplied_review, dict):
+        raise ValueError("review gate artifact must be an object")
+    if supplied_review.get("status") != "ready":
+        raise ValueError("review gate status must be ready for promotion package")
+    machine_gate = supplied_review.get("machine_gate")
+    if not isinstance(machine_gate, dict) or machine_gate.get("promotable") is not True:
+        raise ValueError("review gate must be promotable for promotion package")
+    if supplied_review.get("findings"):
+        raise ValueError("review gate findings must be empty for promotion package")
+
+    computed_review = review_adapter_apply_smoke(smoke)
+    if computed_review.get("status") != "ready":
+        first_finding = (
+            computed_review.get("findings", [{}])[0].get("message")
+            if computed_review.get("findings") else "adapter smoke review is blocked"
+        )
+        raise ValueError(f"review gate blocked: {first_finding}")
+    return computed_review
+
+
+def _assert_promotion_chain_matches(report, request, smoke, review):
+    if request["report_id"] != smoke.get("report_id"):
+        raise ValueError("adapter smoke report_id must match approval report_id")
+    if review.get("report_id") != request["report_id"]:
+        raise ValueError("review gate report_id must match approval report_id")
+    expected_target = _assert_promotion_target_world(
+        request.get("target_world"),
+        "target_world",
+    )
+    _assert_same_target_world(expected_target, smoke.get("target_world"), "smoke.target_world")
+    _assert_same_target_world(expected_target, review.get("target_world"), "review.target_world")
+    if report.get("source", {}).get("license_status") != "user_supplied":
+        raise ValueError("promotion package requires user_supplied source license status")
+    if smoke.get("status") != "ready":
+        raise ValueError("adapter smoke status must be ready for promotion package")
+    if smoke.get("rollback_plan", {}).get("readback_required") is not True:
+        raise ValueError("rollback metadata readback is required for promotion package")
+    if not smoke.get("rollback_tasks"):
+        raise ValueError("rollback metadata tasks are required for promotion package")
+
+
+def _source_inventory_summary(report):
+    return [
+        {
+            "entry_id": entry["entry_id"],
+            "source_path": entry["source_path"],
+            "source_kind": entry["source_kind"],
+            "classification": entry["classification"],
+            "reason": entry["reason"],
+            "required_capabilities": entry["required_capabilities"],
+        }
+        for entry in report["source"]["inventory"]
+    ]
+
+
+def _unsupported_feature_summary(report):
+    features = []
+    for item in report.get("unsupported_features", []):
+        features.append({
+            "feature": item["feature"],
+            "status": item["status"],
+            "reason": item["reason"],
+            "severity": item["severity"],
+            "source_path": item.get("source_path", ""),
+        })
+    return {
+        "count": len(features),
+        "features": features,
+    }
+
+
+def _package_budget_gate(name, expected, limit):
+    return {
+        "expected": expected,
+        "limit": limit,
+        "status": "within_reviewed_limit" if expected <= limit else "blocked",
+    }
+
+
+def _promotion_budget_gates(request, smoke):
+    expected = smoke["mutation_cost_expected"]
+    budget = request["budget"]
+    return {
+        "node_writes": _package_budget_gate(
+            "node_writes",
+            expected["node_writes"],
+            budget["max_node_writes_total"],
+        ),
+        "node_writes_per_step": _package_budget_gate(
+            "node_writes_per_step",
+            min(expected["node_writes"], budget["max_node_writes_per_step"]),
+            budget["max_node_writes_per_step"],
+        ),
+        "mapblock_churn": _package_budget_gate(
+            "mapblock_churn",
+            expected["mapblock_churn"],
+            budget["max_mapblock_churn_total"],
+        ),
+        "manual_review_items": _package_budget_gate(
+            "manual_review_items",
+            expected["manual_review_items"],
+            budget["max_manual_review_items"],
+        ),
+        "wall_time_ms": {
+            "limit": budget["max_wall_time_ms"],
+            "status": "explicit_limit_declared",
+        },
+    }
+
+
+def _promotion_apply_task_summary(smoke):
+    tasks = smoke.get("apply_tasks", [])
+    capabilities = sorted({
+        capability
+        for task in tasks
+        for capability in task.get("required_capabilities", [])
+    })
+    return {
+        "task_count": len(tasks),
+        "task_ids": [task["task_id"] for task in tasks],
+        "entrypoints": sorted({task["entrypoint"] for task in tasks}),
+        "placement_count": sum(task.get("placement_count", 0) for task in tasks),
+        "chunk_count": sum(task.get("chunk_count", 0) for task in tasks),
+        "required_capabilities": capabilities,
+    }
+
+
+def _promotion_rollback_task_summary(request, smoke):
+    tasks = smoke.get("rollback_tasks", [])
+    capabilities = sorted({
+        capability
+        for task in tasks
+        for capability in task.get("required_capabilities", [])
+    })
+    return {
+        "task_count": len(tasks),
+        "task_ids": [task["task_id"] for task in tasks],
+        "source_task_ids": [task["source_task_id"] for task in tasks],
+        "entrypoints": sorted({task["entrypoint"] for task in tasks}),
+        "rollback_policy": request["rollback_policy"]["policy"],
+        "metadata_required": request["rollback_policy"]["metadata_required"] is True
+            and smoke.get("rollback_plan", {}).get("readback_required") is True,
+        "required_capabilities": capabilities,
+    }
+
+
+def _promotion_capability_gates(review, apply_summary, rollback_summary):
+    required_capabilities = sorted({
+        *PROMOTION_PACKAGE_REQUIRED_CAPABILITIES,
+        *review.get("summary", {}).get("required_capabilities", []),
+        *apply_summary["required_capabilities"],
+        *rollback_summary["required_capabilities"],
+    })
+    return {
+        "required_capabilities": required_capabilities,
+        "operator_runtime_hooks": review.get("summary", {}).get("runtime_hooks", []),
+        "status": "ready",
+    }
+
+
+def _package_has_private_source_paths(package):
+    for entry in package["dry_run"]["source_inventory"]:
+        source_path = entry.get("source_path", "")
+        if source_path.startswith("/") or "\\" in source_path or ".." in source_path:
+            return True
+    return False
+
+
+def build_structure_import_promotion_package(report, request, smoke, review):
+    """Build a public-safe operator promotion package for reviewed structure imports."""
+    approved_actions = _validated_approved_actions(report, request)
+    public_safe_actions = _public_safe_structure_adapter_actions(approved_actions)
+    smoke_errors = validate_adapter_apply_smoke(smoke)
+    if smoke_errors:
+        raise ValueError(smoke_errors[0])
+    computed_review = _assert_review_ready(smoke, review)
+    _assert_promotion_chain_matches(report, request, smoke, review)
+
+    adapters = [adapter for _index, _requested, _planned, adapter in public_safe_actions]
+    structure_formats = sorted({
+        adapter.get("structure_format", "")
+        for adapter in adapters
+        if adapter.get("structure_format")
+    })
+    apply_summary = _promotion_apply_task_summary(smoke)
+    rollback_summary = _promotion_rollback_task_summary(request, smoke)
+    if not rollback_summary["metadata_required"]:
+        raise ValueError("rollback metadata is required for promotion package")
+
+    review_summary = computed_review["summary"]
+    package = {
+        "package_version": STRUCTURE_IMPORT_PROMOTION_PACKAGE_VERSION,
+        "mode": "structure_import_promotion_package",
+        "generated_at": _utc_now(),
+        "report_id": request["report_id"],
+        "status": "ready_for_operator_promotion",
+        "dry_run": {
+            "report_id": request["report_id"],
+            "report_version": report["report_version"],
+            "source_id": report["source"]["source_id"],
+            "source_class": report["source"]["source_class"],
+            "source_reference": {
+                "reference_type": request["source_reference"]["reference_type"],
+                "redacted_id": request["source_reference"]["redacted_id"],
+                "inventory_hash": request["source_reference"]["inventory_hash"],
+            },
+            "source_inventory": _source_inventory_summary(report),
+            "license_status": report["source"]["license_status"],
+            "rights_status": "operator_confirmed",
+            "structure_format": structure_formats[0] if structure_formats else None,
+            "estimated_world_mutations": report["summary"]["estimated_world_mutations"],
+        },
+        "operator_approval": {
+            "approval_state": review_summary["approval_state"],
+            "operator": request["operator"],
+            "agent_id": request["agent_id"],
+            "approved_actions": request["approved_actions"],
+            "target_world": request["target_world"],
+            "rollback_policy": request["rollback_policy"],
+            "budget": request["budget"],
+        },
+        "adapter_smoke_summary": {
+            **smoke["operator_summary"],
+            "smoke_version": smoke["smoke_version"],
+            "target_world": smoke["target_world"],
+        },
+        "review_gate": {
+            "review_version": review["review_version"],
+            "status": review["status"],
+            "promotable": review["machine_gate"]["promotable"] is True,
+            "reviewed_for": review["machine_gate"]["reviewed_for"],
+            "findings": review["findings"],
+            "summary": review["summary"],
+        },
+        "apply_task_summary": apply_summary,
+        "rollback_task_summary": rollback_summary,
+        "budget_gates": _promotion_budget_gates(request, smoke),
+        "capability_gates": _promotion_capability_gates(
+            review,
+            apply_summary,
+            rollback_summary,
+        ),
+        "unsupported_feature_summary": _unsupported_feature_summary(report),
+        "operator_next_actions": [
+            "Archive this package with the reviewed dry-run, approval, smoke, and review artifacts.",
+            "Run apply and rollback only in the declared disposable staging world.",
+            "Use the package as promotion evidence before adding broader compatibility formats.",
+        ],
+        "safety": {
+            "public_safe_source": True,
+            "no_private_source_paths": True,
+            "no_raw_payloads": True,
+            "no_proprietary_assets": True,
+            "no_private_prompts": True,
+            "no_server_secrets": True,
+            "no_family_world_coordinates": True,
+            "no_live_family_world_mutation": True,
+            "world_mutation_executed": False,
+        },
+    }
+    if _package_has_private_source_paths(package):
+        raise ValueError("promotion package cannot include private source paths")
+    return package
+
+
 def _report_inventory_hash(report):
     hashes = report.get("source", {}).get("content_hashes", [])
     if not hashes:
@@ -2274,13 +2589,32 @@ def _print_adapter_smoke_review_summary(review):
     )
 
 
+def _print_promotion_package_summary(package):
+    apply_summary = package["apply_task_summary"]
+    rollback_summary = package["rollback_task_summary"]
+    print(
+        "promotion={status} report={report} target={target} apply_tasks={apply_tasks} "
+        "placements={placements} rollback_tasks={rollback_tasks}".format(
+            status=package["status"],
+            report=package["report_id"],
+            target=package["operator_approval"]["target_world"]["world_id"],
+            apply_tasks=apply_summary["task_count"],
+            placements=apply_summary["placement_count"],
+            rollback_tasks=rollback_summary["task_count"],
+        )
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="User-owned pack, structure, or world source to inspect.")
     parser.add_argument("--apply-plan", help="Dry-run report JSON to plan for apply without mutation.")
     parser.add_argument("--adapter-apply-smoke", help="Dry-run report JSON to turn into a reviewed adapter apply smoke.")
     parser.add_argument("--review-adapter-smoke", help="Adapter apply smoke JSON to review for operator gating.")
+    parser.add_argument("--promotion-package", help="Dry-run report JSON to package with reviewed adapter smoke evidence.")
     parser.add_argument("--approval", help="Apply request JSON containing explicit operator approvals.")
+    parser.add_argument("--adapter-smoke", help="Adapter apply smoke JSON for --promotion-package.")
+    parser.add_argument("--adapter-review", help="Adapter smoke review JSON for --promotion-package.")
     parser.add_argument("--output", help="Write machine-readable JSON report to this path.")
     parser.add_argument("--summary", action="store_true", help="Print a concise human-readable summary.")
     args = parser.parse_args(argv)
@@ -2290,13 +2624,34 @@ def main(argv=None):
             bool(args.apply_plan),
             bool(args.adapter_apply_smoke),
             bool(args.review_adapter_smoke),
+            bool(args.promotion_package),
         ]
         if sum(selected_modes) > 1:
             raise ValueError(
-                "--apply-plan, --adapter-apply-smoke, and --review-adapter-smoke "
+                "--apply-plan, --adapter-apply-smoke, --review-adapter-smoke, "
+                "and --promotion-package "
                 "cannot be used together"
             )
-        if args.review_adapter_smoke:
+        if (args.adapter_smoke or args.adapter_review) and not args.promotion_package:
+            raise ValueError("--adapter-smoke and --adapter-review are only valid with --promotion-package")
+        if args.promotion_package:
+            if not args.approval:
+                raise ValueError("--approval is required with --promotion-package")
+            if not args.adapter_smoke:
+                raise ValueError("--adapter-smoke is required with --promotion-package")
+            if not args.adapter_review:
+                raise ValueError("--adapter-review is required with --promotion-package")
+            report = _read_json(pathlib.Path(args.promotion_package))
+            request = _read_json(pathlib.Path(args.approval))
+            smoke = _read_json(pathlib.Path(args.adapter_smoke))
+            review = _read_json(pathlib.Path(args.adapter_review))
+            payload_obj = build_structure_import_promotion_package(
+                report,
+                request,
+                smoke,
+                review,
+            )
+        elif args.review_adapter_smoke:
             smoke = _read_json(pathlib.Path(args.review_adapter_smoke))
             payload_obj = review_adapter_apply_smoke(smoke)
         elif args.adapter_apply_smoke:
@@ -2322,6 +2677,8 @@ def main(argv=None):
             sys.stdout.write(payload)
         if args.summary and args.review_adapter_smoke:
             _print_adapter_smoke_review_summary(payload_obj)
+        elif args.summary and args.promotion_package:
+            _print_promotion_package_summary(payload_obj)
         elif args.summary and args.adapter_apply_smoke:
             _print_adapter_apply_smoke_summary(payload_obj)
         elif args.summary and not args.apply_plan:
