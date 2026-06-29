@@ -106,6 +106,25 @@ Receipts are receipt-only and non-mutating. They do not cancel tasks, retry task
 
 `util/ai_native_runtime_verify.py` writes a bounded sample receipt next to the approval plan without approving execution. The manifest records `operator_action_approval_receipt_status`, path, output bytes, and item count so local and low-power lanes prove the receipt shape without adding execution controls.
 
+## Receipt-Gated Task Control Executor
+
+The receipt-gated task control executor is the first execution layer after receipts. `util/ai_native_operator_task_control_executor.py` accepts `ai-runtime-operator-action-approval-receipt.json` plus disposable synthetic task state and writes `ai-runtime-operator-action-execution-result.json`:
+
+```sh
+python3 util/ai_native_operator_task_control_executor.py \
+  --input local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-action-approval-receipt.json \
+  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-action-execution-result.json \
+  --capability task.inspect \
+  --capability task.cancel \
+  --capability task.retry
+```
+
+Execution is task cancel/retry only. Approved task cancel and retry receipt entries may mutate synthetic task state when prerequisites and executor capabilities match. Denied, needs-review, unsupported, stale, oversized, private, or mutating receipt entries are rejected. The executor records per-decision results, before/after task status, rejected reasons, and bounded summary counts.
+
+The executor preserves the same public-safe boundary as the earlier artifacts: no rollback execution, no import promotion execution, no world mutation, no structure apply, no raw assets, no provider prompts, and no family-world coordinates. It is not a rollback executor, import applier, world editor, or live family-server control path.
+
+`util/ai_native_runtime_verify.py` writes `ai-runtime-operator-action-execution-result.json` as the final operator-control artifact in the local and low-power verifier chain. The manifest records `operator_action_execution_status`, path, output bytes, and item count so side-by-side fork runs prove receipt-gated task control without touching private worlds or family-server state.
+
 ## Product Use
 
 The first product use is an operator readout that can answer:
