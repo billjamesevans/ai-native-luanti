@@ -885,6 +885,8 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
         "dev_surfaces_disabled_by_default": False,
         "test_fixtures_explicit_only": False,
         "runtime_surfaces_available": False,
+        "startup_inventory_matches_default_runtime": False,
+        "profile_code_fixture_free": False,
         "runtime_surface_count": 0,
         "runtime_surface_commands": [],
     }
@@ -929,6 +931,10 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
         "dev_surfaces_disabled_by_default": safety.get("dev_surfaces_disabled_by_default") is True,
         "test_fixtures_explicit_only": safety.get("test_fixtures_explicit_only") is True,
         "runtime_surfaces_available": safety.get("runtime_surfaces_available") is True,
+        "startup_inventory_matches_default_runtime": (
+            safety.get("startup_inventory_matches_default_runtime") is True
+        ),
+        "profile_code_fixture_free": safety.get("profile_code_fixture_free") is True,
         "runtime_surface_count": len(runtime_surfaces),
         "runtime_surface_commands": runtime_surface_commands,
     })
@@ -947,6 +953,10 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
         reasons.append("product_profile_hygiene test fixtures are not explicit-only")
     if safety.get("runtime_surfaces_available") is not True:
         reasons.append("product_profile_hygiene runtime surfaces are not available")
+    if safety.get("startup_inventory_matches_default_runtime") is not True:
+        reasons.append("product_profile_hygiene startup inventory does not match default runtime")
+    if safety.get("profile_code_fixture_free") is not True:
+        reasons.append("product_profile_hygiene profile code fixture scan failed")
     for surface in runtime_surfaces:
         if not isinstance(surface, dict):
             reasons.append("product_profile_hygiene runtime surface entry is invalid")
