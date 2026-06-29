@@ -767,6 +767,49 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "errors": 0,
                     "unsafe_operations": 0,
                 },
+                "first_party_agent_product_loop": {
+                    "product_loop_status": "pass",
+                    "scenario_id": "first_party_agent_product_loop_approval",
+                    "approval_plan_count": 2,
+                    "approved_task_count": 2,
+                    "guide_command_checked": 1,
+                    "tasks_command_checked": 1,
+                    "cancel_command_checked": 1,
+                    "audit_review_checked": 1,
+                    "rollback_review_checked": 1,
+                    "defender_command_checked": 1,
+                    "import_preview_checked": 1,
+                    "blocked_or_unsafe_outcomes": 0,
+                    "queued_task_count": 2,
+                    "completed_task_count": 2,
+                    "blocked_task_count": 0,
+                    "node_writes": 2,
+                    "node_writes_per_step": 1,
+                    "mapblock_churn": 1,
+                    "rollback_records": 2,
+                    "avg_task_duration_ms": 2.3,
+                    "p95_task_duration_ms": 3.0,
+                    "max_task_lag_ms": 3.6,
+                    "warning_count": 0,
+                    "error_count": 0,
+                },
+                "ai_runtime_scale_gate": {
+                    "scale_gate_status": "pass" if headless else "evidence_gap",
+                    "gate_kind": "ai_runtime_multi_player_multi_agent_scale",
+                    "synthetic_disposable_only": True,
+                    "required_synthetic_player_count": 2,
+                    "required_concurrent_task_count": 2,
+                    "requirements": {
+                        "multi_player_headless_load": bool(headless),
+                        "concurrent_first_party_tasks": True,
+                        "bounded_task_durations": True,
+                        "bounded_write_and_rollback": True,
+                        "bounded_entity_lane": True,
+                        "server_step_clean": True,
+                        "resource_samples_present": True,
+                        "no_warnings_or_errors": True,
+                    },
+                },
             },
         }
         path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -1628,6 +1671,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertTrue(evidence["latency_proxy_supported"])
             self.assertEqual(evidence["latency_probe_kind"], "headless_join_log_observation")
             self.assertEqual(evidence["join_latency_proxy_sample_count"], 2)
+            self.assertEqual(evidence["scale_gate_status"], "pass")
+            self.assertEqual(evidence["scale_gate_required_synthetic_player_count"], 2)
+            self.assertEqual(evidence["scale_gate_required_concurrent_task_count"], 2)
 
     def test_clean_profile_summary_failure_fails_manifest_even_if_gate_exits_zero(self):
         harness = load_harness_module()

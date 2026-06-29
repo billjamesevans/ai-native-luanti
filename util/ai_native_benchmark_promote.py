@@ -34,6 +34,8 @@ FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS = {
     "defender_command_checked": 1,
     "import_preview_checked": 1,
 }
+MIN_SYNTHETIC_PLAYERS_FOR_SCALE_GATE = 2
+MIN_CONCURRENT_AGENT_TASKS_FOR_SCALE_GATE = 2
 
 
 def utc_now() -> str:
@@ -119,10 +121,16 @@ def clean_profile_errors(report: dict) -> list[str]:
             errors.append("clean_profile: player_load_tick_probe kind must be headless_client_load")
         if player_probe.get("headless_player_supported") is not True:
             errors.append("clean_profile: headless_player_supported must be true")
-        if attempted <= 0:
-            errors.append("clean_profile: attempted_synthetic_player_count must be positive")
-        if connected <= 0:
-            errors.append("clean_profile: connected_synthetic_player_count must be positive")
+        if attempted < MIN_SYNTHETIC_PLAYERS_FOR_SCALE_GATE:
+            errors.append(
+                "clean_profile: attempted_synthetic_player_count must be at least "
+                f"{MIN_SYNTHETIC_PLAYERS_FOR_SCALE_GATE}"
+            )
+        if connected < MIN_SYNTHETIC_PLAYERS_FOR_SCALE_GATE:
+            errors.append(
+                "clean_profile: connected_synthetic_player_count must be at least "
+                f"{MIN_SYNTHETIC_PLAYERS_FOR_SCALE_GATE}"
+            )
         if connected != attempted:
             errors.append("clean_profile: connected synthetic players must equal attempted synthetic players")
         if player_probe.get("latency_proxy_supported") is not True:
@@ -177,6 +185,29 @@ def clean_profile_errors(report: dict) -> list[str]:
             errors.append("clean_profile: first_party_agent_product_loop warning_count must be 0")
         if numeric_metric(product_loop.get("error_count")) != 0:
             errors.append("clean_profile: first_party_agent_product_loop error_count must be 0")
+        if numeric_metric(product_loop.get("queued_task_count")) < MIN_CONCURRENT_AGENT_TASKS_FOR_SCALE_GATE:
+            errors.append(
+                "clean_profile: first_party_agent_product_loop queued_task_count "
+                f"must be at least {MIN_CONCURRENT_AGENT_TASKS_FOR_SCALE_GATE}"
+            )
+        if numeric_metric(product_loop.get("completed_task_count")) < MIN_CONCURRENT_AGENT_TASKS_FOR_SCALE_GATE:
+            errors.append(
+                "clean_profile: first_party_agent_product_loop completed_task_count "
+                f"must be at least {MIN_CONCURRENT_AGENT_TASKS_FOR_SCALE_GATE}"
+            )
+        if numeric_metric(product_loop.get("rollback_records")) < MIN_CONCURRENT_AGENT_TASKS_FOR_SCALE_GATE:
+            errors.append(
+                "clean_profile: first_party_agent_product_loop rollback_records "
+                f"must be at least {MIN_CONCURRENT_AGENT_TASKS_FOR_SCALE_GATE}"
+            )
+        for metric in ("avg_task_duration_ms", "p95_task_duration_ms", "max_task_lag_ms"):
+            if product_loop.get(metric) is None:
+                errors.append(f"clean_profile: first_party_agent_product_loop {metric} is required")
+    scale_gate = comparison_summary.get("ai_runtime_scale_gate")
+    if not isinstance(scale_gate, dict):
+        errors.append("clean_profile: ai_runtime_scale_gate missing")
+    elif scale_gate.get("scale_gate_status") != "pass":
+        errors.append("clean_profile: ai_runtime_scale_gate status must be pass")
     return errors
 
 

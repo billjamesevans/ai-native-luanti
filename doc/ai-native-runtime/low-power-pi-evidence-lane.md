@@ -26,7 +26,8 @@ local/benchmarks/low-power-server/<date>/<commit>/pi-low-power-evidence.json
 The generated manifest is local evidence and stays ignored by Git. It records
 the hardware class, clean profile, fork commit, product-profile status,
 clean-profile workload status, `headless_client_load` player-load probe status,
-attempted/connected synthetic player counts, join-log latency proxy evidence,
+at least two attempted/connected synthetic players, join-log latency proxy evidence,
+`ai_runtime_scale_gate` status,
 compatibility import staging-pilot status, ranked follow-up issue seeds, soak
 target duration evidence, and the expected port split: family server on UDP
 `30000`, fork test service on UDP `30001`.

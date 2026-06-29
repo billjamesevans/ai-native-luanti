@@ -70,12 +70,15 @@ class FakeRunner:
                 "player_load_probe_status": "pass",
                 "player_load_probe_kind": "headless_client_load",
                 "headless_player_supported": True,
-                "attempted_synthetic_player_count": 1,
-                "connected_synthetic_player_count": 1,
-                "completed_synthetic_player_count": 1,
+                "attempted_synthetic_player_count": 2,
+                "connected_synthetic_player_count": 2,
+                "completed_synthetic_player_count": 2,
                 "latency_proxy_supported": True,
                 "latency_probe_kind": "headless_join_log_observation",
-                "join_latency_proxy_sample_count": 1,
+                "join_latency_proxy_sample_count": 2,
+                "scale_gate_status": "pass",
+                "scale_gate_required_synthetic_player_count": 2,
+                "scale_gate_required_concurrent_task_count": 2,
                 "server_step_workload": {
                     "status": "pass",
                     "kind": "synthetic_server_step_samples",
@@ -193,11 +196,11 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(
             manifest["runtime_verification_evidence"]["attempted_synthetic_player_count"],
-            1,
+            2,
         )
         self.assertEqual(
             manifest["runtime_verification_evidence"]["connected_synthetic_player_count"],
-            1,
+            2,
         )
         self.assertTrue(
             manifest["runtime_verification_evidence"]["latency_proxy_supported"],
@@ -208,7 +211,19 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         )
         self.assertEqual(
             manifest["runtime_verification_evidence"]["join_latency_proxy_sample_count"],
-            1,
+            2,
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["scale_gate_status"],
+            "pass",
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["scale_gate_required_synthetic_player_count"],
+            2,
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["scale_gate_required_concurrent_task_count"],
+            2,
         )
         self.assertEqual(
             manifest["runtime_verification_evidence"]["server_step_workload_status"],
@@ -287,7 +302,7 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertTrue(verify_commands)
         command = verify_commands[0]
         self.assertIn("--headless-player-command", command)
-        self.assertIn("--headless-player-count 1", command)
+        self.assertIn("--headless-player-count 2", command)
         self.assertIn("--require-headless-player-probe", command)
         self.assertIn("video_driver = null", command)
         self.assertIn("bin/luanti", command)
@@ -301,12 +316,15 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             "player_load_probe_status": "pass",
             "player_load_probe_kind": "headless_client_load",
             "headless_player_supported": True,
-            "attempted_synthetic_player_count": 1,
-            "connected_synthetic_player_count": 1,
-            "completed_synthetic_player_count": 1,
+            "attempted_synthetic_player_count": 2,
+            "connected_synthetic_player_count": 2,
+            "completed_synthetic_player_count": 2,
             "latency_proxy_supported": True,
             "latency_probe_kind": "headless_join_log_observation",
-            "join_latency_proxy_sample_count": 1,
+            "join_latency_proxy_sample_count": 2,
+            "scale_gate_status": "pass",
+            "scale_gate_required_synthetic_player_count": 2,
+            "scale_gate_required_concurrent_task_count": 2,
             "actionable_warning_count": 0,
             "server_log_error_count": 0,
             "cpu_status": "measured",

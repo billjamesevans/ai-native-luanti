@@ -308,6 +308,13 @@ def runtime_evidence(remote_manifest: dict) -> dict:
         "latency_proxy_supported": clean.get("latency_proxy_supported") is True,
         "latency_probe_kind": sanitize_text(clean.get("latency_probe_kind", "unknown")),
         "join_latency_proxy_sample_count": clean.get("join_latency_proxy_sample_count"),
+        "scale_gate_status": sanitize_text(clean.get("scale_gate_status", "unknown")),
+        "scale_gate_required_synthetic_player_count": clean.get(
+            "scale_gate_required_synthetic_player_count"
+        ),
+        "scale_gate_required_concurrent_task_count": clean.get(
+            "scale_gate_required_concurrent_task_count"
+        ),
         "server_step_workload_status": sanitize_text(
             clean.get("server_step_workload_status")
             or server_step_workload.get("status")
@@ -482,6 +489,11 @@ def ranked_follow_up_issues(failures: list[str]) -> list[dict]:
             "Headless player join latency proxy was not measured",
             "Restore join-log latency evidence for multiplayer readiness.",
         ),
+        "ai_runtime_scale_gate_not_pass": (
+            "P2",
+            "AI runtime scale gate did not pass on the Pi",
+            "Refresh the low-power verifier with two synthetic players and concurrent first-party task evidence.",
+        ),
         "compat_import_staging_pilot_not_pass": (
             "P2",
             "Compatibility staging pilot failed during Pi evidence run",
@@ -607,9 +619,9 @@ def build_manifest(
         runtime["player_load_probe_kind"] != "headless_client_load"
         or runtime["headless_player_supported"] is not True
         or not isinstance(attempted_players, (int, float))
-        or attempted_players <= 0
+        or attempted_players < 2
         or not isinstance(connected_players, (int, float))
-        or connected_players <= 0
+        or connected_players < 2
         or connected_players != attempted_players
     ):
         failures.append("headless_player_probe_not_measured")
@@ -620,6 +632,14 @@ def build_manifest(
         or runtime["join_latency_proxy_sample_count"] <= 0
     ):
         failures.append("headless_player_latency_not_measured")
+    if (
+        runtime["scale_gate_status"] != "pass"
+        or not isinstance(runtime.get("scale_gate_required_synthetic_player_count"), (int, float))
+        or runtime["scale_gate_required_synthetic_player_count"] < 2
+        or not isinstance(runtime.get("scale_gate_required_concurrent_task_count"), (int, float))
+        or runtime["scale_gate_required_concurrent_task_count"] < 2
+    ):
+        failures.append("ai_runtime_scale_gate_not_pass")
     if not manifest["service_boundary"]["family_service"]["active"]:
         failures.append("family_service_not_active")
     if not manifest["service_boundary"]["family_service"]["udp_listening"]:
@@ -755,7 +775,7 @@ def parse_args(argv=None):
     parser.add_argument("--fork-service", default="ai-native-luanti-test.service")
     parser.add_argument("--family-port", type=int, default=30000)
     parser.add_argument("--fork-port", type=int, default=30001)
-    parser.add_argument("--headless-player-count", type=int, default=1)
+    parser.add_argument("--headless-player-count", type=int, default=2)
     parser.add_argument("--headless-player-timeout", type=float, default=2.0)
     parser.add_argument("--soak-target", choices=tuple(SOAK_TARGETS), default="quick", help="Named soak gate target to record and enforce.")
     parser.add_argument("--soak-min-duration-seconds", type=float, help="Optional extra minimum duration; cannot lower the named target.")

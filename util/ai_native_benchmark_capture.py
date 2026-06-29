@@ -44,6 +44,9 @@ FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS = {
     "defender_command_checked": 1,
     "import_preview_checked": 1,
 }
+MIN_SCALE_GATE_SYNTHETIC_PLAYERS = 2
+MIN_SCALE_GATE_CONCURRENT_TASKS = 2
+MIN_SCALE_GATE_DEMO_ENTITIES = 16
 PROFILE_LOG_FAILURE_PATTERNS = re.compile(r"Mapgen alias .* invalid|testnodes:", re.I)
 KNOWN_PROFILE_WARNING_PATTERNS = (
     (
@@ -817,6 +820,16 @@ def summarize_first_party_agent_product_loop(report: dict) -> dict:
             "product_loop_status": "missing",
             "scenario_id": FIRST_PARTY_AGENT_PRODUCT_LOOP_SCENARIO,
             **{name: 0 for name in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS},
+            "queued_task_count": 0,
+            "completed_task_count": 0,
+            "blocked_task_count": 0,
+            "node_writes": 0,
+            "node_writes_per_step": 0,
+            "mapblock_churn": 0,
+            "rollback_records": 0,
+            "avg_task_duration_ms": None,
+            "p95_task_duration_ms": None,
+            "max_task_lag_ms": None,
             "blocked_or_unsafe_outcomes": None,
             "warning_count": 0,
             "error_count": 0,
@@ -831,6 +844,16 @@ def summarize_first_party_agent_product_loop(report: dict) -> dict:
             name: int_metric(metrics, name)
             for name in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS
         },
+        "queued_task_count": int_metric(counters, "queued_tasks"),
+        "completed_task_count": int_metric(counters, "completed_tasks"),
+        "blocked_task_count": int_metric(counters, "blocked_tasks"),
+        "node_writes": int_metric(metrics, "node_writes"),
+        "node_writes_per_step": int_metric(metrics, "node_writes_per_step"),
+        "mapblock_churn": int_metric(metrics, "mapblock_churn"),
+        "rollback_records": int_metric(metrics, "rollback_records"),
+        "avg_task_duration_ms": metrics.get("avg_step_ms"),
+        "p95_task_duration_ms": metrics.get("p95_step_ms"),
+        "max_task_lag_ms": metrics.get("max_lag_ms"),
         "blocked_or_unsafe_outcomes": (
             int_metric(metrics, "blocked_or_unsafe_outcomes")
             + int_metric(counters, "blocked_tasks")
@@ -851,6 +874,145 @@ def summarize_first_party_agent_product_loop(report: dict) -> dict:
     )
     summary["product_loop_status"] = "pass" if ready else "evidence_gap"
     return summary
+
+
+def build_ai_runtime_scale_gate(
+    player_probe: dict,
+    product_loop: dict,
+    server_step_workload: dict,
+    cpu: dict,
+    memory: dict,
+    entity_runtime: dict,
+) -> dict:
+    attempted_players = int_metric(player_probe, "attempted_synthetic_player_count")
+    connected_players = int_metric(player_probe, "connected_synthetic_player_count")
+    completed_players = int_metric(player_probe, "completed_synthetic_player_count")
+    synthetic_players = int_metric(player_probe, "synthetic_player_count")
+    queued_tasks = int_metric(product_loop, "queued_task_count")
+    completed_tasks = int_metric(product_loop, "completed_task_count")
+    blocked_tasks = int_metric(product_loop, "blocked_task_count")
+    blocked_or_unsafe = int_metric(product_loop, "blocked_or_unsafe_outcomes")
+    warning_count = int_metric(product_loop, "warning_count")
+    error_count = int_metric(product_loop, "error_count")
+    max_entity_count = int_metric(entity_runtime, "max_entity_count")
+    remaining_entities = int_metric(entity_runtime, "max_remaining_entities")
+    cpu_measured = (
+        cpu.get("sample_status") == "measured"
+        and int_metric(cpu, "cpu_sample_count") >= 2
+        and cpu.get("avg_process_cpu_percent") is not None
+        and cpu.get("max_interval_cpu_percent") is not None
+    )
+    memory_measured = (
+        memory.get("max_rss_kb") is not None
+        and int_metric(memory, "rss_sample_count") >= 2
+    )
+    requirements = {
+        "multi_player_headless_load": (
+            player_probe.get("probe_status") == "pass"
+            and player_probe.get("probe_kind") == "headless_client_load"
+            and player_probe.get("headless_player_supported") is True
+            and synthetic_players >= MIN_SCALE_GATE_SYNTHETIC_PLAYERS
+            and attempted_players >= MIN_SCALE_GATE_SYNTHETIC_PLAYERS
+            and connected_players == attempted_players
+            and completed_players == attempted_players
+        ),
+        "concurrent_first_party_tasks": (
+            product_loop.get("product_loop_status") == "pass"
+            and queued_tasks >= MIN_SCALE_GATE_CONCURRENT_TASKS
+            and completed_tasks >= MIN_SCALE_GATE_CONCURRENT_TASKS
+            and blocked_tasks == 0
+            and blocked_or_unsafe == 0
+        ),
+        "bounded_task_durations": (
+            product_loop.get("avg_task_duration_ms") is not None
+            and product_loop.get("p95_task_duration_ms") is not None
+            and product_loop.get("max_task_lag_ms") is not None
+        ),
+        "bounded_write_and_rollback": (
+            int_metric(product_loop, "node_writes") >= MIN_SCALE_GATE_CONCURRENT_TASKS
+            and int_metric(product_loop, "node_writes_per_step") <= 16
+            and int_metric(product_loop, "rollback_records") >= MIN_SCALE_GATE_CONCURRENT_TASKS
+        ),
+        "bounded_entity_lane": (
+            max_entity_count >= MIN_SCALE_GATE_DEMO_ENTITIES
+            and remaining_entities == 0
+            and int_metric(entity_runtime, "warnings") == 0
+            and int_metric(entity_runtime, "errors") == 0
+        ),
+        "server_step_clean": (
+            server_step_workload.get("workload_status") == "pass"
+            and int_metric(server_step_workload, "completed_sample_count") > 0
+            and int_metric(server_step_workload, "failed_sample_count") == 0
+        ),
+        "resource_samples_present": cpu_measured and memory_measured,
+        "no_warnings_or_errors": warning_count == 0 and error_count == 0,
+    }
+    status = "pass" if all(requirements.values()) else "evidence_gap"
+    return {
+        "scale_gate_status": status,
+        "gate_kind": "ai_runtime_multi_player_multi_agent_scale",
+        "synthetic_disposable_only": True,
+        "required_synthetic_player_count": MIN_SCALE_GATE_SYNTHETIC_PLAYERS,
+        "required_concurrent_task_count": MIN_SCALE_GATE_CONCURRENT_TASKS,
+        "player_load": {
+            "probe_status": player_probe.get("probe_status"),
+            "probe_kind": player_probe.get("probe_kind"),
+            "headless_player_supported": player_probe.get("headless_player_supported"),
+            "synthetic_player_count": synthetic_players,
+            "attempted_synthetic_player_count": attempted_players,
+            "connected_synthetic_player_count": connected_players,
+            "completed_synthetic_player_count": completed_players,
+            "latency_probe_kind": player_probe.get("latency_probe_kind"),
+            "latency_proxy_supported": player_probe.get("latency_proxy_supported"),
+            "join_latency_proxy_ms": player_probe.get("join_latency_proxy_ms"),
+        },
+        "agent_tasks": {
+            "scenario_id": product_loop.get("scenario_id"),
+            "product_loop_status": product_loop.get("product_loop_status"),
+            "queue_depth": queued_tasks,
+            "concurrent_task_count": queued_tasks,
+            "completed_task_count": completed_tasks,
+            "blocked_task_count": blocked_tasks,
+            "blocked_or_unsafe_outcomes": blocked_or_unsafe,
+            "node_writes": int_metric(product_loop, "node_writes"),
+            "node_writes_per_step": int_metric(product_loop, "node_writes_per_step"),
+            "mapblock_churn": int_metric(product_loop, "mapblock_churn"),
+            "rollback_records": int_metric(product_loop, "rollback_records"),
+            "task_duration_ms": {
+                "avg": product_loop.get("avg_task_duration_ms"),
+                "p95": product_loop.get("p95_task_duration_ms"),
+                "max_lag": product_loop.get("max_task_lag_ms"),
+            },
+            "warning_count": warning_count,
+            "error_count": error_count,
+        },
+        "entity_limits": {
+            "max_entity_count": max_entity_count,
+            "max_remaining_entities": remaining_entities,
+            "warnings": int_metric(entity_runtime, "warnings"),
+            "errors": int_metric(entity_runtime, "errors"),
+        },
+        "server_step": {
+            "workload_status": server_step_workload.get("workload_status"),
+            "completed_sample_count": server_step_workload.get("completed_sample_count"),
+            "failed_sample_count": server_step_workload.get("failed_sample_count"),
+            "p95_sample_interval_ms": server_step_workload.get("p95_sample_interval_ms"),
+            "max_sample_interval_ms": server_step_workload.get("max_sample_interval_ms"),
+        },
+        "resources": {
+            "cpu": {
+                "sample_status": cpu.get("sample_status"),
+                "cpu_sample_count": cpu.get("cpu_sample_count"),
+                "avg_process_cpu_percent": cpu.get("avg_process_cpu_percent"),
+                "max_interval_cpu_percent": cpu.get("max_interval_cpu_percent"),
+            },
+            "memory": {
+                "rss_sample_count": memory.get("rss_sample_count"),
+                "max_rss_kb": memory.get("max_rss_kb"),
+            },
+        },
+        "requirements": requirements,
+    }
 
 
 def write_profile_world(world_dir: Path) -> None:
@@ -1098,6 +1260,14 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
     entity_runtime = summarize_entity_report(demo_entity_report)
     mutation_writes = summarize_mutation_report(mutation_report)
     first_party_agent_product_loop = summarize_first_party_agent_product_loop(mutation_report)
+    ai_runtime_scale_gate = build_ai_runtime_scale_gate(
+        player_load_tick_probe,
+        first_party_agent_product_loop,
+        server_step_workload,
+        cpu,
+        memory,
+        entity_runtime,
+    )
 
     comparison_summary = {
         "startup": startup,
@@ -1108,6 +1278,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         "entity_runtime_operations": entity_runtime,
         "mutation_write_throughput": mutation_writes,
         "first_party_agent_product_loop": first_party_agent_product_loop,
+        "ai_runtime_scale_gate": ai_runtime_scale_gate,
         "memory": memory,
         "cpu": cpu,
         "failure_notes": failure_notes,
@@ -1314,7 +1485,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--headless-player-count",
         type=int,
-        default=1,
+        default=2,
         help="Synthetic player command instances to launch when --headless-player-command is supplied.",
     )
     parser.add_argument(
@@ -1346,8 +1517,11 @@ def main(argv=None):
             file=sys.stderr,
         )
         return 2
-    if args.headless_player_command and args.headless_player_count < 1:
-        print("--headless-player-count must be at least 1.", file=sys.stderr)
+    if args.headless_player_command and args.headless_player_count < MIN_SCALE_GATE_SYNTHETIC_PLAYERS:
+        print(
+            f"--headless-player-count must be at least {MIN_SCALE_GATE_SYNTHETIC_PLAYERS}.",
+            file=sys.stderr,
+        )
         return 2
     if args.headless_player_timeout <= 0:
         print("--headless-player-timeout must be greater than 0.", file=sys.stderr)
