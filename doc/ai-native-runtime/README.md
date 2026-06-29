@@ -50,6 +50,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Benchmark baseline retention](benchmark-baseline-retention.md)
 - [Minecraft-parity benchmark harness](minecraft-parity-benchmark-harness.md)
 - [Synthetic runtime smoke](synthetic-runtime-smoke.md)
+- Product-profile fixture gate: `python3 util/ai_native_product_profile_verify.py`
 - One-command local pre-PR verification: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac`
 - Clean-profile runtime gap scorecard: `python3 util/ai_native_runtime_gap_scorecard.py --output-root local/benchmarks`
 - Minecraft-parity comparison report: `python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks`
