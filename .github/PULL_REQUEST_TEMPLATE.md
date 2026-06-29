@@ -16,6 +16,13 @@ This PR is a Work in Progress / Ready for Review.
 - [ ] Things
 - [ ] To do
 
+## AI-native alpha gate
+
+- [ ] I ran `python3 util/ai_native_alpha_release_gate.py`
+- [ ] I ran `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime` or explained why it is not applicable.
+- [ ] This PR keeps `spacebase`, `themepark`, `disneyland100`, private worlds, prompts, secrets, copied proprietary assets, and family-server content out of the main fork.
+- [ ] Engine/runtime changes, optional plugin changes, and any private deployment notes are separated.
+
 ## How to test
 
 <!-- Example code or instructions -->

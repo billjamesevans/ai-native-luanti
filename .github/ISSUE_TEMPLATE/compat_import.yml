@@ -1,0 +1,28 @@
+name: Compatibility import
+description: Request or report Minecraft/Luanti compatibility import discovery work
+labels: ["compat-import"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Compatibility import work starts with dry-run and inventory discovery.
+        Public/private boundary: do not include raw asset payloads, proprietary pack
+        payloads, private worlds, private coordinates, or family-server content.
+  - type: textarea
+    attributes:
+      label: Source class and dry-run goal
+      description: Java resource pack, Bedrock resource pack, behavior pack, Luanti mod, structure, or world.
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Expected import behavior
+      description: Describe supported, partial, unsupported, skipped, or blocked expectations.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Public/private boundary
+      options:
+        - label: This issue does not include private worlds, secrets, prompts, raw assets, spacebase, themepark, disneyland100, or family-server content.
+          required: true
