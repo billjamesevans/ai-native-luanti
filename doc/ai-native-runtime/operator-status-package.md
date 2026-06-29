@@ -2,7 +2,7 @@
 
 Status: operator-control contract for issue #162.
 
-`util/ai_native_operator_status_package.py` emits bounded JSON for a future CLI/dashboard. It is a read-only summary surface: it does not mutate a world, does not execute rollback, does not apply imports, and does not load family-server content.
+`util/ai_native_operator_status_package.py` emits bounded JSON for a future CLI/dashboard. The running server also exposes `/ai_runtime_operator_status` for the same operator-control shape from live runtime state. Both paths are read-only summary surfaces. Each does not mutate a world, does not execute rollback, does not apply imports, and does not load family-server content.
 
 The package gives an operator one safe shape for:
 
@@ -14,6 +14,8 @@ The package gives an operator one safe shape for:
 - product-profile hygiene from `util/ai_native_product_profile_verify.py`.
 
 ## Command
+
+Python package generator:
 
 ```sh
 python3 util/ai_native_operator_status_package.py --root . --output local/operator-status.json
@@ -29,6 +31,14 @@ python3 util/ai_native_operator_status_package.py \
 ```
 
 The input is optional. When omitted, the package still reports product-profile hygiene and empty runtime sections.
+
+Live server command:
+
+```text
+/ai_runtime_operator_status
+```
+
+The live command requires `server` privilege and returns compact JSON with `package_kind = "ai_native_operator_status_package"`. It summarizes registered agents, task counts, recent rollback/import audit availability, optional benchmark gates, and product-profile hygiene. It rejects unknown parameters and accepts `generated_at=...` and `max_bytes=N` for reproducible checks.
 
 ## Boundary
 

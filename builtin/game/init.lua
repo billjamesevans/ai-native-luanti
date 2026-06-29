@@ -28,6 +28,7 @@ dofile(gamepath .. "privileges.lua")
 dofile(gamepath .. "ai_runtime.lua")
 dofile(gamepath .. "auth.lua")
 dofile(commonpath .. "chatcommands.lua")
+dofile(gamepath .. "ai_operator_status.lua")
 dofile(gamepath .. "ai_runtime_commands.lua")
 if core.settings:get_bool("ai_runtime.enable_demo_benchmark_command", false) then
 	dofile(gamepath .. "demo_entity_benchmark.lua")

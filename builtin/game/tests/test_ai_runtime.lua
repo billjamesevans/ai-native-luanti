@@ -895,6 +895,137 @@ assert(operator_metrics.task_status_counts.completed >= 2)
 assert(operator_metrics.task_status_counts.cancelled >= 2)
 assert(operator_metrics.task_status_counts.unsafe >= 1)
 
+function test_ai_runtime_operator_status_package_command()
+core.register_ai_agent({
+	agent_id = "operator_status:private",
+	display_name = "Private Status Agent",
+	owner = "/Users/billevans/private/spacebase",
+	plugin = "operator_status_test",
+	capabilities = {
+		["world.read"] = true,
+		["rollback.execute"] = true,
+	},
+	limits = {
+		capability_profile = "operator",
+	},
+})
+core.registered_ai_tasks["operator-status:queued"] = {
+	task_id = "operator-status:queued",
+	agent_id = "operator_status:private",
+	owner = "operator",
+	label = "Inspect minecraftpi.home / 192.168.230.60 themepark private_prompt asset_payload "
+		.. string.rep("x", 20000),
+	status = "queued",
+	created_at = 0,
+	updated_at = 0,
+	budget = {},
+	progress = {
+		current = 0,
+		total = 1,
+	},
+	last_result = {},
+}
+core.record_ai_runtime_audit({
+	event_type = "rollback.record",
+	agent_id = "operator_status:private",
+	task_id = "operator-status:queued",
+	status = "success",
+	reason = "rollback_record_written",
+	rollback_record_id = "rollback:operator-status",
+	rollback_storage_ref = "rollback://minecraftpi.home/192.168.230.60/spacebase",
+	message = "private_prompt asset_payload /Users/billevans/private " .. string.rep("y", 20000),
+})
+core.record_ai_runtime_audit({
+	event_type = "import.plan",
+	agent_id = "operator_status:private",
+	task_id = "operator-status:queued",
+	status = "blocked",
+	reason = "payload_rejected",
+	message = "themepark import blocked before mutation",
+})
+
+assert(type(core.build_ai_operator_status_package) == "function")
+local status_before_metrics = core.get_ai_runtime_operator_metrics()
+local operator_status_package = core.build_ai_operator_status_package({
+	generated_at = "2026-06-29T00:00:00Z",
+	max_bytes = 24000,
+	benchmark_gates = {
+		{
+			gate_id = "runtime-command-test",
+			status = "pass",
+			source = "/Users/billevans/benchmarks/REDACTED_KEY_FIXTURE",
+		},
+	},
+})
+local status_after_metrics = core.get_ai_runtime_operator_metrics()
+assert(status_after_metrics.node_writes == status_before_metrics.node_writes)
+assert(status_after_metrics.tasks_cancelled == status_before_metrics.tasks_cancelled)
+assert(status_after_metrics.rollback_records_written == status_before_metrics.rollback_records_written)
+assert(operator_status_package.schema_version == 1)
+assert(operator_status_package.package_kind == "ai_native_operator_status_package")
+assert(operator_status_package.generated_at == "2026-06-29T00:00:00Z")
+assert(operator_status_package.runtime_context.game_profile == "ai_runtime")
+assert(operator_status_package.runtime_context.mutation_performed == false)
+assert(operator_status_package.server_profile_hygiene.status == "pass")
+assert(operator_status_package.server_profile_hygiene.dev_surfaces_disabled_by_default == true)
+assert(operator_status_package.agents.total >= 1)
+assert(operator_status_package.tasks.counts.total >= 1)
+assert(operator_status_package.tasks.counts.queued >= 1)
+assert(operator_status_package.rollback.records_available >= 1)
+assert(operator_status_package.imports.reviews_total >= 1)
+assert(operator_status_package.benchmarks.status_counts.pass == 1)
+assert(operator_status_package.safety.redactions_applied > 0)
+assert(operator_status_package.safety.truncations_applied > 0)
+assert(operator_status_package.bounds.output_bytes <= operator_status_package.bounds.max_bytes)
+local operator_status_json = core.write_json(operator_status_package)
+assert(operator_status_json:find("\"package_kind\":\"ai_native_operator_status_package\"", 1, true))
+assert(not operator_status_json:find("/Users/", 1, true))
+assert(not operator_status_json:find("minecraftpi", 1, true))
+assert(not operator_status_json:find("192.168", 1, true))
+assert(not operator_status_json:find("spacebase", 1, true))
+assert(not operator_status_json:find("themepark", 1, true))
+assert(not operator_status_json:find("private_prompt", 1, true))
+assert(not operator_status_json:find("asset_payload", 1, true))
+
+assert(core.registered_chatcommands.ai_runtime_operator_status ~= nil)
+assert(core.registered_chatcommands.ai_runtime_operator_status.privs.server == true)
+local command_before_metrics = core.get_ai_runtime_operator_metrics()
+local operator_command_ok, operator_command_message =
+	core.registered_chatcommands.ai_runtime_operator_status.func(
+		"admin",
+		"generated_at=2026-06-29T00:00:00Z")
+local command_after_metrics = core.get_ai_runtime_operator_metrics()
+assert(operator_command_ok == true)
+assert(command_after_metrics.node_writes == command_before_metrics.node_writes)
+assert(command_after_metrics.tasks_cancelled == command_before_metrics.tasks_cancelled)
+assert(command_after_metrics.rollback_records_written == command_before_metrics.rollback_records_written)
+assert(operator_command_message:find("\"package_kind\":\"ai_native_operator_status_package\"", 1, true))
+assert(operator_command_message:find("\"runtime_context\"", 1, true))
+assert(operator_command_message:find("\"server_profile_hygiene\"", 1, true))
+assert(operator_command_message:find("\"agents\"", 1, true))
+assert(operator_command_message:find("\"tasks\"", 1, true))
+assert(operator_command_message:find("\"rollback\"", 1, true))
+assert(operator_command_message:find("\"imports\"", 1, true))
+assert(operator_command_message:find("\"benchmarks\"", 1, true))
+assert(#operator_command_message <= 24000)
+assert(not operator_command_message:find("/Users/", 1, true))
+assert(not operator_command_message:find("minecraftpi", 1, true))
+assert(not operator_command_message:find("192.168", 1, true))
+assert(not operator_command_message:find("spacebase", 1, true))
+assert(not operator_command_message:find("themepark", 1, true))
+assert(not operator_command_message:find("private_prompt", 1, true))
+assert(not operator_command_message:find("asset_payload", 1, true))
+local compact_command_ok, compact_command_message =
+	core.registered_chatcommands.ai_runtime_operator_status.func(
+		"admin",
+		"generated_at=2026-06-29T00:00:00Z max_bytes=2000")
+assert(compact_command_ok == true)
+assert(#compact_command_message <= 2000)
+assert(compact_command_message:find("\"truncated\":true", 1, true))
+end
+test_ai_runtime_operator_status_package_command()
+test_ai_runtime_operator_status_package_command = nil
+
 assert(core.demo_entity_benchmark ~= nil)
 local demo_fixture = core.demo_entity_benchmark.get_fixture()
 assert(demo_fixture.fixture_id == "generic_demo_entity:benchmark:v1")
