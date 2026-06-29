@@ -16,6 +16,7 @@ import ai_native_runtime_gap_scorecard as scorecard
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_VERSION = "ai-native-minecraft-parity-harness:v1"
 DEFAULT_HARDWARE_CLASSES = ("local-mac", "low-power-server")
+IMPORT_INVENTORY_DISCOVERY_REPORT = "compatibility-import-inventory-discovery-report.json"
 SCORECARD_STATUS_CRITERIA = {
     "pass": "Measured evidence meets the current project target for this dimension.",
     "warn": "Evidence is partial, proxy-only, or below the target but still safe and informative.",
@@ -262,6 +263,56 @@ def metric_status(value) -> bool:
     return value is not None and value is not False
 
 
+def compatibility_import_inventory_missing() -> dict:
+    return {
+        "status": "missing",
+        "compatibility_import_inventory_ready": False,
+        "sources_total": 0,
+        "inventory_items_total": 0,
+        "planned_actions_total": 0,
+        "source_status_counts": {},
+        "by_source_class": {},
+        "evidence_gap": "compatibility import inventory discovery report missing",
+    }
+
+
+def load_compatibility_import_inventory(output_root: Path) -> dict:
+    path = output_root / IMPORT_INVENTORY_DISCOVERY_REPORT
+    if not path.is_file():
+        return compatibility_import_inventory_missing()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    serialized = json.dumps(payload, sort_keys=True)
+    if PRIVATE_PATTERNS.search(serialized):
+        raise HarnessError("privacy scan failed for compatibility import inventory discovery")
+    summary = payload.get("summary") or {}
+    safety = payload.get("safety") or {}
+    ready = (
+        payload.get("mode") == "import_inventory_discovery"
+        and payload.get("status") == "ready_for_import_preview"
+        and summary.get("compatibility_import_inventory_ready") is True
+        and safety.get("dry_run_only") is True
+        and safety.get("no_assets_copied") is True
+        and safety.get("no_world_mutation") is True
+        and safety.get("source_paths_redacted") is True
+        and safety.get("no_raw_payloads") is True
+        and safety.get("no_private_paths") is True
+        and safety.get("uses_proprietary_minecraft_code_or_assets") is False
+        and safety.get("uses_copied_server_jars_or_game_data") is False
+    )
+    return {
+        "status": payload.get("status"),
+        "compatibility_import_inventory_ready": ready,
+        "sources_total": summary.get("sources_total", 0),
+        "inventory_items_total": summary.get("inventory_items_total", 0),
+        "planned_actions_total": summary.get("planned_actions_total", 0),
+        "source_status_counts": dict(summary.get("source_status_counts") or {}),
+        "by_source_class": dict(summary.get("by_source_class") or {}),
+        "required_capabilities": list(summary.get("required_capabilities") or []),
+        "logical_report_path": f"local/benchmarks/{IMPORT_INVENTORY_DISCOVERY_REPORT}",
+        "blocking_reasons": list((payload.get("readiness") or {}).get("blocking_reasons") or []),
+    }
+
+
 def numeric_metric(value) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -309,7 +360,11 @@ def gap(hardware_class: str, dimension_id: str, title: str, evidence: str, next_
     }
 
 
-def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dict], list[dict]]:
+def dimension_results(
+    hardware_class: str,
+    measurements: dict,
+    compatibility_import_inventory: dict | None = None,
+) -> tuple[list[dict], list[dict]]:
     facts: list[dict] = []
     gaps: list[dict] = []
     startup = measurements["startup"]
@@ -542,15 +597,52 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
     first_party_agent_loop_ready = has_first_party_agent_product_loop_evidence(
         first_party_product_loop
     )
-    compatibility_import_plugin_ready = False
+    compatibility_import_inventory = (
+        compatibility_import_inventory or compatibility_import_inventory_missing()
+    )
+    compatibility_import_plugin_ready = (
+        compatibility_import_inventory.get("compatibility_import_inventory_ready") is True
+        and (compatibility_import_inventory.get("sources_total") or 0) > 0
+        and (compatibility_import_inventory.get("planned_actions_total") or 0) > 0
+    )
+    if compatibility_import_plugin_ready:
+        plugin_evidence = (
+            "accepted benchmark lane proves first-party agent loop and public-safe "
+            "import inventory discovery"
+        )
+    elif first_party_agent_loop_ready:
+        plugin_evidence = (
+            "accepted benchmark lane proves the first-party agent product loop; "
+            "import inventory proof remains open"
+        )
+    else:
+        plugin_evidence = (
+            "clean runtime profile exists; first-party agent and import inventory proof remain open"
+        )
     facts.append(
         result(
             "mod_plugin_ergonomics",
-            "partial",
+            "measured" if (
+                first_party_agent_loop_ready and compatibility_import_plugin_ready
+            ) else "partial",
             {
                 "clean_profile_capability_policy": True,
                 "first_party_agent_loop_ready": first_party_agent_loop_ready,
                 "compatibility_import_plugin_ready": compatibility_import_plugin_ready,
+                "compatibility_import_inventory": {
+                    "status": compatibility_import_inventory.get("status"),
+                    "sources_total": compatibility_import_inventory.get("sources_total"),
+                    "inventory_items_total": compatibility_import_inventory.get(
+                        "inventory_items_total"
+                    ),
+                    "planned_actions_total": compatibility_import_inventory.get(
+                        "planned_actions_total"
+                    ),
+                    "source_status_counts": compatibility_import_inventory.get(
+                        "source_status_counts"
+                    ),
+                    "by_source_class": compatibility_import_inventory.get("by_source_class"),
+                },
                 "first_party_agent_product_loop": {
                     "product_loop_status": first_party_product_loop.get("product_loop_status"),
                     "approval_plan_count": first_party_product_loop.get("approval_plan_count"),
@@ -567,12 +659,7 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
                     ),
                 },
             },
-            (
-                "accepted benchmark lane proves the first-party agent product loop; "
-                "import inventory proof remains open"
-                if first_party_agent_loop_ready
-                else "clean runtime profile exists; first-party agent and import inventory proof remain open"
-            ),
+            plugin_evidence,
         )
     )
     if not first_party_agent_loop_ready:
@@ -588,18 +675,19 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
                 "Add local and low-power-server benchmark captures for the first-party agent loop.",
             )
         )
-    gaps.append(
-        gap(
-            hardware_class,
-            "mod_plugin_ergonomics",
-            "Build compatibility import inventory discovery",
-            (
-                "Importer is dry-run plan-only; public-safe inventory discovery and richer "
-                "compatibility reports remain open"
-            ),
-            "Complete public-safe import inventory discovery and report classification work.",
+    if not compatibility_import_plugin_ready:
+        gaps.append(
+            gap(
+                hardware_class,
+                "mod_plugin_ergonomics",
+                "Build compatibility import inventory discovery",
+                (
+                    "Importer is dry-run plan-only; public-safe inventory discovery and richer "
+                    "compatibility reports remain open"
+                ),
+                "Complete public-safe import inventory discovery and report classification work.",
+            )
         )
-    )
 
     operator_visibility_ready = True
     facts.append(
@@ -860,6 +948,7 @@ def actionable_scorecard(gaps: list[dict]) -> list[dict]:
 
 
 def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
+    compatibility_import_inventory = load_compatibility_import_inventory(output_root)
     lanes = [
         scorecard.build_lane_evidence(
             hardware_class,
@@ -870,7 +959,11 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
     measured_facts = []
     qualitative_gaps = []
     for lane in lanes:
-        facts, gaps = dimension_results(lane["hardware_class"], lane["measurements"])
+        facts, gaps = dimension_results(
+            lane["hardware_class"],
+            lane["measurements"],
+            compatibility_import_inventory,
+        )
         measured_facts.append(
             {
                 "hardware_class": lane["hardware_class"],
