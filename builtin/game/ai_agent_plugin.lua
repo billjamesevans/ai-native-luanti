@@ -83,6 +83,7 @@ local PRODUCT_SURFACES = {
 			"edit plan",
 			"discard plan",
 			"cancel",
+			"stay",
 			"audit",
 			"audit <task_id>",
 			"rollback",
@@ -588,6 +589,14 @@ local function format_command_reply(result)
 	elseif result.action == "cancel" then
 		append_task_details(lines, result)
 		append(lines, "cancelled=" .. tostring(result.cancelled or 0))
+	elseif result.action == "stay" then
+		append_task_details(lines, result)
+		local state = result.state or {}
+		append(lines, "mode=" .. tostring(state.mode or "unknown"))
+		if state.entity_id then
+			append(lines, "entity_id=" .. tostring(state.entity_id))
+		end
+		append(lines, "cancelled=" .. tostring(result.cancelled or 0))
 	else
 		append_task_details(lines, result)
 		if result.candidate_count then
@@ -719,6 +728,7 @@ function plugin.get_navigation_contract()
 		contract_kind = "ai_native_navigation_perception_contract",
 		surfaces = { "builder", "guide", "helper" },
 		commands = { "follow", "come" },
+		control_commands = { "stay", "wait" },
 		planner = "bounded_same_level_grid_or_injected_pathfinder",
 		bounds = {
 			max_nodes_searched = settings.max_navigation_nodes,
@@ -2300,6 +2310,8 @@ local function handle_guide(name)
 			"discard plan",
 			"cancel",
 			"cancel <task_id>",
+			"stay",
+			"wait",
 			"approve",
 			"approve <approval_id>",
 			"follow",
@@ -2470,6 +2482,43 @@ local function handle_cancel(name, requested_task_id)
 			surface_id = "guide",
 			cancelled = cancelled,
 		})
+end
+
+local function is_movement_task(task)
+	if type(task) ~= "table" then
+		return false
+	end
+	local task_id = tostring(task.task_id or "")
+	local label = tostring(task.label or "")
+	return task_id:find(":follow:", 1, true) ~= nil
+		or task_id:find(":come:", 1, true) ~= nil
+		or label:find("follow", 1, true) ~= nil
+		or label:find("come", 1, true) ~= nil
+end
+
+local function handle_stay(name)
+	plugin.ensure_surface_agent(name, "guide")
+	local cancelled = 0
+	for _, task in ipairs(active_player_tasks(name)) do
+		if is_movement_task(task)
+				and (task.status == "queued" or task.status == "running"
+					or task.status == "paused") then
+			local result = core.cancel_ai_task(task.task_id, name)
+			if result.ok then
+				cancelled = cancelled + 1
+			end
+		end
+	end
+	local state = plugin.get_player_state(name)
+	state.mode = "stay"
+	state.target_name = nil
+	state.target_pos = nil
+	state = set_player_state(name, state)
+	return public_reply(name, "stay", "success", "Helper movement stopped.", {
+		surface_id = "guide",
+		cancelled = cancelled,
+		state = state,
+	})
 end
 
 local function handle_tasks(name, requested_task_id)
@@ -2804,6 +2853,9 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt == "cancel" or prompt == "stop" then
 		return handle_cancel(name)
+	end
+	if prompt == "stay" or prompt == "wait" then
+		return handle_stay(name)
 	end
 	local requested_cancel_task_id = raw_prompt:match("^[Cc][Aa][Nn][Cc][Ee][Ll]%s+(.+)$")
 		or raw_prompt:match("^[Ss][Tt][Oo][Pp]%s+(.+)$")

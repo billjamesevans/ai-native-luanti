@@ -46,6 +46,8 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "`rollback <rollback_id>`",
             "`task <task_id>`",
             "`cancel <task_id>`",
+            "`stay`",
+            "`wait`",
             "`approve <approval_id>`",
             "`pending plan`",
             "`edit plan platform width N depth N`",
@@ -67,6 +69,7 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "dry-run-only",
             "continuous follow",
             "total-distance budgets",
+            "movement tasks only",
             "`ai_agent.follow_step`",
             "rollback-backed",
             "combat.defend",
@@ -99,6 +102,9 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "import_plan",
             "follow_distance_limit_exceeded",
             "core.get_ai_runtime_audit",
+            "handle_stay",
+            "is_movement_task",
+            '"stay"',
         ):
             self.assertIn(phrase, source)
         for forbidden in (

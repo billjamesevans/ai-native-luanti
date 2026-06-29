@@ -279,6 +279,29 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "  local follow_entity = follow_result.entity or {}",
             "  local follow_metrics = follow_result.metrics or {}",
             "",
+            "  local stay_player_pos = pos(9)",
+            "  local stay_player = {",
+            "    get_pos = function() return copy_pos(stay_player_pos) end,",
+            "  }",
+            "  local stay_follow = handle(\"StayLive\", \"follow 4\", {",
+            "    get_player_by_name = function(name)",
+            "      if name == \"StayLive\" then return stay_player end",
+            "      return nil",
+            "    end,",
+            "    max_follow_steps = 4,",
+            "    max_follow_step_distance = 1,",
+            "    max_follow_total_distance = 6,",
+            "    max_follow_stop_distance = 0,",
+            "  })",
+            "  task_ids[#task_ids + 1] = stay_follow.task_id",
+            "  core.step_ai_tasks()",
+            "  stay_player_pos = { x = stay_player_pos.x + 2, y = stay_player_pos.y, z = stay_player_pos.z }",
+            "  core.step_ai_tasks()",
+            "  local stay_before = task_status(stay_follow.task_id)",
+            "  local stay_reply = handle(\"StayLive\", \"stay\", {})",
+            "  local stay_after = task_status(stay_follow.task_id)",
+            "  local stay_state = core.ai_agent_plugin.get_player_state(\"StayLive\")",
+            "",
             "  local guide_reply = handle(\"BuilderLive\", \"guide\", {})",
             "  local tasks_reply = handle(\"BuilderLive\", \"tasks\", {})",
             "  local audit_reply = handle(\"BuilderLive\", \"audit\", {})",
@@ -501,6 +524,12 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "        follow_total_distance_moved = follow_metrics.total_distance_moved or 0,",
             "        follow_node_writes = follow_metrics.node_writes or 0,",
             "        follow_pathfinder_used = follow_metrics.pathfinder_used == true,",
+            "        stay_status = stay_reply.status,",
+            "        stay_cancelled = stay_reply.cancelled or 0,",
+            "        stay_before_status = stay_before,",
+            "        stay_after_status = stay_after,",
+            "        stay_mode = stay_state.mode,",
+            "        stay_entity_retained = stay_state.entity_id ~= nil,",
             "      },",
             "      targeted_reviews = {",
             "        audit_status = targeted_audit_reply.status,",
@@ -574,6 +603,12 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "          and follow_entity.entity_name == \"ai_runtime_base:helper\"",
             "          and (follow_metrics.distance_moved or 0) > 0",
             "          and (follow_metrics.node_writes or 0) == 0,",
+            "        stay_command_checked = stay_reply.status == \"success\"",
+            "          and stay_before == \"running\"",
+            "          and stay_after == \"cancelled\"",
+            "          and (stay_reply.cancelled or 0) == 1",
+            "          and stay_state.mode == \"stay\"",
+            "          and stay_state.entity_id ~= nil,",
             "        defender_command_checked = defend_status == \"completed\" and defended == true,",
             "        import_preview_checked = import_status == \"completed\",",
             "        operator_status_checked = operator_status_snapshot.status == \"ready\"",
@@ -597,6 +632,7 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "      targeted_rollback_review_count = (targeted_rollback_count > 0 and 1 or 0)",
             "        + (targeted_rollback_record_count > 0 and 1 or 0),",
             "      follow_command_count = follow_status == \"completed\" and 1 or 0,",
+            "      stay_command_count = stay_after == \"cancelled\" and stay_state.mode == \"stay\" and 1 or 0,",
             "      status_context_count = build_status_context.status == \"success\" and 1 or 0,",
             "      node_writes_verified = 5,",
             "      transient_blocked_outcomes = retry_blocked_status == \"blocked\" and 1 or 0,",
@@ -776,6 +812,17 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent product loop follow total movement evidence missing")
     if navigation.get("follow_node_writes") != 0:
         raise ValueError("agent product loop follow mutated nodes")
+    if navigation.get("stay_status") != "success":
+        raise ValueError("agent product loop stay command did not return success")
+    if navigation.get("stay_before_status") != "running":
+        raise ValueError("agent product loop stay target was not running")
+    if navigation.get("stay_after_status") != "cancelled":
+        raise ValueError("agent product loop stay target was not cancelled")
+    if navigation.get("stay_cancelled") != 1:
+        raise ValueError("agent product loop stay cancellation count is invalid")
+    if navigation.get("stay_mode") != "stay":
+        raise ValueError("agent product loop stay mode was not retained")
+    _require_bool(navigation, "stay_entity_retained")
 
     if targeted_reviews.get("audit_status") != "success":
         raise ValueError("agent product loop targeted audit did not pass")
@@ -827,6 +874,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "targeted_rollback_review_checked",
         "targeted_rollback_record_review_checked",
         "follow_command_checked",
+        "stay_command_checked",
         "defender_command_checked",
         "import_preview_checked",
         "operator_status_checked",
@@ -865,6 +913,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "targeted_audit_review_count": 1,
         "targeted_rollback_review_count": 2,
         "follow_command_count": 1,
+        "stay_command_count": 1,
         "status_context_count": 1,
         "node_writes_verified": 5,
         "transient_blocked_outcomes": 1,
@@ -923,10 +972,12 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_product_loop_targeted_audit_reviews": summary["targeted_audit_review_count"],
         "agent_product_loop_targeted_rollback_reviews": summary["targeted_rollback_review_count"],
         "agent_product_loop_follow_commands": summary["follow_command_count"],
+        "agent_product_loop_stay_commands": summary["stay_command_count"],
         "agent_product_loop_status_contexts": summary["status_context_count"],
         "agent_product_loop_cancel_checked": True,
         "agent_product_loop_retry_checked": True,
         "agent_product_loop_follow_checked": True,
+        "agent_product_loop_stay_checked": True,
         "agent_product_loop_status_context_checked": True,
         "agent_product_loop_follow_helper_entity": navigation["follow_entity_name"],
         "agent_product_loop_operator_status_checked": True,
