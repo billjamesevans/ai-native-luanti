@@ -19,6 +19,22 @@ import ai_native_benchmark_capture
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = ROOT / "local" / "benchmarks"
 MANIFEST_NAME = "ai-runtime-verification-manifest.json"
+OPERATOR_STATUS_NAME = "ai-runtime-operator-status.json"
+OPERATOR_STATUS_SOURCE_KIND = "command_surrogate"
+OPERATOR_STATUS_REQUIRED_SECTIONS = {
+    "schema_version",
+    "package_kind",
+    "status",
+    "runtime_context",
+    "server_profile_hygiene",
+    "agents",
+    "tasks",
+    "rollback",
+    "imports",
+    "benchmarks",
+    "safety",
+    "bounds",
+}
 
 
 class CommandStep:
@@ -109,6 +125,14 @@ def physical_run_dir(args) -> Path:
 
 def logical_path(args, filename: str) -> str:
     return f"{logical_run_dir(args)}/{filename}"
+
+
+def operator_status_artifact_path(args) -> Path:
+    return physical_run_dir(args) / OPERATOR_STATUS_NAME
+
+
+def operator_status_generated_at(args) -> str:
+    return f"{ai_native_benchmark_capture.path_part(args.date)}T00:00:00Z"
 
 
 def python_manifest_command(*parts: str) -> list[str]:
@@ -216,6 +240,33 @@ def build_steps(args) -> list[CommandStep]:
             + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
         ),
         CommandStep(
+            "operator_status_package",
+            "Operator status package command surrogate",
+            [
+                args.python,
+                "util/ai_native_operator_status_package.py",
+                "--root",
+                ".",
+                "--output",
+                str(operator_status_artifact_path(args)),
+                "--generated-at",
+                operator_status_generated_at(args),
+                "--max-bytes",
+                str(args.operator_status_max_bytes),
+            ],
+            python_manifest_command(
+                "util/ai_native_operator_status_package.py",
+                "--root",
+                ".",
+                "--output",
+                logical_path(args, OPERATOR_STATUS_NAME),
+                "--generated-at",
+                operator_status_generated_at(args),
+                "--max-bytes",
+                str(args.operator_status_max_bytes),
+            ),
+        ),
+        CommandStep(
             "ai_runtime_focused_tests",
             "Focused AI runtime unit smoke",
             [
@@ -276,6 +327,75 @@ def benchmark_gate_artifact(args, result: CommandRun) -> str:
     return logical_path(args, "benchmark-gate-manifest.json")
 
 
+def artifact_has_private_content(raw_payload: str) -> bool:
+    return any(pattern.search(raw_payload) for pattern, _ in PRIVATE_REDACTIONS)
+
+
+def operator_status_evidence(args) -> tuple[dict, list[str]]:
+    path = operator_status_artifact_path(args)
+    source_path = logical_path(args, OPERATOR_STATUS_NAME)
+    evidence = {
+        "status": "fail",
+        "source_kind": OPERATOR_STATUS_SOURCE_KIND,
+        "source_path": source_path,
+        "live_command": "/ai_runtime_operator_status",
+        "direct_command_execution": False,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("operator_status_package artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+
+    try:
+        raw_payload = path.read_text(encoding="utf-8")
+        payload = json.loads(raw_payload)
+    except (OSError, json.JSONDecodeError) as exc:
+        reasons.append(f"operator_status_package artifact unreadable: {type(exc).__name__}")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+
+    missing_sections = sorted(OPERATOR_STATUS_REQUIRED_SECTIONS - set(payload))
+    if missing_sections:
+        reasons.append(
+            "operator_status_package missing required sections: "
+            + ",".join(missing_sections)
+        )
+    if payload.get("package_kind") != "ai_native_operator_status_package":
+        reasons.append("operator_status_package has unexpected package_kind")
+    if artifact_has_private_content(raw_payload):
+        reasons.append("operator_status_package contains private patterns")
+
+    bounds = payload.get("bounds") if isinstance(payload.get("bounds"), dict) else {}
+    output_bytes = bounds.get("output_bytes")
+    max_bytes = bounds.get("max_bytes", args.operator_status_max_bytes)
+    if not isinstance(output_bytes, int):
+        reasons.append("operator_status_package missing numeric output_bytes")
+    if not isinstance(max_bytes, int):
+        reasons.append("operator_status_package missing numeric max_bytes")
+    if isinstance(output_bytes, int) and isinstance(max_bytes, int):
+        if output_bytes > max_bytes:
+            reasons.append("operator_status_package output_bytes exceeds max_bytes")
+        if output_bytes > args.operator_status_max_bytes:
+            reasons.append("operator_status_package output_bytes exceeds harness byte budget")
+
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
+    if safety.get("public_safe_output") is not True:
+        reasons.append("operator_status_package public_safe_output is not true")
+
+    evidence.update({
+        "status": "fail" if reasons else "pass",
+        "package_status": sanitize_text(str(payload.get("status", "unknown"))),
+        "output_bytes": output_bytes,
+        "max_bytes": max_bytes,
+        "truncated": bounds.get("truncated") is True,
+        "required_sections_present": not missing_sections,
+        "private_scan_status": "fail" if artifact_has_private_content(raw_payload) else "pass",
+        "failure_count": len(reasons),
+    })
+    return evidence, reasons
+
+
 def build_step_manifest(step: CommandStep, result: CommandRun, max_output_chars: int) -> dict:
     status = "pass" if result.returncode == 0 else "fail"
     payload = {
@@ -305,6 +425,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     artifact_paths = {
         "verification_manifest": logical_path(args, MANIFEST_NAME),
     }
+    operator_status_step_ran = False
     for step, result in command_results:
         if step.id == "branch_benchmark_gate":
             artifact_paths["benchmark_gate_manifest"] = benchmark_gate_artifact(args, result)
@@ -313,8 +434,16 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                     args,
                     "clean-profile-benchmark-summary.json",
                 )
+        if step.id == "operator_status_package":
+            operator_status_step_ran = True
+            artifact_paths["operator_status_package"] = logical_path(args, OPERATOR_STATUS_NAME)
 
-    return {
+    operator_evidence = None
+    if operator_status_step_ran:
+        operator_evidence, operator_failures = operator_status_evidence(args)
+        failure_reasons.extend(operator_failures)
+
+    manifest = {
         "schema_version": 1,
         "generated_at": now_fn(),
         "hardware_class": args.hardware_class,
@@ -347,6 +476,9 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             else []
         ),
     }
+    if operator_evidence is not None:
+        manifest["operator_status_evidence"] = operator_evidence
+    return manifest
 
 
 def run_harness(args, runner=run_subprocess, now_fn=utc_now) -> tuple[int, Path, dict]:
@@ -461,6 +593,12 @@ def parse_args(argv=None):
         "--confirm-low-power-backup",
         action="store_true",
         help="Pass backup-first confirmation through to low-power-server benchmark gates.",
+    )
+    parser.add_argument(
+        "--operator-status-max-bytes",
+        type=int,
+        default=24000,
+        help="Maximum byte budget for the retained operator status artifact.",
     )
     return parser.parse_args(argv)
 
