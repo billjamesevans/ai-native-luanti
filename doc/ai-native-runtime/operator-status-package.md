@@ -58,6 +58,20 @@ Runtime sections are summaries, not raw records. Rollback and import entries sho
 
 The `operator_control` section is read-only and dry-run-only. It exposes stable target IDs, target kinds, current statuses, and safe next actions such as `inspect_task_before_action`, `review_rollback_record_before_execution`, and `review_import_blocker`. These are action affordances for a future CLI/dashboard; this package does not cancel tasks, execute rollback, approve imports, apply structures, or mutate worlds.
 
+## Operator-Control Report Adapter
+
+`util/ai_native_operator_control_report.py` turns a live or recorded operator-status package into a smaller operator-control report adapter artifact. It accepts `ai-runtime-operator-status-live.json` or `ai-runtime-operator-status.json` and writes bounded JSON by default:
+
+```sh
+python3 util/ai_native_operator_control_report.py \
+  --input local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-status-live.json \
+  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-control-report.json
+```
+
+Use `--format text` for a concise human-readable report. Both formats preserve the dry-run-only boundary, list stable target IDs, target kinds, current statuses, and safe next actions, and reject recommendations that advertise mutating actions. The adapter remains public-safe: it redacts private paths, private hosts or IPs, provider prompts, raw asset payload fields, and family-showcase names.
+
+`util/ai_native_runtime_verify.py` writes `ai-runtime-operator-control-report.json` as a sibling artifact whenever it captures or generates an operator-status package. The verification manifest records the report path and pass/fail status so local and low-power lanes prove the adapter works against live operator-status evidence.
+
 ## Product Use
 
 The first product use is an operator readout that can answer:
