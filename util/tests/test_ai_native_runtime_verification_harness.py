@@ -752,6 +752,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "avg_process_cpu_percent": 2.0,
                     "max_interval_cpu_percent": 4.0,
                 },
+                "memory": {
+                    "max_rss_kb": 128000,
+                    "rss_sample_count": 3,
+                },
                 "entity_runtime_operations": {
                     "report_family": "demo_entity",
                     "warnings": 0,
