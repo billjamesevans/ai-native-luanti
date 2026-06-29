@@ -101,6 +101,13 @@ entries as needs-review by default. Finally, it runs the receipt-gated task cont
 `util/ai_native_operator_task_control_executor.py` and writes
 `ai-runtime-operator-action-execution-result.json` so the verifier proves the task cancel/retry only
 execution contract against synthetic task state. It then runs
+`util/ai_native_agent_product_loop_live_probe.py` against a disposable live `ai_runtime` world and
+writes `ai-runtime-agent-product-loop-live-result.json`. That probe uses synthetic public nodes to
+queue build and repair previews, require explicit approval, execute rollback-backed build and repair
+tasks, cancel a queued task, retry a rollback-blocked task, and check guide/tasks/audit/rollback,
+defender, and importer-preview surfaces without private content. It also captures a compact
+same-world operator-status snapshot proving the live status surface sees the product-loop tasks,
+rollback records, and import review without retaining private payloads. It then runs
 `util/ai_native_operator_task_control_live_probe.py` as a receipt-gated live task-control probe
 against a disposable live `ai_runtime` queue probe and writes
 `ai-runtime-operator-task-control-live-result.json`. The probe uses a temporary local world only: no
@@ -118,7 +125,10 @@ plan must remain non-mutating, approval-required, and bounded by
 `--operator-action-approval-plan-max-bytes`. The derived receipt artifacts must stay receipt-only,
 non-mutating, and bounded by `--operator-action-approval-receipt-max-bytes`. The derived execution
 result must stay receipt-gated, synthetic-task-state-only, task cancel/retry only, and bounded by
-`--operator-action-execution-result-max-bytes`. The live task-control result must stay receipt-gated,
+`--operator-action-execution-result-max-bytes`. The first-party product-loop live result must stay
+disposable-world-only, public-safe, rollback-backed for build and repair, explicit-approval-gated for
+build and repair mutation, operator-status-visible, no rollback execution, no import promotion execution, and bounded by
+`--agent-product-loop-live-result-max-bytes`. The live task-control result must stay receipt-gated,
 disposable-live-queue-only, task cancel/retry only, no rollback execution, no import promotion execution,
 no world mutation, and bounded by `--operator-taREDACTED_KEY_FIXTURE`.
 The task-control command result must stay receipt-gated, command-surface-only, task cancel/retry only,
@@ -159,6 +169,7 @@ directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifes
 `ai-runtime-operator-action-approval-plan.json` and
 `ai-runtime-operator-action-approval-receipt.json` and
 `ai-runtime-operator-action-execution-result.json` and
+`ai-runtime-agent-product-loop-live-result.json` and
 `ai-runtime-operator-task-control-live-result.json` and
 `ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`. It still requires no family server, no private
 world, no private assets, no provider prompts, and no model-network calls.
