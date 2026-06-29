@@ -156,8 +156,46 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             manifest["runtime_verification_evidence"]["player_load_probe_status"],
             "pass",
         )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["server_step_workload_status"],
+            "pass",
+        )
         self.assertEqual(manifest["failure_reasons"], [])
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
+
+    def test_accepts_flattened_clean_profile_status_from_runtime_verifier(self):
+        module = load_module()
+        remote_manifest = FakeRunner(module).default_remote_manifest()
+        remote_manifest["clean_profile_evidence"] = {
+            "overall_status": "pass",
+            "server_step_workload_status": "pass",
+            "player_load_probe_status": "pass",
+            "player_load_probe_kind": "server_process_liveness",
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                ]
+            )
+            fake_runner = FakeRunner(module, remote_manifest=remote_manifest)
+
+            exit_code, _, manifest = module.run(args, runner=fake_runner, now_fn=lambda: "2026-06-29T10:00:00Z")
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["server_step_workload_status"],
+            "pass",
+        )
 
     def test_manifest_fails_when_backup_confirmation_or_side_by_side_service_is_missing(self):
         module = load_module()
