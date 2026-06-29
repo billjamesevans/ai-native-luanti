@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-29T19:44:21Z",
+  "generated_at": "2026-06-29T20:04:16Z",
   "inventory_input_format": {
     "accepted_source_classes": [
       "java_resource_pack",
@@ -17,6 +17,23 @@
     ]
   },
   "mode": "import_inventory_discovery",
+  "promotion_plan_summary": {
+    "by_owner_lane": {
+      "asset_reference_review": 2,
+      "disposable_structure_staging": 1,
+      "metadata_review": 1,
+      "world_conversion_design": 1
+    },
+    "by_risk_label": {
+      "deferred_world_conversion": 1,
+      "disposable_staging_with_rollback": 1,
+      "metadata_only_review": 1,
+      "no_world_mutation_operator_review": 2
+    },
+    "disposable_staging_items_total": 1,
+    "plan_items_total": 5,
+    "world_conversion_deferred": true
+  },
   "promotion_queue": [
     {
       "cli_mode": "--asset-promotion-package",
@@ -218,6 +235,164 @@
     "promotion_sources_total": 5,
     "ready_package_count": 3
   },
+  "ranked_promotion_plan": [
+    {
+      "cli_mode": null,
+      "next_action": "Review mapped Luanti mod metadata before defining any runtime registration task.",
+      "owner_lane": "metadata_review",
+      "package_builder": null,
+      "promotion_id": "promotion:3",
+      "promotion_kind": "luanti_mod_metadata_review",
+      "rank": 1,
+      "report_path": "003-luanti_mod.json",
+      "required_artifacts": [
+        "dry_run_report"
+      ],
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "requires_operator_approval": false,
+      "requires_rollback_metadata": false,
+      "risk_label": "metadata_only_review",
+      "safety": {
+        "dry_run_only": true,
+        "no_assets_copied": true,
+        "no_live_server_mutation": true,
+        "no_raw_payloads": true,
+        "promotion_package_executes_world_mutation": false
+      },
+      "source_class": "luanti_mod",
+      "source_id": "luanti_mod",
+      "staged_apply_can_mutate_disposable_world": false,
+      "status": "metadata_ready"
+    },
+    {
+      "cli_mode": "--asset-promotion-package",
+      "next_action": "Package reviewed asset references without copying asset bytes or mutating a world.",
+      "owner_lane": "asset_reference_review",
+      "package_builder": "build_asset_reference_promotion_package",
+      "promotion_id": "promotion:1",
+      "promotion_kind": "asset_reference_promotion_package",
+      "rank": 2,
+      "report_path": "001-bedrock_asset_pack.json",
+      "required_artifacts": [
+        "dry_run_report",
+        "operator_no_world_mutation_approval"
+      ],
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "requires_operator_approval": true,
+      "requires_rollback_metadata": false,
+      "risk_label": "no_world_mutation_operator_review",
+      "safety": {
+        "dry_run_only": true,
+        "no_assets_copied": true,
+        "no_live_server_mutation": true,
+        "no_raw_payloads": true,
+        "promotion_package_executes_world_mutation": false
+      },
+      "source_class": "bedrock_resource_pack",
+      "source_id": "bedrock_asset_pack",
+      "staged_apply_can_mutate_disposable_world": false,
+      "status": "ready_for_no_mutation_package"
+    },
+    {
+      "cli_mode": "--asset-promotion-package",
+      "next_action": "Package reviewed asset references without copying asset bytes or mutating a world.",
+      "owner_lane": "asset_reference_review",
+      "package_builder": "build_asset_reference_promotion_package",
+      "promotion_id": "promotion:2",
+      "promotion_kind": "asset_reference_promotion_package",
+      "rank": 3,
+      "report_path": "002-java_pack.json",
+      "required_artifacts": [
+        "dry_run_report",
+        "operator_no_world_mutation_approval"
+      ],
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "requires_operator_approval": true,
+      "requires_rollback_metadata": false,
+      "risk_label": "no_world_mutation_operator_review",
+      "safety": {
+        "dry_run_only": true,
+        "no_assets_copied": true,
+        "no_live_server_mutation": true,
+        "no_raw_payloads": true,
+        "promotion_package_executes_world_mutation": false
+      },
+      "source_class": "java_resource_pack",
+      "source_id": "java_pack",
+      "staged_apply_can_mutate_disposable_world": false,
+      "status": "ready_for_no_mutation_package"
+    },
+    {
+      "cli_mode": "--promotion-package",
+      "next_action": "Run adapter smoke and review before building a disposable-staging promotion package.",
+      "owner_lane": "disposable_structure_staging",
+      "package_builder": "build_structure_import_promotion_package",
+      "promotion_id": "promotion:4",
+      "promotion_kind": "structure_import_promotion_package",
+      "rank": 4,
+      "report_path": "004-open_platform.ai-schematic-preflight.json.json",
+      "required_artifacts": [
+        "dry_run_report",
+        "operator_approval",
+        "adapter_apply_smoke",
+        "adapter_smoke_review"
+      ],
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "requires_operator_approval": true,
+      "requires_rollback_metadata": true,
+      "risk_label": "disposable_staging_with_rollback",
+      "safety": {
+        "dry_run_only": true,
+        "no_assets_copied": true,
+        "no_live_server_mutation": true,
+        "no_raw_payloads": true,
+        "promotion_package_executes_world_mutation": false
+      },
+      "source_class": "schematic",
+      "source_id": "open_platform.ai-schematic-preflight.json",
+      "staged_apply_can_mutate_disposable_world": true,
+      "status": "requires_disposable_staging_review"
+    },
+    {
+      "cli_mode": null,
+      "next_action": "Keep world imports metadata-only until a separate safe conversion path is reviewed.",
+      "owner_lane": "world_conversion_design",
+      "package_builder": null,
+      "promotion_id": "promotion:5",
+      "promotion_kind": "world_metadata_deferral",
+      "rank": 5,
+      "report_path": "005-world_export.json",
+      "required_artifacts": [
+        "dry_run_report",
+        "future_world_conversion_design"
+      ],
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "requires_operator_approval": true,
+      "requires_rollback_metadata": false,
+      "risk_label": "deferred_world_conversion",
+      "safety": {
+        "dry_run_only": true,
+        "no_assets_copied": true,
+        "no_live_server_mutation": true,
+        "no_raw_payloads": true,
+        "promotion_package_executes_world_mutation": false
+      },
+      "source_class": "world",
+      "source_id": "world_export",
+      "staged_apply_can_mutate_disposable_world": false,
+      "status": "deferred_until_conversion_design"
+    }
+  ],
   "readiness": {
     "blocking_reasons": [],
     "compatibility_import_inventory_ready": true

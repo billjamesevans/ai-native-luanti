@@ -13,9 +13,11 @@
     "root",
     "summary",
     "promotion_queue_summary",
+    "promotion_plan_summary",
     "readiness",
     "sources",
     "promotion_queue",
+    "ranked_promotion_plan",
     "safety"
   ],
   "properties": {
@@ -176,6 +178,41 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/promotion_queue_row"
+      }
+    },
+    "promotion_plan_summary": {
+      "type": "object",
+      "required": [
+        "plan_items_total",
+        "by_owner_lane",
+        "by_risk_label",
+        "disposable_staging_items_total",
+        "world_conversion_deferred"
+      ],
+      "properties": {
+        "plan_items_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_owner_lane": {
+          "type": "object"
+        },
+        "by_risk_label": {
+          "type": "object"
+        },
+        "disposable_staging_items_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "world_conversion_deferred": {
+          "type": "boolean"
+        }
+      }
+    },
+    "ranked_promotion_plan": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ranked_promotion_plan_row"
       }
     },
     "safety": {
@@ -427,6 +464,117 @@
               "const": false
             }
           }
+        }
+      }
+    },
+    "ranked_promotion_plan_row": {
+      "type": "object",
+      "required": [
+        "rank",
+        "promotion_id",
+        "source_id",
+        "source_class",
+        "promotion_kind",
+        "status",
+        "owner_lane",
+        "risk_label",
+        "required_artifacts",
+        "required_capabilities",
+        "requires_operator_approval",
+        "requires_rollback_metadata",
+        "staged_apply_can_mutate_disposable_world",
+        "next_action",
+        "safety"
+      ],
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "promotion_id": {
+          "type": "string"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_class": {
+          "type": "string"
+        },
+        "promotion_kind": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "owner_lane": {
+          "enum": [
+            "metadata_review",
+            "asset_reference_review",
+            "disposable_structure_staging",
+            "world_conversion_design",
+            "source_reclassification"
+          ]
+        },
+        "risk_label": {
+          "enum": [
+            "metadata_only_review",
+            "no_world_mutation_operator_review",
+            "disposable_staging_with_rollback",
+            "deferred_world_conversion",
+            "blocked_source"
+          ]
+        },
+        "report_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_builder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cli_mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "contains": {
+            "const": "import.assets"
+          }
+        },
+        "requires_operator_approval": {
+          "type": "boolean"
+        },
+        "requires_rollback_metadata": {
+          "type": "boolean"
+        },
+        "staged_apply_can_mutate_disposable_world": {
+          "type": "boolean"
+        },
+        "next_action": {
+          "type": "string"
+        },
+        "safety": {
+          "type": "object",
+          "required": [
+            "dry_run_only",
+            "no_assets_copied",
+            "no_raw_payloads",
+            "no_live_server_mutation",
+            "promotion_package_executes_world_mutation"
+          ]
         }
       }
     },
