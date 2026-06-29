@@ -53,6 +53,12 @@ Reference path:
 tools/agents_sdk_model_adapter/
 ```
 
+Luanti-side bridge:
+
+```text
+builtin/game/ai_agents_sdk_adapter_plugin.lua
+```
+
 Important files:
 
 - `agent.py`: Agents SDK adapter, tools, offline smoke path, and response
@@ -75,6 +81,33 @@ uv run python main.py --host 127.0.0.1 --port 8766
 
 Live mode requires `OPENAI_API_KEY`. The key belongs in server-local secret
 configuration, never in the repository, runtime manifests, or public evidence.
+
+## Luanti Adapter
+
+The Lua adapter is disabled by default and is loaded only when:
+
+```text
+ai_runtime.enable_agents_sdk_adapter = true
+```
+
+Default endpoint:
+
+```text
+http://127.0.0.1:8766/v1/model-adapter
+```
+
+Probe command:
+
+```text
+/ai_agents_sdk_adapter_probe
+```
+
+The adapter installs itself into `core.ai_agent_plugin.set_model_adapter` when
+enabled, so unknown `/nova` prompts can flow through the Agents SDK sidecar.
+The Lua side only accepts loopback endpoints by default. The sidecar can perform
+hosted web search and function-tool reasoning, but it still returns a bounded
+`ai_native_model_adapter_response`; the engine decides whether any proposed
+world action becomes a preview, approval, rollback-backed task, or refusal.
 
 ## Tool Policy
 
@@ -101,9 +134,11 @@ Run:
 ```bash
 python3 util/ai_native_agents_sdk_bridge_contract.py
 python3 tools/agents_sdk_model_adapter/main.py --smoke
+bin/luantiserver --run-unittests --test-module TestAIRuntime
 ```
 
 The contract verifier checks that the reference sidecar imports and wires the
 Agents SDK primitives, exposes the model-adapter HTTP endpoint, keeps the
-runtime as the mutation authority, and produces a safe offline response envelope
-without credentials or network access.
+runtime as the mutation authority, gates the Lua bridge behind
+`ai_runtime.enable_agents_sdk_adapter`, and produces a safe offline response
+envelope without credentials or network access.

@@ -5982,4 +5982,126 @@ local function run_model_adapter_plugin_probe_tests()
 	assert(#adapter_command_message < 12000)
 end
 
-run_model_adapter_plugin_probe_tests()
+run_model_adapter_plugin_probe_tests();
+
+(function()
+	assert(core.ai_agents_sdk_adapter_plugin ~= nil)
+	assert(core.registered_chatcommands.ai_agents_sdk_adapter_probe ~= nil)
+	assert(core.registered_chatcommands.ai_agents_sdk_adapter_probe.privs.server == true)
+
+	local captured_http_request
+	local captured_adapter_request
+	core.ai_agents_sdk_adapter_plugin.configure({
+		endpoint = "http://127.0.0.1:8766/v1/model-adapter",
+		fetcher = function(http_request)
+			captured_http_request = table.copy(http_request)
+			captured_adapter_request = core.parse_json(http_request.data)
+			return {
+				completed = true,
+				succeeded = true,
+				code = 200,
+				data = core.write_json({
+					schema_version = 1,
+					response_kind = "ai_native_model_adapter_response",
+					adapter_contract = "provider_neutral_v1",
+					ok = true,
+					message = "Agents SDK sidecar response.",
+					adapter_name = "openai-agents-sdk-model-adapter",
+					elapsed_us = 1200,
+					response = {
+						agentic_execution = true,
+						web_search_available = true,
+						tools_enabled = {
+							"summarize_runtime_capabilities",
+							"classify_world_action",
+							"WebSearchTool",
+						},
+					},
+				}),
+			}
+		end,
+	})
+
+	local sdk_probe = core.ai_agents_sdk_adapter_plugin.run_probe({
+		agent_id = "agents_sdk_adapter_probe:tester",
+		owner = "synthetic-operator",
+		task_id = "agents-sdk-adapter-probe:test",
+		prompt = "Should the runtime use a real agent sidecar?",
+		context = {
+			surface_id = "guide",
+			capabilities = "world.read,http.llm,task.cancel",
+		},
+	})
+	assert(sdk_probe.schema_version == 1)
+	assert(sdk_probe.operation == "ai_agents_sdk_adapter_plugin.run_probe")
+	assert(sdk_probe.ok == true)
+	assert(sdk_probe.status == "success")
+	assert(sdk_probe.reason == "model_response")
+	assert(sdk_probe.config.loopback_endpoint == true)
+	assert(sdk_probe.config.has_fetcher == true)
+	assert(captured_http_request ~= nil)
+	assert(captured_http_request.url == "http://127.0.0.1:8766/v1/model-adapter")
+	assert(captured_http_request.method == "POST")
+	assert(captured_http_request.data ~= nil)
+	assert(captured_http_request.data:find("Should the runtime use a real agent sidecar?", 1, true))
+	assert(captured_adapter_request.schema_version == 1)
+	assert(captured_adapter_request.request_kind == "ai_native_model_adapter_request")
+	assert(captured_adapter_request.adapter_contract == "provider_neutral_v1")
+	assert(captured_adapter_request.agent_id == "agents_sdk_adapter_probe:tester")
+	assert(captured_adapter_request.public_prompt == "Should the runtime use a real agent sidecar?")
+	assert(captured_adapter_request.prompt == nil)
+	assert(captured_adapter_request.private_prompt == nil)
+	assert(captured_adapter_request.context.surface_id == "guide")
+	assert(captured_adapter_request.safety.no_provider_credentials == true)
+	assert(sdk_probe.response.response_kind == "ai_native_model_adapter_response")
+	assert(sdk_probe.response.adapter_name == "openai-agents-sdk-model-adapter")
+	assert(sdk_probe.result.response.agentic_execution == true)
+	assert(sdk_probe.result.response.tools_enabled[3] == "WebSearchTool")
+	assert(sdk_probe.metrics.model_adapter_requests_delta == 1)
+	assert(sdk_probe.metrics.model_adapter_successes_delta == 1)
+	assert(sdk_probe.metrics.model_adapter_failures_delta == 0)
+	assert(sdk_probe.safety.public_safe_output == true)
+	assert(sdk_probe.safety.loopback_endpoint_only == true)
+	assert(sdk_probe.safety.no_provider_credentials == true)
+	assert(sdk_probe.safety.private_input_retained == false)
+	assert(sdk_probe.safety.no_raw_provider_payloads == true)
+	assert(sdk_probe.safety.sidecar_executes_world_mutation == false)
+	assert(sdk_probe.raw_provider_response == nil)
+	assert(sdk_probe.provider_credentials == nil)
+	assert(sdk_probe.asset_payload == nil)
+
+	local command_ok, command_message =
+		core.registered_chatcommands.ai_agents_sdk_adapter_probe.func(
+			"admin",
+			"task=agents-sdk-adapter-probe:command")
+	assert(command_ok == true)
+	assert(command_message:find(
+		"\"operation\":\"ai_agents_sdk_adapter_plugin.run_probe\"", 1, true))
+	assert(command_message:find("\"status\":\"success\"", 1, true))
+	assert(command_message:find("\"adapter_name\":\"openai-agents-sdk-model-adapter\"", 1, true))
+	assert(command_message:find("\"request_kind\":\"ai_native_model_adapter_request\"", 1, true))
+	assert(command_message:find("\"loopback_endpoint_only\":true", 1, true))
+	assert(not command_message:find("/Users/", 1, true))
+	assert(not command_message:find("minecraftpi", 1, true))
+	assert(not command_message:find("private_prompt", 1, true))
+	assert(not command_message:find("\"provider_credentials\"", 1, true))
+	assert(not command_message:find("raw_provider_response", 1, true))
+	assert(#command_message < 12000)
+
+	core.ai_agents_sdk_adapter_plugin.configure({
+		endpoint = "https://example.com/v1/model-adapter",
+	})
+	local blocked_probe = core.ai_agents_sdk_adapter_plugin.run_probe({
+		agent_id = "agents_sdk_adapter_probe:blocked",
+		owner = "synthetic-operator",
+		task_id = "agents-sdk-adapter-probe:blocked",
+	})
+	assert(blocked_probe.ok == false)
+	assert(blocked_probe.status == "blocked")
+	assert(blocked_probe.reason == "endpoint_not_loopback")
+	assert(blocked_probe.safety.loopback_endpoint_only == false)
+
+	core.ai_agents_sdk_adapter_plugin.configure({
+		endpoint = "http://127.0.0.1:8766/v1/model-adapter",
+	})
+end)()

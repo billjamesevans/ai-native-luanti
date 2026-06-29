@@ -19,6 +19,8 @@ README = BRIDGE_DIR / "README.md"
 DOC = ROOT / "doc" / "ai-native-runtime" / "agents-sdk-model-adapter.md"
 RUNTIME_README = ROOT / "doc" / "ai-native-runtime" / "README.md"
 MODEL_CONTRACT = ROOT / "doc" / "ai-native-runtime" / "model-adapter-contract.md"
+LUA_PLUGIN = ROOT / "builtin" / "game" / "ai_agents_sdk_adapter_plugin.lua"
+BUILTIN_INIT = ROOT / "builtin" / "game" / "init.lua"
 
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
@@ -47,7 +49,7 @@ def _load_agent_module():
 
 def validate_contract() -> dict:
     violations: list[dict] = []
-    for path in (AGENT, MAIN, PYPROJECT, README, DOC):
+    for path in (AGENT, MAIN, PYPROJECT, README, DOC, LUA_PLUGIN):
         _require(path.exists(), "missing_file", str(path), violations)
     if violations:
         return {"status": "fail", "violations": violations}
@@ -59,6 +61,8 @@ def validate_contract() -> dict:
     doc = _read(DOC)
     runtime_readme = _read(RUNTIME_README)
     model_contract = _read(MODEL_CONTRACT)
+    lua_plugin = _read(LUA_PLUGIN)
+    builtin_init = _read(BUILTIN_INIT)
 
     for phrase in (
         "from agents import Agent, Runner, WebSearchTool, function_tool",
@@ -80,6 +84,32 @@ def validate_contract() -> dict:
         "run_model_adapter_request",
     ):
         _require(phrase in main_source, "main_source_missing_phrase", phrase, violations)
+
+    for phrase in (
+        'core.settings:get_bool("ai_runtime.enable_agents_sdk_adapter", false)',
+        'core.register_chatcommand("ai_agents_sdk_adapter_probe"',
+        "http://127.0.0.1:8766/v1/model-adapter",
+        "endpoint_is_loopback",
+        "core.ai_agent_plugin.set_model_adapter",
+        "core.ai_model_ops.request",
+        "ai_native_model_adapter_response",
+        "sidecar_executes_world_mutation = false",
+    ):
+        _require(phrase in lua_plugin, "lua_plugin_missing_phrase", phrase, violations)
+
+    _require(
+        builtin_init.find('dofile(gamepath .. "ai_agent_plugin.lua")')
+        < builtin_init.find('dofile(gamepath .. "ai_agents_sdk_adapter_plugin.lua")'),
+        "lua_plugin_loaded_before_agent_plugin",
+        "ai_agents_sdk_adapter_plugin must load after ai_agent_plugin",
+        violations,
+    )
+    _require(
+        'core.settings:get_bool("ai_runtime.enable_agents_sdk_adapter", false)' in builtin_init,
+        "lua_plugin_init_gate_missing",
+        str(BUILTIN_INIT),
+        violations,
+    )
 
     _require("openai-agents" in pyproject, "pyproject_missing_openai_agents", str(PYPROJECT), violations)
     _require("WebSearchTool" in readme, "readme_missing_web_search_tool", str(README), violations)
@@ -134,6 +164,7 @@ def validate_contract() -> dict:
             "web_search_tool": True,
             "function_tools": True,
             "http_adapter_endpoint": True,
+            "lua_sidecar_adapter": True,
             "offline_smoke": True,
             "public_safe_docs": True,
         },
