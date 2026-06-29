@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
+import ai_native_agent_product_loop_live_probe
 import ai_native_operator_action_approval_plan
 import ai_native_operator_action_approval_receipt
 import ai_native_operator_task_control_executor
@@ -31,6 +32,7 @@ OPERATOR_CONTROL_REPORT_NAME = "ai-runtime-operator-control-report.json"
 OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.json"
 OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-receipt.json"
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
+AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME = "ai-runtime-agent-product-loop-live-result.json"
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
 OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-task-control-command-result.json"
 PRODUCT_PROFILE_HYGIENE_NAME = "ai-runtime-product-profile-hygiene.json"
@@ -168,6 +170,10 @@ def operator_action_approval_receipt_artifact_path(args) -> Path:
 
 def operator_action_execution_result_artifact_path(args) -> Path:
     return physical_run_dir(args) / OPERATOR_ACTION_EXECUTION_RESULT_NAME
+
+
+def agent_product_loop_live_result_artifact_path(args) -> Path:
+    return physical_run_dir(args) / AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME
 
 
 def operator_task_control_live_result_artifact_path(args) -> Path:
@@ -312,6 +318,7 @@ def build_steps(args) -> list[CommandStep]:
             + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
         ),
         build_operator_status_step(args),
+        build_agent_product_loop_live_step(args),
         build_operator_task_control_live_step(args),
         build_operator_task_control_command_step(args),
         CommandStep(
@@ -429,6 +436,44 @@ def build_operator_status_step(args) -> CommandStep:
             operator_status_generated_at(args),
             "--max-bytes",
             str(args.operator_status_max_bytes),
+        ),
+    )
+
+
+def build_agent_product_loop_live_step(args) -> CommandStep:
+    return CommandStep(
+        "agent_product_loop_live_probe",
+        "First-party agent product-loop probe in disposable ai_runtime world",
+        [
+            args.python,
+            "util/ai_native_agent_product_loop_live_probe.py",
+            "--root",
+            ".",
+            "--server-bin",
+            args.server_bin,
+            "--output",
+            str(agent_product_loop_live_result_artifact_path(args)),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.agent_product_loop_live_result_max_bytes),
+            "--timeout",
+            str(args.agent_product_loop_live_timeout),
+        ],
+        python_manifest_command(
+            "util/ai_native_agent_product_loop_live_probe.py",
+            "--root",
+            ".",
+            "--server-bin",
+            server_manifest_bin(args.server_bin),
+            "--output",
+            logical_path(args, AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.agent_product_loop_live_result_max_bytes),
+            "--timeout",
+            str(args.agent_product_loop_live_timeout),
         ),
     )
 
@@ -1146,6 +1191,35 @@ def operator_task_control_live_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def agent_product_loop_live_evidence(args) -> tuple[dict, list[str]]:
+    path = agent_product_loop_live_result_artifact_path(args)
+    source_path = logical_path(args, AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME)
+    evidence = {
+        "agent_product_loop_live_status": "fail",
+        "agent_product_loop_live_path": source_path,
+        "source_kind": "disposable_live_ai_runtime_agent_product_loop_probe",
+        "direct_command_execution": True,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("agent_product_loop_live_probe artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        evidence.update(
+            ai_native_agent_product_loop_live_probe.validate_live_result(
+                payload,
+                max_bytes=args.agent_product_loop_live_result_max_bytes,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"agent_product_loop_live_probe artifact invalid: {type(exc).__name__}")
+    evidence["agent_product_loop_live_status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def operator_task_control_command_evidence(args) -> tuple[dict, list[str]]:
     path = operator_task_control_command_result_artifact_path(args)
     source_path = logical_path(args, OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME)
@@ -1235,6 +1309,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 OPERATOR_ACTION_EXECUTION_RESULT_NAME,
             )
+        if step.id == "agent_product_loop_live_probe":
+            artifact_paths["agent_product_loop_live_result"] = logical_path(
+                args,
+                AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME,
+            )
         if step.id == "operator_task_control_live_probe":
             artifact_paths["operator_task_control_live_result"] = logical_path(
                 args,
@@ -1262,6 +1341,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     if operator_status_step_ran:
         operator_evidence, operator_failures = operator_status_evidence(args)
         failure_reasons.extend(operator_failures)
+
+    agent_product_loop_live = None
+    if any(step.id == "agent_product_loop_live_probe" for step, _ in command_results):
+        agent_product_loop_live, agent_product_loop_failures = agent_product_loop_live_evidence(args)
+        failure_reasons.extend(agent_product_loop_failures)
 
     operator_task_control_live = None
     if any(step.id == "operator_task_control_live_probe" for step, _ in command_results):
@@ -1298,6 +1382,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "Generated artifacts remain local-only and ignored by Git under local/benchmarks.",
             "Use the low-power lane only after backup-first readiness is confirmed.",
             "Operator status uses a disposable ai_runtime live command probe by default.",
+            "First-party agent product-loop proof uses a disposable ai_runtime world and synthetic public nodes.",
         ]
         + (
             [
@@ -1313,6 +1398,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         manifest["clean_profile_evidence"] = clean_profile
     if operator_evidence is not None:
         manifest["operator_status_evidence"] = operator_evidence
+    if agent_product_loop_live is not None:
+        manifest["agent_product_loop_live_evidence"] = agent_product_loop_live
     if operator_task_control_live is not None:
         manifest["operator_task_control_live_evidence"] = operator_task_control_live
     if operator_task_control_command is not None:
@@ -1485,6 +1572,18 @@ def parse_args(argv=None):
         type=int,
         default=20000,
         help="Maximum byte budget for the derived operator action execution result artifact.",
+    )
+    parser.add_argument(
+        "--agent-product-loop-live-result-max-bytes",
+        type=int,
+        default=26000,
+        help="Maximum byte budget for the first-party agent product-loop live probe artifact.",
+    )
+    parser.add_argument(
+        "--agent-product-loop-live-timeout",
+        type=float,
+        default=20.0,
+        help="Seconds to wait for the disposable first-party agent product-loop live probe.",
     )
     parser.add_argument(
         "--operator-task-control-live-result-max-bytes",

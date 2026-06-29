@@ -198,6 +198,107 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    def write_agent_product_loop_live_artifact(self, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "live_result_kind": "ai_native_agent_product_loop_live_result",
+            "generated_at": "2026-06-28T12:00:00Z",
+            "runtime_context": {
+                "mode": "disposable_live_ai_runtime_agent_product_loop_probe",
+                "gameid": "ai_runtime",
+                "requires_live_pi": False,
+                "requires_private_world": False,
+                "requires_private_assets": False,
+                "requires_model_network": False,
+                "world_mutation_performed": True,
+                "world_mutation_scope": "disposable_synthetic_ai_runtime_world",
+            },
+            "workflow": {
+                "build": {
+                    "preview_status": "success",
+                    "pending_status": "pending_approval",
+                    "approval_id": "approval:build",
+                    "approved_status": "queued",
+                    "task_id": "task:build",
+                    "task_status": "completed",
+                    "node_after": "ai_runtime_base:cobble",
+                    "rollback_record_count": 1,
+                },
+                "repair": {
+                    "preview_status": "success",
+                    "pending_status": "pending_approval",
+                    "approval_id": "approval:repair",
+                    "approved_status": "queued",
+                    "task_id": "task:repair",
+                    "task_status": "completed",
+                    "node_after": "air",
+                    "rollback_record_count": 1,
+                },
+                "task_control": {
+                    "cancel_checked": True,
+                    "cancel_before_status": "queued",
+                    "cancel_after_status": "cancelled",
+                    "cancel_command_status": "success",
+                    "retry_checked": True,
+                    "retry_blocked_status": "blocked",
+                    "retry_blocked_reason": "rollback_metadata_unavailable",
+                    "retry_result_status": "queued",
+                    "retry_final_status": "completed",
+                },
+                "surfaces": {
+                    "guide_command_checked": True,
+                    "tasks_command_checked": True,
+                    "audit_review_checked": True,
+                    "rollback_review_checked": True,
+                    "defender_command_checked": True,
+                    "import_preview_checked": True,
+                    "operator_status_checked": True,
+                },
+            },
+            "operator_status_snapshot": {
+                "status": "ready",
+                "tasks_total": 6,
+                "completed_tasks": 5,
+                "cancelled_tasks": 1,
+                "rollback_records_available": 2,
+                "import_reviews_total": 1,
+                "operator_control_recommendations_total": 3,
+                "public_safe_output": True,
+            },
+            "summary": {
+                "preview_plan_count": 2,
+                "approval_plan_count": 2,
+                "approved_task_count": 2,
+                "task_count": 6,
+                "task_status_counts": {"completed": 5, "cancelled": 1},
+                "rollback_record_count": 2,
+                "audit_event_count": 2,
+                "node_writes_verified": 2,
+                "transient_blocked_outcomes": 1,
+                "final_blocked_or_unsafe_outcomes": 0,
+            },
+            "safety": {
+                "public_safe_output": True,
+                "disposable_live_world_only": True,
+                "world_mutation_performed": True,
+                "world_mutation_scope": "disposable_synthetic_ai_runtime_world",
+                "rollback_execution_performed": False,
+                "import_promotion_execution_performed": False,
+                "assets_copied": False,
+                "no_raw_assets": True,
+                "no_provider_prompts": True,
+                "no_family_world_coordinates": True,
+            },
+            "bounds": {
+                "max_bytes": 26000,
+                "output_bytes": 0,
+                "truncated": False,
+            },
+        }
+        payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
     def write_operator_task_control_command_artifact(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -515,6 +616,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 )
                 source = "live_command" if step.id == "operator_status_live_command" else "command_surrogate"
                 self.write_operator_status_artifact(output_path, source=source)
+            if step.id == "agent_product_loop_live_probe":
+                output_path = pathlib.Path(
+                    step.actual_command[step.actual_command.index("--output") + 1]
+                )
+                self.write_agent_product_loop_live_artifact(output_path)
             if step.id == "operator_task_control_live_probe":
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
@@ -560,6 +666,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -590,6 +697,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "product_profile_hygiene",
                     "branch_benchmark_gate",
                     "operator_status_live_command",
+                    "agent_product_loop_live_probe",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
                     "ai_runtime_focused_tests",
@@ -623,6 +731,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["operator_action_execution_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-action-execution-result.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["agent_product_loop_live_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-agent-product-loop-live-result.json",
             )
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_live_result"],
@@ -721,6 +833,43 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "pass",
             )
             self.assertEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_live_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_preview_plans"],
+                2,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_approval_plans"],
+                2,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_approved_tasks"],
+                2,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_rollback_records"],
+                2,
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_cancel_checked"]
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_retry_checked"]
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_operator_status_checked"]
+            )
+            self.assertGreaterEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_operator_status_tasks"],
+                6,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_final_blocked_or_unsafe"],
+                0,
+            )
+            self.assertEqual(
                 manifest["operator_task_control_live_evidence"]["operator_task_control_live_items"],
                 5,
             )
@@ -813,6 +962,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -917,6 +1067,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1070,6 +1221,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status package ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1090,6 +1242,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "product_profile_hygiene",
                     "branch_benchmark_gate",
                     "operator_status_package",
+                    "agent_product_loop_live_probe",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
                     "ai_runtime_focused_tests",
@@ -1215,6 +1368,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1271,6 +1425,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1314,6 +1469,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_operator_status_artifact(output_path)
+                if step.id == "agent_product_loop_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_product_loop_live_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1371,6 +1531,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1403,6 +1564,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_operator_status_artifact(output_path)
+                if step.id == "agent_product_loop_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_product_loop_live_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1460,6 +1626,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1483,6 +1650,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_operator_status_artifact(output_path)
+                if step.id == "agent_product_loop_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_product_loop_live_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1541,6 +1713,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1590,6 +1763,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "benchmark failed near /Users/billevans/private and minecraftpi.home",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1649,6 +1823,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status package ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1694,6 +1869,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                             },
                         },
                     )
+                if step.id == "agent_product_loop_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_product_loop_live_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1755,6 +1935,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1797,6 +1978,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_operator_status_artifact(output_path)
+                if step.id == "agent_product_loop_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_product_loop_live_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1853,6 +2039,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-operator-action-approval-plan.json",
             "ai-runtime-operator-action-approval-receipt.json",
             "ai-runtime-operator-action-execution-result.json",
+            "ai-runtime-agent-product-loop-live-result.json",
             "ai-runtime-operator-task-control-live-result.json",
             "ai-runtime-operator-task-control-command-result.json",
             "/ai_runtime_operator_status",
@@ -1861,6 +2048,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "util/ai_native_operator_action_approval_plan.py",
             "util/ai_native_operator_action_approval_receipt.py",
             "util/ai_native_operator_task_control_executor.py",
+            "util/ai_native_agent_product_loop_live_probe.py",
             "util/ai_native_operator_task_control_live_probe.py",
             "util/ai_native_operator_task_control_command_probe.py",
             "product-profile hygiene gate",
@@ -1868,6 +2056,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "--operator-action-approval-plan-max-bytes",
             "--operator-action-approval-receipt-max-bytes",
             "--operator-action-execution-result-max-bytes",
+            "--agent-product-loop-live-result-max-bytes",
             "--operator-task-control-live-result-max-bytes",
             "--operator-task-control-command-result-max-bytes",
             "--operator-status-source surrogate",
@@ -1883,6 +2072,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "approval-plan artifacts",
             "receipt artifacts",
             "receipt-gated task control executor",
+            "first-party product-loop live result",
             "receipt-gated live task-control probe",
             "receipt-gated task-control command probe",
             "non-mutating",
