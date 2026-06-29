@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
 import ai_native_operator_action_approval_plan
+import ai_native_operator_action_approval_receipt
 import ai_native_operator_control_report
 
 
@@ -25,6 +26,7 @@ OPERATOR_STATUS_NAME = "ai-runtime-operator-status.json"
 OPERATOR_STATUS_LIVE_NAME = "ai-runtime-operator-status-live.json"
 OPERATOR_CONTROL_REPORT_NAME = "ai-runtime-operator-control-report.json"
 OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.json"
+OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-receipt.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -142,6 +144,10 @@ def operator_control_report_artifact_path(args) -> Path:
 
 def operator_action_approval_plan_artifact_path(args) -> Path:
     return physical_run_dir(args) / OPERATOR_ACTION_APPROVAL_PLAN_NAME
+
+
+def operator_action_approval_receipt_artifact_path(args) -> Path:
+    return physical_run_dir(args) / OPERATOR_ACTION_APPROVAL_RECEIPT_NAME
 
 
 def operator_status_artifact_name(args) -> str:
@@ -470,6 +476,8 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
     report_source_path = logical_path(args, OPERATOR_CONTROL_REPORT_NAME)
     approval_plan_path = operator_action_approval_plan_artifact_path(args)
     approval_plan_source_path = logical_path(args, OPERATOR_ACTION_APPROVAL_PLAN_NAME)
+    approval_receipt_path = operator_action_approval_receipt_artifact_path(args)
+    approval_receipt_source_path = logical_path(args, OPERATOR_ACTION_APPROVAL_RECEIPT_NAME)
     step_id = operator_status_step_id(args)
     evidence = {
         "status": "fail",
@@ -482,6 +490,8 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
         "operator_control_report_path": report_source_path,
         "operator_action_approval_plan_status": "fail",
         "operator_action_approval_plan_path": approval_plan_source_path,
+        "operator_action_approval_receipt_status": "fail",
+        "operator_action_approval_receipt_path": approval_receipt_source_path,
     }
     reasons = []
     if not path.is_file():
@@ -542,6 +552,18 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
             max_bytes=args.operator_action_approval_plan_max_bytes,
         )
         write_json(approval_plan_path, approval_plan)
+        approval_decision = ai_native_operator_action_approval_receipt.sample_decision_document(
+            approval_plan,
+            generated_at=operator_status_generated_at(args),
+        )
+        approval_receipt = ai_native_operator_action_approval_receipt.build_receipt(
+            approval_plan,
+            approval_decision,
+            generated_at=operator_status_generated_at(args),
+            source_path=approval_plan_source_path,
+            max_bytes=args.operator_action_approval_receipt_max_bytes,
+        )
+        write_json(approval_receipt_path, approval_receipt)
         evidence.update({
             "operator_control_report_status": "pass",
             "operator_control_report_output_bytes": report["bounds"]["output_bytes"],
@@ -549,9 +571,15 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
             "operator_action_approval_plan_status": "pass",
             "operator_action_approval_plan_output_bytes": approval_plan["bounds"]["output_bytes"],
             "operator_action_approval_plan_items": approval_plan["summary"]["actions_total"],
+            "operator_action_approval_receipt_status": "pass",
+            "operator_action_approval_receipt_output_bytes": approval_receipt["bounds"]["output_bytes"],
+            "operator_action_approval_receipt_items": approval_receipt["summary"]["decisions_total"],
         })
     except (OSError, ValueError) as exc:
-        reasons.append(f"{step_id} operator control report or approval plan failed: {type(exc).__name__}")
+        reasons.append(
+            f"{step_id} operator control report, approval plan, or approval receipt failed: "
+            f"{type(exc).__name__}"
+        )
 
     evidence.update({
         "status": "fail" if reasons else "pass",
@@ -612,6 +640,10 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             artifact_paths["operator_action_approval_plan"] = logical_path(
                 args,
                 OPERATOR_ACTION_APPROVAL_PLAN_NAME,
+            )
+            artifact_paths["operator_action_approval_receipt"] = logical_path(
+                args,
+                OPERATOR_ACTION_APPROVAL_RECEIPT_NAME,
             )
 
     operator_evidence = None
@@ -803,6 +835,12 @@ def parse_args(argv=None):
         type=int,
         default=20000,
         help="Maximum byte budget for the derived operator action approval-plan artifact.",
+    )
+    parser.add_argument(
+        "--operator-action-approval-receipt-max-bytes",
+        type=int,
+        default=20000,
+        help="Maximum byte budget for the derived operator action approval receipt artifact.",
     )
     return parser.parse_args(argv)
 

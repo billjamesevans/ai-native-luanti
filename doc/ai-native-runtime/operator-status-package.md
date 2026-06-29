@@ -89,6 +89,23 @@ Approval-plan artifacts are review contracts, not execution controls. They prese
 
 `util/ai_native_runtime_verify.py` writes `ai-runtime-operator-action-approval-plan.json` next to the raw status package and operator-control report. The manifest records `operator_action_approval_plan_status`, path, output bytes, and item count so local and low-power lanes prove the approval-plan adapter against live operator evidence.
 
+## Operator Action Approval Receipt
+
+The operator action approval receipt is the audit bridge between an approval plan and future execution controls. `util/ai_native_operator_action_approval_receipt.py` accepts an `ai_native_operator_action_approval_plan` plus an explicit operator decision document and writes receipt artifacts as `ai-runtime-operator-action-approval-receipt.json`:
+
+```sh
+python3 util/ai_native_operator_action_approval_receipt.py \
+  --input local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-action-approval-plan.json \
+  --decision local/operator-action-decision.json \
+  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-action-approval-receipt.json
+```
+
+Receipt artifacts record approval/denial state only. Each decision binds `approved`, `denied`, or `needs_review` to a plan entry by target kind, target id, and safe next action. The receipt repeats the approval kind, required capabilities, required prerequisites, acknowledged prerequisites, and source references so later execution code can require a durable operator decision instead of trusting a transient prompt or dashboard click.
+
+Receipts are receipt-only and non-mutating. They do not cancel tasks, retry tasks, execute rollback, approve import promotion execution, apply structures, mutate worlds, copy assets, call model providers, or touch family-server state. Unsupported plan entries, stale plans, missing plan entries, mutating safe-next-action names, private decision content, provider prompts, raw asset payload fields, and family-showcase content are rejected instead of being redacted into approval.
+
+`util/ai_native_runtime_verify.py` writes a bounded sample receipt next to the approval plan without approving execution. The manifest records `operator_action_approval_receipt_status`, path, output bytes, and item count so local and low-power lanes prove the receipt shape without adding execution controls.
+
 ## Product Use
 
 The first product use is an operator readout that can answer:
