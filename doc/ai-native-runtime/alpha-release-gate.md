@@ -69,6 +69,7 @@ python3 util/ai_native_low_power_pi_evidence.py \
 ```
 
 The generated manifest must stay public-safe: it records the low-power verifier
-summary and the UDP `30000`/`30001` service split, but not the private SSH
-target, private host/IP, remote checkout path, family-world content, or copied
-assets.
+summary, strict headless-client player-load evidence, attempted/connected
+synthetic player counts, join-log latency proxy evidence, and the UDP
+`30000`/`30001` service split, but not the private SSH target, private host/IP,
+remote checkout path, family-world content, or copied assets.

@@ -68,7 +68,14 @@ class FakeRunner:
                 "requires_private_world": False,
                 "requires_private_assets": False,
                 "player_load_probe_status": "pass",
-                "player_load_probe_kind": "server_process_liveness",
+                "player_load_probe_kind": "headless_client_load",
+                "headless_player_supported": True,
+                "attempted_synthetic_player_count": 1,
+                "connected_synthetic_player_count": 1,
+                "completed_synthetic_player_count": 1,
+                "latency_proxy_supported": True,
+                "latency_probe_kind": "headless_join_log_observation",
+                "join_latency_proxy_sample_count": 1,
                 "server_step_workload": {
                     "status": "pass",
                     "kind": "synthetic_server_step_samples",
@@ -157,11 +164,67 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             "pass",
         )
         self.assertEqual(
+            manifest["runtime_verification_evidence"]["player_load_probe_kind"],
+            "headless_client_load",
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["attempted_synthetic_player_count"],
+            1,
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["connected_synthetic_player_count"],
+            1,
+        )
+        self.assertTrue(
+            manifest["runtime_verification_evidence"]["latency_proxy_supported"],
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["latency_probe_kind"],
+            "headless_join_log_observation",
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["join_latency_proxy_sample_count"],
+            1,
+        )
+        self.assertEqual(
             manifest["runtime_verification_evidence"]["server_step_workload_status"],
             "pass",
         )
         self.assertEqual(manifest["failure_reasons"], [])
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
+
+    def test_remote_verifier_requires_headless_player_probe(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                ]
+            )
+            fake_runner = FakeRunner(module)
+
+            module.run(args, runner=fake_runner, now_fn=lambda: "2026-06-29T10:00:00Z")
+
+        verify_commands = [
+            " ".join(command)
+            for command in fake_runner.calls
+            if "ai_native_runtime_verify.py" in " ".join(command)
+        ]
+        self.assertTrue(verify_commands)
+        command = verify_commands[0]
+        self.assertIn("--headless-player-command", command)
+        self.assertIn("--headless-player-count 1", command)
+        self.assertIn("--require-headless-player-probe", command)
+        self.assertIn("video_driver = null", command)
+        self.assertIn("bin/luanti", command)
 
     def test_accepts_flattened_clean_profile_status_from_runtime_verifier(self):
         module = load_module()
@@ -170,7 +233,14 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             "overall_status": "pass",
             "server_step_workload_status": "pass",
             "player_load_probe_status": "pass",
-            "player_load_probe_kind": "server_process_liveness",
+            "player_load_probe_kind": "headless_client_load",
+            "headless_player_supported": True,
+            "attempted_synthetic_player_count": 1,
+            "connected_synthetic_player_count": 1,
+            "completed_synthetic_player_count": 1,
+            "latency_proxy_supported": True,
+            "latency_probe_kind": "headless_join_log_observation",
+            "join_latency_proxy_sample_count": 1,
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -196,6 +266,45 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             manifest["runtime_verification_evidence"]["server_step_workload_status"],
             "pass",
         )
+
+    def test_manifest_fails_when_headless_player_evidence_is_missing(self):
+        module = load_module()
+        remote_manifest = FakeRunner(module).default_remote_manifest()
+        remote_manifest["clean_profile_evidence"].update(
+            {
+                "player_load_probe_kind": "server_process_liveness",
+                "headless_player_supported": False,
+                "attempted_synthetic_player_count": 0,
+                "connected_synthetic_player_count": 0,
+                "completed_synthetic_player_count": 0,
+                "latency_proxy_supported": False,
+                "latency_probe_kind": "not_measured",
+                "join_latency_proxy_sample_count": 0,
+            }
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                ]
+            )
+            fake_runner = FakeRunner(module, remote_manifest=remote_manifest)
+
+            exit_code, _, manifest = module.run(args, runner=fake_runner, now_fn=lambda: "2026-06-29T10:00:00Z")
+
+        self.assertEqual(exit_code, 2)
+        self.assertIn("headless_player_probe_not_measured", manifest["failure_reasons"])
+        self.assertIn("headless_player_latency_not_measured", manifest["failure_reasons"])
+        self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
 
     def test_manifest_fails_when_backup_confirmation_or_side_by_side_service_is_missing(self):
         module = load_module()

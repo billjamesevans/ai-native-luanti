@@ -506,7 +506,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             if step.id == "branch_benchmark_gate" and "--game-profile" in step.actual_command:
                 if self.command_arg(step.actual_command, "--game-profile") == "ai_runtime":
                     self.write_clean_profile_summary_artifact(
-                        self.clean_profile_summary_path_for_step(step)
+                        self.clean_profile_summary_path_for_step(step),
+                        headless="--headless-player-command" in step.actual_command,
                     )
             if step.id in {"operator_status_live_command", "operator_status_package"}:
                 output_path = pathlib.Path(
@@ -1174,6 +1175,70 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertIn("--headless-player-command", gate_step.manifest_command)
             self.assertIn("<headless-player-command>", gate_step.manifest_command)
             self.assertNotIn("{host}", gate_step.manifest_command)
+
+    def test_clean_profile_headless_requirement_records_player_and_latency_evidence(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-headless-required-pass",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--game-profile",
+                    "ai_runtime",
+                    "--headless-player-command",
+                    "bin/luanti --config <temp-client-config> --go --address {host} --port {port}",
+                    "--headless-player-count",
+                    "2",
+                    "--require-headless-player-probe",
+                ]
+            )
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        (
+                            "local/benchmarks/local-mac/2026-06-28/"
+                            "verify-headless-required-pass/benchmark-gate-manifest.json\n"
+                        ),
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=self.runner_with_operator_artifact(runs),
+                now_fn=lambda: "2026-06-28T12:09:00Z",
+            )
+
+            self.assertEqual(status, 0)
+            evidence = manifest["clean_profile_evidence"]
+            self.assertEqual(evidence["status"], "pass")
+            self.assertTrue(evidence["headless_player_required"])
+            self.assertTrue(evidence["headless_player_supported"])
+            self.assertEqual(evidence["player_load_probe_kind"], "headless_client_load")
+            self.assertEqual(evidence["attempted_synthetic_player_count"], 2)
+            self.assertEqual(evidence["connected_synthetic_player_count"], 2)
+            self.assertEqual(evidence["completed_synthetic_player_count"], 2)
+            self.assertTrue(evidence["latency_proxy_supported"])
+            self.assertEqual(evidence["latency_probe_kind"], "headless_join_log_observation")
+            self.assertEqual(evidence["join_latency_proxy_sample_count"], 2)
 
     def test_clean_profile_summary_failure_fails_manifest_even_if_gate_exits_zero(self):
         harness = load_harness_module()
