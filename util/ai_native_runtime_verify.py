@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
+import ai_native_operator_control_report
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,6 +22,7 @@ DEFAULT_OUTPUT_ROOT = ROOT / "local" / "benchmarks"
 MANIFEST_NAME = "ai-runtime-verification-manifest.json"
 OPERATOR_STATUS_NAME = "ai-runtime-operator-status.json"
 OPERATOR_STATUS_LIVE_NAME = "ai-runtime-operator-status-live.json"
+OPERATOR_CONTROL_REPORT_NAME = "ai-runtime-operator-control-report.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -130,6 +132,10 @@ def logical_path(args, filename: str) -> str:
 
 def operator_status_artifact_path(args) -> Path:
     return physical_run_dir(args) / operator_status_artifact_name(args)
+
+
+def operator_control_report_artifact_path(args) -> Path:
+    return physical_run_dir(args) / OPERATOR_CONTROL_REPORT_NAME
 
 
 def operator_status_artifact_name(args) -> str:
@@ -454,6 +460,8 @@ def operator_control_findings(payload: dict, step_id: str) -> tuple[dict, list[s
 def operator_status_evidence(args) -> tuple[dict, list[str]]:
     path = operator_status_artifact_path(args)
     source_path = logical_path(args, operator_status_artifact_name(args))
+    report_path = operator_control_report_artifact_path(args)
+    report_source_path = logical_path(args, OPERATOR_CONTROL_REPORT_NAME)
     step_id = operator_status_step_id(args)
     evidence = {
         "status": "fail",
@@ -462,6 +470,8 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
         "live_command": "/ai_runtime_operator_status",
         "direct_command_execution": args.operator_status_source == "live",
         "execution_path": operator_status_execution_path(args),
+        "operator_control_report_status": "fail",
+        "operator_control_report_path": report_source_path,
     }
     reasons = []
     if not path.is_file():
@@ -507,6 +517,21 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
 
     control_evidence, control_reasons = operator_control_findings(payload, step_id)
     reasons.extend(control_reasons)
+    try:
+        report = ai_native_operator_control_report.build_report(
+            payload,
+            generated_at=operator_status_generated_at(args),
+            source_path=source_path,
+            max_bytes=args.operator_control_report_max_bytes,
+        )
+        write_json(report_path, report)
+        evidence.update({
+            "operator_control_report_status": "pass",
+            "operator_control_report_output_bytes": report["bounds"]["output_bytes"],
+            "operator_control_report_items": report["summary"]["items_total"],
+        })
+    except (OSError, ValueError) as exc:
+        reasons.append(f"{step_id} operator control report failed: {type(exc).__name__}")
 
     evidence.update({
         "status": "fail" if reasons else "pass",
@@ -563,6 +588,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         if step.id in {"operator_status_live_command", "operator_status_package"}:
             operator_status_step_ran = True
             artifact_paths[step.id] = logical_path(args, operator_status_artifact_name(args))
+            artifact_paths["operator_control_report"] = logical_path(args, OPERATOR_CONTROL_REPORT_NAME)
 
     operator_evidence = None
     if operator_status_step_ran:
@@ -741,6 +767,12 @@ def parse_args(argv=None):
         type=float,
         default=20.0,
         help="Seconds to wait for the disposable live operator-status probe.",
+    )
+    parser.add_argument(
+        "--operator-control-report-max-bytes",
+        type=int,
+        default=16000,
+        help="Maximum byte budget for the derived operator-control report artifact.",
     )
     return parser.parse_args(argv)
 
