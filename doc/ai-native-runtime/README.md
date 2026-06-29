@@ -77,7 +77,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Model adapter contract gate: `python3 util/ai_native_model_adapter_contract.py`
 - Optional model adapter scaffold: enable `ai_runtime.enable_model_adapter_probe_command` and run `/ai_model_adapter_probe`
 - One-command local pre-PR verification with clean-profile workload evidence: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime`
-- Low-power Pi evidence lane: `python3 util/ai_native_low_power_pi_evidence.py --ssh-target "<operator-supplied-target>" --confirm-backup-first`
+- Low-power Pi evidence lane: `python3 util/ai_native_low_power_pi_evidence.py --ssh-target "<operator-supplied-target>" --confirm-backup-first --soak-iterations 3`
   - The Pi lane requires a strict `headless_client_load` probe with attempted/connected synthetic player counts and join-log latency proxy evidence.
 - Synthetic-only utility fallback: add `--game-profile sample-synthetic`
 - Strict headless-player verification: add `--require-headless-player-probe` with a disposable `--headless-player-command`
