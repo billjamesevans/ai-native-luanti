@@ -72,6 +72,23 @@ Use `--format text` for a concise human-readable report. Both formats preserve t
 
 `util/ai_native_runtime_verify.py` writes `ai-runtime-operator-control-report.json` as a sibling artifact whenever it captures or generates an operator-status package. The verification manifest records the report path and pass/fail status so local and low-power lanes prove the adapter works against live operator-status evidence.
 
+## Operator Action Approval Plan
+
+The operator action approval plan is the next review layer after the operator-control report.
+`util/ai_native_operator_action_approval_plan.py` turns the operator-control report into non-mutating approval-plan artifacts. It accepts `ai-runtime-operator-control-report.json` and writes `ai-runtime-operator-action-approval-plan.json`:
+
+```sh
+python3 util/ai_native_operator_action_approval_plan.py \
+  --input local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-control-report.json \
+  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-action-approval-plan.json
+```
+
+The plan groups candidate operator actions by target kind, status, and safe next action. Each approval group records prerequisites, required review capabilities, rollback references, source artifact references, blocked reasons, and unsupported reasons. Current plans cover task cancel/retry review, rollback execution review, import blocker review, import promotion/apply review, and benchmark failure follow-up.
+
+Approval-plan artifacts are review contracts, not execution controls. They preserve the dry-run-only boundary from the source report: no task mutation, no rollback execution, no import promotion execution, no world mutation, no raw assets, no provider prompts, and no family-world coordinates. Unknown safe-next-action values are held for manual operator review instead of becoming executable.
+
+`util/ai_native_runtime_verify.py` writes `ai-runtime-operator-action-approval-plan.json` next to the raw status package and operator-control report. The manifest records `operator_action_approval_plan_status`, path, output bytes, and item count so local and low-power lanes prove the approval-plan adapter against live operator evidence.
+
 ## Product Use
 
 The first product use is an operator readout that can answer:

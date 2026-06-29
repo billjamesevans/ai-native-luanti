@@ -14,6 +14,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
+import ai_native_operator_action_approval_plan
 import ai_native_operator_control_report
 
 
@@ -23,6 +24,7 @@ MANIFEST_NAME = "ai-runtime-verification-manifest.json"
 OPERATOR_STATUS_NAME = "ai-runtime-operator-status.json"
 OPERATOR_STATUS_LIVE_NAME = "ai-runtime-operator-status-live.json"
 OPERATOR_CONTROL_REPORT_NAME = "ai-runtime-operator-control-report.json"
+OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -136,6 +138,10 @@ def operator_status_artifact_path(args) -> Path:
 
 def operator_control_report_artifact_path(args) -> Path:
     return physical_run_dir(args) / OPERATOR_CONTROL_REPORT_NAME
+
+
+def operator_action_approval_plan_artifact_path(args) -> Path:
+    return physical_run_dir(args) / OPERATOR_ACTION_APPROVAL_PLAN_NAME
 
 
 def operator_status_artifact_name(args) -> str:
@@ -462,6 +468,8 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
     source_path = logical_path(args, operator_status_artifact_name(args))
     report_path = operator_control_report_artifact_path(args)
     report_source_path = logical_path(args, OPERATOR_CONTROL_REPORT_NAME)
+    approval_plan_path = operator_action_approval_plan_artifact_path(args)
+    approval_plan_source_path = logical_path(args, OPERATOR_ACTION_APPROVAL_PLAN_NAME)
     step_id = operator_status_step_id(args)
     evidence = {
         "status": "fail",
@@ -472,6 +480,8 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
         "execution_path": operator_status_execution_path(args),
         "operator_control_report_status": "fail",
         "operator_control_report_path": report_source_path,
+        "operator_action_approval_plan_status": "fail",
+        "operator_action_approval_plan_path": approval_plan_source_path,
     }
     reasons = []
     if not path.is_file():
@@ -525,13 +535,23 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
             max_bytes=args.operator_control_report_max_bytes,
         )
         write_json(report_path, report)
+        approval_plan = ai_native_operator_action_approval_plan.build_plan(
+            report,
+            generated_at=operator_status_generated_at(args),
+            source_path=report_source_path,
+            max_bytes=args.operator_action_approval_plan_max_bytes,
+        )
+        write_json(approval_plan_path, approval_plan)
         evidence.update({
             "operator_control_report_status": "pass",
             "operator_control_report_output_bytes": report["bounds"]["output_bytes"],
             "operator_control_report_items": report["summary"]["items_total"],
+            "operator_action_approval_plan_status": "pass",
+            "operator_action_approval_plan_output_bytes": approval_plan["bounds"]["output_bytes"],
+            "operator_action_approval_plan_items": approval_plan["summary"]["actions_total"],
         })
     except (OSError, ValueError) as exc:
-        reasons.append(f"{step_id} operator control report failed: {type(exc).__name__}")
+        reasons.append(f"{step_id} operator control report or approval plan failed: {type(exc).__name__}")
 
     evidence.update({
         "status": "fail" if reasons else "pass",
@@ -589,6 +609,10 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             operator_status_step_ran = True
             artifact_paths[step.id] = logical_path(args, operator_status_artifact_name(args))
             artifact_paths["operator_control_report"] = logical_path(args, OPERATOR_CONTROL_REPORT_NAME)
+            artifact_paths["operator_action_approval_plan"] = logical_path(
+                args,
+                OPERATOR_ACTION_APPROVAL_PLAN_NAME,
+            )
 
     operator_evidence = None
     if operator_status_step_ran:
@@ -773,6 +797,12 @@ def parse_args(argv=None):
         type=int,
         default=16000,
         help="Maximum byte budget for the derived operator-control report artifact.",
+    )
+    parser.add_argument(
+        "--operator-action-approval-plan-max-bytes",
+        type=int,
+        default=20000,
+        help="Maximum byte budget for the derived operator action approval-plan artifact.",
     )
     return parser.parse_args(argv)
 
