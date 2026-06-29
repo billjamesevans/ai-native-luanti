@@ -225,7 +225,7 @@ The next compatibility-format slice is `ai_native_schematic_preflight_v1`, carri
 - `unsupported_fields` records schematic features such as block entities or biomes for manual review.
 - Raw schematic/NBT payloads, copied protected content, private source paths, and family-world coordinates are rejected before a dry-run report is produced.
 
-The preflight adapter emits `source_adapter_kind = public_safe_schematic_preflight_v1` and `structure_format = ai_native_schematic_preflight_v1` while preserving the same approval, adapter-smoke, operator-review, rollback, and promotion-package gates as `ai_native_structure_v1`.
+The preflight adapter reports `source_class = schematic`, emits `source_adapter_kind = public_safe_schematic_preflight_v1` and `structure_format = ai_native_schematic_preflight_v1`, and still preserves the same structure-apply approval, adapter-smoke, operator-review, rollback, and promotion-package gates as `ai_native_structure_v1`.
 
 ## Reviewed Structure Promotion Package
 

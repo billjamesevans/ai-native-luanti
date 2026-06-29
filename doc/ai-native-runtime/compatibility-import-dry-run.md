@@ -23,7 +23,8 @@ The dry-run reporter should classify source material into these initial classes:
 - `java_resource_pack`: Java-style resource pack metadata such as `pack.mcmeta`, textures, sounds, models, and language files.
 - `bedrock_resource_pack`: Bedrock-style resource pack metadata such as `manifest.json`, textures, sounds, models, and client entity descriptors.
 - `bedrock_behavior_pack`: Bedrock-style behavior metadata such as entities, loot tables, recipes, and scripts.
-- `structure`: user-owned schematic or structure exports.
+- `schematic`: user-owned schematic preflight metadata, without raw schematic/NBT payloads.
+- `structure`: user-owned structure exports.
 - `world`: world metadata or conversion inventory.
 - `luanti_mod`: Luanti mod metadata such as `mod.conf` and dependency declarations.
 - `unknown`: any source that can be listed but not classified safely.
@@ -261,7 +262,8 @@ The report classifies source-level and inventory-level content as `supported`,
 `partial`, `unsupported`, `skipped`, or `blocked`. It accepts user-owned Java and
 Bedrock pack metadata, Luanti mods, metadata-only structure/schematic preflights,
 and world-export metadata. It records source class counts, content-hash
-provenance, required capabilities, and planned actions that can later become
+provenance, mapped/skipped/blocked/unsupported dry-run classifications,
+required capabilities, and planned actions that can later become
 `core.ai_import_ops` queued work. It remains metadata-and-reference-only:
 private-looking source names are redacted and blocked, asset bytes are never
 embedded, and whole-world imports stay blocked until a future conversion path is

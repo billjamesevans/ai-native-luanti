@@ -70,6 +70,7 @@
         "by_source_class",
         "source_status_counts",
         "inventory_classification_counts",
+        "dry_run_classification_counts",
         "inventory_items_total",
         "planned_actions_total",
         "required_capabilities"
@@ -90,6 +91,9 @@
         },
         "inventory_classification_counts": {
           "$ref": "#/$defs/classification_counts"
+        },
+        "dry_run_classification_counts": {
+          "$ref": "#/$defs/dry_run_classification_counts"
         },
         "inventory_items_total": {
           "type": "integer",
@@ -212,6 +216,7 @@
         "status",
         "inventory_count",
         "inventory_classification_counts",
+        "dry_run_classification_counts",
         "planned_actions",
         "required_capabilities",
         "provenance",
@@ -240,6 +245,9 @@
         "inventory_classification_counts": {
           "$ref": "#/$defs/classification_counts"
         },
+        "dry_run_classification_counts": {
+          "$ref": "#/$defs/dry_run_classification_counts"
+        },
         "planned_actions": {
           "type": "array"
         },
@@ -263,6 +271,33 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "dry_run_classification_counts": {
+      "type": "object",
+      "required": [
+        "mapped",
+        "skipped",
+        "blocked",
+        "unsupported"
+      ],
+      "properties": {
+        "mapped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsupported": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     }
