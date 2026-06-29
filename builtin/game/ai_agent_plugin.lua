@@ -478,6 +478,29 @@ local function format_command_reply(result)
 			.. " queued=" .. tostring(metrics.tasks_queued or 0)
 			.. " completed=" .. tostring(metrics.tasks_completed or 0)
 			.. " cancelled=" .. tostring(metrics.tasks_cancelled or 0))
+		local surfaces = {}
+		for _, surface in ipairs(result.product_surfaces or {}) do
+			local summary = surface_summary(surface)
+			if summary then
+				append(surfaces, summary)
+			end
+		end
+		if #surfaces > 0 then
+			append(lines, "surfaces=" .. join_limited(surfaces, 8))
+		end
+		local tasks = {}
+		for _, task in ipairs(result.tasks or {}) do
+			local summary = task_summary(task)
+			if summary then
+				append(tasks, summary)
+			end
+		end
+		append(lines, "known_tasks=" .. tostring(result.known_task_count or #tasks))
+		append(lines, "tasks=" .. (#tasks > 0 and join_limited(tasks, 8) or "none"))
+		local pending = pending_approval_summary(result.pending_approval)
+		if pending then
+			append(lines, pending)
+		end
 	elseif result.action == "build_plan" or result.action == "repair_plan" then
 		append_task_details(lines, result)
 		append(lines, "surface=" .. tostring(result.surface_id or "unknown"))
@@ -2300,6 +2323,19 @@ local function handle_guide(name)
 	})
 end
 
+local function handle_status(name)
+	local tasks = active_player_tasks(name)
+	return public_reply(name, "status", "success", "Nova agent status returned.", {
+		state = plugin.get_player_state(name),
+		metrics = core.get_ai_runtime_metrics(),
+		product_surfaces = plugin.get_product_surfaces(name),
+		tasks = tasks,
+		known_task_count = #tasks,
+		pending_approval = compact_pending_approval(player_pending_approvals[name]),
+		navigation_contract = plugin.get_navigation_contract(),
+	})
+end
+
 local function handle_audit(name, requested_task_id)
 	plugin.ensure_surface_agent(name, "guide")
 	local filter
@@ -2723,11 +2759,7 @@ function plugin.handle_command(name, param, context)
 	local prompt = raw_prompt:lower()
 
 	if prompt == "" or prompt == "status" then
-		return public_reply(name, "status", "success", "Nova agent is ready.", {
-			state = plugin.get_player_state(name),
-			metrics = core.get_ai_runtime_metrics(),
-			navigation_contract = plugin.get_navigation_contract(),
-		})
+		return handle_status(name)
 	end
 	if prompt == "guide" or prompt == "help" then
 		return handle_guide(name)
