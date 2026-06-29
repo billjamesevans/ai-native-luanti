@@ -8,6 +8,11 @@ The private family-server prototype proves several useful runtime needs: player-
 
 The family server is a proving ground, not product source. The fork should mine behavior categories and safety requirements from it, then build clean public APIs and plugins from scratch.
 
+The detailed concept-by-concept audit lives in
+[Family creatures boundary audit](family-creatures-boundary-audit.md). It
+classifies the private prototype behaviors without importing implementation
+code, assets, private coordinates, or local world assumptions.
+
 ## Non-Goals
 
 - Do not copy private family-server Lua code, assets, coordinates, player data, server paths, secrets, or operational state.
