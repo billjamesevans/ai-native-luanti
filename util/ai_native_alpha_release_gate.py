@@ -8,6 +8,9 @@ import json
 import pathlib
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import ai_native_product_profile_verify
+
 
 ONE_COMMAND_LOCAL_VERIFIER = [
     "python3",
@@ -169,6 +172,7 @@ def check_required_file(root: pathlib.Path, spec: dict) -> tuple[dict, list[dict
 def build_report(root: pathlib.Path | str) -> dict:
     root = pathlib.Path(root)
     violations = []
+    clean_profile_package = ai_native_product_profile_verify.build_report(root)
 
     docs = []
     for spec in REQUIRED_DOCS:
@@ -199,11 +203,25 @@ def build_report(root: pathlib.Path | str) -> dict:
         "release_notes_separate_engine_plugins_family_content": (
             doc_status.get("release_notes_template") == "present"
         ),
+        "clean_profile_package_verified": clean_profile_package.get("status") == "pass"
+        and all(clean_profile_package.get("safety", {}).values()),
     }
 
     for key, value in safety.items():
         if value is not True:
             violations.append({"kind": "alpha_safety_gate_failed", "gate": key})
+    if clean_profile_package.get("status") != "pass":
+        violations.append({
+            "kind": "clean_profile_package_failed",
+            "status": clean_profile_package.get("status"),
+            "violations": clean_profile_package.get("violations", []),
+        })
+    for key, value in clean_profile_package.get("safety", {}).items():
+        if value is not True:
+            violations.append({
+                "kind": "clean_profile_package_safety_failed",
+                "gate": key,
+            })
 
     return {
         "schema_version": 1,
@@ -212,7 +230,47 @@ def build_report(root: pathlib.Path | str) -> dict:
             "one_command_local_verifier": ONE_COMMAND_LOCAL_VERIFIER,
             "clean_profile": "games/ai_runtime",
             "pi_deployment_boundary": "side_by_side_test_service_only",
+            "fresh_checkout_command_plan": [
+                {
+                    "step": "configure_server_release",
+                    "command": [
+                        "cmake",
+                        "-S",
+                        ".",
+                        "-B",
+                        "build/server-release",
+                        "-DCMAKE_BUILD_TYPE=RelWithDebInfo",
+                        "-DBUILD_CLIENT=FALSE",
+                        "-DBUILD_SERVER=TRUE",
+                        "-DBUILD_UNITTESTS=TRUE",
+                        "-DRUN_IN_PLACE=TRUE",
+                    ],
+                },
+                {
+                    "step": "build_server_release",
+                    "command": [
+                        "cmake",
+                        "--build",
+                        "build/server-release",
+                        "--parallel",
+                    ],
+                },
+                {
+                    "step": "smoke_test_runtime",
+                    "command": [
+                        "bin/luantiserver",
+                        "--run-unittests",
+                        "--test-module",
+                        "TestAIRuntime",
+                    ],
+                },
+                {
+                    "step": "run_one_command_verifier",
+                    "command": ONE_COMMAND_LOCAL_VERIFIER,
+                },
+            ],
         },
+        "clean_profile_package": clean_profile_package,
         "docs": docs,
         "issue_templates": issue_templates,
         "repo_files": repo_files,

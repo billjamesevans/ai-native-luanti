@@ -13,6 +13,15 @@ import sys
 MANIFEST_PATH = pathlib.Path("games/ai_runtime/product_profile_manifest.json")
 PROFILE_DIR = pathlib.Path("games/ai_runtime")
 BUILTIN_INIT = pathlib.Path("builtin/game/init.lua")
+AI_NATIVE_DEFAULT_BUILTINS = {
+    "ai_runtime.lua",
+    "ai_operator_status.lua",
+    "ai_operator_task_control.lua",
+    "ai_runtime_commands.lua",
+    "repair_agent.lua",
+    "build_agent.lua",
+    "ai_agent_plugin.lua",
+}
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
     r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|/Users/",
@@ -21,6 +30,11 @@ PRIVATE_PATTERNS = re.compile(
 RUNTIME_SOURCE_PRIVATE_PATTERNS = re.compile(
     r"192\.168(?:\.\d{1,3}){2}|(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|"
     r"/Users/[A-Za-z0-9._-]+",
+    re.I,
+)
+PROFILE_CODE_FIXTURE_PATTERNS = re.compile(
+    r"ai_runtime_test|devtest|enable_smoke_command|enable_demo_benchmark_command|"
+    r"enable_model_adapter_probe_command|admin\.override|import\.assets|combat\.defend",
     re.I,
 )
 
@@ -123,6 +137,39 @@ def _profile_private_matches(root):
     return matches
 
 
+def _profile_code_fixture_matches(root):
+    matches = []
+    mods_dir = root / PROFILE_DIR / "mods"
+    code_paths = [root / PROFILE_DIR / "game.conf"]
+    if mods_dir.is_dir():
+        code_paths.extend(mods_dir.rglob("*.lua"))
+        code_paths.extend(mods_dir.rglob("*.conf"))
+    for path in sorted(path for path in code_paths if path.is_file()):
+        body = path.read_text(encoding="utf-8", errors="ignore")
+        if PROFILE_CODE_FIXTURE_PATTERNS.search(body):
+            matches.append(path.relative_to(root).as_posix())
+    return matches
+
+
+def _default_ai_builtin_modules(root):
+    init_body = (root / BUILTIN_INIT).read_text(encoding="utf-8")
+    modules = []
+    for module_name in sorted(AI_NATIVE_DEFAULT_BUILTINS):
+        load_expr = f'dofile(gamepath .. "{module_name}")'
+        if load_expr in init_body:
+            modules.append(f"builtin/game/{module_name}")
+    return modules
+
+
+def _manifest_default_builtin_modules(startup_inventory):
+    return sorted(
+        entry["path"]
+        for entry in startup_inventory
+        if entry["loaded_by_default_product_profile"] is True
+        and entry["path"].startswith("builtin/game/")
+    )
+
+
 def build_report(root):
     root = pathlib.Path(root)
     manifest = _read_json(root / MANIFEST_PATH)
@@ -134,6 +181,8 @@ def build_report(root):
         for surface in manifest.get("required_runtime_surfaces", [])
     ]
     startup_inventory = manifest["startup_inventory"]
+    default_ai_builtin_modules = _default_ai_builtin_modules(root)
+    manifest_default_builtin_modules = _manifest_default_builtin_modules(startup_inventory)
 
     violations = []
     if actual_mods != expected_mods:
@@ -141,6 +190,22 @@ def build_report(root):
             "kind": "product_mods_mismatch",
             "expected": expected_mods,
             "actual": actual_mods,
+        })
+    missing_default_modules = sorted(
+        set(default_ai_builtin_modules) - set(manifest_default_builtin_modules)
+    )
+    unexpected_default_modules = sorted(
+        set(manifest_default_builtin_modules) - set(default_ai_builtin_modules)
+    )
+    if missing_default_modules:
+        violations.append({
+            "kind": "startup_inventory_missing_default_builtin_modules",
+            "paths": missing_default_modules,
+        })
+    if unexpected_default_modules:
+        violations.append({
+            "kind": "startup_inventory_unexpected_default_builtin_modules",
+            "paths": unexpected_default_modules,
         })
     for surface in surfaces:
         if surface["status"] != "gated":
@@ -161,6 +226,12 @@ def build_report(root):
         violations.append({
             "kind": "private_or_fixture_content_in_profile",
             "paths": private_matches,
+        })
+    profile_code_fixture_matches = _profile_code_fixture_matches(root)
+    if profile_code_fixture_matches:
+        violations.append({
+            "kind": "fixture_or_privileged_surface_in_profile_code",
+            "paths": profile_code_fixture_matches,
         })
     for entry in startup_inventory:
         if entry["category"] in {"benchmark_fixture", "compatibility_fixture", "unit_test_helper"}:
@@ -186,6 +257,8 @@ def build_report(root):
             "product_mods": actual_mods,
         },
         "startup_inventory": startup_inventory,
+        "default_ai_builtin_modules": default_ai_builtin_modules,
+        "manifest_default_builtin_modules": manifest_default_builtin_modules,
         "required_runtime_surfaces": runtime_surfaces,
         "explicit_dev_surfaces": surfaces,
         "test_only_files": manifest["test_only_files"],
@@ -209,6 +282,10 @@ def build_report(root):
             ),
             "runtime_surfaces_available": bool(runtime_surfaces)
             and all(surface["status"] == "present" for surface in runtime_surfaces),
+            "startup_inventory_matches_default_runtime": (
+                default_ai_builtin_modules == manifest_default_builtin_modules
+            ),
+            "profile_code_fixture_free": not profile_code_fixture_matches,
         },
     }
 

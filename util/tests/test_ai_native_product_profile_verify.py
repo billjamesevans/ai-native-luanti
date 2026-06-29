@@ -67,12 +67,17 @@ class AIProductProfileVerifierTests(unittest.TestCase):
             {
                 "ai_runtime_game",
                 "ai_runtime_base",
+                "ai_runtime_core",
                 "ai_operator_status",
                 "ai_operator_task_control",
+                "ai_runtime_commands",
+                "build_agent",
+                "repair_agent",
+                "ai_agent_plugin",
             },
         )
         for entry in inventory:
-            if entry["category"] != "product_runtime" and entry["name"] != "ai_runtime_base":
+            if entry["category"] in {"benchmark_fixture", "compatibility_fixture", "unit_test_helper"}:
                 self.assertFalse(entry["loaded_by_default_product_profile"], entry)
                 self.assertTrue(entry["requires_explicit_dev_or_test_lane"], entry)
 
@@ -147,6 +152,12 @@ class AIProductProfileVerifierTests(unittest.TestCase):
         self.assertTrue(report["safety"]["no_private_content"])
         self.assertTrue(report["safety"]["dev_surfaces_disabled_by_default"])
         self.assertTrue(report["safety"]["test_fixtures_explicit_only"])
+        self.assertTrue(report["safety"]["startup_inventory_matches_default_runtime"])
+        self.assertTrue(report["safety"]["profile_code_fixture_free"])
+        self.assertEqual(
+            report["default_ai_builtin_modules"],
+            report["manifest_default_builtin_modules"],
+        )
         self.assertEqual(
             {entry["category"] for entry in report["startup_inventory"]},
             {

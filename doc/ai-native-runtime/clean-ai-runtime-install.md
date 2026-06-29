@@ -53,6 +53,10 @@ python3 util/ai_native_alpha_release_gate.py
 python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime
 ```
 
+The alpha gate checks the clean profile package inventory, dev/test fixture
+separation, default runtime module list, release docs, templates, and the
+fresh-checkout build/run/verifier command plan.
+
 When using a non-default build output:
 
 ```bash
