@@ -17,6 +17,7 @@ MAIN = BRIDGE_DIR / "main.py"
 PYPROJECT = BRIDGE_DIR / "pyproject.toml"
 README = BRIDGE_DIR / "README.md"
 DOC = ROOT / "doc" / "ai-native-runtime" / "agents-sdk-model-adapter.md"
+READINESS = ROOT / "util" / "ai_native_agents_sdk_sidecar_readiness.py"
 RUNTIME_README = ROOT / "doc" / "ai-native-runtime" / "README.md"
 MODEL_CONTRACT = ROOT / "doc" / "ai-native-runtime" / "model-adapter-contract.md"
 LUA_PLUGIN = ROOT / "builtin" / "game" / "ai_agents_sdk_adapter_plugin.lua"
@@ -49,13 +50,14 @@ def _load_agent_module():
 
 def validate_contract() -> dict:
     violations: list[dict] = []
-    for path in (AGENT, MAIN, PYPROJECT, README, DOC, LUA_PLUGIN):
+    for path in (AGENT, MAIN, PYPROJECT, README, DOC, READINESS, LUA_PLUGIN):
         _require(path.exists(), "missing_file", str(path), violations)
     if violations:
         return {"status": "fail", "violations": violations}
 
     agent_source = _read(AGENT)
     main_source = _read(MAIN)
+    readiness_source = _read(READINESS)
     pyproject = _read(PYPROJECT)
     readme = _read(README)
     doc = _read(DOC)
@@ -84,6 +86,20 @@ def validate_contract() -> dict:
         "run_model_adapter_request",
     ):
         _require(phrase in main_source, "main_source_missing_phrase", phrase, violations)
+
+    for phrase in (
+        "ai_native_agents_sdk_sidecar_readiness",
+        "managed-http",
+        "existing-http",
+        "offline-smoke",
+        "/health",
+        "/v1/model-adapter",
+        "OPENAI_API_KEY",
+        "endpoint_not_loopback",
+        "no_provider_credentials_required",
+        "no_forbidden_payload_keys",
+    ):
+        _require(phrase in readiness_source, "readiness_source_missing_phrase", phrase, violations)
 
     for phrase in (
         'core.settings:get_bool("ai_runtime.enable_agents_sdk_adapter", false)',
@@ -165,6 +181,7 @@ def validate_contract() -> dict:
             "function_tools": True,
             "http_adapter_endpoint": True,
             "lua_sidecar_adapter": True,
+            "sidecar_readiness_probe": True,
             "offline_smoke": True,
             "public_safe_docs": True,
         },
