@@ -90,7 +90,27 @@ def _public_response_summary(response: dict[str, Any]) -> dict[str, Any]:
         "web_search_available": nested.get("web_search_available"),
         "web_search_used": nested.get("web_search_used"),
         "tools_enabled": nested.get("tools_enabled") if isinstance(nested.get("tools_enabled"), list) else [],
+        "tool_powers": nested.get("tool_powers") if isinstance(nested.get("tool_powers"), list) else [],
+        "world_mutation_authority": nested.get("world_mutation_authority"),
     }
+
+
+def _tool_powers_safe(tool_powers: Any) -> bool:
+    if not isinstance(tool_powers, list) or not tool_powers:
+        return False
+    names = {
+        power.get("name")
+        for power in tool_powers
+        if isinstance(power, dict)
+    }
+    if "WebSearchTool" not in names or "summarize_runtime_capabilities" not in names:
+        return False
+    for power in tool_powers:
+        if not isinstance(power, dict):
+            return False
+        if power.get("direct_world_mutation") is not False:
+            return False
+    return True
 
 
 def _contains_forbidden_keys(value: Any) -> bool:
@@ -121,6 +141,8 @@ def _base_report(mode: str, endpoint: str) -> dict[str, Any]:
             "model_adapter_endpoint": False,
             "no_provider_credentials_required": False,
             "no_forbidden_payload_keys": False,
+            "tool_powers_declared": False,
+            "no_direct_world_mutation_tools": False,
             "public_safe_response": False,
         },
         "health": {},
@@ -146,6 +168,8 @@ def _offline_smoke(report: dict[str, Any]) -> dict[str, Any]:
     report["checks"]["model_adapter_endpoint"] = response.get("response_kind") == "ai_native_model_adapter_response"
     report["checks"]["no_provider_credentials_required"] = response.get("reason") == "forced_offline"
     report["checks"]["no_forbidden_payload_keys"] = not _contains_forbidden_keys(response)
+    report["checks"]["tool_powers_declared"] = _tool_powers_safe(report["response"]["tool_powers"])
+    report["checks"]["no_direct_world_mutation_tools"] = _tool_powers_safe(report["response"]["tool_powers"])
     report["checks"]["public_safe_response"] = response.get("adapter_contract") == "provider_neutral_v1"
     return report
 
@@ -165,6 +189,8 @@ def _probe_http(report: dict[str, Any], endpoint: str, *, timeout_seconds: float
         "agents_sdk_available": health.get("agents_sdk_available"),
         "openai_api_key_present": health.get("openai_api_key_present"),
         "web_search_tool_available": health.get("web_search_tool_available"),
+        "tool_powers": health.get("tool_powers") if isinstance(health.get("tool_powers"), list) else [],
+        "world_mutation_authority": health.get("world_mutation_authority"),
         "adapter_name": health.get("adapter_name"),
         "contract": health.get("contract"),
     }
@@ -199,6 +225,11 @@ def _probe_http(report: dict[str, Any], endpoint: str, *, timeout_seconds: float
         or health.get("openai_api_key_present") is True
     )
     report["checks"]["no_forbidden_payload_keys"] = not _contains_forbidden_keys(response)
+    report["checks"]["tool_powers_declared"] = (
+        _tool_powers_safe(report["health"]["tool_powers"])
+        and _tool_powers_safe(report["response"]["tool_powers"])
+    )
+    report["checks"]["no_direct_world_mutation_tools"] = report["checks"]["tool_powers_declared"]
     report["checks"]["public_safe_response"] = response.get("adapter_contract") == "provider_neutral_v1"
     return report
 
@@ -278,6 +309,8 @@ def run_readiness(
         "model_adapter_endpoint",
         "no_provider_credentials_required",
         "no_forbidden_payload_keys",
+        "tool_powers_declared",
+        "no_direct_world_mutation_tools",
         "public_safe_response",
     ]
     if mode != "offline-smoke":

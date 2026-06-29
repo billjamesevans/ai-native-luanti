@@ -34,6 +34,10 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
         self.assertEqual(report["response"]["response_kind"], "ai_native_model_adapter_response")
         self.assertEqual(report["response"]["adapter_name"], "openai-agents-sdk-model-adapter")
         self.assertFalse(report["response"]["agentic_execution"])
+        self.assertTrue(report["checks"]["tool_powers_declared"])
+        self.assertTrue(report["checks"]["no_direct_world_mutation_tools"])
+        self.assertEqual(report["response"]["world_mutation_authority"], "luanti")
+        self.assertIn("WebSearchTool", {power["name"] for power in report["response"]["tool_powers"]})
 
     def test_managed_http_sidecar_passes_on_loopback(self):
         module = load_readiness_module()
@@ -44,8 +48,12 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
         self.assertTrue(report["loopback_endpoint"])
         self.assertTrue(report["checks"]["health_endpoint"])
         self.assertTrue(report["checks"]["model_adapter_endpoint"])
+        self.assertTrue(report["checks"]["tool_powers_declared"])
+        self.assertTrue(report["checks"]["no_direct_world_mutation_tools"])
         self.assertEqual(report["health"]["contract"], "provider_neutral_v1")
         self.assertEqual(report["response"]["adapter_contract"], "provider_neutral_v1")
+        self.assertEqual(report["health"]["world_mutation_authority"], "luanti")
+        self.assertIn("WebSearchTool", {power["name"] for power in report["health"]["tool_powers"]})
 
     def test_rejects_non_loopback_endpoint(self):
         module = load_readiness_module()

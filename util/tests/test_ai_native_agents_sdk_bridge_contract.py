@@ -38,6 +38,10 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertEqual(response["adapter_name"], "openai-agents-sdk-model-adapter")
         self.assertFalse(response["response"]["agentic_execution"])
         self.assertIn("WebSearchTool", response["response"]["tools_enabled"])
+        self.assertEqual(response["response"]["world_mutation_authority"], "luanti")
+        tool_powers = response["response"]["tool_powers"]
+        self.assertIn("WebSearchTool", {power["name"] for power in tool_powers})
+        self.assertTrue(all(power["direct_world_mutation"] is False for power in tool_powers))
 
     def test_cli_contract_passes(self):
         completed = subprocess.run(
