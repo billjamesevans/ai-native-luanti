@@ -110,9 +110,13 @@ def comparison_dimensions() -> list[dict]:
         {
             "id": "cpu",
             "title": "CPU load",
-            "measured_metric_paths": [],
+            "measured_metric_paths": [
+                "cpu.avg_process_cpu_percent",
+                "cpu.max_interval_cpu_percent",
+                "cpu.cpu_sample_count",
+            ],
             "target_kind": "project_target",
-            "public_safe_source": "not yet measured by accepted clean-profile captures",
+            "public_safe_source": "clean-profile process CPU sampling",
         },
         {
             "id": "latency",
@@ -163,6 +167,7 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
     entity = measurements["demo_entity_runtime_cost"]
     mutation = measurements["mutation_write_throughput"]
     memory = measurements["memory"]
+    cpu = measurements["cpu"]
 
     startup_ready = startup.get("listening") is True and metric_status(startup.get("time_to_listen_ms"))
     facts.append(
@@ -375,23 +380,37 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
             )
         )
 
+    cpu_ready = (
+        cpu.get("sample_status") == "measured"
+        and (cpu.get("cpu_sample_count") or 0) >= 2
+        and metric_status(cpu.get("avg_process_cpu_percent"))
+        and metric_status(cpu.get("max_interval_cpu_percent"))
+    )
     facts.append(
         result(
             "cpu",
-            "evidence_gap",
-            {},
-            "accepted clean-profile capture does not yet record CPU load",
+            "measured" if cpu_ready else "evidence_gap",
+            {
+                "sample_status": cpu.get("sample_status"),
+                "cpu_sample_count": cpu.get("cpu_sample_count"),
+                "avg_process_cpu_percent": cpu.get("avg_process_cpu_percent"),
+                "max_interval_cpu_percent": cpu.get("max_interval_cpu_percent"),
+                "process_cpu_time_delta_seconds": cpu.get("process_cpu_time_delta_seconds"),
+                "sample_methods": cpu.get("sample_methods"),
+            },
+            "clean-profile process CPU sampling",
         )
     )
-    gaps.append(
-        gap(
-            hardware_class,
-            "cpu",
-            "Add CPU load sampling",
-            "accepted clean-profile capture has no CPU metrics",
-            "Add bounded CPU sampling to benchmark capture for local and low-power lanes.",
+    if not cpu_ready:
+        gaps.append(
+            gap(
+                hardware_class,
+                "cpu",
+                "Add CPU load sampling",
+                f"sample_status={cpu.get('sample_status')} cpu_sample_count={cpu.get('cpu_sample_count')}",
+                "Refresh clean-profile capture with bounded process CPU sampling for this hardware lane.",
+            )
         )
-    )
 
     join_latency = player_probe.get("join_latency_proxy_ms") or {}
     latency_ready = (

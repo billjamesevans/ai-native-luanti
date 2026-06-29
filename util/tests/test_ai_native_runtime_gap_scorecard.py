@@ -41,6 +41,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
         mutation_total_node_writes=0,
         expected_warning_count=None,
         actionable_warning_count=None,
+        cpu_evidence=False,
     ):
         accepted = pathlib.Path(output_root) / hardware_class / "accepted"
         reports = {
@@ -220,6 +221,18 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                             "max_rss_kb": max_rss_kb,
                             "rss_sample_count": 30,
                         },
+                        **({
+                            "cpu": {
+                                "sample_status": "measured",
+                                "cpu_sample_count": 30,
+                                "process_cpu_time_delta_seconds": 0.15,
+                                "observed_wall_time_seconds": 3.0,
+                                "avg_process_cpu_percent": 5.0,
+                                "max_interval_cpu_percent": 11.0,
+                                "sample_methods": ["ps_time"],
+                                "limitations": [],
+                            },
+                        } if cpu_evidence else {}),
                         "failure_notes": failure_notes or [],
                     },
                     "failure_notes": failure_notes or [],
@@ -338,6 +351,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     "demo_entity_runtime_cost",
                     "map_chunk_workload",
                     "memory",
+                    "cpu",
                     "failure_notes",
                 ):
                     self.assertIn(section, lane["measurements"])
@@ -352,6 +366,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
             self.assertIn("headless_player_load_probe", gap_ids)
             self.assertIn("non_empty_map_chunk_workload", gap_ids)
             self.assertIn("mutation_total_write_measurement", gap_ids)
+            self.assertIn("clean_profile_cpu_sampling", gap_ids)
             self.assertLess(
                 gap_ids.index("headless_player_load_probe"),
                 gap_ids.index("mutation_total_write_measurement"),
@@ -390,6 +405,35 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                 self.assertEqual(probe["probe_kind"], "headless_client_load")
                 self.assertTrue(probe["headless_player_supported"])
                 self.assertGreater(probe["synthetic_player_count"], 0)
+
+    def test_scorecard_clears_cpu_gap_when_both_lanes_have_cpu_evidence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            for hardware_class in ("local-mac", "low-power-server"):
+                self.write_accepted_baseline(
+                    output_root,
+                    hardware_class,
+                    warning_count=0,
+                    expected_warning_count=0,
+                    actionable_warning_count=0,
+                    player_probe=self.supported_headless_probe(1),
+                    mapblock_rows=4,
+                    demo_entity_count=16,
+                    mutation_total_node_writes=11,
+                    cpu_evidence=True,
+                )
+            report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
+
+            self.run_scorecard(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            gap_ids = [gap["id"] for gap in report["ranked_gaps"]]
+            self.assertNotIn("clean_profile_cpu_sampling", gap_ids)
+            for lane in report["measured_evidence"]:
+                cpu = lane["measurements"]["cpu"]
+                self.assertEqual(cpu["sample_status"], "measured")
+                self.assertGreater(cpu["cpu_sample_count"], 0)
+                self.assertGreaterEqual(cpu["avg_process_cpu_percent"], 0)
 
     def test_scorecard_keeps_headless_gap_when_probe_has_partial_connection_evidence(self):
         partial_probe = self.supported_headless_probe(2)
@@ -439,6 +483,7 @@ class RuntimeGapScorecardTests(unittest.TestCase):
                     player_probe=self.supported_headless_probe(1),
                     demo_entity_count=16,
                     mutation_total_node_writes=11,
+                    cpu_evidence=True,
                 )
             report_path = pathlib.Path(tmpdir) / "runtime-gap-scorecard.json"
 

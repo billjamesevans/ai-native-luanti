@@ -125,6 +125,18 @@ def clean_profile_errors(report: dict) -> list[str]:
             )
         if (map_workload.get("mapblock_rows_created") or 0) <= 0:
             errors.append("clean_profile: mapblock_rows_created must be positive")
+    cpu = comparison_summary.get("cpu")
+    if not isinstance(cpu, dict):
+        errors.append("clean_profile: cpu missing")
+    else:
+        if cpu.get("sample_status") != "measured":
+            errors.append("clean_profile: cpu sample_status must be measured")
+        if (cpu.get("cpu_sample_count") or 0) < 2:
+            errors.append("clean_profile: cpu_sample_count must be at least 2")
+        if cpu.get("avg_process_cpu_percent") is None:
+            errors.append("clean_profile: avg_process_cpu_percent is required")
+        if cpu.get("max_interval_cpu_percent") is None:
+            errors.append("clean_profile: max_interval_cpu_percent is required")
     return errors
 
 

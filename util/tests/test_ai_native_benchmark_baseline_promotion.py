@@ -100,6 +100,16 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
                 "mapblock_rows": 4,
                 "mapblock_rows_created": 4,
             },
+            "cpu": {
+                "sample_status": "measured",
+                "cpu_sample_count": 3,
+                "process_cpu_time_delta_seconds": 0.03,
+                "observed_wall_time_seconds": 0.3,
+                "avg_process_cpu_percent": 10.0,
+                "max_interval_cpu_percent": 15.0,
+                "sample_methods": ["ps_time"],
+                "limitations": [],
+            },
         }
         if comparison_summary:
             summary.update(comparison_summary)
@@ -292,6 +302,33 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
             self.assertIn("latency_proxy_supported must be true", completed.stderr)
             self.assertIn("join_latency_proxy_ms.sample_count must be positive", completed.stderr)
             self.assertIn("mapblock_rows_created must be positive", completed.stderr)
+
+    def test_refuses_clean_profile_without_cpu_evidence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root)
+            clean_profile = self.clean_profile_payload()
+            del clean_profile["comparison_summary"]["cpu"]
+            self.add_clean_profile_capture(capture_dir, clean_profile)
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("cpu missing", completed.stderr)
+
+            clean_profile["comparison_summary"]["cpu"] = {
+                "sample_status": "not_measured",
+                "cpu_sample_count": 1,
+                "avg_process_cpu_percent": None,
+                "max_interval_cpu_percent": None,
+            }
+            self.add_clean_profile_capture(capture_dir, clean_profile)
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("cpu sample_status must be measured", completed.stderr)
+            self.assertIn("cpu_sample_count must be at least 2", completed.stderr)
 
     def test_refuses_private_or_warning_reports(self):
         with tempfile.TemporaryDirectory() as tmpdir:
