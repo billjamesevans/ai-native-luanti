@@ -69,6 +69,12 @@ Implemented deterministic commands:
   player-owned plugin task by id without exposing unrelated runtime tasks.
 - `pending`, `pending plan`, `plan`, `review plan`: returns the current
   player-owned pending build or repair approval without queuing mutation.
+- `edit plan platform width N depth N`, `plan edit platform width N depth N`:
+  updates the current pending build approval with a new bounded platform preview
+  while keeping the same approval id and without mutating the world.
+- `edit plan radius N`, `plan edit radius N`: updates the current pending
+  repair approval with a new bounded repair-radius preview while keeping the
+  same approval id and without mutating the world.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
 - `cancel <task_id>`, `stop <task_id>`: cancels one remembered player-owned
   plugin task and reports before/after status.
@@ -126,7 +132,10 @@ not execute rollback, do not bypass `core.cancel_ai_task` owner checks, and do
 not approve mutation without the same rollback-backed build or repair task path.
 Pending-plan review and discard are read-only/player-local: they expose only the
 current pending approval summary and can only clear that player's unqueued build
-or repair plan before mutation.
+or repair plan before mutation. Pending-plan edit is also read-only/player-local:
+it re-runs the appropriate planner, replaces the pending preview under the same
+approval id, and still requires explicit approval before any rollback-backed
+build or repair task is queued.
 
 Unknown prompts go to the configured model adapter. The adapter boundary is explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
 
@@ -221,9 +230,9 @@ payloads, or raw asset payloads are blocked with `adapter_payload_rejected`.
   showcase structure system.
 - Repair only applies configured repair rules around the requested target position.
 - Build and repair commands now create pending previews first; players can
-  review or discard the current pending plan, and explicit approval queues the
-  mutation. Platform width/depth and repair radius are player-editable within
-  configured bounds; broader build-shape editing remains a later slice.
+  review, edit, or discard the current pending plan, and explicit approval
+  queues the mutation. Platform width/depth and repair radius are player-editable
+  within configured bounds; broader build-shape editing remains a later slice.
 - Audit and rollback review return compact sanitized records, not full private
   payloads or rollback contents. Targeted rollback review is still read-only:
   rollback execution remains outside the first-party player command surface.
