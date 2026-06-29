@@ -2,7 +2,7 @@
 
 This is the production-like, player-ready alpha game profile for AI-native runtime checks and early agent playtesting.
 
-It intentionally ships only a tiny base mod for mapgen aliases. It includes no private content, copied media, provider configuration, or world data. Synthetic smoke and benchmark helper modules are disabled by default and require explicit dev/test settings before they load or register player-facing commands.
+It intentionally ships only a tiny base mod for mapgen aliases. It includes no private content, copied media, provider configuration, or world data. Synthetic smoke, benchmark, and model-adapter probe helper modules are disabled by default and require explicit dev/test settings before they load or register player-facing commands.
 
 The base mod also declares `capability_profile = "clean"` for the first-party agent capability policy. It grants bounded world, entity, task, and model-adapter capabilities, and excludes privileged operator/import/player-combat grants.
 

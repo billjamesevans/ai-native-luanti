@@ -39,6 +39,9 @@ dofile(gamepath .. "build_agent.lua")
 if core.settings:get_bool("ai_runtime.enable_smoke_command", false) then
 	dofile(gamepath .. "ai_runtime_smoke.lua")
 end
+if core.settings:get_bool("ai_runtime.enable_model_adapter_probe_command", false) then
+	dofile(gamepath .. "ai_model_adapter_plugin.lua")
+end
 dofile(gamepath .. "ai_agent_plugin.lua")
 dofile(gamepath .. "chat.lua")
 dofile(commonpath .. "information_formspecs.lua")

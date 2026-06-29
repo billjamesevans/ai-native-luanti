@@ -54,6 +54,14 @@
       "purpose": "generic demo entity benchmark fixture and operator command"
     },
     {
+      "name": "ai_model_adapter_probe",
+      "category": "unit_test_helper",
+      "path": "builtin/game/ai_model_adapter_plugin.lua",
+      "loaded_by_default_product_profile": false,
+      "requires_explicit_dev_or_test_lane": true,
+      "purpose": "provider-neutral model adapter scaffold and mock probe command"
+    },
+    {
       "name": "compatibility_fixture_samples",
       "category": "compatibility_fixture",
       "path": "util/tests/fixtures/compat",
@@ -86,6 +94,14 @@
       "command": "ai_demo_entity_benchmark",
       "default_enabled": false,
       "purpose": "generic demo entity benchmark command"
+    },
+    {
+      "name": "ai_model_adapter_probe",
+      "setting": "ai_runtime.enable_model_adapter_probe_command",
+      "source_file": "builtin/game/ai_model_adapter_plugin.lua",
+      "command": "ai_model_adapter_probe",
+      "default_enabled": false,
+      "purpose": "provider-neutral model adapter mock probe command"
     }
   ],
   "required_runtime_surfaces": [

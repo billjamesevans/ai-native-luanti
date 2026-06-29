@@ -4980,3 +4980,91 @@ local private_option_ok, private_option_message =
 	core.registered_chatcommands.ai_runtime_smoke.func("admin", "agent=bill")
 assert(private_option_ok == false)
 assert(private_option_message:find("unknown option", 1, true))
+
+local function run_model_adapter_plugin_probe_tests()
+	assert(core.ai_model_adapter_plugin ~= nil)
+
+	local adapter_probe = core.ai_model_adapter_plugin.run_probe({
+		agent_id = "model_adapter_probe:tester",
+		owner = "synthetic-operator",
+		task_id = "model-adapter-probe:test",
+		context = {
+			world_ref = "world:synthetic-model-adapter-probe",
+			intent = "runtime_probe",
+		},
+	})
+	assert(adapter_probe.schema_version == 1)
+	assert(adapter_probe.operation == "ai_model_adapter_plugin.run_probe")
+	assert(adapter_probe.ok == true)
+	assert(adapter_probe.status == "success")
+	assert(adapter_probe.result.operation == "ai_model.request")
+	assert(adapter_probe.result.status == "success")
+	assert(adapter_probe.result.reason == "model_response")
+	assert(adapter_probe.request.schema_version == 1)
+	assert(adapter_probe.request.request_kind == "ai_native_model_adapter_request")
+	assert(adapter_probe.request.adapter_contract == "provider_neutral_v1")
+	assert(adapter_probe.request.public_prompt ~= nil)
+	assert(adapter_probe.request.prompt == nil)
+	assert(adapter_probe.request.private_prompt == nil)
+	assert(adapter_probe.request.safety.public_safe_request == true)
+	assert(adapter_probe.request.safety.private_input_retained == false)
+	assert(adapter_probe.request.safety.no_provider_credentials == true)
+	assert(adapter_probe.request.safety.no_raw_media_payloads == true)
+	assert(adapter_probe.request.bounds.max_response_bytes == 4000)
+	assert(adapter_probe.request.bounds.max_context_keys == 16)
+	assert(adapter_probe.response.response_kind == "ai_native_model_adapter_response")
+	assert(adapter_probe.response.adapter_contract == "provider_neutral_v1")
+	assert(adapter_probe.response.adapter_name == "mock-provider-neutral")
+	assert(adapter_probe.response.ok == true)
+	assert(adapter_probe.metrics.model_adapter_requests_delta == 1)
+	assert(adapter_probe.metrics.model_adapter_successes_delta == 1)
+	assert(adapter_probe.metrics.model_adapter_failures_delta == 0)
+	assert(adapter_probe.metrics.model_adapter_timeouts_delta == 0)
+	assert(adapter_probe.safety.public_safe_output == true)
+	assert(adapter_probe.safety.no_provider_credentials == true)
+	assert(adapter_probe.safety.no_network_adapter == true)
+	assert(adapter_probe.safety.private_input_retained == false)
+	assert(adapter_probe.safety.no_raw_provider_payloads == true)
+	assert(adapter_probe.provider_credentials == nil)
+	assert(adapter_probe.raw_provider_response == nil)
+	assert(adapter_probe.asset_payload == nil)
+
+	local unsafe_probe = core.ai_model_adapter_plugin.run_unsafe_payload_probe({
+		agent_id = "model_adapter_probe:unsafe",
+		owner = "synthetic-operator",
+		task_id = "model-adapter-probe:unsafe",
+	})
+	assert(unsafe_probe.schema_version == 1)
+	assert(unsafe_probe.operation == "ai_model_adapter_plugin.run_unsafe_payload_probe")
+	assert(unsafe_probe.ok == false)
+	assert(unsafe_probe.status == "blocked")
+	assert(unsafe_probe.result.reason == "adapter_payload_rejected")
+	assert(unsafe_probe.metrics.model_adapter_requests_delta == 1)
+	assert(unsafe_probe.metrics.model_adapter_successes_delta == 0)
+	assert(unsafe_probe.metrics.model_adapter_failures_delta == 1)
+	assert(unsafe_probe.safety.public_safe_output == true)
+	assert(unsafe_probe.safety.no_raw_provider_payloads == true)
+	assert(unsafe_probe.raw_provider_response == nil)
+
+	assert(core.registered_chatcommands.ai_model_adapter_probe ~= nil)
+	assert(core.registered_chatcommands.ai_model_adapter_probe.privs.server == true)
+	local adapter_command_ok, adapter_command_message =
+		core.registered_chatcommands.ai_model_adapter_probe.func(
+			"admin",
+			"task=model-adapter-probe:command")
+	assert(adapter_command_ok == true)
+	assert(adapter_command_message:find(
+		"\"operation\":\"ai_model_adapter_plugin.run_probe\"", 1, true))
+	assert(adapter_command_message:find("\"status\":\"success\"", 1, true))
+	assert(adapter_command_message:find("\"adapter_contract\":\"provider_neutral_v1\"", 1, true))
+	assert(adapter_command_message:find("\"request_kind\":\"ai_native_model_adapter_request\"", 1, true))
+	assert(adapter_command_message:find("\"adapter_name\":\"mock-provider-neutral\"", 1, true))
+	assert(not adapter_command_message:find("/Users/", 1, true))
+	assert(not adapter_command_message:find("minecraftpi", 1, true))
+	assert(not adapter_command_message:find("private_prompt", 1, true))
+	assert(not adapter_command_message:find("\"provider_credentials\"", 1, true))
+	assert(not adapter_command_message:find("raw_provider_response", 1, true))
+	assert(#adapter_command_message < 12000)
+end
+
+run_model_adapter_plugin_probe_tests()
