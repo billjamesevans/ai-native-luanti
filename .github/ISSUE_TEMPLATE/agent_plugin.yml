@@ -1,0 +1,28 @@
+name: Agent plugin
+description: Propose or report work on first-party or optional AI agent plugins
+labels: ["agent-plugin"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Agent work must describe its capability profile and bounded mutation surface.
+        Public/private boundary: keep private prompts, provider keys, family worlds,
+        raw assets, and local server content out of the issue.
+  - type: textarea
+    attributes:
+      label: Agent goal
+      description: What player/operator job should this agent perform?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Capability profile
+      description: List required capabilities and any rollback or approval requirements.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Public/private boundary
+      options:
+        - label: This issue does not include private worlds, secrets, prompts, raw assets, spacebase, themepark, disneyland100, or family-server content.
+          required: true

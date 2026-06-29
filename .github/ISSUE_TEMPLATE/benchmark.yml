@@ -1,0 +1,29 @@
+name: Benchmark
+description: Request or report benchmark, parity, or verifier work
+labels: ["benchmark"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Benchmark evidence should be reproducible, public-safe, and tied to a
+        hardware class such as local-mac or low-power-server.
+        Public/private boundary: do not attach private logs, private worlds, or
+        family-server assets.
+  - type: input
+    attributes:
+      label: Hardware class
+      placeholder: local-mac or low-power-server
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Benchmark or verifier evidence
+      description: Include command, status, and public-safe report path or summary.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Public/private boundary
+      options:
+        - label: This issue does not include private worlds, secrets, prompts, raw assets, spacebase, themepark, disneyland100, or family-server content.
+          required: true
