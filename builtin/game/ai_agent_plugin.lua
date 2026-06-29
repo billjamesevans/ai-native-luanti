@@ -80,6 +80,7 @@ local PRODUCT_SURFACES = {
 			"guide",
 			"tasks",
 			"pending plan",
+			"edit plan",
 			"discard plan",
 			"cancel",
 			"audit",
@@ -427,6 +428,34 @@ local function format_command_reply(result)
 		append_task_details(lines, result)
 		local pending = pending_approval_summary(result.pending_approval)
 		append(lines, pending or "pending=none")
+		if result.plan_status then
+			append(lines, "plan_status=" .. tostring(result.plan_status))
+		end
+	elseif result.action == "edit_plan" then
+		append_task_details(lines, result)
+		local pending = pending_approval_summary(result.pending_approval)
+		append(lines, pending or "pending=none")
+		if result.build_kind then
+			append(lines, "build_kind=" .. tostring(result.build_kind))
+		end
+		if result.build_width then
+			append(lines, "width=" .. tostring(result.build_width))
+		end
+		if result.build_depth then
+			append(lines, "depth=" .. tostring(result.build_depth))
+		end
+		if result.repair_radius then
+			append(lines, "radius=" .. tostring(result.repair_radius))
+		end
+		if result.sample_limit then
+			append(lines, "sample_limit=" .. tostring(result.sample_limit))
+		end
+		if result.planned_node_writes then
+			append(lines, "planned_writes=" .. tostring(result.planned_node_writes))
+		end
+		if result.candidate_count then
+			append(lines, "candidates=" .. tostring(result.candidate_count))
+		end
 		if result.plan_status then
 			append(lines, "plan_status=" .. tostring(result.plan_status))
 		end
@@ -1813,6 +1842,24 @@ local function parse_build_options(raw_prompt, context)
 	return parsed, nil
 end
 
+local function parse_build_edit_options(raw_prompt, context)
+	local lower = raw_prompt:lower()
+	local has_shape = raw_prompt:match("[Ww][Ii][Dd][Tt][Hh]%s+([%-%d]+)")
+		or raw_prompt:match("[Dd][Ee][Pp][Tt][Hh]%s+([%-%d]+)")
+		or raw_prompt:match("%d+%s*[Xx]%s*%d+")
+	if not lower:find("marker", 1, true)
+			and not lower:find("platform", 1, true)
+			and not has_shape then
+		return nil, "no_plan_edit_parameters"
+	end
+	local prompt = raw_prompt
+	if has_shape and not lower:find("platform", 1, true)
+			and not lower:find("marker", 1, true) then
+		prompt = raw_prompt .. " platform"
+	end
+	return parse_build_options(prompt, context)
+end
+
 local function queue_build_task(name, context)
 	context = context or {}
 	configure_product_surfaces()
@@ -1961,6 +2008,17 @@ local function parse_repair_options(raw_prompt, context)
 		parsed.sample_limit = sample_limit
 	end
 	return parsed, nil
+end
+
+local function parse_repair_edit_options(raw_prompt, context)
+	local has_repair_edit = raw_prompt:match("[Rr][Aa][Dd][Ii][Uu][Ss]%s+([%-%d]+)")
+		or raw_prompt:match("[Rr][Aa][Nn][Gg][Ee]%s+([%-%d]+)")
+		or raw_prompt:match("[Ss][Aa][Mm][Pp][Ll][Ee][Ss]?%s+([%-%d]+)")
+		or raw_prompt:match("[Ll][Ii][Mm][Ii][Tt]%s+([%-%d]+)")
+	if not has_repair_edit then
+		return nil, "no_plan_edit_parameters"
+	end
+	return parse_repair_options(raw_prompt, context)
 end
 
 local function handle_repair_plan(name, context)
@@ -2213,6 +2271,9 @@ local function handle_guide(name)
 			"tasks",
 			"task <task_id>",
 			"pending plan",
+			"edit plan",
+			"edit plan platform width N depth N",
+			"edit plan radius N",
 			"discard plan",
 			"cancel",
 			"cancel <task_id>",
@@ -2439,6 +2500,121 @@ local function handle_pending_plan(name)
 	})
 end
 
+local function update_build_pending_plan(name, pending, raw_prompt)
+	local edited_context, reason = parse_build_edit_options(raw_prompt, pending.context)
+	if not edited_context then
+		return public_reply(name, "edit_plan", "blocked",
+			"Pending build plan edit parameters are outside the configured bounds.", {
+				surface_id = pending.surface_id or "builder",
+				reason = reason,
+				approval_id = pending.approval_id,
+				pending_action = pending.action,
+				pending_approval = compact_pending_approval(pending),
+			})
+	end
+	local result, plan = build_plan_for(name, edited_context)
+	pending.context = approval_context(edited_context)
+	pending.plan = plan
+	pending.candidate_count = nil
+	pending.planned_node_writes = plan.metrics.planned_node_writes or 0
+	pending.build_kind = plan.build_kind
+	pending.build_width = plan.build_width
+	pending.build_depth = plan.build_depth
+	pending.repair_radius = nil
+	pending.sample_limit = nil
+	player_pending_approvals[name] = pending
+	return public_reply(name, "edit_plan", "success",
+		"Pending build plan updated without mutation.", {
+			surface_id = "builder",
+			approval_id = pending.approval_id,
+			pending_action = pending.action,
+			pending_approval = compact_pending_approval(pending),
+			plan = plan,
+			plan_status = result.status,
+			planned_node_writes = pending.planned_node_writes,
+			build_kind = pending.build_kind,
+			build_width = pending.build_width,
+			build_depth = pending.build_depth,
+		})
+end
+
+local function update_repair_pending_plan(name, pending, raw_prompt)
+	local edited_context, reason = parse_repair_edit_options(raw_prompt, pending.context)
+	if not edited_context then
+		return public_reply(name, "edit_plan", "blocked",
+			"Pending repair plan edit parameters are outside the configured bounds.", {
+				surface_id = pending.surface_id or "repair",
+				reason = reason,
+				approval_id = pending.approval_id,
+				pending_action = pending.action,
+				pending_approval = compact_pending_approval(pending),
+			})
+	end
+	configure_product_surfaces()
+	local agent_id = surface_agent_id_for(name, "repair")
+	plugin.ensure_surface_agent(name, "repair")
+	local repair_radius = repair_radius_for(edited_context)
+	local sample_limit = repair_sample_limit_for(edited_context)
+	local plan = core.repair_agent.plan_area(default_pos(edited_context), {
+		agent_id = agent_id,
+		owner = name,
+		task_id = pending.approval_id .. ":plan",
+		radius = repair_radius,
+		repair_nodes = settings.repair_nodes,
+		get_node = edited_context.get_node,
+		sample_limit = sample_limit,
+	})
+	local compact = compact_repair_plan(plan)
+	compact.repair_radius = repair_radius
+	compact.sample_limit = sample_limit
+	pending.context = approval_context(edited_context)
+	pending.plan = compact
+	pending.raw_plan = plan
+	pending.candidate_count = compact.candidate_count
+	pending.planned_node_writes = nil
+	pending.build_kind = nil
+	pending.build_width = nil
+	pending.build_depth = nil
+	pending.repair_radius = repair_radius
+	pending.sample_limit = sample_limit
+	player_pending_approvals[name] = pending
+	return public_reply(name, "edit_plan", "success",
+		"Pending repair plan updated without mutation.", {
+			surface_id = "repair",
+			approval_id = pending.approval_id,
+			pending_action = pending.action,
+			pending_approval = compact_pending_approval(pending),
+			plan = compact,
+			plan_status = plan.status,
+			candidate_count = compact.candidate_count,
+			repair_radius = repair_radius,
+			sample_limit = sample_limit,
+		})
+end
+
+local function handle_edit_pending_plan(name, raw_prompt)
+	plugin.ensure_surface_agent(name, "guide")
+	local pending = player_pending_approvals[name]
+	if not pending then
+		return public_reply(name, "edit_plan", "blocked", "No pending plan to edit.", {
+			surface_id = "guide",
+			reason = "no_pending_approval",
+		})
+	end
+	if pending.action == "build" then
+		return update_build_pending_plan(name, pending, raw_prompt)
+	elseif pending.action == "repair" then
+		return update_repair_pending_plan(name, pending, raw_prompt)
+	end
+	return public_reply(name, "edit_plan", "blocked",
+		"Pending approval type is unsupported.", {
+			surface_id = pending.surface_id or "guide",
+			reason = "unsupported_pending_approval",
+			approval_id = pending.approval_id,
+			pending_action = pending.action,
+		})
+end
+
 local function handle_discard_approval(name, raw_prompt)
 	plugin.ensure_surface_agent(name, "guide")
 	local pending = player_pending_approvals[name]
@@ -2579,6 +2755,15 @@ function plugin.handle_command(name, param, context)
 	if prompt == "pending" or prompt == "pending plan"
 			or prompt == "plan" or prompt == "review plan" then
 		return handle_pending_plan(name)
+	end
+	if prompt == "edit plan" or prompt:match("^edit%s+plan%s+.+$")
+			or prompt:match("^plan%s+edit%s+.+$")
+			or prompt:match("^update%s+plan%s+.+$")
+			or prompt:match("^change%s+plan%s+.+$")
+			or prompt:match("^pending%s+plan%s+.+$")
+			or prompt:match("^edit%s+build%s+plan%s+.+$")
+			or prompt:match("^edit%s+repair%s+plan%s+.+$") then
+		return handle_edit_pending_plan(name, raw_prompt)
 	end
 	local requested_task_id = raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+[Ss][Tt][Aa][Tt][Uu][Ss]%s+(.+)$")
 		or raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+(.+)$")
