@@ -18,7 +18,7 @@ DEFAULT_OUTPUT = ROOT / "local" / "benchmarks" / "ai-native-mvp-audit.json"
 
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
-    r"sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|"
+    r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|"
     r"/Users/|/opt/|bill@",
     re.I,
 )
