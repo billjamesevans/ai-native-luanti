@@ -3966,6 +3966,32 @@ assert(tasks_chat_text:find("status=success action=tasks", 1, true))
 assert(tasks_chat_text:find("tasks=none", 1, true))
 assert(tasks_chat_text:find("pending=build", 1, true))
 assert(tasks_chat_text:find("approval_id=", 1, true))
+local targeted_approval_id = pending_chat_text:match("approval_id=([^%s]+)")
+assert(targeted_approval_id ~= nil)
+local approve_chat_ok, approve_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "approve " .. targeted_approval_id)
+assert(approve_chat_ok == true)
+assert(approve_chat_text:find("status=queued action=approve", 1, true))
+assert(approve_chat_text:find("approved_action=build", 1, true))
+assert(approve_chat_text:find("approval_id=" .. targeted_approval_id, 1, true))
+local targeted_task_id = approve_chat_text:match("task_id=([^%s]+)")
+assert(targeted_task_id ~= nil)
+
+local task_chat_ok, task_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "task status " .. targeted_task_id)
+assert(task_chat_ok == true)
+assert(task_chat_text:find("status=success action=task_status", 1, true))
+assert(task_chat_text:find("task_id=" .. targeted_task_id, 1, true))
+assert(task_chat_text:find("task_status=queued", 1, true))
+
+local cancel_chat_ok, cancel_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "cancel " .. targeted_task_id)
+assert(cancel_chat_ok == true)
+assert(cancel_chat_text:find("status=success action=cancel", 1, true))
+assert(cancel_chat_text:find("task_id=" .. targeted_task_id, 1, true))
+assert(cancel_chat_text:find("before_status=queued", 1, true))
+assert(cancel_chat_text:find("after_status=cancelled", 1, true))
+assert(cancel_chat_text:find("cancelled=1", 1, true))
 end
 
 test_ai_agent_plugin_registered_chat_command_player_output()

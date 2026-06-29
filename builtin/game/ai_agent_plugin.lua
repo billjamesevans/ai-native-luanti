@@ -324,6 +324,15 @@ local function append_task_details(lines, result)
 	if result.task_id then
 		append(lines, "task_id=" .. tostring(result.task_id))
 	end
+	if result.task_status then
+		append(lines, "task_status=" .. tostring(result.task_status))
+	end
+	if result.before_status then
+		append(lines, "before_status=" .. tostring(result.before_status))
+	end
+	if result.after_status then
+		append(lines, "after_status=" .. tostring(result.after_status))
+	end
 	if result.surface_id then
 		append(lines, "surface=" .. tostring(result.surface_id))
 	end
@@ -376,6 +385,17 @@ local function format_command_reply(result)
 		if pending then
 			append(lines, pending)
 		end
+	elseif result.action == "task_status" then
+		append_task_details(lines, result)
+		if result.task_label then
+			append(lines, "task_label=" .. tostring(result.task_label))
+		end
+		if result.last_result_status then
+			append(lines, "last_result_status=" .. tostring(result.last_result_status))
+		end
+		if result.last_result_reason then
+			append(lines, "last_result_reason=" .. tostring(result.last_result_reason))
+		end
 	elseif result.action == "status" then
 		local state = result.state or {}
 		append(lines, "mode=" .. tostring(state.mode or "unknown"))
@@ -423,6 +443,7 @@ local function format_command_reply(result)
 			append(lines, "recent=" .. join_limited(summaries, 5))
 		end
 	elseif result.action == "cancel" then
+		append_task_details(lines, result)
 		append(lines, "cancelled=" .. tostring(result.cancelled or 0))
 	else
 		append_task_details(lines, result)
@@ -623,6 +644,20 @@ local function active_player_tasks(name)
 		end
 	end
 	return result
+end
+
+local function player_task_by_id(name, requested_task_id)
+	if type(requested_task_id) ~= "string" or requested_task_id == "" then
+		return nil, nil
+	end
+	local requested = requested_task_id:trim()
+	local requested_lower = requested:lower()
+	for _, task_id in ipairs(player_task_ids[name] or {}) do
+		if task_id == requested or task_id:lower() == requested_lower then
+			return core.get_ai_task(task_id), task_id
+		end
+	end
+	return nil, requested
 end
 
 local function approval_context(context)
@@ -1884,8 +1919,11 @@ local function handle_guide(name)
 		commands = {
 			"status",
 			"tasks",
+			"task <task_id>",
 			"cancel",
+			"cancel <task_id>",
 			"approve",
+			"approve <approval_id>",
 			"follow",
 			"light",
 			"build plan",
@@ -1947,8 +1985,33 @@ local function handle_defend(name, context)
 	}, context)
 end
 
-local function handle_cancel(name)
+local function handle_cancel(name, requested_task_id)
 	plugin.ensure_surface_agent(name, "guide")
+	if requested_task_id then
+		local task, canonical_task_id = player_task_by_id(name, requested_task_id)
+		if not task then
+			return public_reply(name, "cancel", "blocked",
+				"Requested task was not found for this player.", {
+					surface_id = "guide",
+					reason = "task_not_found_or_not_owned",
+					task_id = canonical_task_id,
+					cancelled = 0,
+				})
+		end
+		local before_status = task.status
+		local result = core.cancel_ai_task(task.task_id, name)
+		local after = core.get_ai_task(task.task_id) or task
+		return public_reply(name, "cancel", result.ok and "success" or "blocked",
+			result.message or "Task cancellation checked.", {
+				surface_id = "guide",
+				reason = result.reason,
+				task_id = task.task_id,
+				task_status = after.status,
+				before_status = before_status,
+				after_status = after.status,
+				cancelled = result.ok and 1 or 0,
+			})
+	end
 	local cancelled = 0
 	for _, task in ipairs(active_player_tasks(name)) do
 		if task.status == "queued" or task.status == "running" or task.status == "paused" then
@@ -1965,8 +2028,29 @@ local function handle_cancel(name)
 		})
 end
 
-local function handle_tasks(name)
+local function handle_tasks(name, requested_task_id)
 	plugin.ensure_surface_agent(name, "guide")
+	if requested_task_id then
+		local task, canonical_task_id = player_task_by_id(name, requested_task_id)
+		if not task then
+			return public_reply(name, "task_status", "blocked",
+				"Requested task was not found for this player.", {
+					surface_id = "guide",
+					reason = "task_not_found_or_not_owned",
+					task_id = canonical_task_id,
+				})
+		end
+		local last_result = task.last_result or {}
+		return public_reply(name, "task_status", "success", "Task status returned.", {
+			surface_id = "guide",
+			task = task,
+			task_id = task.task_id,
+			task_status = task.status,
+			task_label = task.label,
+			last_result_status = last_result.status,
+			last_result_reason = last_result.reason,
+		})
+	end
 	return public_reply(name, "tasks", "success", "Task list returned.", {
 		surface_id = "guide",
 		tasks = active_player_tasks(name),
@@ -1974,15 +2058,23 @@ local function handle_tasks(name)
 	})
 end
 
-local function handle_approve(name, prompt)
+local function handle_approve(name, raw_prompt)
 	local pending = player_pending_approvals[name]
 	if not pending then
 		return public_reply(name, "approve", "blocked", "No pending approval to apply.", {
 			reason = "no_pending_approval",
 		})
 	end
-	local requested_action = prompt:match("^approve%s+([%w_%-]+)$")
-	if requested_action and requested_action ~= pending.action then
+	local requested_action = raw_prompt:match("^[Aa][Pp][Pp][Rr][Oo][Vv][Ee]%s+(.+)$")
+	if requested_action then
+		requested_action = requested_action:trim()
+	end
+	local requested_lower = requested_action and requested_action:lower() or nil
+	local approval_lower = pending.approval_id and pending.approval_id:lower() or nil
+	local requested_matches = not requested_action
+		or requested_lower == pending.action
+		or requested_lower == approval_lower
+	if not requested_matches then
 		return public_reply(name, "approve", "blocked",
 			"Pending approval action does not match request.", {
 				reason = "approval_action_mismatch",
@@ -2034,7 +2126,8 @@ function plugin.handle_command(name, param, context)
 	plugin.ensure_player_agent(name)
 	context = context or {}
 	context.player_name = name
-	local prompt = tostring(param or ""):lower():trim()
+	local raw_prompt = tostring(param or ""):trim()
+	local prompt = raw_prompt:lower()
 
 	if prompt == "" or prompt == "status" then
 		return public_reply(name, "status", "success", "Nova agent is ready.", {
@@ -2055,11 +2148,21 @@ function plugin.handle_command(name, param, context)
 	if prompt == "tasks" or prompt == "task status" or prompt == "builder" then
 		return handle_tasks(name)
 	end
+	local requested_task_id = raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+[Ss][Tt][Aa][Tt][Uu][Ss]%s+(.+)$")
+		or raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+(.+)$")
+	if requested_task_id then
+		return handle_tasks(name, requested_task_id:trim())
+	end
 	if prompt == "cancel" or prompt == "stop" then
 		return handle_cancel(name)
 	end
-	if prompt == "approve" or prompt:match("^approve%s+[%w_%-]+$") then
-		return handle_approve(name, prompt)
+	local requested_cancel_task_id = raw_prompt:match("^[Cc][Aa][Nn][Cc][Ee][Ll]%s+(.+)$")
+		or raw_prompt:match("^[Ss][Tt][Oo][Pp]%s+(.+)$")
+	if requested_cancel_task_id then
+		return handle_cancel(name, requested_cancel_task_id:trim())
+	end
+	if prompt == "approve" or prompt:match("^approve%s+.+$") then
+		return handle_approve(name, raw_prompt)
 	end
 	if prompt:find("follow me", 1, true) or prompt == "follow"
 			or prompt:match("^follow%s+%d+$") then
