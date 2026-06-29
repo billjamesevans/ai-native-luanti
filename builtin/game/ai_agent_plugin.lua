@@ -26,6 +26,81 @@ local settings = {
 	capabilities = table.copy(default_capabilities),
 }
 
+local PRODUCT_SURFACE_ORDER = {
+	"builder",
+	"repair",
+	"guide",
+	"defender",
+	"importer",
+}
+
+local PRODUCT_SURFACES = {
+	builder = {
+		surface_id = "builder",
+		display_name = "Builder Agent",
+		default_clean_profile_grant = "granted",
+		required_capabilities = { "world.read", "world.place" },
+		optional_capabilities = { "task.cancel" },
+		commands = { "build plan", "build marker", "approve build", "light" },
+		runtime_entrypoints = {
+			"core.build_agent.plan",
+			"core.build_agent.define_task",
+		},
+		mutation_policy = "preview_then_approval_rollback_backed",
+	},
+	repair = {
+		surface_id = "repair",
+		display_name = "Repair Agent",
+		default_clean_profile_grant = "granted",
+		required_capabilities = { "world.read", "world.place" },
+		optional_capabilities = { "task.cancel" },
+		commands = { "repair plan", "repair", "approve repair" },
+		runtime_entrypoints = {
+			"core.repair_agent.plan_area",
+			"core.repair_agent.queue_apply_task",
+		},
+		mutation_policy = "preview_then_approval_rollback_backed",
+	},
+	guide = {
+		surface_id = "guide",
+		display_name = "Guide Agent",
+		default_clean_profile_grant = "granted",
+		required_capabilities = { "world.read" },
+		optional_capabilities = { "task.cancel", "http.llm" },
+		commands = { "guide", "tasks", "cancel", "audit", "rollback" },
+		runtime_entrypoints = {
+			"core.get_ai_task",
+			"core.get_ai_runtime_audit",
+			"core.cancel_ai_task",
+		},
+		mutation_policy = "read_only_review_or_owner_task_control",
+	},
+	defender = {
+		surface_id = "defender",
+		display_name = "Defender Agent",
+		default_clean_profile_grant = "not_granted",
+		required_capabilities = { "combat.defend" },
+		optional_capabilities = { "task.cancel" },
+		commands = { "defend" },
+		runtime_entrypoints = {
+			"core.ai_player_ops.defend",
+		},
+		mutation_policy = "operator_or_plugin_profile_only",
+	},
+	importer = {
+		surface_id = "importer",
+		display_name = "Importer Agent",
+		default_clean_profile_grant = "not_granted",
+		required_capabilities = { "import.assets" },
+		optional_capabilities = { "task.cancel" },
+		commands = { "import plan", "import preview", "import inventory" },
+		runtime_entrypoints = {
+			"core.ai_import_ops.plan",
+		},
+		mutation_policy = "dry_run_only_operator_or_plugin_profile",
+	},
+}
+
 local function copy_pos(pos)
 	if not pos then
 		return nil
@@ -44,6 +119,92 @@ end
 
 local function agent_id_for(name)
 	return "nova_agent:" .. normalize_player_name(name)
+end
+
+local function product_surface(surface_id)
+	assert(PRODUCT_SURFACES[surface_id] ~= nil, "Unknown AI agent product surface")
+	return PRODUCT_SURFACES[surface_id]
+end
+
+local function surface_agent_id_for(name, surface_id)
+	return agent_id_for(name) .. ":" .. product_surface(surface_id).surface_id
+end
+
+local function capability_subset(surface)
+	local capabilities = {}
+	for _, capability in ipairs(surface.required_capabilities or {}) do
+		if settings.capabilities[capability] then
+			capabilities[capability] = true
+		end
+	end
+	for _, capability in ipairs(surface.optional_capabilities or {}) do
+		if settings.capabilities[capability] then
+			capabilities[capability] = true
+		end
+	end
+	return capabilities
+end
+
+local function capability_list_for(surface)
+	local result = {}
+	for _, capability in ipairs(surface.required_capabilities or {}) do
+		result[#result + 1] = capability
+	end
+	for _, capability in ipairs(surface.optional_capabilities or {}) do
+		result[#result + 1] = capability
+	end
+	return result
+end
+
+local function granted_capability_list_for(surface)
+	local result = {}
+	for _, capability in ipairs(capability_list_for(surface)) do
+		if settings.capabilities[capability] then
+			result[#result + 1] = capability
+		end
+	end
+	return result
+end
+
+local function surface_required_capabilities_granted(surface)
+	for _, capability in ipairs(surface.required_capabilities or {}) do
+		if not settings.capabilities[capability] then
+			return false
+		end
+	end
+	return true
+end
+
+local function compact_product_surface(surface_id, name)
+	local surface = product_surface(surface_id)
+	return {
+		surface_id = surface.surface_id,
+		agent_id = name and surface_agent_id_for(name, surface_id) or nil,
+		display_name = surface.display_name,
+		capability_profile = settings.capability_profile,
+		default_clean_profile_grant = surface.default_clean_profile_grant,
+		required_capabilities = table.copy(surface.required_capabilities or {}),
+		optional_capabilities = table.copy(surface.optional_capabilities or {}),
+		granted_capabilities = granted_capability_list_for(surface),
+		required_capabilities_granted = surface_required_capabilities_granted(surface),
+		commands = table.copy(surface.commands or {}),
+		runtime_entrypoints = table.copy(surface.runtime_entrypoints or {}),
+		mutation_policy = surface.mutation_policy,
+	}
+end
+
+function plugin.get_product_surfaces(name)
+	local normalized_name = name and normalize_player_name(name) or nil
+	local surfaces = {}
+	for _, surface_id in ipairs(PRODUCT_SURFACE_ORDER) do
+		surfaces[#surfaces + 1] = compact_product_surface(surface_id, normalized_name)
+	end
+	return surfaces
+end
+
+function plugin.get_product_surface(surface_id, name)
+	local normalized_name = name and normalize_player_name(name) or nil
+	return compact_product_surface(surface_id, normalized_name)
 end
 
 local function next_task_id(name, action)
@@ -96,7 +257,10 @@ local function public_reply(name, action, status, message, extra)
 		or status == "pending_approval"
 	extra.status = status
 	extra.action = action
-	extra.agent_id = agent_id_for(name)
+	if extra.surface_id and not extra.agent_id then
+		extra.agent_id = surface_agent_id_for(name, extra.surface_id)
+	end
+	extra.agent_id = extra.agent_id or agent_id_for(name)
 	extra.message = message
 	return extra
 end
@@ -176,6 +340,44 @@ function plugin.ensure_player_agent(name)
 	})
 end
 
+function plugin.ensure_surface_agent(name, surface_id)
+	name = normalize_player_name(name)
+	local surface = product_surface(surface_id)
+	local agent_id = surface_agent_id_for(name, surface_id)
+	local existing = core.get_ai_agent(agent_id)
+	if existing then
+		return existing
+	end
+	return core.register_ai_agent({
+		agent_id = agent_id,
+		display_name = surface.display_name .. " - " .. name,
+		owner = name,
+		plugin = "ai_agent_plugin:" .. surface.surface_id,
+		capabilities = capability_subset(surface),
+		limits = {
+			capability_profile = settings.capability_profile,
+			product_surface = surface.surface_id,
+			default_clean_profile_grant = surface.default_clean_profile_grant,
+			max_nodes_per_step = settings.max_lights,
+			max_entities = surface.surface_id == "guide" and 0 or 1,
+			max_entity_move_distance = settings.max_entity_move_distance,
+			max_follow_steps = settings.max_follow_steps,
+			max_follow_step_distance = settings.max_follow_step_distance,
+			max_follow_total_distance = settings.max_follow_total_distance,
+		},
+	})
+end
+
+function plugin.ensure_product_agents(name)
+	name = normalize_player_name(name)
+	local agents = {}
+	plugin.ensure_player_agent(name)
+	for _, surface_id in ipairs(PRODUCT_SURFACE_ORDER) do
+		agents[surface_id] = plugin.ensure_surface_agent(name, surface_id)
+	end
+	return agents
+end
+
 function plugin.get_player_state(name)
 	name = normalize_player_name(name)
 	if not player_states[name] then
@@ -235,6 +437,7 @@ local function compact_pending_approval(pending)
 	end
 	return {
 		approval_id = pending.approval_id,
+		surface_id = pending.surface_id,
 		pending_action = pending.action,
 		plan = pending.plan,
 		candidate_count = pending.candidate_count,
@@ -246,6 +449,7 @@ local function remember_pending_approval(name, action, plan, context, extra)
 	extra = extra or {}
 	local pending = {
 		approval_id = next_approval_id(name, action),
+		surface_id = extra.surface_id,
 		action = action,
 		plan = plan,
 		context = approval_context(context),
@@ -258,6 +462,15 @@ end
 
 local function agent_entity_id_for(name)
 	return agent_id_for(name) .. ":helper"
+end
+
+local function task_agent_id_for(name, context)
+	context = context or {}
+	if context.surface_id then
+		plugin.ensure_surface_agent(name, context.surface_id)
+		return surface_agent_id_for(name, context.surface_id)
+	end
+	return agent_id_for(name)
 end
 
 local function entity_options(name, context)
@@ -276,9 +489,10 @@ local function queue_plugin_task(name, action, label, steps, context)
 	context = context or {}
 	local task_id = next_task_id(name, action)
 	context.task_id = task_id
+	local agent_id = task_agent_id_for(name, context)
 	local task = core.queue_ai_task({
 		task_id = task_id,
-		agent_id = agent_id_for(name),
+		agent_id = agent_id,
 		owner = name,
 		label = label,
 		budget = {
@@ -291,14 +505,21 @@ local function queue_plugin_task(name, action, label, steps, context)
 	remember_task(name, task_id)
 	return public_reply(name, action, "queued", label .. " queued.", {
 		task_id = task.task_id,
+		surface_id = context.surface_id,
+		agent_id = agent_id,
 	})
 end
 
-local function queue_defined_task(name, action, label, definition)
+local function queue_defined_task(name, action, label, definition, surface_id)
+	if surface_id then
+		plugin.ensure_surface_agent(name, surface_id)
+	end
 	local task = core.queue_ai_task(definition)
 	remember_task(name, task.task_id)
 	return public_reply(name, action, "queued", label .. " queued.", {
 		task_id = task.task_id,
+		surface_id = surface_id,
+		agent_id = definition.agent_id,
 	})
 end
 
@@ -309,11 +530,13 @@ local function handle_light(name, prompt, context)
 	count = math.max(1, math.min(count, settings.max_lights))
 	local base = default_pos(context)
 	local task_id = next_task_id(name, "light")
+	local agent_id = surface_agent_id_for(name, "builder")
+	plugin.ensure_surface_agent(name, "builder")
 	return queue_defined_task(name, "light", "place " .. count .. " light node(s)",
 		core.build_agent.define_task({
 			kind = "lights",
 			task_id = task_id,
-			agent_id = agent_id_for(name),
+			agent_id = agent_id,
 			owner = name,
 			world_id = context.world_id or "ai_agent_plugin",
 			origin = base,
@@ -324,7 +547,7 @@ local function handle_light(name, prompt, context)
 			persist_record = context.persist_record or context.persist_rollback_record,
 			rollback_policy = context.rollback_policy,
 			operation_label = "ai_agent_plugin.light",
-		}))
+		}), "builder")
 end
 
 local function update_player_entity_state(name, state, entity_id)
@@ -704,11 +927,13 @@ local function queue_build_task(name, context)
 	configure_product_surfaces()
 	local pos = default_pos(context)
 	local task_id = next_task_id(name, "build")
+	local agent_id = surface_agent_id_for(name, "builder")
+	plugin.ensure_surface_agent(name, "builder")
 	return queue_defined_task(name, "build", "build marker",
 		core.build_agent.define_task({
 			kind = "marker",
 			task_id = task_id,
-			agent_id = agent_id_for(name),
+			agent_id = agent_id,
 			owner = name,
 			world_id = context.world_id or "ai_agent_plugin",
 			origin = pos,
@@ -718,16 +943,18 @@ local function queue_build_task(name, context)
 			persist_record = context.persist_record or context.persist_rollback_record,
 			rollback_policy = context.rollback_policy,
 			operation_label = "ai_agent_plugin.build",
-		}))
+		}), "builder")
 end
 
 local function build_plan_for(name, context)
 	context = context or {}
 	configure_product_surfaces()
+	local agent_id = surface_agent_id_for(name, "builder")
+	plugin.ensure_surface_agent(name, "builder")
 	local result = core.build_agent.plan({
 		kind = "marker",
 		task_id = context.task_id,
-		agent_id = agent_id_for(name),
+		agent_id = agent_id,
 		owner = name,
 		world_id = context.world_id or "ai_agent_plugin",
 		origin = default_pos(context),
@@ -750,6 +977,7 @@ end
 local function handle_build_plan(name, context)
 	local result, plan = build_plan_for(name, context)
 	return public_reply(name, "build_plan", result.status, "Build plan returned without mutation.", {
+		surface_id = "builder",
 		plan = plan,
 		planned_node_writes = plan.metrics.planned_node_writes or 0,
 	})
@@ -759,10 +987,12 @@ local function handle_build(name, context)
 	context = context or {}
 	local result, plan = build_plan_for(name, context)
 	local pending = remember_pending_approval(name, "build", plan, context, {
+		surface_id = "builder",
 		planned_node_writes = plan.metrics.planned_node_writes or 0,
 	})
 	return public_reply(name, "build", "pending_approval",
 		"Build plan is pending approval before mutation.", {
+			surface_id = "builder",
 			approval_id = pending.approval_id,
 			pending_action = "build",
 			plan = plan,
@@ -794,8 +1024,10 @@ end
 local function handle_repair_plan(name, context)
 	context = context or {}
 	configure_product_surfaces()
+	local agent_id = surface_agent_id_for(name, "repair")
+	plugin.ensure_surface_agent(name, "repair")
 	local plan = core.repair_agent.plan_area(default_pos(context), {
-		agent_id = agent_id_for(name),
+		agent_id = agent_id,
 		owner = name,
 		task_id = context.task_id,
 		radius = 0,
@@ -805,6 +1037,7 @@ local function handle_repair_plan(name, context)
 	})
 	local compact = compact_repair_plan(plan)
 	return public_reply(name, "repair_plan", plan.status, "Repair plan returned without mutation.", {
+		surface_id = "repair",
 		plan = compact,
 		candidate_count = compact.candidate_count,
 	})
@@ -815,8 +1048,10 @@ local function queue_repair_task(name, context, plan)
 	configure_product_surfaces()
 	local pos = default_pos(context)
 	local task_id = next_task_id(name, "repair")
+	local agent_id = surface_agent_id_for(name, "repair")
+	plugin.ensure_surface_agent(name, "repair")
 	plan = plan or core.repair_agent.plan_area(pos, {
-		agent_id = agent_id_for(name),
+		agent_id = agent_id,
 		owner = name,
 		task_id = task_id .. ":plan",
 		radius = 0,
@@ -826,7 +1061,7 @@ local function queue_repair_task(name, context, plan)
 	})
 	local task = core.repair_agent.queue_apply_task({
 		task_id = task_id,
-		agent_id = agent_id_for(name),
+		agent_id = agent_id,
 		owner = name,
 		world_id = context.world_id or "ai_agent_plugin",
 		plan = plan,
@@ -841,6 +1076,8 @@ local function queue_repair_task(name, context, plan)
 	})
 	remember_task(name, task.task_id)
 	return public_reply(name, "repair", "queued", "repair nearby hazard queued.", {
+		surface_id = "repair",
+		agent_id = agent_id,
 		task_id = task.task_id,
 		plan_status = plan.status,
 		candidate_count = #(plan.candidates or {}),
@@ -851,8 +1088,10 @@ local function handle_repair(name, context)
 	context = context or {}
 	configure_product_surfaces()
 	local approval_id = next_approval_id(name, "repair")
+	local agent_id = surface_agent_id_for(name, "repair")
+	plugin.ensure_surface_agent(name, "repair")
 	local plan = core.repair_agent.plan_area(default_pos(context), {
-		agent_id = agent_id_for(name),
+		agent_id = agent_id,
 		owner = name,
 		task_id = approval_id .. ":plan",
 		radius = 0,
@@ -863,6 +1102,7 @@ local function handle_repair(name, context)
 	local compact = compact_repair_plan(plan)
 	local pending = {
 		approval_id = approval_id,
+		surface_id = "repair",
 		action = "repair",
 		plan = compact,
 		raw_plan = plan,
@@ -872,6 +1112,7 @@ local function handle_repair(name, context)
 	player_pending_approvals[name] = pending
 	return public_reply(name, "repair", "pending_approval",
 		"Repair plan is pending approval before mutation.", {
+			surface_id = "repair",
 			approval_id = pending.approval_id,
 			pending_action = "repair",
 			plan = compact,
@@ -900,10 +1141,13 @@ end
 local function handle_import_plan(name, context)
 	context = context or {}
 	context.max_node_writes_per_step = 0
+	context.surface_id = "importer"
+	local agent_id = surface_agent_id_for(name, "importer")
+	plugin.ensure_surface_agent(name, "importer")
 	return queue_plugin_task(name, "import_plan", "import dry-run plan", {
 		function()
 			return core.ai_import_ops.plan(default_import_plan(context), {
-				agent_id = agent_id_for(name),
+				agent_id = agent_id,
 				owner = name,
 				task_id = context.task_id,
 			})
@@ -929,10 +1173,15 @@ local function compact_audit_record(record)
 end
 
 local function audit_events_for(name, limit)
-	local agent_id = agent_id_for(name)
+	local agent_ids = {
+		[agent_id_for(name)] = true,
+	}
+	for _, surface_id in ipairs(PRODUCT_SURFACE_ORDER) do
+		agent_ids[surface_agent_id_for(name, surface_id)] = true
+	end
 	local events = {}
 	for _, record in ipairs(core.get_ai_runtime_audit({ limit = limit or 25 })) do
-		if record.agent_id == agent_id then
+		if agent_ids[record.agent_id] then
 			events[#events + 1] = compact_audit_record(record)
 		end
 	end
@@ -940,13 +1189,38 @@ local function audit_events_for(name, limit)
 end
 
 local function handle_guide(name)
+	local surface_agents = plugin.ensure_product_agents(name)
 	return public_reply(name, "guide", "success", "First-party agent guide returned.", {
+		surface_id = "guide",
 		surfaces = {
 			builder = true,
 			repair = true,
 			guide = true,
 			defender = true,
 			importer = true,
+		},
+		product_surfaces = plugin.get_product_surfaces(name),
+		surface_agents = {
+			builder = {
+				agent_id = surface_agents.builder.agent_id,
+				capability_profile = surface_agents.builder.limits.capability_profile,
+			},
+			repair = {
+				agent_id = surface_agents.repair.agent_id,
+				capability_profile = surface_agents.repair.limits.capability_profile,
+			},
+			guide = {
+				agent_id = surface_agents.guide.agent_id,
+				capability_profile = surface_agents.guide.limits.capability_profile,
+			},
+			defender = {
+				agent_id = surface_agents.defender.agent_id,
+				capability_profile = surface_agents.defender.limits.capability_profile,
+			},
+			importer = {
+				agent_id = surface_agents.importer.agent_id,
+				capability_profile = surface_agents.importer.limits.capability_profile,
+			},
 		},
 		commands = {
 			"status",
@@ -970,12 +1244,15 @@ local function handle_guide(name)
 end
 
 local function handle_audit(name)
+	plugin.ensure_surface_agent(name, "guide")
 	return public_reply(name, "audit", "success", "Recent agent audit events returned.", {
+		surface_id = "guide",
 		audit_events = audit_events_for(name, 50),
 	})
 end
 
 local function handle_rollback_review(name)
+	plugin.ensure_surface_agent(name, "guide")
 	local records = {}
 	for _, record in ipairs(audit_events_for(name, 100)) do
 		if record.event_type == "rollback.record" and record.rollback_record_id then
@@ -983,16 +1260,20 @@ local function handle_rollback_review(name)
 		end
 	end
 	return public_reply(name, "rollback", "success", "Recent rollback records returned.", {
+		surface_id = "guide",
 		rollback_records = records,
 	})
 end
 
 local function handle_defend(name, context)
 	context = context or {}
+	context.surface_id = "defender"
+	local agent_id = surface_agent_id_for(name, "defender")
+	plugin.ensure_surface_agent(name, "defender")
 	return queue_plugin_task(name, "defend", "defend player", {
 		function()
 			return core.ai_player_ops.defend(name, {
-				agent_id = agent_id_for(name),
+				agent_id = agent_id,
 				owner = name,
 				task_id = context.task_id,
 				get_player_by_name = context.get_player_by_name,
@@ -1007,6 +1288,7 @@ local function handle_defend(name, context)
 end
 
 local function handle_cancel(name)
+	plugin.ensure_surface_agent(name, "guide")
 	local cancelled = 0
 	for _, task in ipairs(active_player_tasks(name)) do
 		if task.status == "queued" or task.status == "running" or task.status == "paused" then
@@ -1018,12 +1300,15 @@ local function handle_cancel(name)
 	end
 	return public_reply(name, "cancel", cancelled > 0 and "success" or "blocked",
 		cancelled > 0 and ("Cancelled " .. cancelled .. " task(s).") or "No active tasks to cancel.", {
+			surface_id = "guide",
 			cancelled = cancelled,
 		})
 end
 
 local function handle_tasks(name)
+	plugin.ensure_surface_agent(name, "guide")
 	return public_reply(name, "tasks", "success", "Task list returned.", {
+		surface_id = "guide",
 		tasks = active_player_tasks(name),
 		pending_approval = compact_pending_approval(player_pending_approvals[name]),
 	})

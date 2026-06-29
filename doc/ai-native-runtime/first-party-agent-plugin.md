@@ -8,6 +8,31 @@ Status: first implementation slice for issue #7
 
 The plugin is deliberately small. It is a runtime client, not a replacement for the runtime itself.
 
+## Product Surfaces
+
+The plugin keeps the `/nova` chat entrypoint stable, but product behavior is
+split into five first-party role agents:
+
+| Surface | Agent id shape | Clean profile boundary | Runtime path |
+| --- | --- | --- | --- |
+| Builder Agent | `nova_agent:<player>:builder` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Build and light mutations require preview, explicit approval for marker builds, and rollback metadata before writes. | `core.build_agent.plan`, `core.build_agent.define_task` |
+| Repair Agent | `nova_agent:<player>:repair` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Repair mutation requires preview, explicit approval, and rollback metadata before writes. | `core.repair_agent.plan_area`, `core.repair_agent.queue_apply_task` |
+| Guide Agent | `nova_agent:<player>:guide` | Granted `world.read` plus optional `task.cancel` and `http.llm` when configured. It owns read-only guide, task, audit, rollback-review, and owner task-control views. | `core.get_ai_task`, `core.get_ai_runtime_audit`, `core.cancel_ai_task` |
+| Defender Agent | `nova_agent:<player>:defender` | Not granted in the default clean profile. A server profile or optional plugin must explicitly grant `combat.defend`. | `core.ai_player_ops.defend` |
+| Importer Agent | `nova_agent:<player>:importer` | Not granted in the default clean profile. A server profile or optional plugin must explicitly grant `import.assets`. The current surface is dry-run-only. | `core.ai_import_ops.plan` |
+
+`core.ai_agent_plugin.ensure_product_agents(player_name)` registers those role
+agents for a player, and `core.ai_agent_plugin.get_product_surfaces(player_name)`
+returns a public-safe catalog with each surface's capability profile, required
+capabilities, granted capabilities, default clean-profile grant boundary,
+commands, runtime entrypoints, and mutation policy.
+
+The legacy `nova_agent:<player>` identity remains for compatibility and for
+generic status, follow/come helper movement, and model-adapter fallback. New
+product work should prefer the role agents above so benchmark and operator
+evidence can distinguish builder, repair, guide, defender, and importer
+behavior.
+
 ## Runtime Boundaries
 
 The plugin uses:
@@ -96,7 +121,7 @@ core.ai_agent_plugin.configure({
 })
 ```
 
-The default capability policy is empty. A game package or operator mod must declare a named `capability_profile` and explicit `capabilities` table before newly registered player agents receive grants.
+The default capability policy is empty. A game package or operator mod must declare a named `capability_profile` and explicit `capabilities` table before newly registered player agents receive grants. The role agents inherit only the subset of configured capabilities relevant to their surface; for example, a clean profile with `http.llm` does not automatically grant model access to the builder, and a clean profile without `import.assets` creates an Importer Agent with no import grant.
 
 The default node/entity settings are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
 
