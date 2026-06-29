@@ -3867,6 +3867,57 @@ assert(blocked_follow.last_result.reason == "follow_distance_limit_exceeded")
 assert(blocked_follow.last_result.skipped == 1)
 assert(blocked_follow.last_result.metrics.step_distance == 2)
 assert(blocked_follow.last_result.metrics.skipped_reason == "max_total_distance")
+
+local path_base = test_pos(4275)
+local path_player_pos = table.copy(path_base)
+local path_player = {
+	get_pos = function()
+		return table.copy(path_player_pos)
+	end,
+}
+local pathfinder_calls = 0
+local path_follow = core.ai_agent_plugin.handle_command("Pathy", "follow me", {
+	get_player_by_name = function(name)
+		if name == "Pathy" then
+			return path_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	find_path = function(current_pos, target_pos, options)
+		pathfinder_calls = pathfinder_calls + 1
+		assert(options.max_step_distance == 2)
+		assert(options.stop_distance == 0)
+		return {
+			table.copy(current_pos),
+			vector.add(current_pos, { x = 0, y = 0, z = 2 }),
+			vector.add(current_pos, { x = 2, y = 0, z = 2 }),
+			table.copy(target_pos),
+		}
+	end,
+	max_follow_steps = 3,
+	max_follow_step_distance = 2,
+	max_follow_total_distance = 6,
+	max_follow_stop_distance = 0,
+})
+assert(path_follow.ok == true)
+core.step_ai_tasks()
+path_player_pos = vector.add(path_base, { x = 4, y = 0, z = 0 })
+core.step_ai_tasks()
+local path_follow_task = core.get_ai_task(path_follow.task_id)
+assert(pathfinder_calls == 1)
+assert(path_follow_task.status == "running")
+assert(path_follow_task.last_result.metrics.path_status == "pathfinder_waypoint_bounded")
+assert(path_follow_task.last_result.metrics.path_waypoint_count == 4)
+assert(path_follow_task.last_result.metrics.pathfinder_used == true)
+assert(path_follow_task.last_result.entity.pos.x == path_base.x)
+assert(path_follow_task.last_result.entity.pos.z == path_base.z + 2)
+assert(path_follow_task.last_result.metrics.step_distance == 2)
+assert(path_follow_task.last_result.metrics.total_distance_moved == 2)
+core.step_ai_tasks()
+local completed_path_follow = core.get_ai_task(path_follow.task_id)
+assert(completed_path_follow.status == "completed")
+assert(completed_path_follow.last_result.metrics.pathfinder_used == true)
 return follow_entity_id
 end
 
