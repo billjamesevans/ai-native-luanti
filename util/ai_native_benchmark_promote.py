@@ -23,6 +23,17 @@ PRIVATE_CONTEXT_FLAGS = (
     "requires_private_assets",
     "requires_live_pi",
 )
+FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS = {
+    "approval_plan_count": 2,
+    "approved_task_count": 2,
+    "guide_command_checked": 1,
+    "tasks_command_checked": 1,
+    "cancel_command_checked": 1,
+    "audit_review_checked": 1,
+    "rollback_review_checked": 1,
+    "defender_command_checked": 1,
+    "import_preview_checked": 1,
+}
 
 
 def utc_now() -> str:
@@ -44,6 +55,14 @@ def count_items(value) -> int:
     if isinstance(value, list):
         return len(value)
     return 1
+
+
+def numeric_metric(value) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
 
 
 def report_errors(report_name: str, report: dict) -> list[str]:
@@ -137,6 +156,27 @@ def clean_profile_errors(report: dict) -> list[str]:
             errors.append("clean_profile: avg_process_cpu_percent is required")
         if cpu.get("max_interval_cpu_percent") is None:
             errors.append("clean_profile: max_interval_cpu_percent is required")
+    product_loop = comparison_summary.get("first_party_agent_product_loop")
+    if not isinstance(product_loop, dict):
+        errors.append("clean_profile: first_party_agent_product_loop missing")
+    else:
+        if product_loop.get("product_loop_status") != "pass":
+            errors.append("clean_profile: first_party_agent_product_loop status must be pass")
+        for metric, threshold in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS.items():
+            if numeric_metric(product_loop.get(metric)) < threshold:
+                errors.append(
+                    f"clean_profile: first_party_agent_product_loop {metric} "
+                    f"must be at least {threshold}"
+                )
+        if product_loop.get("blocked_or_unsafe_outcomes") != 0:
+            errors.append(
+                "clean_profile: first_party_agent_product_loop "
+                "blocked_or_unsafe_outcomes must be 0"
+            )
+        if numeric_metric(product_loop.get("warning_count")) != 0:
+            errors.append("clean_profile: first_party_agent_product_loop warning_count must be 0")
+        if numeric_metric(product_loop.get("error_count")) != 0:
+            errors.append("clean_profile: first_party_agent_product_loop error_count must be 0")
     return errors
 
 

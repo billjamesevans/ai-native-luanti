@@ -57,6 +57,12 @@ Entry point: `core.write_ai_rollback_record`
 
 Measures rollback record creation overhead without applying a world mutation. It isolates metadata capture and persistence overhead from node writes and reports `node_writes` as zero.
 
+### first_party_agent_product_loop_approval
+
+Entry point: `core.ai_agent_plugin.handle_command -> approve`
+
+Exercises the first-party agent product loop for build and repair requests. The scenario records two approval plans, two approved tasks, guide/tasks/cancel command coverage, audit review, rollback review, defender checks, and importer preview coverage while keeping all fixtures synthetic. It must report total node writes, rollback records, `blocked_or_unsafe_outcomes`, average step, p95 step, max lag, warnings, and errors.
+
 ### compat_structure_chunked_apply
 
 Entry point: `core.ai_import_ops.queue_chunked_structure_apply_task`
