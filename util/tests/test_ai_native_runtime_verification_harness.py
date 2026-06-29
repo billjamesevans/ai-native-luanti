@@ -665,6 +665,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "dev_surfaces_disabled_by_default": True,
                 "test_fixtures_explicit_only": True,
                 "runtime_surfaces_available": True,
+                "startup_inventory_matches_default_runtime": True,
+                "profile_code_fixture_free": True,
             },
         }
         path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -994,6 +996,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertTrue(
                 manifest["product_profile_evidence"]["runtime_surfaces_available"]
             )
+            self.assertTrue(
+                manifest["product_profile_evidence"]["startup_inventory_matches_default_runtime"]
+            )
+            self.assertTrue(
+                manifest["product_profile_evidence"]["profile_code_fixture_free"]
+            )
             self.assertEqual(
                 manifest["product_profile_evidence"]["runtime_surface_count"],
                 2,
@@ -1204,7 +1212,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 13000)
+            self.assertLess(len(serialized), 13200)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
@@ -2285,6 +2293,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                                 "dev_surfaces_disabled_by_default": False,
                                 "test_fixtures_explicit_only": False,
                                 "runtime_surfaces_available": False,
+                                "startup_inventory_matches_default_runtime": False,
+                                "profile_code_fixture_free": False,
                             },
                         },
                     )
@@ -2342,6 +2352,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertIn(
                 "product_profile_hygiene runtime surfaces are not available",
+                " ".join(manifest["failure_reasons"]),
+            )
+            self.assertIn(
+                "product_profile_hygiene startup inventory does not match default runtime",
+                " ".join(manifest["failure_reasons"]),
+            )
+            self.assertIn(
+                "product_profile_hygiene profile code fixture scan failed",
                 " ".join(manifest["failure_reasons"]),
             )
             serialized = json.dumps(manifest, sort_keys=True)

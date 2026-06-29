@@ -22,6 +22,14 @@
       "purpose": "minimal first-party runtime profile and capability policy"
     },
     {
+      "name": "ai_runtime_core",
+      "category": "product_runtime",
+      "path": "builtin/game/ai_runtime.lua",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "AI runtime task, capability, audit, model, import, and safe operation APIs"
+    },
+    {
       "name": "ai_operator_status",
       "category": "product_runtime",
       "path": "builtin/game/ai_operator_status.lua",
@@ -36,6 +44,38 @@
       "loaded_by_default_product_profile": true,
       "requires_explicit_dev_or_test_lane": false,
       "purpose": "live receipt-gated operator task cancel/retry API and server command"
+    },
+    {
+      "name": "ai_runtime_commands",
+      "category": "product_runtime",
+      "path": "builtin/game/ai_runtime_commands.lua",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "bounded public runtime command surface"
+    },
+    {
+      "name": "build_agent",
+      "category": "first_party_plugin",
+      "path": "builtin/game/build_agent.lua",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "first-party rollback-backed build planning and task definitions"
+    },
+    {
+      "name": "repair_agent",
+      "category": "first_party_plugin",
+      "path": "builtin/game/repair_agent.lua",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "first-party repair planning and rollback-backed repair task definitions"
+    },
+    {
+      "name": "ai_agent_plugin",
+      "category": "first_party_plugin",
+      "path": "builtin/game/ai_agent_plugin.lua",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "player-facing first-party agent command and product-surface plugin"
     },
     {
       "name": "ai_runtime_smoke",

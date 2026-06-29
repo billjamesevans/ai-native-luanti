@@ -21,6 +21,12 @@ The release-package gate is:
 python3 util/ai_native_alpha_release_gate.py
 ```
 
+That gate verifies the contributor docs, issue/PR templates, fresh-checkout
+command plan, and the clean `games/ai_runtime` package inventory. It fails if
+default-loaded AI runtime modules drift from `product_profile_manifest.json`, if
+dev/test fixtures are loaded by default, or if profile code includes private,
+test-only, import, combat, or admin-only surfaces.
+
 Use [the operator alpha release runbook](operator-alpha-release-runbook.md) for
 the backup-first side-by-side deploy, independent service checks, rollback
 command, evidence retention, and public-safe promotion decision.
@@ -31,13 +37,15 @@ command, evidence retention, and public-safe promotion decision.
 2. Run the clean `games/ai_runtime` profile from a disposable world.
 3. Run the one-command local verifier.
 4. Run the product-profile hygiene gate.
-5. Run the Minecraft-parity harness against accepted local and low-power
+5. Run the alpha release-package gate, which includes clean-profile package
+   hygiene and the fresh-checkout command plan.
+6. Run the Minecraft-parity harness against accepted local and low-power
    baselines when benchmark evidence changes.
-6. Keep compatibility import work in dry-run or preview mode unless a separate
+7. Keep compatibility import work in dry-run or preview mode unless a separate
    apply-phase review explicitly enables mutation.
-7. Publish release notes using the template that separates engine/runtime
+8. Publish release notes using the template that separates engine/runtime
    changes, optional plugin changes, and family-server content.
-8. Follow the operator runbook before promoting a Pi-backed alpha candidate.
+9. Follow the operator runbook before promoting a Pi-backed alpha candidate.
 
 ## Public Boundary
 
