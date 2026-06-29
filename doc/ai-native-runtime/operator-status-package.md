@@ -141,6 +141,39 @@ The probe preserves the same production boundary as the rest of the operator cha
 
 `util/ai_native_runtime_verify.py` records the live probe as `operator_task_control_live_evidence`, including artifact path, output bytes, decision count, executed/rejected totals, and world-mutation status. The verifier fails if the artifact is missing, oversized, private, not receipt-gated, not disposable-live-queue scoped, or reports world mutation.
 
+## Receipt-Gated Task Control Command
+
+`/ai_runtime_operator_task_control` is the operator command surface for live task cancel/retry.
+It requires `server` privilege, accepts explicit `receipt_json=...`, and only applies approved
+task cancel/retry receipt entries after prerequisites, executor capabilities, receipt safety flags,
+and task actor authorization pass. Denied, needs-review, stale, private, mutating, unsupported,
+rollback, import promotion, structure apply, world mutation, provider prompt, and raw-asset entries
+are rejected.
+
+The command returns bounded JSON with
+`command_result_kind = "ai_native_operator_task_control_command_result"`, before/after task
+statuses, executed/rejected counts, and public-safe safety flags. It can mutate only live task queue
+state; it does not execute rollback, apply imports, mutate worlds, call providers, expose raw assets,
+or touch family-server task state.
+
+`util/ai_native_operator_task_control_command_probe.py` launches a disposable `ai_runtime` world,
+seeds bounded command-probe tasks, calls the registered `/ai_runtime_operator_task_control`
+function with a compact receipt, and writes `ai-runtime-operator-task-control-command-result.json`:
+
+```sh
+python3 util/ai_native_operator_task_control_command_probe.py \
+  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-task-control-command-result.json \
+  --generated-at 2026-06-29T00:00:00Z
+```
+
+This is a receipt-gated task-control command probe, not a general operator shell. It proves task
+cancel/retry only through the command adapter while preserving no rollback execution, no import
+promotion execution, no world mutation, no raw assets, no provider prompts, no family-world
+coordinates, and no family-server control. `util/ai_native_runtime_verify.py` records it separately
+from the disposable live queue probe as `operator_task_control_command_evidence`, including artifact
+path, output bytes, decision count, executed/rejected totals, command name, and world-mutation
+status. The result is bounded by `--operator-task-control-command-result-max-bytes`.
+
 ## Product Use
 
 The first product use is an operator readout that can answer:
