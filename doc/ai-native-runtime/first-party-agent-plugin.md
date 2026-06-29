@@ -148,7 +148,7 @@ core.ai_agent_plugin.configure({
 	capability_profile = "clean",
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
-	agent_entity_name = "ai_demo_benchmark:helper",
+	agent_entity_name = "ai_runtime_base:helper",
 	repair_nodes = {
 		["fire:basic_flame"] = true,
 	},
@@ -177,7 +177,7 @@ The default capability policy is empty. A game package or operator mod must decl
 
 The default node/entity settings are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
 
-`agent_entity_name` is the registered entity type used for queued bounded entity movement. The default uses the public demo helper fixture; a game package can configure a different registered entity without changing the engine fork.
+`agent_entity_name` is the registered entity type used for queued bounded entity movement. The clean `games/ai_runtime` profile registers and configures the code-only `ai_runtime_base:helper` entity for normal playtesting. The `ai_demo_benchmark:helper` entity remains a benchmark fixture behind its explicit dev setting and should not be required by the default product profile.
 
 `max_follow_steps`, `max_follow_step_distance`, `max_follow_total_distance`, `max_follow_stop_distance`, and `max_follow_wall_time_ms` bound continuous follow. A follow task is still a normal player-owned AI task, so the player can cancel it with `cancel`/`stop`, and the task result exposes `ai_agent.follow_step` status, movement result, distance moved, skipped or blocked reasons, and path metrics.
 

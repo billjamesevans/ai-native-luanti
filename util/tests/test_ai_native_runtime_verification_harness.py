@@ -272,6 +272,16 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "retry_result_status": "queued",
                     "retry_final_status": "completed",
                 },
+                "navigation": {
+                    "follow_status": "queued",
+                    "follow_task_id": "task:follow",
+                    "follow_task_status": "completed",
+                    "follow_entity_name": "ai_runtime_base:helper",
+                    "follow_distance_moved": 2,
+                    "follow_total_distance_moved": 2,
+                    "follow_node_writes": 0,
+                    "follow_pathfinder_used": False,
+                },
                 "targeted_reviews": {
                     "audit_status": "success",
                     "audit_target_kind": "task",
@@ -304,6 +314,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "targeted_audit_review_checked": True,
                     "targeted_rollback_review_checked": True,
                     "targeted_rollback_record_review_checked": True,
+                    "follow_command_checked": True,
                     "defender_command_checked": True,
                     "import_preview_checked": True,
                     "operator_status_checked": True,
@@ -325,12 +336,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "plan_edit_count": 2,
                 "approval_plan_count": 2,
                 "approved_task_count": 2,
-                "task_count": 6,
-                "task_status_counts": {"completed": 5, "cancelled": 1},
+                "task_count": 7,
+                "task_status_counts": {"completed": 6, "cancelled": 1},
                 "rollback_record_count": 2,
                 "audit_event_count": 2,
                 "targeted_audit_review_count": 1,
                 "targeted_rollback_review_count": 2,
+                "follow_command_count": 1,
                 "node_writes_verified": 5,
                 "transient_blocked_outcomes": 1,
                 "final_blocked_or_unsafe_outcomes": 0,
@@ -1175,6 +1187,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_retry_checked"]
             )
             self.assertTrue(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_follow_checked"]
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_follow_helper_entity"
+                ],
+                "ai_runtime_base:helper",
+            )
+            self.assertTrue(
                 manifest["agent_product_loop_live_evidence"][
                     "agent_product_loop_pending_plan_review_checked"
                 ]
@@ -1213,6 +1234,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "agent_product_loop_targeted_rollback_reviews"
                 ],
                 2,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_follow_commands"
+                ],
+                1,
             )
             self.assertGreaterEqual(
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_operator_status_tasks"],

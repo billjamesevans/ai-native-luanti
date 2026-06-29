@@ -112,6 +112,10 @@ class AgentProductLoopContractTests(unittest.TestCase):
 
         self.assertIn("core.ai_rollback_storage.configure", source)
         self.assertIn("enabled = true", source)
+        self.assertIn('local helper_entity_name = "ai_runtime_base:helper"', source)
+        self.assertIn('core.register_entity(":" .. helper_entity_name', source)
+        self.assertIn("agent_entity_name = helper_entity_name", source)
+        self.assertNotIn("ai_demo_benchmark:helper", source)
 
 
 if __name__ == "__main__":

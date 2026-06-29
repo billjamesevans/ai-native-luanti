@@ -4,7 +4,7 @@ This is the production-like, player-ready alpha game profile for AI-native runti
 
 It intentionally ships only a tiny base mod for mapgen aliases. It includes no private content, copied media, provider configuration, or world data. Synthetic smoke, benchmark, and model-adapter probe helper modules are disabled by default and require explicit dev/test settings before they load or register player-facing commands.
 
-The base mod also declares `capability_profile = "clean"` for the first-party agent capability policy. It grants bounded world, entity, task, and model-adapter capabilities, and excludes privileged operator/import/player-combat grants.
+The base mod also declares `capability_profile = "clean"` for the first-party agent capability policy. It grants bounded world, entity, task, and model-adapter capabilities, and excludes privileged operator/import/player-combat grants. It registers a tiny code-only `ai_runtime_base:helper` entity for normal `/nova follow` and `/nova come` playtesting, keeping the separate demo benchmark helper disabled by default.
 
 The first-party plugin splits `/nova` behavior into Builder, Repair, Guide,
 Defender, and Importer role agents. In this clean profile, Builder, Repair,

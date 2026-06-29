@@ -6,7 +6,12 @@ Status: first implementation slice for issue #53
 
 `core.ai_entity_ops` gives agents an explicit runtime path for owned helper entities. It keeps spawn, inspect, move, and cleanup work out of ad hoc entity callbacks while preserving the same action result style used by safe world operations.
 
-The first fixture is the generic demo helper from `ai_demo_benchmark:helper`. Node mutation disabled remains part of the boundary: safe entity operations do not place, dig, replace, repair, or otherwise write nodes.
+The clean `games/ai_runtime` profile registers a code-only helper entity named
+`ai_runtime_base:helper` for normal first-party agent follow/come playtesting.
+The generic `ai_demo_benchmark:helper` remains a separate benchmark fixture
+behind its explicit dev setting. Node mutation disabled remains part of the
+boundary: safe entity operations do not place, dig, replace, repair, or
+otherwise write nodes.
 
 ## Operations
 
