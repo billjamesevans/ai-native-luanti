@@ -23,6 +23,7 @@ local settings = {
 	max_follow_stop_distance = 1,
 	max_follow_wall_time_ms = 250,
 	max_navigation_nodes = 64,
+	max_repair_radius = 2,
 	max_defend_distance = 8,
 	capabilities = table.copy(default_capabilities),
 }
@@ -55,7 +56,7 @@ local PRODUCT_SURFACES = {
 		default_clean_profile_grant = "granted",
 		required_capabilities = { "world.read", "world.place" },
 		optional_capabilities = { "task.cancel" },
-		commands = { "repair plan", "repair", "approve repair" },
+		commands = { "repair plan", "repair plan radius N", "repair radius N", "repair", "approve repair" },
 		runtime_entrypoints = {
 			"core.repair_agent.plan_area",
 			"core.repair_agent.queue_apply_task",
@@ -423,7 +424,14 @@ local function format_command_reply(result)
 			.. " completed=" .. tostring(metrics.tasks_completed or 0)
 			.. " cancelled=" .. tostring(metrics.tasks_cancelled or 0))
 	elseif result.action == "build_plan" or result.action == "repair_plan" then
+		append_task_details(lines, result)
 		append(lines, "surface=" .. tostring(result.surface_id or "unknown"))
+		if result.repair_radius then
+			append(lines, "radius=" .. tostring(result.repair_radius))
+		end
+		if result.sample_limit then
+			append(lines, "sample_limit=" .. tostring(result.sample_limit))
+		end
 		if result.planned_node_writes then
 			append(lines, "planned_writes=" .. tostring(result.planned_node_writes))
 		end
@@ -434,6 +442,12 @@ local function format_command_reply(result)
 		append_task_details(lines, result)
 		if result.pending_action then
 			append(lines, "pending_action=" .. tostring(result.pending_action))
+		end
+		if result.repair_radius then
+			append(lines, "radius=" .. tostring(result.repair_radius))
+		end
+		if result.sample_limit then
+			append(lines, "sample_limit=" .. tostring(result.sample_limit))
 		end
 		if result.planned_node_writes then
 			append(lines, "planned_writes=" .. tostring(result.planned_node_writes))
@@ -519,6 +533,9 @@ function plugin.configure(options)
 	end
 	if options.max_navigation_nodes then
 		settings.max_navigation_nodes = options.max_navigation_nodes
+	end
+	if options.max_repair_radius then
+		settings.max_repair_radius = options.max_repair_radius
 	end
 	if options.max_defend_distance then
 		settings.max_defend_distance = options.max_defend_distance
@@ -689,6 +706,7 @@ local function approval_context(context)
 		persist_record = context.persist_record,
 		persist_rollback_record = context.persist_rollback_record,
 		rollback_policy = context.rollback_policy,
+		repair_radius = context.repair_radius,
 		sample_limit = context.sample_limit,
 		max_node_writes_per_step = context.max_node_writes_per_step,
 		max_wall_time_ms = context.max_wall_time_ms,
@@ -706,6 +724,8 @@ local function compact_pending_approval(pending)
 		plan = pending.plan,
 		candidate_count = pending.candidate_count,
 		planned_node_writes = pending.planned_node_writes,
+		repair_radius = pending.repair_radius,
+		sample_limit = pending.sample_limit,
 	}
 end
 
@@ -719,6 +739,8 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		context = approval_context(context),
 		candidate_count = extra.candidate_count,
 		planned_node_writes = extra.planned_node_writes,
+		repair_radius = extra.repair_radius,
+		sample_limit = extra.sample_limit,
 	}
 	player_pending_approvals[name] = pending
 	return pending
@@ -1733,25 +1755,91 @@ local function compact_repair_plan(plan)
 	}
 end
 
+local function parse_bounded_int(raw_value)
+	if type(raw_value) ~= "string" or raw_value == "" then
+		return nil
+	end
+	local number = tonumber(raw_value)
+	if not number then
+		return nil
+	end
+	number = math.floor(number)
+	if number < 0 then
+		return nil
+	end
+	return number
+end
+
+local function repair_radius_for(context)
+	context = context or {}
+	if context.repair_radius ~= nil then
+		return math.floor(context.repair_radius)
+	end
+	return 0
+end
+
+local function repair_sample_limit_for(context)
+	context = context or {}
+	if context.sample_limit ~= nil then
+		return math.floor(context.sample_limit)
+	end
+	return settings.max_lights
+end
+
+local function parse_repair_options(raw_prompt, context)
+	local parsed = table.copy(context or {})
+	local radius_text = raw_prompt:match("[Rr][Aa][Dd][Ii][Uu][Ss]%s+([%-%d]+)")
+		or raw_prompt:match("[Rr][Aa][Nn][Gg][Ee]%s+([%-%d]+)")
+	if radius_text then
+		local radius = parse_bounded_int(radius_text)
+		if not radius then
+			return nil, "invalid_repair_radius"
+		end
+		if radius > settings.max_repair_radius then
+			return nil, "repair_radius_out_of_bounds"
+		end
+		parsed.repair_radius = radius
+	end
+	local sample_text = raw_prompt:match("[Ss][Aa][Mm][Pp][Ll][Ee][Ss]?%s+([%-%d]+)")
+		or raw_prompt:match("[Ll][Ii][Mm][Ii][Tt]%s+([%-%d]+)")
+	if sample_text then
+		local sample_limit = parse_bounded_int(sample_text)
+		if not sample_limit then
+			return nil, "invalid_repair_sample_limit"
+		end
+		if sample_limit > settings.max_lights then
+			return nil, "repair_sample_limit_out_of_bounds"
+		end
+		parsed.sample_limit = sample_limit
+	end
+	return parsed, nil
+end
+
 local function handle_repair_plan(name, context)
 	context = context or {}
 	configure_product_surfaces()
 	local agent_id = surface_agent_id_for(name, "repair")
 	plugin.ensure_surface_agent(name, "repair")
+	local repair_radius = repair_radius_for(context)
+	local sample_limit = repair_sample_limit_for(context)
 	local plan = core.repair_agent.plan_area(default_pos(context), {
 		agent_id = agent_id,
 		owner = name,
 		task_id = context.task_id,
-		radius = 0,
+		radius = repair_radius,
 		repair_nodes = settings.repair_nodes,
 		get_node = context.get_node,
-		sample_limit = context.sample_limit or settings.max_lights,
+		sample_limit = sample_limit,
 	})
 	local compact = compact_repair_plan(plan)
+	compact.repair_radius = repair_radius
+	compact.sample_limit = sample_limit
 	return public_reply(name, "repair_plan", plan.status, "Repair plan returned without mutation.", {
 		surface_id = "repair",
 		plan = compact,
 		candidate_count = compact.candidate_count,
+		repair_radius = repair_radius,
+		sample_limit = sample_limit,
 	})
 end
 
@@ -1762,15 +1850,19 @@ local function queue_repair_task(name, context, plan)
 	local task_id = next_task_id(name, "repair")
 	local agent_id = surface_agent_id_for(name, "repair")
 	plugin.ensure_surface_agent(name, "repair")
+	local repair_radius = repair_radius_for(context)
+	local sample_limit = repair_sample_limit_for(context)
 	plan = plan or core.repair_agent.plan_area(pos, {
 		agent_id = agent_id,
 		owner = name,
 		task_id = task_id .. ":plan",
-		radius = 0,
+		radius = repair_radius,
 		repair_nodes = settings.repair_nodes,
 		get_node = context.get_node,
-		sample_limit = context.sample_limit or settings.max_lights,
+		sample_limit = sample_limit,
 	})
+	local max_repair_writes = context.max_node_writes_per_step
+		or math.min(#(plan.candidates or {}), settings.max_lights)
 	local task = core.repair_agent.queue_apply_task({
 		task_id = task_id,
 		agent_id = agent_id,
@@ -1781,7 +1873,7 @@ local function queue_repair_task(name, context, plan)
 		allow_hazards = true,
 		get_node = context.get_node,
 		set_node = context.set_node,
-		max_node_writes_per_step = 1,
+		max_node_writes_per_step = max_repair_writes,
 		persist_record = context.persist_record or context.persist_rollback_record,
 		rollback_policy = context.rollback_policy,
 		operation_label = "ai_agent_plugin.repair",
@@ -1793,6 +1885,8 @@ local function queue_repair_task(name, context, plan)
 		task_id = task.task_id,
 		plan_status = plan.status,
 		candidate_count = #(plan.candidates or {}),
+		repair_radius = repair_radius,
+		sample_limit = sample_limit,
 	})
 end
 
@@ -1802,16 +1896,20 @@ local function handle_repair(name, context)
 	local approval_id = next_approval_id(name, "repair")
 	local agent_id = surface_agent_id_for(name, "repair")
 	plugin.ensure_surface_agent(name, "repair")
+	local repair_radius = repair_radius_for(context)
+	local sample_limit = repair_sample_limit_for(context)
 	local plan = core.repair_agent.plan_area(default_pos(context), {
 		agent_id = agent_id,
 		owner = name,
 		task_id = approval_id .. ":plan",
-		radius = 0,
+		radius = repair_radius,
 		repair_nodes = settings.repair_nodes,
 		get_node = context.get_node,
-		sample_limit = context.sample_limit or settings.max_lights,
+		sample_limit = sample_limit,
 	})
 	local compact = compact_repair_plan(plan)
+	compact.repair_radius = repair_radius
+	compact.sample_limit = sample_limit
 	local pending = {
 		approval_id = approval_id,
 		surface_id = "repair",
@@ -1820,6 +1918,8 @@ local function handle_repair(name, context)
 		raw_plan = plan,
 		context = approval_context(context),
 		candidate_count = compact.candidate_count,
+		repair_radius = repair_radius,
+		sample_limit = sample_limit,
 	}
 	player_pending_approvals[name] = pending
 	return public_reply(name, "repair", "pending_approval",
@@ -1829,6 +1929,8 @@ local function handle_repair(name, context)
 			pending_action = "repair",
 			plan = compact,
 			candidate_count = compact.candidate_count,
+			repair_radius = repair_radius,
+			sample_limit = sample_limit,
 			plan_status = plan.status,
 		})
 end
@@ -1949,6 +2051,7 @@ local function handle_guide(name)
 			"build plan",
 			"build marker",
 			"repair plan",
+			"repair radius N",
 			"repair",
 			"defend",
 			"import plan",
@@ -2287,10 +2390,26 @@ function plugin.handle_command(name, param, context)
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
 			and (prompt:find("repair", 1, true) or prompt:find("fix", 1, true)) then
-		return handle_repair_plan(name, context)
+		local repair_context, reason = parse_repair_options(raw_prompt, context)
+		if not repair_context then
+			return public_reply(name, "repair_plan", "blocked",
+				"Repair plan parameters are outside the configured bounds.", {
+					surface_id = "repair",
+					reason = reason,
+				})
+		end
+		return handle_repair_plan(name, repair_context)
 	end
 	if prompt:find("repair", 1, true) or prompt:find("fix", 1, true) then
-		return handle_repair(name, context)
+		local repair_context, reason = parse_repair_options(raw_prompt, context)
+		if not repair_context then
+			return public_reply(name, "repair", "blocked",
+				"Repair parameters are outside the configured bounds.", {
+					surface_id = "repair",
+					reason = reason,
+				})
+		end
+		return handle_repair(name, repair_context)
 	end
 	if prompt:find("defend", 1, true) then
 		return handle_defend(name, context)

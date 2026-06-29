@@ -50,6 +50,8 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "`follow N`",
             "`build plan`",
             "`repair plan`",
+            "`repair radius N`",
+            "`max_repair_radius`",
             "chat response includes",
             "dry-run-only",
             "continuous follow",
