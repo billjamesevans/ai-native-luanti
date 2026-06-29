@@ -1022,6 +1022,9 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
         "cpu_sample_count": None,
         "avg_process_cpu_percent": None,
         "max_interval_cpu_percent": None,
+        "rss_sample_count": None,
+        "max_rss_kb": None,
+        "server_log_error_count": None,
         "actionable_warning_count": None,
         "unsafe_operation_count": None,
     }
@@ -1091,12 +1094,14 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
         reasons.append("clean_profile_summary actionable server log warnings present")
 
     server_step = comparison_summary.get("server_step_workload")
+    server_log_error_total = 0
     if not isinstance(server_step, dict):
         reasons.append("clean_profile_summary server_step_workload missing")
     else:
         attempted = server_step.get("attempted_sample_count")
         completed = server_step.get("completed_sample_count")
         failed = server_step.get("failed_sample_count")
+        server_log_error_total += int(server_step.get("server_log_error_count") or 0)
         evidence.update({
             "server_step_workload_status": sanitize_text(str(server_step.get("workload_status", ""))),
             "server_step_workload_kind": sanitize_text(str(server_step.get("workload_kind", ""))),
@@ -1132,6 +1137,7 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
             if isinstance(player_probe.get("join_latency_proxy_ms"), dict)
             else {}
         )
+        server_log_error_total += int(player_probe.get("server_log_error_count") or 0)
         evidence.update({
             "player_load_probe_status": sanitize_text(str(player_probe.get("probe_status", ""))),
             "player_load_probe_kind": sanitize_text(str(player_probe.get("probe_kind", ""))),
@@ -1195,6 +1201,7 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
             reasons.append("clean_profile_summary mapblock_rows_created must be positive")
         if (map_workload.get("warning_count") or 0) != 0:
             reasons.append("clean_profile_summary map_chunk_workload warning_count must be 0")
+        server_log_error_total += int(map_workload.get("error_count") or 0)
         if (map_workload.get("error_count") or 0) != 0:
             reasons.append("clean_profile_summary map_chunk_workload error_count must be 0")
 
@@ -1202,6 +1209,7 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
     if isinstance(entity_runtime, dict):
         if (entity_runtime.get("warnings") or 0) != 0:
             reasons.append("clean_profile_summary entity_runtime_operations warnings must be 0")
+        server_log_error_total += int(entity_runtime.get("errors") or 0)
         if (entity_runtime.get("errors") or 0) != 0:
             reasons.append("clean_profile_summary entity_runtime_operations errors must be 0")
     else:
@@ -1213,6 +1221,7 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
         evidence["unsafe_operation_count"] = unsafe_operations
         if (mutation_writes.get("warnings") or 0) != 0:
             reasons.append("clean_profile_summary mutation_write_throughput warnings must be 0")
+        server_log_error_total += int(mutation_writes.get("errors") or 0)
         if (mutation_writes.get("errors") or 0) != 0:
             reasons.append("clean_profile_summary mutation_write_throughput errors must be 0")
         if unsafe_operations != 0:
@@ -1239,6 +1248,20 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
         if cpu.get("max_interval_cpu_percent") is None:
             reasons.append("clean_profile_summary max_interval_cpu_percent is required")
 
+    memory = comparison_summary.get("memory")
+    if not isinstance(memory, dict):
+        reasons.append("clean_profile_summary memory missing")
+    else:
+        evidence.update({
+            "rss_sample_count": memory.get("rss_sample_count"),
+            "max_rss_kb": memory.get("max_rss_kb"),
+        })
+        if not positive_number(memory.get("rss_sample_count")):
+            reasons.append("clean_profile_summary rss_sample_count must be positive")
+        if not positive_number(memory.get("max_rss_kb")):
+            reasons.append("clean_profile_summary max_rss_kb must be positive")
+
+    evidence["server_log_error_count"] = server_log_error_total
     evidence["status"] = "fail" if reasons else "pass"
     evidence["failure_count"] = len(reasons)
     return evidence, reasons

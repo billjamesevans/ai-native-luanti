@@ -65,11 +65,26 @@ python3 util/ai_native_low_power_pi_evidence.py \
   --ssh-target "<operator-supplied-target>" \
   --confirm-backup-first \
   --backup-artifact-label "<backup-archive-name>" \
-  --backup-sha256 "<backup-sha256>"
+  --backup-sha256 "<backup-sha256>" \
+  --soak-iterations 3 \
+  --soak-interval-seconds 30
 ```
 
 The generated manifest must stay public-safe: it records the low-power verifier
 summary, strict headless-client player-load evidence, attempted/connected
-synthetic player counts, join-log latency proxy evidence, and the UDP
-`30000`/`30001` service split, but not the private SSH target, private host/IP,
-remote checkout path, family-world content, or copied assets.
+synthetic player counts, join-log latency proxy evidence, bounded CPU and memory
+samples, actionable warning/error counts, fork-service restart evidence, repeated
+soak iteration results, and the UDP `30000`/`30001` service split. It must not
+write the private SSH target, private host/IP, remote checkout path,
+family-world content, prompts, copied assets, or raw service paths.
+
+Default low-power budgets are explicit and can be tightened per run:
+
+```text
+max_avg_cpu_percent=85
+max_interval_cpu_percent=160
+max_rss_mb=1024
+max_actionable_warning_count=0
+max_server_log_error_count=0
+max_fork_restarts=0
+```

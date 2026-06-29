@@ -83,6 +83,17 @@ class FakeRunner:
                     "completed_sample_count": 4,
                     "failed_sample_count": 0,
                 },
+                "server_step_attempted_samples": 4,
+                "server_step_completed_samples": 4,
+                "server_step_failed_samples": 0,
+                "actionable_warning_count": 0,
+                "server_log_error_count": 0,
+                "cpu_status": "measured",
+                "cpu_sample_count": 3,
+                "avg_process_cpu_percent": 14.5,
+                "max_interval_cpu_percent": 42.0,
+                "rss_sample_count": 3,
+                "max_rss_kb": 196608,
             },
             "failure_reasons": [],
         }
@@ -96,6 +107,8 @@ class FakeRunner:
                 "fork_udp_listening=true",
                 "fork_version=Luanti 5.17.0-dev-26eb426dc (Linux)",
                 "fork_commit=26eb426dc",
+                "fork_restart_count=0",
+                "fork_active_enter_timestamp=Mon 2026-06-29 10:00:00 UTC",
                 "raw_private_path=/opt/ai-native-luanti/src/bin/luantiserver",
                 "raw_private_target=minecraftpi.home 192.168.230.60",
             ]
@@ -157,6 +170,7 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertTrue(manifest["service_boundary"]["fork_test_service"]["active"])
         self.assertTrue(manifest["service_boundary"]["family_service"]["udp_listening"])
         self.assertTrue(manifest["service_boundary"]["fork_test_service"]["udp_listening"])
+        self.assertEqual(manifest["service_boundary"]["fork_test_service"]["restart_count"], 0)
         self.assertTrue(manifest["backup_evidence"]["backup_first_confirmed"])
         self.assertTrue(manifest["runtime_verification_evidence"]["clean_profile_status"] == "pass")
         self.assertEqual(
@@ -189,6 +203,33 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertEqual(
             manifest["runtime_verification_evidence"]["server_step_workload_status"],
             "pass",
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["avg_process_cpu_percent"],
+            14.5,
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["max_interval_cpu_percent"],
+            42.0,
+        )
+        self.assertEqual(
+            manifest["runtime_verification_evidence"]["max_rss_mb"],
+            192.0,
+        )
+        self.assertEqual(manifest["soak_evidence"]["iterations_requested"], 1)
+        self.assertEqual(manifest["soak_evidence"]["iterations_completed"], 1)
+        self.assertEqual(manifest["soak_evidence"]["iterations_passed"], 1)
+        self.assertEqual(
+            manifest["soak_evidence"]["resource_maxima"]["avg_process_cpu_percent"],
+            14.5,
+        )
+        self.assertEqual(
+            manifest["soak_evidence"]["resource_maxima"]["max_rss_mb"],
+            192.0,
+        )
+        self.assertEqual(
+            manifest["soak_evidence"]["resource_budgets"]["max_fork_restarts"],
+            0,
         )
         self.assertEqual(manifest["failure_reasons"], [])
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
@@ -241,6 +282,14 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             "latency_proxy_supported": True,
             "latency_probe_kind": "headless_join_log_observation",
             "join_latency_proxy_sample_count": 1,
+            "actionable_warning_count": 0,
+            "server_log_error_count": 0,
+            "cpu_status": "measured",
+            "cpu_sample_count": 3,
+            "avg_process_cpu_percent": 14.5,
+            "max_interval_cpu_percent": 42.0,
+            "rss_sample_count": 3,
+            "max_rss_kb": 196608,
         }
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -340,6 +389,83 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertIn("fork_test_udp_port_not_listening", manifest["failure_reasons"])
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
 
+    def test_soak_runner_repeats_verifier_and_enforces_resource_budgets(self):
+        module = load_module()
+        remote_manifest = FakeRunner(module).default_remote_manifest()
+        remote_manifest["clean_profile_evidence"].update(
+            {
+                "avg_process_cpu_percent": 91.0,
+                "max_interval_cpu_percent": 180.0,
+                "max_rss_kb": 1536000,
+                "actionable_warning_count": 1,
+                "server_log_error_count": 1,
+            }
+        )
+        service_output = "\n".join(
+            [
+                "family_service_active=active",
+                "fork_service_active=active",
+                "family_udp_listening=true",
+                "fork_udp_listening=true",
+                "fork_version=Luanti 5.17.0-dev-26eb426dc (Linux)",
+                "fork_commit=26eb426dc",
+                "fork_restart_count=2",
+                "fork_active_enter_timestamp=Mon 2026-06-29 10:00:00 UTC",
+            ]
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                    "--soak-iterations",
+                    "2",
+                    "--max-avg-cpu-percent",
+                    "80",
+                    "--max-interval-cpu-percent",
+                    "120",
+                    "--max-rss-mb",
+                    "512",
+                    "--max-actionable-warning-count",
+                    "0",
+                    "--max-server-log-error-count",
+                    "0",
+                    "--max-fork-restarts",
+                    "0",
+                ]
+            )
+            fake_runner = FakeRunner(
+                module,
+                remote_manifest=remote_manifest,
+                service_output=service_output,
+            )
+
+            exit_code, _, manifest = module.run(args, runner=fake_runner, now_fn=lambda: "2026-06-29T10:00:00Z")
+
+        verify_commands = [
+            command for command in fake_runner.calls
+            if "ai_native_runtime_verify.py" in " ".join(command)
+        ]
+        self.assertEqual(len(verify_commands), 2)
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(manifest["soak_evidence"]["iterations_requested"], 2)
+        self.assertEqual(manifest["soak_evidence"]["iterations_completed"], 2)
+        self.assertEqual(manifest["soak_evidence"]["resource_maxima"]["max_rss_mb"], 1500.0)
+        self.assertIn("fork_restart_budget_exceeded", manifest["failure_reasons"])
+        self.assertIn("avg_cpu_budget_exceeded", manifest["failure_reasons"])
+        self.assertIn("max_cpu_budget_exceeded", manifest["failure_reasons"])
+        self.assertIn("memory_rss_budget_exceeded", manifest["failure_reasons"])
+        self.assertIn("actionable_warning_budget_exceeded", manifest["failure_reasons"])
+        self.assertIn("server_log_error_budget_exceeded", manifest["failure_reasons"])
+        self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
+
     def test_reads_remote_manifest_even_when_remote_verifier_exits_nonzero(self):
         module = load_module()
         remote_manifest = FakeRunner(module).default_remote_manifest()
@@ -406,6 +532,9 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertIn("ai_native_low_power_pi_evidence.py", readme)
         self.assertIn("ai_native_low_power_pi_evidence.py", alpha_gate)
         self.assertIn("--confirm-backup-first", alpha_gate)
+        self.assertIn("--soak-iterations", alpha_gate)
+        self.assertIn("max_avg_cpu_percent", alpha_gate)
+        self.assertIn("max_rss_mb", alpha_gate)
 
     def test_reads_relative_remote_manifest_path_from_remote_repo(self):
         module = load_module()
