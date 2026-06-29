@@ -71,7 +71,8 @@ python3 util/ai_native_low_power_pi_evidence.py \
 
 The generated manifest must stay public-safe: it records the low-power verifier
 summary, strict headless-client player-load evidence, attempted/connected
-synthetic player counts, join-log latency proxy evidence, bounded CPU and memory
+synthetic player counts with at least two players, join-log latency proxy evidence,
+`ai_runtime_scale_gate=pass`, bounded CPU and memory
 samples, actionable warning/error counts, compatibility import staging-pilot
 evidence, fork-service restart evidence, ranked follow-up issue seeds, repeated
 soak iteration results, named soak target duration evidence, and the UDP

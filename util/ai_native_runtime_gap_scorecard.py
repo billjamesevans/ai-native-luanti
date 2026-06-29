@@ -20,6 +20,8 @@ REQUIRED_CLEAN_PROFILE_SECTIONS = (
     "map_chunk_workload",
     "entity_runtime_operations",
     "mutation_write_throughput",
+    "first_party_agent_product_loop",
+    "ai_runtime_scale_gate",
     "memory",
     "failure_notes",
 )
@@ -267,6 +269,20 @@ def first_party_agent_product_loop_measurement(summary: dict) -> dict:
     }
 
 
+def ai_runtime_scale_gate_measurement(summary: dict) -> dict:
+    scale_gate = summary.get("ai_runtime_scale_gate")
+    if scale_gate:
+        return dict(scale_gate)
+    return {
+        "scale_gate_status": "missing",
+        "gate_kind": "ai_runtime_multi_player_multi_agent_scale",
+        "synthetic_disposable_only": None,
+        "required_synthetic_player_count": 2,
+        "required_concurrent_task_count": 2,
+        "evidence_gap": "clean-profile summary has no multi-player and agent scale gate",
+    }
+
+
 def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
     manifest = accepted["manifest"]
     clean_profile = accepted["clean_profile"]
@@ -309,6 +325,7 @@ def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
         "player_load_tick_probe": player_probe_measurement(summary),
         "mutation_write_throughput": mutation_summary,
         "first_party_agent_product_loop": first_party_agent_product_loop_measurement(summary),
+        "ai_runtime_scale_gate": ai_runtime_scale_gate_measurement(summary),
         "demo_entity_runtime_cost": demo_summary,
         "map_chunk_workload": summary["map_chunk_workload"],
         "memory": summary["memory"],
@@ -352,9 +369,16 @@ def target_bands() -> list[dict]:
         {
             "id": "player_load_tick_probe",
             "metric": "player_load_tick_probe",
-            "target": "probe_status=pass with bounded sample count before true headless-player load",
+            "target": "probe_status=pass with at least 2 connected headless synthetic players",
             "source": "project-target",
-            "rationale": "Clean-profile runtime evidence needs server-step liveness before compatibility/import workloads expand.",
+            "rationale": "Clean-profile runtime evidence needs multi-player load before compatibility/import workloads expand.",
+        },
+        {
+            "id": "ai_runtime_scale_gate",
+            "metric": "ai_runtime_scale_gate",
+            "target": "scale_gate_status=pass with at least 2 synthetic players and 2 concurrent first-party tasks",
+            "source": "project-target",
+            "rationale": "Agent runtime work should prove multi-player and multi-agent evidence before alpha promotion.",
         },
         {
             "id": "map_chunk_workload",
@@ -431,8 +455,8 @@ def has_complete_headless_player_evidence(probe: dict) -> bool:
         connected = synthetic
     cleanup_status = probe.get("cleanup_status")
     return (
-        synthetic > 0
-        and attempted > 0
+        synthetic >= 2
+        and attempted >= 2
         and connected >= attempted
         and cleanup_status in (None, "complete", "terminated")
     )
@@ -546,6 +570,30 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
             )
         )
 
+    scale_gates = [
+        lane["measurements"]["ai_runtime_scale_gate"]
+        for lane in lanes
+    ]
+    if any(scale_gate.get("scale_gate_status") != "pass" for scale_gate in scale_gates):
+        gaps.append(
+            measured_gap(
+                "ai_runtime_scale_gate",
+                3,
+                "Prove multi-player and multi-agent scale gate",
+                [
+                    f"{lane['hardware_class']}: scale_gate_status="
+                    f"{lane['measurements']['ai_runtime_scale_gate'].get('scale_gate_status')}, "
+                    f"required_synthetic_player_count="
+                    f"{lane['measurements']['ai_runtime_scale_gate'].get('required_synthetic_player_count')}, "
+                    f"required_concurrent_task_count="
+                    f"{lane['measurements']['ai_runtime_scale_gate'].get('required_concurrent_task_count')}"
+                    for lane in lanes
+                    if lane["measurements"]["ai_runtime_scale_gate"].get("scale_gate_status") != "pass"
+                ],
+                "Refresh accepted clean-profile captures with ai_runtime_scale_gate=pass.",
+            )
+        )
+
     if any(
         (lane["measurements"]["map_chunk_workload"].get("mapblock_rows") or 0) == 0
         for lane in lanes
@@ -553,7 +601,7 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         gaps.append(
             build_gap(
                 "non_empty_map_chunk_workload",
-                3,
+                4,
                 "Measure non-empty map/chunk workload",
                 [
                     f"{lane['hardware_class']}: mapblock_rows="
@@ -571,7 +619,7 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         gaps.append(
             build_gap(
                 "entity_scale_runtime_probe",
-                4,
+                5,
                 "Scale demo entity runtime coverage",
                 [
                     f"{lane['hardware_class']}: max_entity_count="
@@ -589,7 +637,7 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         gaps.append(
             build_gap(
                 "mutation_total_write_measurement",
-                5,
+                6,
                 "Record total node writes in mutation reports",
                 [
                     f"{lane['hardware_class']}: total_node_writes="
@@ -607,7 +655,7 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         gaps.append(
             build_gap(
                 "clean_profile_cpu_sampling",
-                6,
+                7,
                 "Add clean-profile CPU sampling evidence",
                 [
                     f"{lane['hardware_class']}: sample_status="
@@ -634,7 +682,7 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         gaps.append(
             build_gap(
                 "server_log_warning_cleanup",
-                7,
+                8,
                 "Classify or eliminate clean-profile warnings",
                 [
                     f"{lane['hardware_class']}: actionable_warning_count="

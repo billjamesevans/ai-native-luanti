@@ -191,6 +191,7 @@ sys.exit(0)
                 "entity_runtime_operations",
                 "mutation_write_throughput",
                 "first_party_agent_product_loop",
+                "ai_runtime_scale_gate",
                 "memory",
                 "cpu",
                 "failure_notes",
@@ -247,6 +248,11 @@ sys.exit(0)
             self.assertEqual(product_loop["audit_review_checked"], 1)
             self.assertEqual(product_loop["rollback_review_checked"], 1)
             self.assertEqual(product_loop["blocked_or_unsafe_outcomes"], 0)
+            scale_gate = summary["comparison_summary"]["ai_runtime_scale_gate"]
+            self.assertEqual(scale_gate["scale_gate_status"], "evidence_gap")
+            self.assertEqual(scale_gate["required_synthetic_player_count"], 2)
+            self.assertEqual(scale_gate["required_concurrent_task_count"], 2)
+            self.assertFalse(scale_gate["requirements"]["multi_player_headless_load"])
 
             serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)
@@ -330,6 +336,23 @@ sys.exit(0)
             self.assertGreaterEqual(latency["avg"], 0)
             self.assertIn("p95_sample_interval_ms", probe)
             self.assertIn("max_sample_interval_ms", probe)
+            scale_gate = summary["comparison_summary"]["ai_runtime_scale_gate"]
+            self.assertEqual(scale_gate["scale_gate_status"], "pass")
+            self.assertEqual(scale_gate["gate_kind"], "ai_runtime_multi_player_multi_agent_scale")
+            self.assertTrue(scale_gate["synthetic_disposable_only"])
+            self.assertEqual(
+                scale_gate["agent_tasks"]["concurrent_task_count"],
+                2,
+            )
+            self.assertEqual(
+                scale_gate["agent_tasks"]["completed_task_count"],
+                2,
+            )
+            self.assertEqual(
+                scale_gate["agent_tasks"]["rollback_records"],
+                2,
+            )
+            self.assertTrue(all(scale_gate["requirements"].values()))
 
             serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)

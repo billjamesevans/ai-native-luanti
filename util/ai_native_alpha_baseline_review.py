@@ -72,6 +72,7 @@ def review_lane(output_root: Path, hardware_class: str) -> dict:
     mutation = measurements["mutation_write_throughput"]
     demo = measurements["demo_entity_runtime_cost"]
     product_loop = measurements["first_party_agent_product_loop"]
+    scale_gate = measurements["ai_runtime_scale_gate"]
     cpu = measurements["cpu"]
     workload = measurements["server_step_workload"]
     player_probe = measurements["player_load_tick_probe"]
@@ -149,11 +150,20 @@ def review_lane(output_root: Path, hardware_class: str) -> dict:
             player_probe.get("probe_status") == "pass"
             and player_probe.get("probe_kind") == "headless_client_load"
             and player_probe.get("headless_player_supported") is True
-            and numeric(player_probe.get("attempted_synthetic_player_count")) > 0
+            and numeric(player_probe.get("attempted_synthetic_player_count")) >= 2
             and numeric(player_probe.get("connected_synthetic_player_count"))
             >= numeric(player_probe.get("attempted_synthetic_player_count")),
             failures,
             player_probe.get("probe_kind"),
+        ),
+        check(
+            "ai_runtime_scale_gate",
+            scale_gate.get("scale_gate_status") == "pass"
+            and scale_gate.get("synthetic_disposable_only") is True
+            and numeric(scale_gate.get("required_synthetic_player_count")) >= 2
+            and numeric(scale_gate.get("required_concurrent_task_count")) >= 2,
+            failures,
+            scale_gate.get("scale_gate_status"),
         ),
         check(
             "join_latency_proxy",
@@ -238,7 +248,7 @@ def review_low_power_pi_evidence(output_root: Path) -> dict:
             runtime.get("player_load_probe_status") == "pass"
             and runtime.get("player_load_probe_kind") == "headless_client_load"
             and runtime.get("headless_player_supported") is True
-            and numeric(runtime.get("attempted_synthetic_player_count")) > 0
+            and numeric(runtime.get("attempted_synthetic_player_count")) >= 2
             and numeric(runtime.get("connected_synthetic_player_count"))
             >= numeric(runtime.get("attempted_synthetic_player_count"))
             and runtime.get("latency_probe_kind") == "headless_join_log_observation"

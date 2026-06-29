@@ -1015,6 +1015,9 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
         "attempted_synthetic_player_count": None,
         "connected_synthetic_player_count": None,
         "latency_proxy_supported": False,
+        "scale_gate_status": "missing",
+        "scale_gate_required_synthetic_player_count": None,
+        "scale_gate_required_concurrent_task_count": None,
         "map_chunk_workload_status": "missing",
         "map_chunk_workload_kind": None,
         "mapblock_rows_created": None,
@@ -1168,9 +1171,19 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
                     "clean_profile_summary headless player probe required but not measured"
                 )
             if not positive_number(attempted_players):
-                reasons.append("clean_profile_summary attempted_synthetic_player_count must be positive")
+                reasons.append("clean_profile_summary attempted_synthetic_player_count must be at least 2")
             if not positive_number(connected_players):
-                reasons.append("clean_profile_summary connected_synthetic_player_count must be positive")
+                reasons.append("clean_profile_summary connected_synthetic_player_count must be at least 2")
+            if (
+                positive_number(attempted_players)
+                and attempted_players < 2
+            ):
+                reasons.append("clean_profile_summary attempted_synthetic_player_count must be at least 2")
+            if (
+                positive_number(connected_players)
+                and connected_players < 2
+            ):
+                reasons.append("clean_profile_summary connected_synthetic_player_count must be at least 2")
             if (
                 nonnegative_number(attempted_players)
                 and nonnegative_number(connected_players)
@@ -1183,6 +1196,29 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
                 reasons.append("clean_profile_summary latency_probe_kind must be headless_join_log_observation")
             if not positive_number(join_latency.get("sample_count")):
                 reasons.append("clean_profile_summary join_latency_proxy_ms.sample_count must be positive")
+
+    scale_gate = comparison_summary.get("ai_runtime_scale_gate")
+    if isinstance(scale_gate, dict):
+        evidence.update({
+            "scale_gate_status": sanitize_text(str(scale_gate.get("scale_gate_status", ""))),
+            "scale_gate_required_synthetic_player_count": scale_gate.get(
+                "required_synthetic_player_count"
+            ),
+            "scale_gate_required_concurrent_task_count": scale_gate.get(
+                "required_concurrent_task_count"
+            ),
+        })
+        if args.require_headless_player_probe:
+            if scale_gate.get("scale_gate_status") != "pass":
+                reasons.append("clean_profile_summary ai_runtime_scale_gate status is not pass")
+            if scale_gate.get("synthetic_disposable_only") is not True:
+                reasons.append("clean_profile_summary ai_runtime_scale_gate synthetic_disposable_only is not true")
+            if (scale_gate.get("required_synthetic_player_count") or 0) < 2:
+                reasons.append("clean_profile_summary ai_runtime_scale_gate required_synthetic_player_count must be at least 2")
+            if (scale_gate.get("required_concurrent_task_count") or 0) < 2:
+                reasons.append("clean_profile_summary ai_runtime_scale_gate required_concurrent_task_count must be at least 2")
+    elif args.require_headless_player_probe:
+        reasons.append("clean_profile_summary ai_runtime_scale_gate missing")
 
     map_workload = comparison_summary.get("map_chunk_workload")
     if not isinstance(map_workload, dict):
@@ -1632,7 +1668,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--headless-player-count",
         type=int,
-        default=1,
+        default=2,
         help="Synthetic player command instances to launch when --headless-player-command is supplied.",
     )
     parser.add_argument(

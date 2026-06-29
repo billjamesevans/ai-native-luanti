@@ -65,7 +65,7 @@ The clean-profile capture starts a disposable local `ai_runtime` world and write
 
 - `clean-profile-benchmark-summary.json`
 
-That summary records the runner version, Luanti commit, hardware class, and game profile. Its public-safe comparison summary covers startup, idle steady tick behavior, `server_step_workload`, `player_load_tick_probe`, map/chunk workload, entity/runtime operations, mutation/write throughput, memory, CPU, and failure notes. `server_step_workload` is the required bounded workload section: it records attempted, completed, and failed sample counts, sample duration, p95/max sample interval, warning/error counts, and whether the server stayed listening. `map_chunk_workload` is a synthetic disposable-world workload named `synthetic_sqlite_mapblock_churn`; it records mapblock rows before/after, rows created, SQLite byte growth, workload duration, and warning/error counts. `cpu` records bounded process CPU evidence for the disposable server process: sample status, sample count, process CPU time delta, observed wall time, average process CPU percent, max interval CPU percent, and sample method ids. Without a client command, the first player-load/server-step probe remains a bounded server-process liveness probe and records the current headless-player limitation. It must not include temporary paths, private worlds, provider prompts, player data, copied assets, live hostnames, or live service state.
+That summary records the runner version, Luanti commit, hardware class, and game profile. Its public-safe comparison summary covers startup, idle steady tick behavior, `server_step_workload`, `player_load_tick_probe`, map/chunk workload, entity/runtime operations, mutation/write throughput, first-party agent product-loop evidence, `ai_runtime_scale_gate`, memory, CPU, and failure notes. `server_step_workload` is the required bounded workload section: it records attempted, completed, and failed sample counts, sample duration, p95/max sample interval, warning/error counts, and whether the server stayed listening. `map_chunk_workload` is a synthetic disposable-world workload named `synthetic_sqlite_mapblock_churn`; it records mapblock rows before/after, rows created, SQLite byte growth, workload duration, and warning/error counts. `cpu` records bounded process CPU evidence for the disposable server process: sample status, sample count, process CPU time delta, observed wall time, average process CPU percent, max interval CPU percent, and sample method ids. Without a client command, the first player-load/server-step probe remains a bounded server-process liveness probe and records the current headless-player limitation. It must not include temporary paths, private worlds, provider prompts, player data, copied assets, live hostnames, or live service state.
 
 When a disposable client path is available, add `--headless-player-command` to the same clean-profile capture. The command is an operator-supplied template; the runner expands `{host}`, `{port}`, `{name}`, `{server_log}`, and `{duration_seconds}` for each synthetic player. The report stores only bounded evidence, not the command path: `probe_kind=headless_client_load`, attempted and connected synthetic players, completed synthetic players, client exit statuses, cleanup status, warning/error counts, sample intervals, whether the server stayed listening, and a named `headless_join_log_observation` latency proxy. That proxy measures elapsed time from launching each synthetic client process to the first observed server-log join line. It is public-safe join latency evidence, not a claimed network RTT or proprietary Minecraft benchmark.
 
@@ -114,7 +114,7 @@ python3 util/ai_native_benchmark_capture.py \
   --luanti-commit "$(git rev-parse --short HEAD)" \
   --game-profile ai_runtime \
   --headless-player-command "bin/luanti --config $tmpconf --go --address {host} --port {port} --name {name}" \
-  --headless-player-count 1
+  --headless-player-count 2
 ```
 
 Use the one-command verifier when refreshing branch evidence:
@@ -125,7 +125,7 @@ python3 util/ai_native_runtime_verify.py \
   --luanti-commit "$(git rev-parse --short HEAD)" \
   --game-profile ai_runtime \
   --headless-player-command "bin/luanti --config $tmpconf --go --address {host} --port {port} --name {name}" \
-  --headless-player-count 1
+  --headless-player-count 2
 ```
 
 After the branch passes and the capture is reviewed, promote the refreshed local lane:
@@ -139,7 +139,7 @@ python3 util/ai_native_benchmark_promote.py \
 
 Repeat the same flow for `low-power-server` only after backup-first readiness, keeping the family server side by side and passing `--confirm-low-power-backup` during capture. Use a low-power source label such as `reviewed-low-power-headless-client`.
 
-Do not promote either lane unless the clean-profile summary has `overall_status=pass`, `server_step_workload.workload_status=pass`, `server_step_workload.failed_sample_count=0`, `player_load_tick_probe.probe_status=pass`, `probe_kind=headless_client_load`, `headless_player_supported=true`, `synthetic_player_count>0`, connected synthetic players equal attempted synthetic players, `latency_probe_kind=headless_join_log_observation`, `latency_proxy_supported=true`, and nonzero `join_latency_proxy_ms.sample_count`.
+Do not promote either lane unless the clean-profile summary has `overall_status=pass`, `server_step_workload.workload_status=pass`, `server_step_workload.failed_sample_count=0`, `player_load_tick_probe.probe_status=pass`, `probe_kind=headless_client_load`, `headless_player_supported=true`, `synthetic_player_count>=2`, connected synthetic players equal attempted synthetic players, `latency_probe_kind=headless_join_log_observation`, `latency_proxy_supported=true`, nonzero `join_latency_proxy_ms.sample_count`, passing first-party agent product-loop evidence with at least two queued/completed tasks and rollback records, task-duration fields, and `ai_runtime_scale_gate.scale_gate_status=pass`.
 
 ## Reviewing The Alpha Baseline
 
@@ -178,7 +178,7 @@ local/benchmarks/alpha-baseline-review.json
 accepted lanes include a passing clean profile, mutation report, scale-16 demo
 entity report, first-party agent product-loop proof, CPU sampling,
 server-step workload, true headless player-load evidence, join latency proxy
-evidence, map/chunk churn, and a public-safe Minecraft-parity report with
+evidence, `ai_runtime_scale_gate=pass`, map/chunk churn, and a public-safe Minecraft-parity report with
 ranked next actions when gaps remain. Do not commit the generated review unless
 a future issue defines a scrubbed public baseline package.
 
@@ -228,7 +228,7 @@ The promotion command writes local ignored files under `local/benchmarks/<hardwa
 
 The `accepted-baseline-manifest.json` stores only the commit label, hardware class, source capture label, generated timestamp, and report filenames. It must not contain absolute local paths, private worlds, media, secrets, provider prompts, player-private data, or live server state.
 
-You must not promote a capture when either scenario report has `warnings`, `errors`, `requires_private_world`, `requires_private_assets`, `requires_live_pi`, or a mismatched hardware class. A clean-profile capture must also have `overall_status=pass`, `game_profile.gameid=ai_runtime`, empty failure notes, `server_step_workload.workload_status=pass`, positive attempted/completed workload sample counts, zero failed workload samples, `map_chunk_workload.workload_status=pass`, nonzero `mapblock_rows_created`, passing `first_party_agent_product_loop` evidence for the build/repair approval loop, and no private or model-network requirements. Low-power-server captures remain backup-first and should not be promoted unless the same backup-first review has been completed for the source capture.
+You must not promote a capture when either scenario report has `warnings`, `errors`, `requires_private_world`, `requires_private_assets`, `requires_live_pi`, or a mismatched hardware class. A clean-profile capture must also have `overall_status=pass`, `game_profile.gameid=ai_runtime`, empty failure notes, `server_step_workload.workload_status=pass`, positive attempted/completed workload sample counts, zero failed workload samples, at least two attempted and connected headless synthetic players, `map_chunk_workload.workload_status=pass`, nonzero `mapblock_rows_created`, passing `first_party_agent_product_loop` evidence for the build/repair approval loop with at least two queued/completed tasks, rollback records and task-duration fields, `ai_runtime_scale_gate.scale_gate_status=pass`, and no private or model-network requirements. Low-power-server captures remain backup-first and should not be promoted unless the same backup-first review has been completed for the source capture.
 
 ## Running The Branch Gate
 
@@ -321,7 +321,7 @@ The report separates measured fork evidence from Minecraft-parity target bands. 
 
 Use the ranked gaps as the runtime hardening queue before compatibility/import expansion. The first expected gaps are missing or failing `server_step_workload`, missing player-load tick probes, true headless-player load after the server-step workload exists, non-empty map/chunk workload, larger entity-runtime probes, total mutation-write measurements, and clean-profile warning classification. If the scorecard refuses to run, refresh the missing accepted clean-profile baseline with `util/ai_native_benchmark_capture.py`, review it, and promote it with `util/ai_native_benchmark_promote.py`.
 
-The headless-player gap is cleared only when every accepted lane has complete public-safe evidence from `--headless-player-command`: the probe passes, `headless_player_supported=true`, `synthetic_player_count>0`, attempted and connected synthetic players match, cleanup is complete or bounded, and `join_latency_proxy_ms` has at least one sample. Partial evidence remains a ranked gap even if one synthetic player joined.
+The headless-player gap is cleared only when every accepted lane has complete public-safe evidence from `--headless-player-command`: the probe passes, `headless_player_supported=true`, `synthetic_player_count>=2`, attempted and connected synthetic players match, cleanup is complete or bounded, and `join_latency_proxy_ms` has at least one sample. Partial evidence remains a ranked gap even if one synthetic player joined.
 
 The scorecard performs a focused privacy scan of the JSON payload before writing the artifact. Do not publish or commit scorecards that include private hosts, private network addresses, local absolute paths, secrets, provider prompts, private showcase names, copied media, or family-server operational details.
 

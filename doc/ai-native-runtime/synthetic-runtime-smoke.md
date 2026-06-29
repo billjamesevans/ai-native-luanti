@@ -206,7 +206,7 @@ python3 util/ai_native_runtime_verify.py \
   --hardware-class local-mac \
   --game-profile ai_runtime \
   --headless-player-command "bin/luanti --config $tmpconf --go --address {host} --port {port} --name {name}" \
-  --headless-player-count 1 \
+  --headless-player-count 2 \
   --require-headless-player-probe
 ```
 

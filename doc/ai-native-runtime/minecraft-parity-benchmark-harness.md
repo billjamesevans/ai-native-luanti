@@ -59,13 +59,13 @@ not measured Minecraft internals:
 | Dimension | Current target band |
 | --- | --- |
 | startup | server listens and `time_to_listen_ms <= 15000` |
-| player join/liveness | public-safe headless client supported, at least 1 synthetic player attempted and connected, server remains listening |
+| player join/liveness | public-safe headless client supported, at least 2 synthetic players attempted and connected, server remains listening |
 | server-step stability | at least 10 completed samples, 0 failed samples, `p95_sample_interval_ms <= 250`, `max_sample_interval_ms <= 1000` |
 | mapblock/chunk churn | SQLite/map inspection is `ok` and at least 1 mapblock row is present |
 | entity load | at least 16 generic helper entities, 0 remaining entities, 0 warnings, 0 errors |
 | world-edit throughput | at least 1 rollback-backed node write, at least 1 rollback record, max 16 writes per step, 0 warnings, 0 errors |
 | persistence | map SQLite bytes are nonzero and at least 1 rollback record exists |
-| mod/plugin ergonomics | first-party agent loop passes and compatibility inventory discovery is ready with at least 1 source and 1 planned action |
+| mod/plugin ergonomics | first-party agent loop and `ai_runtime_scale_gate` pass with at least 2 queued/completed agent tasks, and compatibility inventory discovery is ready with at least 1 source and 1 planned action |
 | operator visibility | operator status, task control, and receipt-gated task control are present |
 | recovery | at least 1 rollback record and task-control actions do not mutate the world |
 | memory | at least 2 RSS samples and `max_rss_kb <= 262144` |
@@ -88,7 +88,7 @@ The first latency probe is `headless_join_log_observation`. It runs only with pu
 
 CPU uses clean-profile process CPU samples for the disposable server process. The harness records sample count, average process CPU percent, max interval CPU percent, process CPU time delta, and sample method ids. Missing or failed CPU sampling remains a qualitative Minecraft-parity gap until refreshed accepted lanes contain measured CPU evidence.
 
-First-party agent-loop proof comes from `comparison_summary.first_party_agent_product_loop` in accepted clean-profile summaries. The harness clears the first-party product-loop gap only when that evidence records passing build/repair approval, approved tasks, guide/tasks/cancel command coverage, audit review, rollback review, defender checks, importer preview checks, and zero blocked or unsafe outcomes. Compatibility import inventory discovery remains a separate plugin gap until it has its own public-safe report.
+First-party agent-loop proof comes from `comparison_summary.first_party_agent_product_loop` and `comparison_summary.ai_runtime_scale_gate` in accepted clean-profile summaries. The harness clears the first-party product-loop gap only when that evidence records passing build/repair approval, approved tasks, guide/tasks/cancel command coverage, audit review, rollback review, defender checks, importer preview checks, at least two queued/completed tasks, rollback records, task-duration fields, zero blocked or unsafe outcomes, and a passing multi-player/multi-agent scale gate. Compatibility import inventory discovery remains a separate plugin gap until it has its own public-safe report.
 
 Compatibility import inventory proof comes from `local/benchmarks/compatibility-import-inventory-discovery-report.json`. The harness treats it as plugin evidence only when the report is `ready_for_import_preview`, remains dry-run-only, records no copied assets or world mutation, redacts source paths, rejects raw/private payloads, and avoids proprietary Minecraft code, server jars, and closed gameplay data.
 
@@ -121,7 +121,7 @@ The JSON report contains:
 - `benchmark_scenarios`: local/Pi-safe scenario metadata for reproducible runs.
 - `measured_facts`: hardware-lane facts sourced from accepted benchmark reports.
 - `qualitative_minecraft_parity_gaps`: missing or partial evidence that should drive the runtime backlog.
-- `actionable_scorecard`: ranked, deduplicated parity actions grouped across hardware lanes. A single dimension may produce multiple actions when the remaining work has separate owners, such as first-party agent-loop proof versus compatibility import inventory.
+- `actionable_scorecard`: ranked, deduplicated parity actions grouped across hardware lanes. A single dimension may produce multiple actions when the remaining work has separate owners, such as first-party agent scale-gate proof versus compatibility import inventory.
 - `gap_summary_by_area`: counts for engine/runtime, game-content, plugin, and operator-experience gaps.
 - `source_policy`: explicit separation between project targets and measured fork evidence.
 - `retention`: the local benchmark retention lane where the report belongs.
