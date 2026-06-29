@@ -17,6 +17,7 @@ from ai_native_compat_dry_run import (
     build_report,
     build_structure_adapter_report,
     main,
+    review_adapter_apply_smoke,
     validate_adapter_apply_smoke,
     validate_apply_summary,
     validate_report,
@@ -628,6 +629,108 @@ class CompatibilityDryRunTests(unittest.TestCase):
             self.assertEqual(validate_adapter_apply_smoke(smoke), [])
             self.assertIn("smoke=ready_for_disposable_staging_smoke", stdout.getvalue())
             self.assertIn("expected_writes=5", stdout.getvalue())
+
+    def test_adapter_smoke_operator_review_marks_valid_manifest_ready(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        smoke = build_adapter_apply_smoke(report, self.build_adapter_smoke_request(report))
+
+        review = review_adapter_apply_smoke(smoke)
+
+        self.assertEqual(review["mode"], "adapter_apply_smoke_review")
+        self.assertEqual(review["status"], "ready")
+        self.assertEqual(review["report_id"], "synthetic-report")
+        self.assertEqual(review["target_world"]["world_id"], "disposable-staging-world")
+        self.assertEqual(review["findings"], [])
+        self.assertTrue(review["machine_gate"]["promotable"])
+        self.assertFalse(review["machine_gate"]["world_mutation_executed"])
+        self.assertEqual(review["summary"]["apply_task_count"], 1)
+        self.assertEqual(review["summary"]["rollback_task_count"], 1)
+        self.assertEqual(review["summary"]["placement_count"], 5)
+        self.assertEqual(review["summary"]["chunk_count"], 3)
+        self.assertEqual(review["summary"]["expected_node_writes"], 5)
+        self.assertEqual(review["summary"]["expected_mapblock_churn"], 3)
+        self.assertIn(
+            "core.ai_import_ops.define_chunked_structure_apply_task",
+            review["summary"]["runtime_entrypoints"],
+        )
+        self.assertIn(
+            "core.ai_import_ops.queue_chunked_structure_rollback_task",
+            review["summary"]["runtime_entrypoints"],
+        )
+        self.assertIn("import.assets", review["summary"]["required_capabilities"])
+        self.assertIn("rollback.execute", review["summary"]["required_capabilities"])
+
+    def test_adapter_smoke_operator_review_blocks_unsafe_manifests(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        smoke = build_adapter_apply_smoke(report, self.build_adapter_smoke_request(report))
+
+        cases = {
+            "missing_explicit_approval": lambda payload: payload["apply_tasks"][0].update({
+                "explicit_approval": False,
+            }),
+            "target_world_not_staging": lambda payload: payload["target_world"].update({
+                "staging": False,
+            }),
+            "target_world_not_disposable": lambda payload: payload["target_world"].update({
+                "disposable": False,
+            }),
+            "forbidden_target_world": lambda payload: payload["target_world"].update({
+                "world_id": "family_voxelibre",
+            }),
+            "rollback_task_missing": lambda payload: payload.update({
+                "rollback_tasks": [],
+            }),
+            "missing_runtime_hook": lambda payload: payload["apply_tasks"][0].update({
+                "operator_supplied_runtime_hooks": ["get_node", "set_node"],
+            }),
+            "excessive_node_write_budget": lambda payload: payload["apply_tasks"][0].update({
+                "max_node_writes_total": 5000,
+            }),
+        }
+
+        for expected_code, mutate in cases.items():
+            with self.subTest(expected_code=expected_code):
+                candidate = json.loads(json.dumps(smoke))
+                mutate(candidate)
+
+                review = review_adapter_apply_smoke(candidate)
+
+                self.assertEqual(review["status"], "blocked")
+                self.assertFalse(review["machine_gate"]["promotable"])
+                self.assertIn(
+                    expected_code,
+                    {finding["code"] for finding in review["findings"]},
+                )
+
+    def test_adapter_smoke_operator_review_cli_writes_machine_readable_gate(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        smoke = build_adapter_apply_smoke(report, self.build_adapter_smoke_request(report))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            smoke_path = tmpdir / "adapter-smoke.json"
+            review_path = tmpdir / "adapter-review.json"
+            smoke_path.write_text(json.dumps(smoke, indent=2, sort_keys=True), encoding="utf-8")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "--review-adapter-smoke", str(smoke_path),
+                    "--output", str(review_path),
+                    "--summary",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            review = json.loads(review_path.read_text(encoding="utf-8"))
+            self.assertEqual(review["status"], "ready")
+            self.assertTrue(review["machine_gate"]["promotable"])
+            self.assertIn("review=ready", stdout.getvalue())
+            self.assertIn("placements=5", stdout.getvalue())
 
     def test_structure_apply_rejects_over_budget_request(self):
         report = build_report(self.fixture_root / "structure" / "example.mcstructure")
