@@ -3929,6 +3929,12 @@ assert(core.agent_has_capability(product_agents.importer.agent_id, "import.asset
 
 local same_agent = core.ai_agent_plugin.ensure_player_agent("Wills")
 assert(same_agent.agent_id == plugin_agent.agent_id)
+assert(core.ai_agent_plugin.get_navigation_contract().schema_version == 1)
+assert(core.ai_agent_plugin.get_navigation_contract().contract_kind
+	== "ai_native_navigation_perception_contract")
+assert(core.ai_agent_plugin.get_navigation_contract().bounds.max_nodes_searched >= 1)
+assert(core.ai_agent_plugin.get_navigation_contract().bounds.node_writes == 0)
+assert(core.ai_agent_plugin.get_navigation_contract().perception.public_safe == true)
 
 assert(core.registered_chatcommands.bot ~= nil)
 assert(core.registered_chatcommands.nova ~= nil)
@@ -4132,6 +4138,207 @@ core.step_ai_tasks()
 local completed_path_follow = core.get_ai_task(path_follow.task_id)
 assert(completed_path_follow.status == "completed")
 assert(completed_path_follow.last_result.metrics.pathfinder_used == true)
+
+local grid_base = test_pos(7005)
+local grid_player_pos = table.copy(grid_base)
+local grid_player = {
+	get_pos = function()
+		return table.copy(grid_player_pos)
+	end,
+}
+set_test_node(vector.add(grid_base, { x = 1, y = 0, z = 0 }), {
+	name = "ai_runtime_test:stone",
+})
+local grid_follow = core.ai_agent_plugin.handle_command("Grid", "follow me", {
+	get_player_by_name = function(name)
+		if name == "Grid" then
+			return grid_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	get_node = get_test_node,
+	max_follow_steps = 4,
+	max_follow_step_distance = 1,
+	max_follow_total_distance = 8,
+	max_follow_stop_distance = 0,
+	max_navigation_nodes = 32,
+})
+assert(grid_follow.ok == true)
+core.step_ai_tasks()
+grid_player_pos = vector.add(grid_base, { x = 2, y = 0, z = 0 })
+core.step_ai_tasks()
+local grid_follow_task = core.get_ai_task(grid_follow.task_id)
+assert(grid_follow_task.status == "running")
+assert(grid_follow_task.last_result.reason == "entity_moved")
+assert(grid_follow_task.last_result.metrics.path_status == "bounded_grid_path")
+assert(grid_follow_task.last_result.metrics.path_planner == "bounded_same_level_grid")
+assert(grid_follow_task.last_result.metrics.nodes_searched <= 32)
+assert(grid_follow_task.last_result.metrics.max_nodes_searched == 32)
+assert(grid_follow_task.last_result.metrics.obstacles_seen >= 1)
+assert(grid_follow_task.last_result.metrics.node_writes == 0)
+assert(grid_follow_task.last_result.entity.pos.x == grid_base.x)
+assert(grid_follow_task.last_result.entity.pos.z == grid_base.z + 1)
+while core.get_ai_task(grid_follow.task_id).status == "running" do
+	core.step_ai_tasks()
+end
+assert(core.get_ai_task(grid_follow.task_id).status == "completed")
+
+local blocked_base = test_pos(7035)
+local blocked_player_pos = table.copy(blocked_base)
+local blocked_player = {
+	get_pos = function()
+		return table.copy(blocked_player_pos)
+	end,
+}
+for _, offset in ipairs({
+	{ x = 1, y = 0, z = 0 },
+	{ x = -1, y = 0, z = 0 },
+	{ x = 0, y = 0, z = 1 },
+	{ x = 0, y = 0, z = -1 },
+}) do
+	set_test_node(vector.add(blocked_base, offset), {
+		name = "ai_runtime_test:stone",
+	})
+end
+local blocked_nav = core.ai_agent_plugin.handle_command("BlockedNav", "follow me", {
+	get_player_by_name = function(name)
+		if name == "BlockedNav" then
+			return blocked_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	get_node = get_test_node,
+	max_follow_steps = 3,
+	max_follow_step_distance = 1,
+	max_follow_total_distance = 6,
+	max_follow_stop_distance = 0,
+	max_navigation_nodes = 16,
+})
+assert(blocked_nav.ok == true)
+core.step_ai_tasks()
+blocked_player_pos = vector.add(blocked_base, { x = 2, y = 0, z = 0 })
+core.step_ai_tasks()
+local blocked_nav_task = core.get_ai_task(blocked_nav.task_id)
+assert(blocked_nav_task.status == "blocked")
+assert(blocked_nav_task.last_result.reason == "navigation_obstacle_blocked")
+assert(blocked_nav_task.last_result.metrics.blocked_reason == "navigation_obstacle_blocked")
+assert(blocked_nav_task.last_result.metrics.nodes_searched <= 16)
+assert(blocked_nav_task.last_result.metrics.obstacles_seen >= 4)
+assert(blocked_nav_task.duration_us ~= nil)
+
+local budget_base = test_pos(7065)
+local budget_player_pos = table.copy(budget_base)
+local budget_player = {
+	get_pos = function()
+		return table.copy(budget_player_pos)
+	end,
+}
+local budget_nav = core.ai_agent_plugin.handle_command("BudgetNav", "follow me", {
+	get_player_by_name = function(name)
+		if name == "BudgetNav" then
+			return budget_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	get_node = get_test_node,
+	max_follow_steps = 3,
+	max_follow_step_distance = 1,
+	max_follow_total_distance = 6,
+	max_follow_stop_distance = 0,
+	max_navigation_nodes = 1,
+	force_navigation_search = true,
+})
+assert(budget_nav.ok == true)
+core.step_ai_tasks()
+budget_player_pos = vector.add(budget_base, { x = 3, y = 0, z = 0 })
+core.step_ai_tasks()
+local budget_nav_task = core.get_ai_task(budget_nav.task_id)
+assert(budget_nav_task.status == "blocked")
+assert(budget_nav_task.last_result.reason == "navigation_node_budget_exhausted")
+assert(budget_nav_task.last_result.metrics.nodes_searched == 1)
+assert(budget_nav_task.last_result.metrics.max_nodes_searched == 1)
+
+local owner_mismatch_move = core.ai_entity_ops.move(follow_entity_id,
+	vector.add(plugin_base, { x = 7, y = 0, z = 0 }), {
+		agent_id = plugin_agent.agent_id,
+		owner = "Other",
+		task_id = "navigation-owner-mismatch",
+	})
+assert(owner_mismatch_move.status == "blocked")
+assert(owner_mismatch_move.reason == "owner_mismatch")
+
+local nav_task_view = core.build_ai_operator_status_view({
+	view = "task",
+	task_id = blocked_nav.task_id,
+	generated_at = "2026-06-29T00:00:00Z",
+	max_bytes = 6000,
+})
+assert(nav_task_view.task.duration_us ~= nil)
+assert(nav_task_view.task.last_result.navigation.blocked_reason
+	== "navigation_obstacle_blocked")
+assert(nav_task_view.task.last_result.navigation.nodes_searched <= 16)
+assert(nav_task_view.task.last_result.navigation.max_nodes_searched == 16)
+local nav_tasks_view = core.build_ai_operator_status_view({
+	view = "tasks",
+	generated_at = "2026-06-29T00:00:00Z",
+	max_bytes = 50000,
+	limit = 200,
+})
+local nav_summary_found = false
+for _, summary in ipairs(nav_tasks_view.tasks.summaries) do
+	if summary.task_id == blocked_nav.task_id then
+		nav_summary_found = true
+		assert(summary.duration_us ~= nil)
+		assert(summary.navigation.blocked_reason == "navigation_obstacle_blocked")
+		assert(summary.navigation.nodes_searched <= 16)
+	end
+end
+assert(nav_summary_found)
+
+local lag_base = test_pos(7095)
+local lag_player = {
+	get_pos = function()
+		return table.copy(lag_base)
+	end,
+}
+local lag_follow = core.ai_agent_plugin.handle_command("LagNav", "follow me", {
+	get_player_by_name = function(name)
+		if name == "LagNav" then
+			return lag_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	get_node = get_test_node,
+	max_follow_steps = 2,
+	max_follow_step_distance = 1,
+	max_follow_total_distance = 3,
+	max_follow_stop_distance = 0,
+})
+core.set_ai_task_queue_lag_monitor({
+	max_lag_ms = 10,
+	get_lag_ms = function()
+		return 50
+	end,
+})
+local lag_nav_paused = core.step_ai_tasks()
+assert(lag_nav_paused.paused == true)
+assert(lag_nav_paused.reason == "lag_threshold_exceeded")
+assert(core.get_ai_task(lag_follow.task_id).status == "paused")
+core.set_ai_task_queue_lag_monitor({
+	max_lag_ms = 10,
+	get_lag_ms = function()
+		return 0
+	end,
+})
+local lag_nav_resumed = core.step_ai_tasks()
+assert(lag_nav_resumed.paused == false)
+assert(core.get_ai_task(lag_follow.task_id).status == "running")
+assert(core.cancel_ai_task(lag_follow.task_id, "LagNav").status == "cancelled")
+core.set_ai_task_queue_lag_monitor(nil)
 return follow_entity_id
 end
 
@@ -4149,10 +4356,51 @@ assert(core.ai_agent_plugin.get_player_state("Wills").target_pos.x == plugin_bas
 core.step_ai_tasks()
 local completed_come = core.get_ai_task(come_reply.task_id)
 assert(completed_come.status == "completed")
-assert(completed_come.last_result.operation == "ai_entity.move")
+assert(completed_come.last_result.operation == "ai_agent.navigation_step")
+assert(completed_come.last_result.movement_result.operation == "ai_entity.move")
 assert(completed_come.last_result.entity.entity_id == follow_entity_id)
 assert(completed_come.last_result.entity.pos.x == plugin_base.x + 3)
-assert(completed_come.last_result.metrics.distance == 2)
+assert(completed_come.last_result.metrics.distance_moved == 2)
+assert(completed_come.last_result.metrics.path_status == "direct_line_bounded")
+
+function test_ai_agent_plugin_come_grid_navigation()
+local come_grid_base = test_pos(7125)
+core.ai_agent_plugin.ensure_player_agent("ComeGrid")
+local come_grid_spawn = core.ai_entity_ops.spawn("ai_demo_benchmark:helper",
+	come_grid_base, {
+		entity_id = "nova_agent:ComeGrid:helper",
+		agent_id = "nova_agent:ComeGrid",
+		owner = "ComeGrid",
+		task_id = "come-grid:spawn",
+		spawn_entity = spawn_test_entity,
+	})
+assert(come_grid_spawn.ok == true)
+set_test_node(vector.add(come_grid_base, { x = 1, y = 0, z = 0 }), {
+	name = "ai_runtime_test:stone",
+})
+local come_grid_reply = core.ai_agent_plugin.handle_command("ComeGrid", "come", {
+	pos = vector.add(come_grid_base, { x = 2, y = 0, z = 0 }),
+	spawn_entity = spawn_test_entity,
+	get_node = get_test_node,
+	max_follow_steps = 4,
+	max_follow_step_distance = 1,
+	max_follow_total_distance = 8,
+	max_navigation_nodes = 32,
+	max_follow_stop_distance = 0,
+})
+assert(come_grid_reply.ok == true)
+core.step_ai_tasks()
+local come_grid_task = core.get_ai_task(come_grid_reply.task_id)
+assert(come_grid_task.status == "running")
+assert(come_grid_task.last_result.operation == "ai_agent.navigation_step")
+assert(come_grid_task.last_result.metrics.path_status == "bounded_grid_path")
+assert(come_grid_task.last_result.metrics.obstacles_seen >= 1)
+assert(come_grid_task.last_result.entity.pos.x == come_grid_base.x)
+assert(come_grid_task.last_result.entity.pos.z == come_grid_base.z + 1)
+assert(core.cancel_ai_task(come_grid_reply.task_id, "ComeGrid").status == "cancelled")
+end
+test_ai_agent_plugin_come_grid_navigation()
+test_ai_agent_plugin_come_grid_navigation = nil
 
 function test_ai_agent_plugin_product_loop_commands()
 local build_plan_pos = test_pos(4208)
