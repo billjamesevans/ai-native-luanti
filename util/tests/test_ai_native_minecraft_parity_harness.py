@@ -302,7 +302,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "by_source_class": {
                         "java_resource_pack": 1,
                         "luanti_mod": 1,
-                        "structure": 1,
+                        "schematic": 1,
                         "world": 1,
                     },
                     "source_status_counts": {
@@ -375,6 +375,14 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertFalse(report["source_policy"]["uses_proprietary_minecraft_code_or_assets"])
             self.assertFalse(report["source_policy"]["uses_copied_server_jars_or_game_data"])
             self.assertTrue(report["source_policy"]["measured_facts_are_separate_from_project_targets"])
+            self.assertTrue(report["accepted_baseline_policy"]["same_hardware_required"])
+            self.assertTrue(
+                report["accepted_baseline_policy"]["missing_or_mismatched_baselines_fail_report"]
+            )
+            self.assertEqual(
+                report["accepted_baseline_policy"]["accepted_lanes_required"],
+                ["local/benchmarks/local-mac/accepted/"],
+            )
             self.assertEqual(
                 report["retention"]["logical_default_output"],
                 "local/benchmarks/minecraft-parity-comparison-report.json",
@@ -399,6 +407,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "latency",
                 ],
             )
+            self.assertEqual(set(report["target_bands"]), set(dimension_ids))
             for dimension in report["comparison_dimensions"]:
                 self.assertIn(
                     dimension["gap_area"],
@@ -412,6 +421,10 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 self.assertEqual(
                     set(dimension["scorecard_criteria"]),
                     {"pass", "warn", "fail"},
+                )
+                self.assertEqual(
+                    dimension["target_band"],
+                    report["target_bands"][dimension["id"]],
                 )
             self.assertEqual(
                 report["scorecard_status_criteria"],
@@ -441,6 +454,9 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 self.assertFalse(scenario["uses_proprietary_minecraft_assets"])
             lane = report["measured_facts"][0]
             results = {item["dimension_id"]: item for item in lane["dimension_results"]}
+            for result in results.values():
+                self.assertIn("target_band", result)
+                self.assertIn("target_band_passed", result["metrics"])
             self.assertEqual(results["startup"]["status"], "measured")
             self.assertEqual(results["startup"]["scorecard_status"], "pass")
             self.assertEqual(results["player_join_liveness"]["status"], "proxy_only")
@@ -553,6 +569,60 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "Prove first-party agent product loop in accepted lanes",
                 ],
             )
+
+    def test_harness_flags_measured_metrics_outside_target_band_as_ranked_gap(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(
+                output_root,
+                headless_players=True,
+                mapblock_rows=256,
+                entity_count=16,
+                total_node_writes=11,
+                cpu_evidence=True,
+                first_party_loop=True,
+            )
+            self.write_import_inventory_discovery_report(output_root)
+            clean_profile_path = (
+                output_root / "local-mac" / "accepted" / "clean-profile-benchmark-summary.json"
+            )
+            clean_profile = json.loads(clean_profile_path.read_text(encoding="utf-8"))
+            clean_profile["comparison_summary"]["startup"]["time_to_listen_ms"] = 20000.0
+            self.write_json(clean_profile_path, clean_profile)
+            report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
+
+            self.run_harness(output_root, "--output", str(report_path))
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            results = {
+                item["dimension_id"]: item
+                for item in report["measured_facts"][0]["dimension_results"]
+            }
+            startup = results["startup"]
+            self.assertEqual(startup["status"], "partial")
+            self.assertEqual(startup["scorecard_status"], "warn")
+            self.assertFalse(startup["metrics"]["target_band_passed"])
+            self.assertEqual(startup["target_band"]["time_to_listen_ms_max"], 15000)
+            actions = report["actionable_scorecard"]
+            self.assertEqual(len(actions), 1)
+            self.assertEqual(actions[0]["dimension_ids"], ["startup"])
+            self.assertEqual(actions[0]["title"], "Startup target band is not met")
+
+    def test_harness_rejects_mismatched_same_hardware_baseline(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(output_root)
+            manifest_path = (
+                output_root / "local-mac" / "accepted" / "accepted-baseline-manifest.json"
+            )
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["hardware_class"] = "low-power-server"
+            self.write_json(manifest_path, manifest)
+
+            completed = self.run_harness(output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("accepted baseline hardware class mismatch", completed.stderr)
 
     def test_harness_clears_first_party_loop_gap_when_accepted_baseline_has_product_loop_evidence(self):
         with tempfile.TemporaryDirectory() as tmpdir:
