@@ -59,6 +59,8 @@ Current useful fixture types outside the engine core are:
 - A Bedrock-style folder with `manifest.json`.
 - A Java-style resource pack folder with `pack.mcmeta`.
 - A compressed Bedrock `.mcpack`.
+- A metadata-only public-safe structure or schematic preflight JSON file.
+- A Luanti mod metadata folder with `mod.conf` and optional dependency files.
 
 The report may include redacted source names and content hashes, but it should not copy source payloads into the fork.
 
@@ -68,9 +70,14 @@ The machine-readable report schema lives at:
 
 - [`schemas/compatibility-dry-run-report.schema.json`](schemas/compatibility-dry-run-report.schema.json)
 
-A synthetic example lives at:
+A synthetic Bedrock-style example lives at:
 
 - [`examples/compatibility-dry-run-report.example.json`](examples/compatibility-dry-run-report.example.json)
+
+Additional public-safe examples cover the current structure and Luanti-mod lanes:
+
+- [`examples/compatibility-public-schematic-report.example.json`](examples/compatibility-public-schematic-report.example.json)
+- [`examples/compatibility-luanti-mod-report.example.json`](examples/compatibility-luanti-mod-report.example.json)
 
 Every report has:
 
@@ -132,6 +139,7 @@ Initial reasons:
 - `entity_ai_not_supported`
 - `world_format_not_supported`
 - `requires_manual_review`
+- `private_reference_not_imported`
 - `too_large_for_budget`
 
 ## Planned Actions
@@ -150,9 +158,12 @@ Initial action types:
 
 Each action should include an estimated `mutation_cost` with counts such as node writes, mapblock churn, media files, entity definitions, or manual review items.
 
-## Public-Safe Structure Adapter
+## Public-Safe Structure Adapters
 
-The first structure adapter is intentionally narrow and synthetic. It reads a JSON fixture with:
+The structure adapters are intentionally narrow and metadata-first. They read
+reviewable JSON fixtures and emit dry-run reports before any apply task exists.
+
+The synthetic test adapter reads a JSON fixture with:
 
 - `fixture_kind: ai_native_synthetic_structure`
 - `fixture_version: 1`
@@ -162,7 +173,20 @@ The first structure adapter is intentionally narrow and synthetic. It reads a JS
 - `placements`: relative `{x,y,z}` positions plus `node` or `node_name`, with optional `param1` and `param2`
 - `unsupported_fields`: optional review-only rows for fields such as entities or block entities
 
-The adapter output remains a dry-run report. It adds an `import_structure` planned action with a `structure_adapter` payload containing synthetic placements, placement count, mapblock-churn estimate, and chunking guidance. It does not queue tasks, copy assets, parse proprietary structure payloads, execute behavior, or mutate a world.
+The public-safe structure adapter reads a user-supplied, rights-confirmed JSON
+fixture with `format_kind: ai_native_public_structure` and
+`structure_format: ai_native_structure_v1`. The schematic preflight adapter reads
+`format_kind: ai_native_public_schematic_preflight` with
+`schematic_format: ai_native_schematic_preflight_v1` and `payload_policy:
+metadata_only`. These formats contain reviewed palette, dimension, placement,
+and unsupported-field metadata only; they reject raw schematics, NBT payloads,
+private source paths, family-world coordinates, and copied protected content.
+
+The adapter output remains a dry-run report. It adds an `import_structure`
+planned action with a `structure_adapter` payload containing reviewed
+placements, placement count, mapblock-churn estimate, and chunking guidance. It
+does not queue tasks, copy assets, parse proprietary structure payloads, execute
+behavior, or mutate a world.
 
 Unsupported fixture fields become explicit `unsupported_features` rows, so the operator can review what was skipped before any apply request exists.
 
