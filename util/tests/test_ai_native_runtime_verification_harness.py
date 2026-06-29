@@ -27,7 +27,7 @@ def load_harness_module():
 
 
 class AIRuntimeVerificationHarnessTests(unittest.TestCase):
-    def write_operator_status_artifact(self, path, *, payload=None):
+    def write_operator_status_artifact(self, path, *, payload=None, source="live_command"):
         path.parent.mkdir(parents=True, exist_ok=True)
         package = payload or {
             "schema_version": 1,
@@ -35,7 +35,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "status": "ready",
             "runtime_context": {
                 "game_profile": "ai_runtime",
-                "source": "command_surrogate",
+                "source": source,
                 "mutation_performed": False,
             },
             "server_profile_hygiene": {
@@ -83,11 +83,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
 
     def runner_with_operator_artifact(self, runs):
         def run_step(step):
-            if step.id == "operator_status_package":
+            if step.id in {"operator_status_live_command", "operator_status_package"}:
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
                 )
-                self.write_operator_status_artifact(output_path)
+                source = "live_command" if step.id == "operator_status_live_command" else "command_surrogate"
+                self.write_operator_status_artifact(output_path, source=source)
             return next(runs)
 
         return run_step
@@ -119,7 +120,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "local/benchmarks/local-mac/2026-06-28/verify-success/benchmark-gate-manifest.json\n",
                         "",
                     ),
-                    harness.CommandRun(0, 0.25, "operator status package ok", ""),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -146,7 +147,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 [
                     "utility_contract_tests",
                     "branch_benchmark_gate",
-                    "operator_status_package",
+                    "operator_status_live_command",
                     "ai_runtime_focused_tests",
                 ],
             )
@@ -156,8 +157,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "local/benchmarks/local-mac/2026-06-28/verify-success/benchmark-gate-manifest.json",
             )
             self.assertEqual(
-                manifest["artifact_paths"]["operator_status_package"],
-                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-status.json",
+                manifest["artifact_paths"]["operator_status_live_command"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-status-live.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["package_status"], "ready")
@@ -166,11 +167,16 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["operator_status_evidence"]["truncated"])
             self.assertEqual(
                 manifest["operator_status_evidence"]["source_kind"],
-                "command_surrogate",
+                "live_command",
             )
             self.assertEqual(
+                manifest["operator_status_evidence"]["execution_path"],
+                "disposable_worldmod_registered_chatcommand",
+            )
+            self.assertTrue(manifest["operator_status_evidence"]["direct_command_execution"])
+            self.assertEqual(
                 manifest["operator_status_evidence"]["source_path"],
-                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-status.json",
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-status-live.json",
             )
             self.assertNotIn("clean_profile_summary", manifest["artifact_paths"])
             self.assertFalse(manifest["run_context"]["requires_private_world"])
@@ -219,7 +225,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/benchmark-gate-manifest.json\n",
                         "",
                     ),
-                    harness.CommandRun(0, 0.25, "operator status package ok", ""),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -241,15 +247,77 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/clean-profile-benchmark-summary.json",
             )
             self.assertEqual(
-                manifest["artifact_paths"]["operator_status_package"],
-                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-status.json",
+                manifest["artifact_paths"]["operator_status_live_command"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-status-live.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
+            self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "live_command")
             self.assertIn("clean-profile verification", " ".join(manifest["notes"]))
 
             serialized = json.dumps(manifest, sort_keys=True)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_surrogate_operator_status_source_is_explicit_and_marked_in_manifest(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-surrogate",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--operator-status-source",
+                    "surrogate",
+                ]
+            )
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-surrogate/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status package ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=self.runner_with_operator_artifact(runs),
+                now_fn=lambda: "2026-06-28T12:04:00Z",
+            )
+
+            self.assertEqual(status, 0)
+            self.assertEqual(
+                [step["id"] for step in manifest["steps"]],
+                [
+                    "utility_contract_tests",
+                    "branch_benchmark_gate",
+                    "operator_status_package",
+                    "ai_runtime_focused_tests",
+                ],
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_status_package"],
+                "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-status.json",
+            )
+            self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "command_surrogate")
+            self.assertFalse(manifest["operator_status_evidence"]["direct_command_execution"])
+            self.assertEqual(
+                manifest["operator_status_evidence"]["execution_path"],
+                "python_package_surrogate",
+            )
 
     def test_clean_profile_mode_forwards_headless_player_probe_args_to_gate(self):
         harness = load_harness_module()
@@ -312,7 +380,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "",
                         "benchmark failed near /Users/billevans/private and minecraftpi.home",
                     ),
-                    harness.CommandRun(0, 0.25, "operator status package ok", ""),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -374,7 +442,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
 
             def run_step(step):
-                if step.id == "operator_status_package":
+                if step.id == "operator_status_live_command":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
@@ -411,11 +479,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(manifest["overall_status"], "fail")
             self.assertEqual(manifest["operator_status_evidence"]["status"], "fail")
             self.assertIn(
-                "operator_status_package output_bytes exceeds max_bytes",
+                "operator_status_live_command output_bytes exceeds max_bytes",
                 " ".join(manifest["failure_reasons"]),
             )
             self.assertIn(
-                "operator_status_package contains private patterns",
+                "operator_status_live_command contains private patterns",
                 " ".join(manifest["failure_reasons"]),
             )
             serialized = json.dumps(manifest, sort_keys=True)
@@ -427,14 +495,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         for phrase in (
             "util/ai_native_runtime_verify.py",
             "ai-runtime-verification-manifest.json",
-            "ai-runtime-operator-status.json",
+            "ai-runtime-operator-status-live.json",
             "/ai_runtime_operator_status",
             "--operator-status-max-bytes",
+            "--operator-status-source surrogate",
+            "disposable `ai_runtime` world",
+            "source_kind = `live_command`",
+            "source_kind = `command_surrogate`",
             "after the branch benchmark gate and `/ai_runtime_smoke`",
             "--game-profile ai_runtime",
             "clean-profile-benchmark-summary.json",
             "local/benchmarks/<hardware-class>/<date>/<commit>/",
-            "no live server",
+            "no family server",
             "no model-network",
             "pre-PR",
         ):
