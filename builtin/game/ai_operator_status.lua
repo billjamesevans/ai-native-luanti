@@ -243,6 +243,147 @@ local function summarize_benchmarks(context, gates)
 	}
 end
 
+local function task_safe_next_action(status)
+	if status == "blocked" or status == "unsafe" or status == "failed" then
+		return "review_blocked_task_before_retry"
+	end
+	if status == "completed" or status == "cancelled" then
+		return "inspect_completed_task_summary"
+	end
+	return "inspect_task_before_action"
+end
+
+local function task_is_actionable(status)
+	return status ~= "completed" and status ~= "cancelled"
+end
+
+local function rollback_safe_next_action(status)
+	if status == "success" or status == "available" or status == "recorded" then
+		return "review_rollback_record_before_execution"
+	end
+	return "inspect_rollback_record_status"
+end
+
+local function import_review_safe_next_action(status)
+	if status == "blocked" then
+		return "review_import_blocker"
+	end
+	if status == "success" or status == "approved" or status == "ready" then
+		return "review_import_review_before_promotion"
+	end
+	return "inspect_import_review_status"
+end
+
+local function promotion_safe_next_action(status)
+	if status == "ready" then
+		return "review_promotion_package_before_apply"
+	end
+	if status == "blocked" or status == "fail" then
+		return "review_promotion_blocker"
+	end
+	return "inspect_promotion_status"
+end
+
+local function benchmark_safe_next_action(status)
+	if status == "fail" then
+		return "review_benchmark_failure"
+	end
+	return "inspect_benchmark_gate_summary"
+end
+
+local function add_operator_recommendation(recommendations, context, target_kind,
+		target_id, status, safe_next_action)
+	recommendations[#recommendations + 1] = {
+		target_kind = redact(target_kind, context),
+		target_id = redact(target_id or "unknown", context),
+		status = redact(status or "unknown", context),
+		safe_next_action = redact(safe_next_action, context),
+		dry_run_only = true,
+		will_mutate = false,
+	}
+end
+
+local function summarize_operator_control(context, audit_records, promotion_packages, gates)
+	local recommendations = {}
+	local tasks = sorted_tasks()
+	local control_tasks = {}
+	for _, task in ipairs(tasks) do
+		if task_is_actionable(task.status or "unknown") then
+			control_tasks[#control_tasks + 1] = task
+		end
+	end
+	if #control_tasks == 0 then
+		control_tasks = tasks
+	end
+	for _, task in ipairs(control_tasks) do
+		local status = task.status or "unknown"
+		add_operator_recommendation(
+			recommendations,
+			context,
+			"task",
+			task.task_id,
+			status,
+			task_safe_next_action(status)
+		)
+	end
+	for _, record in ipairs(audit_records) do
+		if record.event_type == "rollback.record" then
+			local status = record.status or "available"
+			add_operator_recommendation(
+				recommendations,
+				context,
+				"rollback",
+				record.rollback_record_id or record.task_id or "unknown",
+				status,
+				rollback_safe_next_action(status)
+			)
+		elseif type(record.event_type) == "string" and record.event_type:sub(1, 7) == "import." then
+			local status = record.status or "unknown"
+			add_operator_recommendation(
+				recommendations,
+				context,
+				"import_review",
+				record.task_id or record.event_type,
+				status,
+				import_review_safe_next_action(status)
+			)
+		end
+	end
+	for _, package in ipairs(promotion_packages or {}) do
+		local status = package.status or "unknown"
+		add_operator_recommendation(
+			recommendations,
+			context,
+			"import_promotion",
+			package.package_id or "unknown",
+			status,
+			promotion_safe_next_action(status)
+		)
+	end
+	for _, gate in ipairs(gates or {}) do
+		local status = gate.status or "unknown"
+		if status == "fail" then
+			add_operator_recommendation(
+				recommendations,
+				context,
+				"benchmark_gate",
+				gate.gate_id or "unknown",
+				status,
+				benchmark_safe_next_action(status)
+			)
+		end
+	end
+	local limited, truncated = truncate(recommendations)
+	return {
+		surface_kind = "read_only_task_rollback_control",
+		action_mode = "dry_run_only",
+		mutation_performed = false,
+		recommendations_total = #recommendations,
+		summaries = limited,
+		truncated = truncated,
+	}
+end
+
 local function profile_hygiene()
 	local smoke_enabled = core.settings:get_bool("ai_runtime.enable_smoke_command", false)
 	local benchmark_enabled = core.settings:get_bool("ai_runtime.enable_demo_benchmark_command", false)
@@ -303,7 +444,14 @@ local function apply_bounds(package, max_bytes)
 	end
 
 	local function trim_sections(limit)
-		for _, section_name in ipairs({ "agents", "tasks", "rollback", "imports", "benchmarks" }) do
+		for _, section_name in ipairs({
+				"agents",
+				"tasks",
+				"rollback",
+				"imports",
+				"benchmarks",
+				"operator_control",
+			}) do
 			local section = package[section_name]
 			if section.summaries then
 				section.summaries = trim_list(section.summaries, limit)
@@ -347,7 +495,7 @@ local function apply_bounds(package, max_bytes)
 		output_bytes = 0,
 		truncated = package.agents.truncated or package.tasks.truncated
 			or package.rollback.truncated or package.imports.truncated
-			or package.benchmarks.truncated,
+			or package.benchmarks.truncated or package.operator_control.truncated,
 	}
 	if refresh_size() > max_bytes then
 		trim_sections(3)
@@ -384,6 +532,12 @@ function operator_status.build_package(options)
 		rollback = summarize_rollback(context, audit_records),
 		imports = summarize_imports(context, audit_records, options.promotion_packages),
 		benchmarks = summarize_benchmarks(context, options.benchmark_gates),
+		operator_control = summarize_operator_control(
+			context,
+			audit_records,
+			options.promotion_packages,
+			options.benchmark_gates
+		),
 	}
 	package.safety = {
 		public_safe_output = true,

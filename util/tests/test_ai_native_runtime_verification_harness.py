@@ -65,6 +65,23 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "status_counts": {},
                 "truncated": False,
             },
+            "operator_control": {
+                "surface_kind": "read_only_task_rollback_control",
+                "action_mode": "dry_run_only",
+                "mutation_performed": False,
+                "recommendations_total": 1,
+                "summaries": [
+                    {
+                        "target_kind": "task",
+                        "target_id": "task:one",
+                        "status": "queued",
+                        "safe_next_action": "inspect_task_before_action",
+                        "dry_run_only": True,
+                        "will_mutate": False,
+                    }
+                ],
+                "truncated": False,
+            },
             "safety": {
                 "public_safe_output": True,
                 "redactions_applied": 0,
@@ -162,6 +179,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["package_status"], "ready")
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_control_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_control_action_mode"],
+                "dry_run_only",
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_control_recommendations"],
+                1,
+            )
             self.assertEqual(manifest["operator_status_evidence"]["output_bytes"], 1200)
             self.assertEqual(manifest["operator_status_evidence"]["max_bytes"], 24000)
             self.assertFalse(manifest["operator_status_evidence"]["truncated"])
@@ -188,6 +217,38 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertLess(len(serialized), 12000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_operator_status_accepts_live_lua_empty_operator_control_summaries(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-empty-operator-control",
+                    "--server-bin",
+                    "bin/luantiserver",
+                ]
+            )
+            output_path = harness.operator_status_artifact_path(args)
+            self.write_operator_status_artifact(output_path)
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            payload["operator_control"]["recommendations_total"] = 0
+            payload["operator_control"]["summaries"] = None
+            output_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+            evidence, reasons = harness.operator_status_evidence(args)
+
+            self.assertEqual(reasons, [])
+            self.assertEqual(evidence["status"], "pass")
+            self.assertEqual(evidence["operator_control_status"], "pass")
+            self.assertEqual(evidence["operator_control_recommendations"], 0)
 
     def test_clean_profile_mode_records_profile_artifact_without_losing_gate_manifest(self):
         harness = load_harness_module()
@@ -459,6 +520,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                             "rollback": {},
                             "imports": {"source": "minecraftpi.home"},
                             "benchmarks": {},
+                            "operator_control": {
+                                "surface_kind": "read_only_task_rollback_control",
+                                "action_mode": "dry_run_only",
+                                "mutation_performed": False,
+                                "recommendations_total": 0,
+                                "summaries": [],
+                                "truncated": False,
+                            },
                             "safety": {},
                             "bounds": {
                                 "max_bytes": 2000,
@@ -502,6 +571,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "disposable `ai_runtime` world",
             "source_kind = `live_command`",
             "source_kind = `command_surrogate`",
+            "operator_control",
+            "dry-run-only",
+            "safe next actions",
             "after the branch benchmark gate and `/ai_runtime_smoke`",
             "--game-profile ai_runtime",
             "clean-profile-benchmark-summary.json",
