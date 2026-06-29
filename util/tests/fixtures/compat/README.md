@@ -11,6 +11,8 @@ Rules:
 - No marketplace or downloaded pack payloads.
 - Placeholder behavior files are tiny text fixtures used only to exercise
   unsupported-feature reporting.
+- Bedrock asset-pack fixtures are metadata-only JSON fixtures used to exercise
+  model/reference promotion without texture, sound, or binary media payloads.
 - Placeholder structure, world, and mod metadata files are tiny synthetic
   fixtures used only to exercise classifier paths.
 - Public structure fixtures are tiny original `ai_native_structure_v1` JSON
