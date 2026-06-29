@@ -199,6 +199,18 @@ The first real structure-format slice is `ai_native_structure_v1`, carried by a 
 
 The adapter emits `public_safe_structure_v1` metadata into the dry-run report, then reuses the same approval, adapter-smoke, operator-review, chunked apply, rollback planning, and rollback execution gates. It does not parse proprietary Minecraft server behavior, ship Mojang assets, ship family-world assets, or mutate the live family world.
 
+## Public-Safe Schematic Preflight
+
+The next compatibility-format slice is `ai_native_schematic_preflight_v1`, carried by a JSON file with `format_kind = ai_native_public_schematic_preflight`. It is not a raw schematic parser. It is a public-safe preflight contract for operator-supplied metadata:
+
+- `license.status = user_supplied` and `license.rights_confirmed = true` are required.
+- `preflight.payload_policy = metadata_only` and `preflight.source_format = schematic` are required.
+- `dimensions`, `palette`, and `placements` or `estimated_placements` map safe placement metadata into the existing `public_safe_structure_v1` handoff shape.
+- `unsupported_fields` records schematic features such as block entities or biomes for manual review.
+- Raw schematic/NBT payloads, copied protected content, private source paths, and family-world coordinates are rejected before a dry-run report is produced.
+
+The preflight adapter emits `source_adapter_kind = public_safe_schematic_preflight_v1` and `structure_format = ai_native_schematic_preflight_v1` while preserving the same approval, adapter-smoke, operator-review, rollback, and promotion-package gates as `ai_native_structure_v1`.
+
 ## Reviewed Structure Promotion Package
 
 Before adding broader schematic, world, or resource-pack compatibility formats, reviewed public-safe structure imports produce a durable promotion package. This package is an operator evidence artifact, not an importer. It binds together:
@@ -227,7 +239,7 @@ python3 util/ai_native_compat_dry_run.py \
 
 The command fails closed when approval is missing, the dry-run hash does not match the approval request, the smoke/review report ids differ from the approval report id, the target is not disposable staging, the target names a family or production world, rollback metadata readback is missing, the supplied review gate is blocked, or recomputing the review from the smoke artifact is blocked.
 
-This package is intentionally limited to the first public-safe `ai_native_structure_v1` adapter. Synthetic fixtures remain useful for tests and runtime smoke coverage, but they are not eligible for operator promotion packages.
+Promotion packages are available only for public-safe adapter handoffs. Synthetic fixtures remain useful for tests and runtime smoke coverage, but they are not eligible for operator promotion packages.
 
 ## Audit Requirements
 
@@ -304,6 +316,7 @@ This summary is separate from the dry-run report so the dry-run artifact remains
 7. Add operator review for adapter smoke manifests before broadening supported structure formats.
 8. Add the first public-safe structure format adapter behind operator review before broader schematic or world conversion support.
 9. Add a reviewed public-safe structure promotion package before broader schematic or world conversion support.
+10. Add a public-safe schematic preflight adapter behind the same promotion chain before broader schematic or world conversion support.
 
 This order keeps compatibility import aligned with the fork strategy: AI-native runtime first, compatibility automation second, world mutation last.
 

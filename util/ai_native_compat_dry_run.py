@@ -55,6 +55,9 @@ SYNTHETIC_STRUCTURE_ADAPTER_KIND = "synthetic_structure_v1"
 PUBLIC_SAFE_STRUCTURE_FIXTURE_KIND = "ai_native_public_structure"
 PUBLIC_SAFE_STRUCTURE_FORMAT = "ai_native_structure_v1"
 PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND = "public_safe_structure_v1"
+PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_KIND = "ai_native_public_schematic_preflight"
+PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_FORMAT = "ai_native_schematic_preflight_v1"
+PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_ADAPTER_KIND = "public_safe_schematic_preflight_v1"
 SECTION_REQUIRED = ("name", "items_total", "status", "message")
 UNSUPPORTED_FEATURE_REQUIRED = (
     "feature",
@@ -395,6 +398,34 @@ def _normalize_recommended_chunk_size(raw):
     return chunk_size
 
 
+def _require_user_supplied_license(raw):
+    license_info = raw.get("license")
+    if not isinstance(license_info, dict):
+        raise ValueError("license must be an object")
+    if license_info.get("status") != "user_supplied":
+        raise ValueError("license.status must be user_supplied")
+    if license_info.get("rights_confirmed") is not True:
+        raise ValueError("license.rights_confirmed must be true")
+    return license_info
+
+
+def _reject_public_safe_payload_fields(raw, adapter_label):
+    forbidden_fields = (
+        "asset_payload",
+        "raw_schematic_payload",
+        "nbt_payload",
+        "copied_protected_content",
+        "family_world_coordinates",
+    )
+    for field in forbidden_fields:
+        if field in raw:
+            raise ValueError(f"{field} is not supported by the {adapter_label}")
+    private_path_fields = ("source_path", "local_path", "absolute_path", "path")
+    for field in private_path_fields:
+        if field in raw:
+            raise ValueError("private source paths are not supported by public-safe adapters")
+
+
 def _normalize_synthetic_structure_fixture(raw, source):
     if raw.get("fixture_kind") != SYNTHETIC_STRUCTURE_FIXTURE_KIND:
         return None
@@ -428,15 +459,8 @@ def _normalize_public_safe_structure_fixture(raw, source):
         raise ValueError("format_version must be 1")
     if raw.get("structure_format") != PUBLIC_SAFE_STRUCTURE_FORMAT:
         raise ValueError(f"structure_format must be {PUBLIC_SAFE_STRUCTURE_FORMAT}")
-    license_info = raw.get("license")
-    if not isinstance(license_info, dict):
-        raise ValueError("license must be an object")
-    if license_info.get("status") != "user_supplied":
-        raise ValueError("license.status must be user_supplied")
-    if license_info.get("rights_confirmed") is not True:
-        raise ValueError("license.rights_confirmed must be true")
-    if "asset_payload" in raw:
-        raise ValueError("asset_payload is not supported by the public-safe structure adapter")
+    _require_user_supplied_license(raw)
+    _reject_public_safe_payload_fields(raw, "public-safe structure adapter")
 
     dimensions = _normalize_structure_dimensions(raw.get("dimensions"), "dimensions")
     normalized_palette = _normalize_structure_palette(raw)
@@ -484,6 +508,63 @@ def _normalize_public_safe_structure_fixture(raw, source):
     }
 
 
+def _normalize_public_safe_schematic_preflight(raw, source):
+    if raw.get("format_kind") != PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_KIND:
+        return None
+    if raw.get("format_version") != 1:
+        raise ValueError("format_version must be 1")
+    if raw.get("schematic_format") != PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_FORMAT:
+        raise ValueError(f"schematic_format must be {PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_FORMAT}")
+    _require_user_supplied_license(raw)
+    _reject_public_safe_payload_fields(raw, "public-safe schematic preflight adapter")
+
+    preflight = raw.get("preflight")
+    if not isinstance(preflight, dict):
+        raise ValueError("preflight must be an object")
+    if preflight.get("payload_policy") != "metadata_only":
+        raise ValueError("preflight.payload_policy must be metadata_only")
+    if preflight.get("source_format") != "schematic":
+        raise ValueError("preflight.source_format must be schematic")
+    if "source_path" in preflight or "local_path" in preflight or "path" in preflight:
+        raise ValueError("private source paths are not supported by public-safe adapters")
+
+    dimensions = _normalize_structure_dimensions(raw.get("dimensions"), "dimensions")
+    normalized_palette = _normalize_structure_palette(raw)
+    placement_field = "placements" if raw.get("placements") is not None else "estimated_placements"
+    if placement_field not in raw:
+        raise ValueError("placements or estimated_placements must be a non-empty array")
+    placement_source = dict(raw)
+    placement_source["placements"] = raw[placement_field]
+    normalized_placements = _normalize_structure_placements(
+        placement_source,
+        normalized_palette,
+        dimensions=dimensions,
+    )
+    normalized_unsupported = _normalize_structure_unsupported_fields(raw)
+    chunk_size = _normalize_recommended_chunk_size(raw)
+
+    return {
+        "adapter_kind": PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND,
+        "source_adapter_kind": PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_ADAPTER_KIND,
+        "fixture_name": str(raw.get("name") or source.stem),
+        "fixture_version": 1,
+        "synthetic": False,
+        "public_safe": True,
+        "path_policy": "external_reference",
+        "license_status": "user_supplied",
+        "structure_format": PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_FORMAT,
+        "source_format": "schematic",
+        "payload_policy": "metadata_only",
+        "estimated_from_preflight": placement_field == "estimated_placements",
+        "dimensions": dimensions,
+        "palette": normalized_palette,
+        "placements": normalized_placements,
+        "recommended_chunk_size": chunk_size,
+        "unsupported_fields": normalized_unsupported,
+        "private_references": [],
+    }
+
+
 def _load_synthetic_structure_fixture(source):
     if not source.is_file() or source.suffix.lower() != ".json":
         return None
@@ -508,7 +589,10 @@ def _load_structure_adapter_fixture(source):
     synthetic = _normalize_synthetic_structure_fixture(raw, source)
     if synthetic:
         return synthetic
-    return _normalize_public_safe_structure_fixture(raw, source)
+    public_structure = _normalize_public_safe_structure_fixture(raw, source)
+    if public_structure:
+        return public_structure
+    return _normalize_public_safe_schematic_preflight(raw, source)
 
 
 def _parse_luanti_mod_conf(text):
@@ -534,6 +618,16 @@ def _metadata_for(source, entries, synthetic_structure=None):
         }
         if synthetic_structure.get("structure_format"):
             metadata["structure_format"] = synthetic_structure["structure_format"]
+        if synthetic_structure.get("source_adapter_kind"):
+            metadata["source_adapter_kind"] = synthetic_structure["source_adapter_kind"]
+        if synthetic_structure.get("source_format"):
+            metadata["source_format"] = synthetic_structure["source_format"]
+        if synthetic_structure.get("payload_policy"):
+            metadata["payload_policy"] = synthetic_structure["payload_policy"]
+        if synthetic_structure.get("estimated_from_preflight") is not None:
+            metadata["estimated_from_preflight"] = (
+                synthetic_structure["estimated_from_preflight"] is True
+            )
         if synthetic_structure.get("dimensions"):
             metadata["dimensions"] = synthetic_structure["dimensions"]
         if synthetic_structure.get("private_references"):
@@ -689,11 +783,15 @@ def _source_inventory(entries, source_class, synthetic_structure=None):
         classification, reason = _inventory_classification(source_kind, source_class)
         if synthetic_structure and source_kind == "structure":
             classification = "blocked"
-            reason = (
-                "synthetic_structure_adapter_review_required"
-                if synthetic_structure.get("synthetic")
-                else "public_safe_structure_adapter_review_required"
-            )
+            if synthetic_structure.get("synthetic"):
+                reason = "synthetic_structure_adapter_review_required"
+            elif (
+                synthetic_structure.get("source_adapter_kind")
+                == PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_ADAPTER_KIND
+            ):
+                reason = "public_safe_schematic_preflight_review_required"
+            else:
+                reason = "public_safe_structure_adapter_review_required"
         inventory.append({
             "entry_id": f"entry:{index + 1}",
             "source_path": entry["path"],
@@ -873,7 +971,12 @@ def _structure_cost(entries, synthetic_structure=None):
         strategy = (
             "synthetic_structure_adapter"
             if synthetic_structure.get("synthetic")
-            else "public_safe_structure_adapter"
+            else (
+                "public_safe_schematic_preflight"
+                if synthetic_structure.get("source_adapter_kind")
+                == PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_ADAPTER_KIND
+                else "public_safe_structure_adapter"
+            )
         )
         return {
             "structure_files": 1,
@@ -948,6 +1051,16 @@ def _structure_adapter_payload(synthetic_structure, structure_cost):
     }
     if synthetic_structure.get("structure_format"):
         payload["structure_format"] = synthetic_structure["structure_format"]
+    if synthetic_structure.get("source_adapter_kind"):
+        payload["source_adapter_kind"] = synthetic_structure["source_adapter_kind"]
+    if synthetic_structure.get("source_format"):
+        payload["source_format"] = synthetic_structure["source_format"]
+    if synthetic_structure.get("payload_policy"):
+        payload["payload_policy"] = synthetic_structure["payload_policy"]
+    if synthetic_structure.get("estimated_from_preflight") is not None:
+        payload["estimated_from_preflight"] = (
+            synthetic_structure["estimated_from_preflight"] is True
+        )
     if synthetic_structure.get("dimensions"):
         payload["dimensions"] = synthetic_structure["dimensions"]
     return payload
@@ -2007,6 +2120,7 @@ def build_structure_import_promotion_package(report, request, smoke, review):
             "source_inventory": _source_inventory_summary(report),
             "license_status": report["source"]["license_status"],
             "rights_status": "operator_confirmed",
+            "source_adapter_kind": report["source"].get("metadata", {}).get("source_adapter_kind"),
             "structure_format": structure_formats[0] if structure_formats else None,
             "estimated_world_mutations": report["summary"]["estimated_world_mutations"],
         },
