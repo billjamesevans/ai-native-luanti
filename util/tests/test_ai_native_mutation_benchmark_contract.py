@@ -19,6 +19,7 @@ EXPECTED_SCENARIOS = {
     "repair_scan_readonly",
     "repair_mutation_rollback",
     "rollback_record_write",
+    "first_party_agent_product_loop_approval",
     "compat_structure_chunked_apply",
     "compat_structure_rollback_execute",
 }
@@ -94,12 +95,31 @@ class MutationBenchmarkContractTests(unittest.TestCase):
                 mapblock_churn = scenario["metrics"]["mapblock_churn"]
                 self.assertIsInstance(mapblock_churn, int)
                 self.assertGreaterEqual(mapblock_churn, 0)
-                if scenario["category"] in {"build", "repair_mutation", "compat_structure"}:
+                if scenario["category"] in {
+                    "build",
+                    "repair_mutation",
+                    "first_party_agent_loop",
+                    "compat_structure",
+                }:
                     self.assertGreater(node_writes, 0)
                 else:
                     self.assertEqual(node_writes, 0)
                 if scenario["category"] == "compat_structure":
                     self.assertGreater(mapblock_churn, 0)
+
+        product_loop = next(
+            scenario for scenario in report["scenarios"]
+            if scenario["scenario_id"] == "first_party_agent_product_loop_approval"
+        )
+        self.assertEqual(
+            product_loop["entry_point"]["runtime_path"],
+            "builtin/game/ai_agent_plugin.lua",
+        )
+        self.assertEqual(product_loop["metrics"]["approval_plan_count"], 2)
+        self.assertEqual(product_loop["metrics"]["approved_task_count"], 2)
+        self.assertEqual(product_loop["metrics"]["guide_command_checked"], 1)
+        self.assertEqual(product_loop["metrics"]["audit_review_checked"], 1)
+        self.assertEqual(product_loop["metrics"]["rollback_review_checked"], 1)
 
     def test_schema_declares_required_benchmark_report_fields(self):
         schema = self.load_json(SCHEMA)
@@ -157,6 +177,7 @@ class MutationBenchmarkContractTests(unittest.TestCase):
             "repair_scan_readonly",
             "repair_mutation_rollback",
             "rollback_record_write",
+            "first_party_agent_product_loop_approval",
             "compat_structure_chunked_apply",
             "compat_structure_rollback_execute",
             "average step",
