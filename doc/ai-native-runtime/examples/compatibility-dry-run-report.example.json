@@ -117,6 +117,12 @@
     "unsupported": 2,
     "skipped": 1,
     "unknown": 0,
+    "dry_run_classification_counts": {
+      "blocked": 2,
+      "mapped": 6,
+      "skipped": 1,
+      "unsupported": 2
+    },
     "estimated_world_mutations": {
       "node_writes": 0,
       "mapblock_churn": 0,

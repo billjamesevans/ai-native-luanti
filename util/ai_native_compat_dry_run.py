@@ -43,6 +43,7 @@ SUMMARY_REQUIRED = (
     "unsupported",
     "skipped",
     "unknown",
+    "dry_run_classification_counts",
     "estimated_world_mutations",
 )
 MUTATION_COST_REQUIRED = (
@@ -246,11 +247,13 @@ PLANNED_ACTION_TASK_MAPPINGS = {
     },
 }
 DISCOVERY_CLASSIFICATIONS = ("supported", "partial", "unsupported", "skipped", "blocked")
+DRY_RUN_CLASSIFICATIONS = ("mapped", "skipped", "blocked", "unsupported")
 DISCOVERY_ACCEPTED_SOURCE_CLASSES = (
     "java_resource_pack",
     "bedrock_resource_pack",
     "bedrock_behavior_pack",
     "luanti_mod",
+    "schematic",
     "structure",
     "world",
 )
@@ -679,7 +682,11 @@ def _metadata_for(source, entries, synthetic_structure=None):
             metadata["dimensions"] = synthetic_structure["dimensions"]
         if synthetic_structure.get("private_references"):
             metadata["private_reference_count"] = len(synthetic_structure["private_references"])
-        return "structure", metadata
+        source_class = "schematic" if (
+            synthetic_structure.get("source_adapter_kind")
+            == PUBLIC_SAFE_SCHEMATIC_PREFLIGHT_ADAPTER_KIND
+        ) else "structure"
+        return source_class, metadata
 
     names = {entry["path"] for entry in entries}
     if source.is_dir() and (source / "pack.mcmeta").is_file():
@@ -1140,6 +1147,35 @@ def _planned_actions(counts, unsupported_features, structure_cost, synthetic_str
     return actions
 
 
+def _zero_dry_run_classification_counts():
+    return {classification: 0 for classification in DRY_RUN_CLASSIFICATIONS}
+
+
+def _dry_run_classification_counts(inventory, planned_actions):
+    counts = _zero_dry_run_classification_counts()
+    for entry in inventory:
+        classification = entry.get("classification")
+        if classification == "mapped":
+            counts["mapped"] += 1
+        elif classification == "skipped":
+            counts["skipped"] += 1
+        elif classification == "blocked":
+            counts["blocked"] += 1
+        else:
+            counts["unsupported"] += 1
+    for action in planned_actions:
+        status = action.get("status")
+        if action.get("action") == "skip_feature" or status == "skipped":
+            counts["skipped"] += 1
+        elif status == "blocked":
+            counts["blocked"] += 1
+        elif status in {"unsupported", "unknown"}:
+            counts["unsupported"] += 1
+        else:
+            counts["mapped"] += 1
+    return counts
+
+
 def _action(action, status, description, counts, manual_review_items,
             structure_cost=None, structure_adapter=None):
     structure_cost = structure_cost or {
@@ -1165,7 +1201,7 @@ def _action(action, status, description, counts, manual_review_items,
 
 
 def _risk_level(source_class, counts, unsupported_count):
-    if source_class in {"world", "structure"} or counts["structures"] or counts["world"]:
+    if source_class in {"world", "structure", "schematic"} or counts["structures"] or counts["world"]:
         return "high"
     if unsupported_count or counts["entities"] or counts["behaviors"]:
         return "medium"
@@ -1187,6 +1223,12 @@ def _build_report(source, synthetic_structure=None):
     partial_count = sum(1 for value in counts.values() if value > 0) - (1 if counts["metadata"] else 0)
     supported_count = 1 if counts["metadata"] else 0
     skipped_count = 1 if unsupported_features else 0
+    planned_actions = _planned_actions(
+        counts,
+        unsupported_features,
+        structure_cost,
+        synthetic_structure,
+    )
 
     return {
         "report_version": REPORT_VERSION,
@@ -1215,6 +1257,10 @@ def _build_report(source, synthetic_structure=None):
             "unsupported": unsupported_count,
             "skipped": skipped_count,
             "unknown": 1 if source_class == "unknown" else 0,
+            "dry_run_classification_counts": _dry_run_classification_counts(
+                inventory,
+                planned_actions,
+            ),
             "estimated_world_mutations": {
                 **_mutation_cost(counts, unsupported_count),
                 **{
@@ -1229,12 +1275,7 @@ def _build_report(source, synthetic_structure=None):
         },
         "sections": _sections(counts, unsupported_features, structure_cost),
         "unsupported_features": unsupported_features,
-        "planned_actions": _planned_actions(
-            counts,
-            unsupported_features,
-            structure_cost,
-            synthetic_structure,
-        ),
+        "planned_actions": planned_actions,
         "safety": {
             "no_assets_copied": True,
             "no_world_mutation": True,
@@ -1505,6 +1546,10 @@ def _discovery_source_row(index, report, report_path):
         "risk_level": report["summary"]["risk_level"],
         "inventory_count": len(report["source"]["inventory"]),
         "inventory_classification_counts": inventory_counts,
+        "dry_run_classification_counts": report["summary"].get(
+            "dry_run_classification_counts",
+            _zero_dry_run_classification_counts(),
+        ),
         "section_status_counts": section_counts,
         "unsupported_feature_count": len(report["unsupported_features"]),
         "planned_actions_count": len(report["planned_actions"]),
@@ -1544,6 +1589,8 @@ def _private_source_reference(source):
 def _blocked_discovery_source_row(index, reason):
     counts = _zero_discovery_counts()
     counts["blocked"] = 1
+    dry_run_counts = _zero_dry_run_classification_counts()
+    dry_run_counts["blocked"] = 1
     return {
         "source_id": f"redacted-private-source:{index}" if reason == "private_source_reference_rejected" else f"blocked-source:{index}",
         "source_class": "unknown",
@@ -1553,6 +1600,7 @@ def _blocked_discovery_source_row(index, reason):
         "risk_level": "high",
         "inventory_count": 0,
         "inventory_classification_counts": counts,
+        "dry_run_classification_counts": dry_run_counts,
         "section_status_counts": _zero_discovery_counts(),
         "unsupported_feature_count": 1,
         "planned_actions_count": 0,
@@ -1580,12 +1628,15 @@ def _discovery_summary(rows):
     by_source_class = {}
     source_status_counts = _zero_discovery_counts()
     inventory_classification_counts = _zero_discovery_counts()
+    dry_run_classification_counts = _zero_dry_run_classification_counts()
     capabilities = set()
     for row in rows:
         by_source_class[row["source_class"]] = by_source_class.get(row["source_class"], 0) + 1
         source_status_counts[row["status"]] += 1
         for classification, count in row["inventory_classification_counts"].items():
             inventory_classification_counts[classification] += count
+        for classification, count in row["dry_run_classification_counts"].items():
+            dry_run_classification_counts[classification] += count
         capabilities.update(row.get("required_capabilities") or [])
     blocking_reasons = sorted({
         row.get("blocked_reason")
@@ -1600,6 +1651,7 @@ def _discovery_summary(rows):
         "by_source_class": by_source_class,
         "source_status_counts": source_status_counts,
         "inventory_classification_counts": inventory_classification_counts,
+        "dry_run_classification_counts": dry_run_classification_counts,
         "inventory_items_total": sum(row["inventory_count"] for row in rows),
         "unsupported_features_total": sum(row["unsupported_feature_count"] for row in rows),
         "planned_actions_total": sum(row["planned_actions_count"] for row in rows),
@@ -1693,6 +1745,7 @@ def validate_import_inventory_discovery_report(report):
         "by_source_class",
         "source_status_counts",
         "inventory_classification_counts",
+        "dry_run_classification_counts",
         "inventory_items_total",
         "planned_actions_total",
         "required_capabilities",
@@ -1704,6 +1757,10 @@ def validate_import_inventory_discovery_report(report):
         for classification in DISCOVERY_CLASSIFICATIONS:
             if classification not in counts:
                 errors.append(f"summary.{counts_name}.{classification} is required")
+    counts = summary.get("dry_run_classification_counts") or {}
+    for classification in DRY_RUN_CLASSIFICATIONS:
+        if classification not in counts:
+            errors.append(f"summary.dry_run_classification_counts.{classification} is required")
     if "import.assets" not in (summary.get("required_capabilities") or []):
         errors.append("summary.required_capabilities must include import.assets")
     safety = report.get("safety") or {}
@@ -1736,6 +1793,7 @@ def validate_import_inventory_discovery_report(report):
             "status",
             "inventory_count",
             "inventory_classification_counts",
+            "dry_run_classification_counts",
             "planned_actions",
             "required_capabilities",
             "provenance",
@@ -1745,6 +1803,12 @@ def validate_import_inventory_discovery_report(report):
                 errors.append(f"sources[{index}].{field} is required")
         if source.get("status") not in DISCOVERY_CLASSIFICATIONS:
             errors.append(f"sources[{index}].status is invalid")
+        counts = source.get("dry_run_classification_counts") or {}
+        for classification in DRY_RUN_CLASSIFICATIONS:
+            if classification not in counts:
+                errors.append(
+                    f"sources[{index}].dry_run_classification_counts.{classification} is required"
+                )
         if "import.assets" not in (source.get("required_capabilities") or []):
             errors.append(f"sources[{index}].required_capabilities must include import.assets")
     serialized = json.dumps(report, sort_keys=True)
@@ -1843,6 +1907,12 @@ def validate_report(report, expected_unsupported_features=None):
             summary.get("estimated_world_mutations"),
             "summary.estimated_world_mutations",
         )
+        counts = summary.get("dry_run_classification_counts") or {}
+        for classification in DRY_RUN_CLASSIFICATIONS:
+            if classification not in counts:
+                errors.append(
+                    f"summary.dry_run_classification_counts.{classification} is required"
+                )
 
     sections = report.get("sections")
     if _require_sequence(errors, sections, "sections"):
@@ -2803,8 +2873,8 @@ def _enforce_runtime_handoff_gates(report, request, approved_actions):
             raise ValueError(
                 "rollback_policy.policy must be manifest_only, snapshot, or chunked for import_structure"
             )
-        if report.get("source", {}).get("source_class") not in {"structure", "world"}:
-            raise ValueError("import_structure requires a structure or world dry-run source")
+        if report.get("source", {}).get("source_class") not in {"structure", "schematic", "world"}:
+            raise ValueError("import_structure requires a structure, schematic, or world dry-run source")
         adapter = planned.get("structure_adapter")
         if adapter:
             if not (adapter.get("synthetic") is True or adapter.get("public_safe") is True):

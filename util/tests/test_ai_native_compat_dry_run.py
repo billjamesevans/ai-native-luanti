@@ -338,7 +338,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
 
         report = build_report(source)
 
-        self.assertEqual(report["source"]["source_class"], "structure")
+        self.assertEqual(report["source"]["source_class"], "schematic")
         self.assertEqual(report["source"]["path_policy"], "external_reference")
         self.assertEqual(report["source"]["license_status"], "user_supplied")
         metadata = report["source"]["metadata"]
@@ -551,7 +551,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
     def test_public_example_reports_cover_structure_and_luanti_mod_metadata(self):
         examples_dir = UTIL_DIR.parent / "doc" / "ai-native-runtime" / "examples"
         examples = {
-            "compatibility-public-schematic-report.example.json": "structure",
+            "compatibility-public-schematic-report.example.json": "schematic",
             "compatibility-luanti-mod-report.example.json": "luanti_mod",
         }
 
@@ -932,7 +932,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(queue["summary"]["sources_total"], 3)
         self.assertEqual(queue["summary"]["by_source_class"]["java_resource_pack"], 1)
         self.assertEqual(queue["summary"]["by_source_class"]["luanti_mod"], 1)
-        self.assertEqual(queue["summary"]["by_source_class"]["structure"], 1)
+        self.assertEqual(queue["summary"]["by_source_class"]["schematic"], 1)
         self.assertEqual(queue["summary"]["by_status"]["manual_review"], 2)
         self.assertEqual(queue["summary"]["by_status"]["mappable"], 1)
         self.assertTrue(queue["safety"]["dry_run_only"])
@@ -943,9 +943,9 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertTrue(queue["safety"]["no_private_paths"])
 
         by_class = {item["source_class"]: item for item in queue["sources"]}
-        self.assertEqual(by_class["structure"]["status"], "manual_review")
-        self.assertEqual(by_class["structure"]["planned_actions_count"], 2)
-        self.assertEqual(by_class["structure"]["manual_review_items"], 4)
+        self.assertEqual(by_class["schematic"]["status"], "manual_review")
+        self.assertEqual(by_class["schematic"]["planned_actions_count"], 2)
+        self.assertEqual(by_class["schematic"]["manual_review_items"], 4)
         self.assertEqual(by_class["luanti_mod"]["status"], "mappable")
         self.assertEqual(by_class["luanti_mod"]["inventory_count"], 2)
         for item in queue["sources"]:
@@ -1006,10 +1006,18 @@ class CompatibilityDryRunTests(unittest.TestCase):
             "java_resource_pack",
             "bedrock_resource_pack",
             "luanti_mod",
-            "structure",
+            "schematic",
             "world",
         ):
             self.assertIn(source_class, report["summary"]["by_source_class"])
+        for source_class in (
+            "java_resource_pack",
+            "bedrock_resource_pack",
+            "luanti_mod",
+            "schematic",
+            "structure",
+            "world",
+        ):
             self.assertIn(
                 source_class,
                 report["inventory_input_format"]["accepted_source_classes"],
@@ -1031,14 +1039,23 @@ class CompatibilityDryRunTests(unittest.TestCase):
 
         by_class = {item["source_class"]: item for item in report["sources"]}
         self.assertEqual(by_class["luanti_mod"]["status"], "supported")
-        self.assertEqual(by_class["structure"]["status"], "partial")
+        self.assertEqual(by_class["schematic"]["status"], "partial")
+        self.assertEqual(
+            by_class["schematic"]["dry_run_classification_counts"],
+            {"mapped": 1, "skipped": 1, "blocked": 1, "unsupported": 0},
+        )
         self.assertEqual(by_class["world"]["status"], "blocked")
         for item in report["sources"]:
             self.assertIn("provenance", item)
             self.assertIn("content_hash", item["provenance"])
+            self.assertIn("dry_run_classification_counts", item)
             self.assertFalse(pathlib.PurePosixPath(item["report_path"]).is_absolute())
             self.assertIn("import.assets", item["required_capabilities"])
             self.assertIsInstance(item["planned_actions"], list)
+        self.assertEqual(
+            report["summary"]["dry_run_classification_counts"],
+            {"mapped": 7, "skipped": 3, "blocked": 4, "unsupported": 1},
+        )
         self.assertEqual(validate_import_inventory_discovery_report(report), [])
 
         serialized = json.dumps(report, sort_keys=True)

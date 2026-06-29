@@ -83,6 +83,12 @@
     "source_id": "luanti_mod"
   },
   "summary": {
+    "dry_run_classification_counts": {
+      "blocked": 0,
+      "mapped": 2,
+      "skipped": 1,
+      "unsupported": 0
+    },
     "estimated_world_mutations": {
       "entity_definitions": 0,
       "manual_review_items": 0,

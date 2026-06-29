@@ -47,6 +47,7 @@
             "java_resource_pack",
             "bedrock_resource_pack",
             "bedrock_behavior_pack",
+            "schematic",
             "structure",
             "world",
             "luanti_mod",
@@ -107,6 +108,7 @@
         "unsupported",
         "skipped",
         "unknown",
+        "dry_run_classification_counts",
         "estimated_world_mutations"
       ],
       "properties": {
@@ -140,6 +142,9 @@
         "unknown": {
           "type": "integer",
           "minimum": 0
+        },
+        "dry_run_classification_counts": {
+          "$ref": "#/$defs/dry_run_classification_counts"
         },
         "estimated_world_mutations": {
           "$ref": "#/$defs/mutation_cost"
@@ -205,6 +210,34 @@
         "skipped",
         "unknown"
       ]
+    },
+    "dry_run_classification_counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mapped",
+        "skipped",
+        "blocked",
+        "unsupported"
+      ],
+      "properties": {
+        "mapped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsupported": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
     },
     "content_hash": {
       "type": "object",

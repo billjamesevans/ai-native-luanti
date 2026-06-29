@@ -165,10 +165,16 @@
       "unsupported_field_count": 2
     },
     "path_policy": "external_reference",
-    "source_class": "structure",
+    "source_class": "schematic",
     "source_id": "open_platform.ai-schematic-preflight.json"
   },
   "summary": {
+    "dry_run_classification_counts": {
+      "blocked": 1,
+      "mapped": 1,
+      "skipped": 1,
+      "unsupported": 0
+    },
     "estimated_world_mutations": {
       "entity_definitions": 0,
       "manual_review_items": 4,
