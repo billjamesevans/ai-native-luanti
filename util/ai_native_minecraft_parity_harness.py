@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RUNNER_VERSION = "ai-native-minecraft-parity-harness:v1"
 DEFAULT_HARDWARE_CLASSES = ("local-mac", "low-power-server")
 IMPORT_INVENTORY_DISCOVERY_REPORT = "compatibility-import-inventory-discovery-report.json"
+AGENTS_SDK_SIDECAR_READINESS_REPORT = "agents-sdk-sidecar-readiness.json"
 SCORECARD_STATUS_CRITERIA = {
     "pass": "Measured evidence meets the current project target for this dimension.",
     "warn": "Evidence is partial, proxy-only, or below the target but still safe and informative.",
@@ -106,6 +107,17 @@ TARGET_BANDS = {
         "compatibility_import_sources_min": 1,
         "compatibility_import_planned_actions_min": 1,
         "blocked_or_unsafe_outcomes_max": 0,
+    },
+    "agent_tool_powers": {
+        "readiness_status": "pass",
+        "tool_powers_declared_required": True,
+        "no_direct_world_mutation_tools_required": True,
+        "world_mutation_authority": "luanti",
+        "required_tool_names": [
+            "summarize_runtime_capabilities",
+            "classify_world_action",
+            "WebSearchTool",
+        ],
     },
     "operator_visibility": {
         "operator_status_command_required": True,
@@ -251,6 +263,17 @@ def comparison_dimensions() -> list[dict]:
             "clean ai_runtime product surfaces plus first-party plugin contracts",
         ),
         comparison_dimension(
+            "agent_tool_powers",
+            "Agent tool powers",
+            [
+                "agents_sdk_sidecar_readiness.checks.tool_powers_declared",
+                "agents_sdk_sidecar_readiness.checks.no_direct_world_mutation_tools",
+                "agents_sdk_sidecar_readiness.health.tool_powers",
+            ],
+            "first_party_plugin",
+            "Agents SDK sidecar readiness report",
+        ),
+        comparison_dimension(
             "operator_visibility",
             "Operator visibility",
             [
@@ -311,6 +334,7 @@ def benchmark_scenarios() -> list[dict]:
         ("synthetic_mapblock_churn", "Disposable synthetic mapblock/chunk churn"),
         ("generic_entity_scale", "Generic helper entity scaling"),
         ("rollback_backed_world_edit", "Rollback-backed synthetic world edits"),
+        ("agents_sdk_tool_power_probe", "Agents SDK sidecar tool-power readiness probe"),
         ("operator_status_and_task_control", "Operator status plus receipt-gated task control"),
     ]
     return [
@@ -387,6 +411,92 @@ def load_compatibility_import_inventory(output_root: Path) -> dict:
     }
 
 
+def agent_tool_power_readiness_missing() -> dict:
+    return {
+        "status": "missing",
+        "tool_power_readiness_ready": False,
+        "tool_powers_declared": False,
+        "no_direct_world_mutation_tools": False,
+        "world_mutation_authority": None,
+        "tool_names": [],
+        "logical_report_path": f"local/benchmarks/{AGENTS_SDK_SIDECAR_READINESS_REPORT}",
+        "evidence_gap": "Agents SDK sidecar readiness report missing",
+    }
+
+
+def agent_readiness_privacy_scan_payload(value):
+    allowed_metadata_keys = {"openai_api_key_present", "requires_openai_api_key"}
+    if isinstance(value, dict):
+        return {
+            key: agent_readiness_privacy_scan_payload(child)
+            for key, child in value.items()
+            if key not in allowed_metadata_keys
+        }
+    if isinstance(value, list):
+        return [agent_readiness_privacy_scan_payload(child) for child in value]
+    return value
+
+
+def load_agent_tool_power_readiness(output_root: Path) -> dict:
+    path = output_root / AGENTS_SDK_SIDECAR_READINESS_REPORT
+    if not path.is_file():
+        return agent_tool_power_readiness_missing()
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    serialized = json.dumps(agent_readiness_privacy_scan_payload(payload), sort_keys=True)
+    if PRIVATE_PATTERNS.search(serialized):
+        raise HarnessError("privacy scan failed for Agents SDK sidecar readiness")
+    checks = payload.get("checks") or {}
+    health = payload.get("health") or {}
+    response = payload.get("response") or {}
+    health_tool_powers = (
+        health.get("tool_powers") if isinstance(health.get("tool_powers"), list) else []
+    )
+    response_tool_powers = (
+        response.get("tool_powers") if isinstance(response.get("tool_powers"), list) else []
+    )
+    tool_powers = health_tool_powers or response_tool_powers
+    tool_names = [
+        power.get("name")
+        for power in tool_powers
+        if isinstance(power, dict) and isinstance(power.get("name"), str)
+    ]
+    no_direct_world_mutation = (
+        checks.get("no_direct_world_mutation_tools") is True
+        and bool(tool_powers)
+        and all(
+            power.get("direct_world_mutation") is False
+            for power in tool_powers
+            if isinstance(power, dict)
+        )
+    )
+    world_mutation_authority = (
+        health.get("world_mutation_authority")
+        or response.get("world_mutation_authority")
+    )
+    required_names = set(TARGET_BANDS["agent_tool_powers"]["required_tool_names"])
+    ready = (
+        payload.get("report_kind") == "ai_native_agents_sdk_sidecar_readiness"
+        and payload.get("status") == TARGET_BANDS["agent_tool_powers"]["readiness_status"]
+        and checks.get("tool_powers_declared") is True
+        and no_direct_world_mutation
+        and world_mutation_authority == TARGET_BANDS["agent_tool_powers"]["world_mutation_authority"]
+        and required_names.issubset(set(tool_names))
+    )
+    return {
+        "status": payload.get("status"),
+        "mode": payload.get("mode"),
+        "tool_power_readiness_ready": ready,
+        "tool_powers_declared": checks.get("tool_powers_declared") is True,
+        "no_direct_world_mutation_tools": no_direct_world_mutation,
+        "world_mutation_authority": world_mutation_authority,
+        "tool_names": tool_names,
+        "web_search_available": response.get("web_search_available"),
+        "health_status": health.get("status"),
+        "agents_sdk_available": health.get("agents_sdk_available"),
+        "logical_report_path": f"local/benchmarks/{AGENTS_SDK_SIDECAR_READINESS_REPORT}",
+    }
+
+
 def numeric_metric(value) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -457,6 +567,7 @@ def dimension_results(
     hardware_class: str,
     measurements: dict,
     compatibility_import_inventory: dict | None = None,
+    agent_tool_power_readiness: dict | None = None,
 ) -> tuple[list[dict], list[dict]]:
     facts: list[dict] = []
     gaps: list[dict] = []
@@ -862,6 +973,64 @@ def dimension_results(
                     "compatibility reports remain open"
                 ),
                 "Complete public-safe import inventory discovery and report classification work.",
+            )
+        )
+
+    agent_tool_power_readiness = (
+        agent_tool_power_readiness or agent_tool_power_readiness_missing()
+    )
+    agent_tool_band = target_band("agent_tool_powers")
+    required_tool_names = set(agent_tool_band["required_tool_names"])
+    readiness_tool_names = set(agent_tool_power_readiness.get("tool_names") or [])
+    missing_tool_names = sorted(required_tool_names - readiness_tool_names)
+    agent_tool_powers_ready = (
+        agent_tool_power_readiness.get("tool_power_readiness_ready") is True
+        and not missing_tool_names
+    )
+    facts.append(
+        result(
+            "agent_tool_powers",
+            "measured" if agent_tool_powers_ready else "evidence_gap",
+            {
+                "readiness_status": agent_tool_power_readiness.get("status"),
+                "readiness_mode": agent_tool_power_readiness.get("mode"),
+                "tool_powers_declared": agent_tool_power_readiness.get("tool_powers_declared"),
+                "no_direct_world_mutation_tools": agent_tool_power_readiness.get(
+                    "no_direct_world_mutation_tools"
+                ),
+                "world_mutation_authority": agent_tool_power_readiness.get(
+                    "world_mutation_authority"
+                ),
+                "tool_names": sorted(readiness_tool_names),
+                "missing_tool_names": missing_tool_names,
+                "health_status": agent_tool_power_readiness.get("health_status"),
+                "agents_sdk_available": agent_tool_power_readiness.get(
+                    "agents_sdk_available"
+                ),
+                "web_search_available": agent_tool_power_readiness.get(
+                    "web_search_available"
+                ),
+                "target_band_passed": agent_tool_powers_ready,
+            },
+            "Agents SDK sidecar readiness report",
+        )
+    )
+    if not agent_tool_powers_ready:
+        gaps.append(
+            gap(
+                hardware_class,
+                "agent_tool_powers",
+                "Prove agent tool powers and mutation boundary",
+                (
+                    f"status={agent_tool_power_readiness.get('status')} "
+                    f"tool_powers_declared={agent_tool_power_readiness.get('tool_powers_declared')} "
+                    f"no_direct_world_mutation_tools={agent_tool_power_readiness.get('no_direct_world_mutation_tools')} "
+                    f"missing_tool_names={missing_tool_names}"
+                ),
+                (
+                    "Run util/ai_native_agents_sdk_sidecar_readiness.py in managed-http "
+                    "mode and retain the public-safe report before parity promotion."
+                ),
             )
         )
 
@@ -1316,6 +1485,7 @@ def improvement_target_summary(targets: list[dict]) -> dict:
 
 def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
     compatibility_import_inventory = load_compatibility_import_inventory(output_root)
+    agent_tool_power_readiness = load_agent_tool_power_readiness(output_root)
     lanes = [
         scorecard.build_lane_evidence(
             hardware_class,
@@ -1330,6 +1500,7 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
             lane["hardware_class"],
             lane["measurements"],
             compatibility_import_inventory,
+            agent_tool_power_readiness,
         )
         measured_facts.append(
             {
