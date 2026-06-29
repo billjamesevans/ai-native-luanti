@@ -66,12 +66,16 @@ local function count_status(items)
 	return counts
 end
 
-local function truncate(list)
+local function truncate_to(list, limit)
 	local result = {}
-	for i = 1, math.min(#list, SUMMARY_LIMIT) do
+	for i = 1, math.min(#list, limit or SUMMARY_LIMIT) do
 		result[#result + 1] = list[i]
 	end
-	return result, #list > SUMMARY_LIMIT
+	return result, #list > (limit or SUMMARY_LIMIT)
+end
+
+local function truncate(list)
+	return truncate_to(list, SUMMARY_LIMIT)
 end
 
 local function sorted_agents()
@@ -137,7 +141,7 @@ local function task_counts(tasks)
 	return counts
 end
 
-local function summarize_tasks(context)
+local function summarize_tasks(context, limit)
 	local tasks = sorted_tasks()
 	local summaries = {}
 	for _, task in ipairs(tasks) do
@@ -155,9 +159,82 @@ local function summarize_tasks(context)
 		end
 		summaries[#summaries + 1] = summary
 	end
-	local limited, truncated = truncate(summaries)
+	local limited, truncated = truncate_to(summaries, limit or SUMMARY_LIMIT)
 	return {
 		counts = task_counts(tasks),
+		summaries = limited,
+		truncated = truncated,
+	}
+end
+
+local function compact_task_detail(task, context)
+	if not task then
+		return nil
+	end
+	local last_result = task.last_result or {}
+	local detail = {
+		task_id = redact(task.task_id, context),
+		agent_id = redact(task.agent_id, context),
+		owner = redact(task.owner, context),
+		label = redact(task.label, context),
+		status = redact(task.status or "unknown", context),
+		created_at = task.created_at,
+		updated_at = task.updated_at,
+		duration_us = task.duration_us,
+		retry_count = task.retry_count or 0,
+		budget = {
+			max_steps_per_step = task.budget and task.budget.max_steps_per_step or nil,
+			max_node_writes_per_step = task.budget and task.budget.max_node_writes_per_step or nil,
+			max_wall_time_ms = task.budget and task.budget.max_wall_time_ms or nil,
+		},
+		progress = {
+			current = task.progress and task.progress.current or 0,
+			total = task.progress and task.progress.total or 0,
+		},
+		last_result = {
+			status = redact(last_result.status, context),
+			reason = redact(last_result.reason, context),
+			message = redact(last_result.message, context),
+			operation = redact(last_result.operation, context),
+			changed = last_result.changed,
+			examined = last_result.examined,
+			skipped = last_result.skipped,
+			rollback_record_id = redact(last_result.rollback_record_id, context),
+			rollback_storage_ref = redact(last_result.rollback_storage_ref, context),
+		},
+	}
+	return detail
+end
+
+local function summarize_audit(context, audit_records)
+	local summaries = {}
+	for _, record in ipairs(audit_records or {}) do
+		summaries[#summaries + 1] = {
+			event_type = redact(record.event_type or "unknown", context),
+			agent_id = redact(record.agent_id, context),
+			task_id = redact(record.task_id, context),
+			status = redact(record.status or "unknown", context),
+			reason = redact(record.reason, context),
+			message = redact(record.message, context),
+			operation = redact(record.operation, context),
+			rollback_record_id = redact(record.rollback_record_id, context),
+			rollback_storage_ref = redact(record.rollback_storage_ref, context),
+			changed = record.changed,
+			skipped = record.skipped,
+		}
+	end
+	local limited, truncated = truncate(summaries)
+	return {
+		records_total = #summaries,
+		status_counts = count_status(summaries),
+		event_counts = (function()
+			local counts = {}
+			for _, summary in ipairs(summaries) do
+				local event_type = summary.event_type or "unknown"
+				counts[event_type] = (counts[event_type] or 0) + 1
+			end
+			return counts
+		end)(),
 		summaries = limited,
 		truncated = truncated,
 	}
@@ -558,6 +635,183 @@ end
 
 core.build_ai_operator_status_package = operator_status.build_package
 
+local COMMAND_VIEWS = {
+	tasks = true,
+	task = true,
+	audit = true,
+	rollback = true,
+	imports = true,
+}
+
+local function view_base(options, context, view_name)
+	return {
+		schema_version = 1,
+		package_kind = "ai_native_operator_status_view",
+		view = view_name,
+		generated_at = options.generated_at or tostring(core.get_us_time and core.get_us_time() or 0),
+		runtime_context = {
+			game_profile = "ai_runtime",
+			source = "live_runtime_state",
+			command = "/ai_runtime_operator_status",
+			view = view_name,
+			mutation_performed = false,
+			world_mutation_performed = false,
+		},
+		safety = {
+			public_safe_output = true,
+			redactions_applied = context.count,
+			truncations_applied = context.truncations,
+			read_only = true,
+			no_task_queue_mutation = true,
+			no_world_mutation = true,
+			no_rollback_execution = true,
+			no_import_promotion_execution = true,
+			no_structure_apply = true,
+			no_raw_assets = true,
+			no_provider_prompts = true,
+			no_family_world_coordinates = true,
+		},
+		bounds = {
+			max_bytes = options.max_bytes or DEFAULT_MAX_BYTES,
+			output_bytes = 0,
+			truncated = false,
+		},
+	}
+end
+
+local function apply_view_bounds(view, max_bytes)
+	local function refresh_size()
+		view.bounds.output_bytes = #core.write_json(view)
+		return view.bounds.output_bytes
+	end
+	local function mark_truncated(section)
+		if section then
+			section.truncated = true
+		end
+		view.bounds.truncated = true
+	end
+	local function trim_list_field(section, key, limit)
+		if section and section[key] then
+			section[key] = truncate_to(section[key], limit)
+			mark_truncated(section)
+		end
+	end
+	local function drop_verbose_fields()
+		for _, task in ipairs((view.tasks and view.tasks.summaries) or {}) do
+			task.label = nil
+			task.reason = nil
+		end
+		if view.task then
+			view.task.label = nil
+			if view.task.last_result then
+				view.task.last_result.message = nil
+				view.task.last_result.rollback_storage_ref = nil
+			end
+		end
+		for _, audit in ipairs((view.audit and view.audit.summaries) or {}) do
+			audit.message = nil
+			audit.rollback_storage_ref = nil
+		end
+		for _, record in ipairs((view.rollback and view.rollback.summaries) or {}) do
+			record.storage_ref = nil
+		end
+		for _, review in ipairs((view.imports and view.imports.summaries) or {}) do
+			review.source = nil
+		end
+		for _, promotion in ipairs((view.imports and view.imports.promotion_summaries) or {}) do
+			promotion.source = nil
+		end
+		view.bounds.truncated = true
+	end
+
+	view.bounds.max_bytes = max_bytes
+	if refresh_size() > max_bytes then
+		trim_list_field(view.tasks, "summaries", 3)
+		trim_list_field(view.audit, "summaries", 3)
+		trim_list_field(view.rollback, "summaries", 3)
+		trim_list_field(view.imports, "summaries", 3)
+		trim_list_field(view.imports, "promotion_summaries", 3)
+		refresh_size()
+	end
+	if view.bounds.output_bytes > max_bytes then
+		drop_verbose_fields()
+		refresh_size()
+	end
+	if view.bounds.output_bytes > max_bytes then
+		trim_list_field(view.tasks, "summaries", 0)
+		trim_list_field(view.audit, "summaries", 0)
+		trim_list_field(view.rollback, "summaries", 0)
+		trim_list_field(view.imports, "summaries", 0)
+		trim_list_field(view.imports, "promotion_summaries", 0)
+		refresh_size()
+	end
+	return view
+end
+
+function operator_status.build_view(options)
+	options = options or {}
+	local view_name = options.view
+	assert(COMMAND_VIEWS[view_name], "Unsupported operator status view")
+	local max_bytes = options.max_bytes or DEFAULT_MAX_BYTES
+	local limit = options.limit or SUMMARY_LIMIT
+	local context = redaction_context()
+	local audit_records = core.get_ai_runtime_audit({ limit = options.audit_limit or limit })
+	local view = view_base(options, context, view_name)
+	if view_name == "tasks" then
+		view.tasks = summarize_tasks(context, limit)
+		view.summary = {
+			tasks_total = view.tasks.counts.total,
+			status_counts = table.copy(view.tasks.counts),
+			results_retained = #(view.tasks.summaries or {}),
+			read_only = true,
+		}
+		view.status = "ready"
+	elseif view_name == "task" then
+		local task = core.get_ai_task(options.task_id)
+		view.task = compact_task_detail(task, context) or {
+			task_id = redact(options.task_id, context),
+			status = "not_found",
+		}
+		view.summary = {
+			task_found = task ~= nil,
+			task_id = redact(options.task_id, context),
+			read_only = true,
+		}
+		view.status = task and "ready" or "attention"
+	elseif view_name == "audit" then
+		view.audit = summarize_audit(context, audit_records)
+		view.summary = {
+			audit_records_total = view.audit.records_total,
+			results_retained = #(view.audit.summaries or {}),
+			read_only = true,
+		}
+		view.status = "ready"
+	elseif view_name == "rollback" then
+		view.rollback = summarize_rollback(context, audit_records)
+		view.summary = {
+			rollback_records_total = view.rollback.records_total,
+			rollback_records_available = view.rollback.records_available,
+			results_retained = #(view.rollback.summaries or {}),
+			read_only = true,
+		}
+		view.status = "ready"
+	elseif view_name == "imports" then
+		view.imports = summarize_imports(context, audit_records, options.promotion_packages)
+		view.summary = {
+			import_reviews_total = view.imports.reviews_total,
+			import_promotions_total = view.imports.promotions_total,
+			results_retained = #(view.imports.summaries or {}),
+			read_only = true,
+		}
+		view.status = "ready"
+	end
+	view.safety.redactions_applied = context.count
+	view.safety.truncations_applied = context.truncations
+	return apply_view_bounds(view, max_bytes)
+end
+
+core.build_ai_operator_status_view = operator_status.build_view
+
 local function parse_command_options(param)
 	local options = {}
 	for token in string.gmatch(param or "", "%S+") do
@@ -573,23 +827,44 @@ local function parse_command_options(param)
 				return nil, "max_bytes must be at least 1000"
 			end
 			options.max_bytes = max_bytes
+		elseif key == "view" then
+			if not COMMAND_VIEWS[value] then
+				return nil, "view must be one of tasks, task, audit, rollback, imports"
+			end
+			options.view = value
+		elseif key == "task_id" then
+			if value == "" then
+				return nil, "task_id must be non-empty"
+			end
+			options.task_id = value
+		elseif key == "limit" then
+			local limit = tonumber(value)
+			if not limit or limit < 1 or limit > 200 then
+				return nil, "limit must be between 1 and 200"
+			end
+			options.limit = math.floor(limit)
 		else
 			return nil, "unknown option '" .. key .. "'"
 		end
+	end
+	if options.view == "task" and not options.task_id then
+		return nil, "task_id is required for view=task"
 	end
 	return options
 end
 
 core.register_chatcommand("ai_runtime_operator_status", {
-	params = "[generated_at=ISO_OR_LABEL] [max_bytes=N]",
-	description = "Return a bounded public-safe AI runtime operator status package as JSON.",
+	params = "[generated_at=ISO_OR_LABEL] [max_bytes=N] [view=tasks|task|audit|rollback|imports] [task_id=ID] [limit=N]",
+	description = "Return bounded public-safe AI runtime operator status or focused read-only views as JSON.",
 	privs = { server = true },
 	func = function(_, param)
 		local options, err = parse_command_options(param)
 		if not options then
 			return false, err
 		end
-		local package = operator_status.build_package(options)
-		return true, core.write_json(package)
+		if options.view then
+			return true, core.write_json(operator_status.build_view(options))
+		end
+		return true, core.write_json(operator_status.build_package(options))
 	end,
 })

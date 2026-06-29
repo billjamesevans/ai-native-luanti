@@ -758,6 +758,34 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
     if safety.get("public_safe_output") is not True:
         reasons.append(f"{step_id} public_safe_output is not true")
 
+    ux_probe = (
+        payload.get("operator_ux_command_probe")
+        if isinstance(payload.get("operator_ux_command_probe"), dict)
+        else {}
+    )
+    ux_fields = [
+        "task_list_checked",
+        "task_detail_checked",
+        "audit_review_checked",
+        "rollback_review_checked",
+        "import_review_checked",
+        "refusal_checked",
+    ]
+    if args.operator_status_source == "live":
+        if ux_probe.get("status") != "pass":
+            reasons.append(f"{step_id} focused operator status view probe did not pass")
+        if ux_probe.get("read_only_views") is not True:
+            reasons.append(f"{step_id} focused operator status views are not read-only")
+        for field in ux_fields:
+            if ux_probe.get(field) is not True:
+                reasons.append(f"{step_id} focused operator status view missing {field}")
+        views_checked_total = ux_probe.get("views_checked_total")
+        if not isinstance(views_checked_total, int) or views_checked_total < 5:
+            reasons.append(f"{step_id} focused operator status views_checked_total is too low")
+        max_view_output_bytes = ux_probe.get("max_view_output_bytes")
+        if not isinstance(max_view_output_bytes, int) or max_view_output_bytes > 5000:
+            reasons.append(f"{step_id} focused operator status view output budget invalid")
+
     control_evidence, control_reasons = operator_control_findings(payload, step_id)
     reasons.extend(control_reasons)
     try:
@@ -829,6 +857,15 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
         "required_sections_present": not missing_sections,
         "private_scan_status": "fail" if artifact_has_private_content(raw_payload) else "pass",
         "failure_count": len(reasons),
+        "operator_ux_command_probe_status": sanitize_text(str(ux_probe.get("status", "not_run"))),
+        "operator_ux_task_list_checked": ux_probe.get("task_list_checked") is True,
+        "operator_ux_task_detail_checked": ux_probe.get("task_detail_checked") is True,
+        "operator_ux_audit_review_checked": ux_probe.get("audit_review_checked") is True,
+        "operator_ux_rollback_review_checked": ux_probe.get("rollback_review_checked") is True,
+        "operator_ux_import_review_checked": ux_probe.get("import_review_checked") is True,
+        "operator_ux_refusal_checked": ux_probe.get("refusal_checked") is True,
+        "operator_ux_views_checked_total": ux_probe.get("views_checked_total", 0),
+        "operator_ux_max_view_output_bytes": ux_probe.get("max_view_output_bytes", 0),
     })
     evidence.update(control_evidence)
     return evidence, reasons
