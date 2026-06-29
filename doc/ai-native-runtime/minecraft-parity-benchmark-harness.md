@@ -62,6 +62,8 @@ CPU uses clean-profile process CPU samples for the disposable server process. Th
 
 First-party agent-loop proof comes from `comparison_summary.first_party_agent_product_loop` in accepted clean-profile summaries. The harness clears the first-party product-loop gap only when that evidence records passing build/repair approval, approved tasks, guide/tasks/cancel command coverage, audit review, rollback review, defender checks, importer preview checks, and zero blocked or unsafe outcomes. Compatibility import inventory discovery remains a separate plugin gap until it has its own public-safe report.
 
+Compatibility import inventory proof comes from `local/benchmarks/compatibility-import-inventory-discovery-report.json`. The harness treats it as plugin evidence only when the report is `ready_for_import_preview`, remains dry-run-only, records no copied assets or world mutation, redacts source paths, rejects raw/private payloads, and avoids proprietary Minecraft code, server jars, and closed gameplay data.
+
 ## Public-Safe Source Policy
 
 Allowed inputs:

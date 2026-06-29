@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/billjamesevans/ai-native-luanti/doc/ai-native-runtime/schemas/compatibility-inventory-discovery-report.schema.json",
+  "title": "Compatibility Import Inventory Discovery Report",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "report_version",
+    "mode",
+    "generated_at",
+    "status",
+    "inventory_input_format",
+    "root",
+    "summary",
+    "readiness",
+    "sources",
+    "safety"
+  ],
+  "properties": {
+    "report_version": {
+      "const": 1
+    },
+    "mode": {
+      "const": "import_inventory_discovery"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "status": {
+      "enum": [
+        "ready_for_import_preview",
+        "blocked"
+      ]
+    },
+    "inventory_input_format": {
+      "type": "object",
+      "required": [
+        "accepted_source_classes",
+        "path_policy",
+        "payload_policy",
+        "required_capabilities"
+      ],
+      "properties": {
+        "accepted_source_classes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "path_policy": {
+          "const": "package_relative_or_redacted"
+        },
+        "payload_policy": {
+          "const": "metadata_and_references_only"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "contains": {
+            "const": "import.assets"
+          }
+        }
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "compatibility_import_inventory_ready",
+        "sources_total",
+        "by_source_class",
+        "source_status_counts",
+        "inventory_classification_counts",
+        "inventory_items_total",
+        "planned_actions_total",
+        "required_capabilities"
+      ],
+      "properties": {
+        "compatibility_import_inventory_ready": {
+          "type": "boolean"
+        },
+        "sources_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_source_class": {
+          "type": "object"
+        },
+        "source_status_counts": {
+          "$ref": "#/$defs/classification_counts"
+        },
+        "inventory_classification_counts": {
+          "$ref": "#/$defs/classification_counts"
+        },
+        "inventory_items_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "planned_actions_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "required_capabilities": {
+          "type": "array",
+          "contains": {
+            "const": "import.assets"
+          }
+        }
+      }
+    },
+    "readiness": {
+      "type": "object",
+      "required": [
+        "compatibility_import_inventory_ready",
+        "blocking_reasons"
+      ],
+      "properties": {
+        "compatibility_import_inventory_ready": {
+          "type": "boolean"
+        },
+        "blocking_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/source"
+      }
+    },
+    "safety": {
+      "type": "object",
+      "required": [
+        "dry_run_only",
+        "no_assets_copied",
+        "no_world_mutation",
+        "source_paths_redacted",
+        "no_raw_payloads",
+        "no_private_paths",
+        "uses_proprietary_minecraft_code_or_assets",
+        "uses_copied_server_jars_or_game_data"
+      ],
+      "properties": {
+        "dry_run_only": {
+          "const": true
+        },
+        "no_assets_copied": {
+          "const": true
+        },
+        "no_world_mutation": {
+          "const": true
+        },
+        "source_paths_redacted": {
+          "const": true
+        },
+        "no_raw_payloads": {
+          "const": true
+        },
+        "no_private_paths": {
+          "const": true
+        },
+        "uses_proprietary_minecraft_code_or_assets": {
+          "const": false
+        },
+        "uses_copied_server_jars_or_game_data": {
+          "const": false
+        }
+      }
+    }
+  },
+  "$defs": {
+    "classification_counts": {
+      "type": "object",
+      "required": [
+        "supported",
+        "partial",
+        "unsupported",
+        "skipped",
+        "blocked"
+      ],
+      "properties": {
+        "supported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "partial": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unsupported": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "blocked": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "source_id",
+        "source_class",
+        "status",
+        "inventory_count",
+        "inventory_classification_counts",
+        "planned_actions",
+        "required_capabilities",
+        "provenance",
+        "report_path"
+      ],
+      "properties": {
+        "source_id": {
+          "type": "string"
+        },
+        "source_class": {
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "supported",
+            "partial",
+            "unsupported",
+            "skipped",
+            "blocked"
+          ]
+        },
+        "inventory_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "inventory_classification_counts": {
+          "$ref": "#/$defs/classification_counts"
+        },
+        "planned_actions": {
+          "type": "array"
+        },
+        "required_capabilities": {
+          "type": "array",
+          "contains": {
+            "const": "import.assets"
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "redacted_id",
+            "content_hash",
+            "path_policy",
+            "report_path"
+          ]
+        },
+        "report_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  }
+}
