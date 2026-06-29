@@ -1532,6 +1532,127 @@ def _source_section_counts(report):
     return counts
 
 
+def _source_action_names(source_row):
+    return {action.get("action") for action in source_row.get("planned_actions") or []}
+
+
+def _promotion_queue_row(index, source_row):
+    source_class = source_row.get("source_class")
+    action_names = _source_action_names(source_row)
+    base = {
+        "promotion_id": f"promotion:{index}",
+        "source_id": source_row.get("source_id"),
+        "source_class": source_class,
+        "source_status": source_row.get("status"),
+        "report_path": source_row.get("report_path"),
+        "required_capabilities": list(source_row.get("required_capabilities") or []),
+        "estimated_world_mutations": dict(source_row.get("estimated_world_mutations") or {}),
+        "safety": {
+            "dry_run_only": True,
+            "no_assets_copied": True,
+            "no_raw_payloads": True,
+            "no_live_server_mutation": True,
+            "promotion_package_executes_world_mutation": False,
+        },
+    }
+
+    if source_class in ASSET_REFERENCE_SOURCE_CLASSES and action_names.intersection(ASSET_REFERENCE_ACTIONS):
+        base.update({
+            "promotion_kind": "asset_reference_promotion_package",
+            "status": "ready_for_no_mutation_package",
+            "package_builder": "build_asset_reference_promotion_package",
+            "cli_mode": "--asset-promotion-package",
+            "required_artifacts": ["dry_run_report", "operator_no_world_mutation_approval"],
+            "requires_operator_approval": True,
+            "requires_rollback_metadata": False,
+            "staged_apply_can_mutate_disposable_world": False,
+            "next_action": "Package reviewed asset references without copying asset bytes or mutating a world.",
+        })
+    elif source_class in {"structure", "schematic"} and "import_structure" in action_names:
+        base.update({
+            "promotion_kind": "structure_import_promotion_package",
+            "status": "requires_disposable_staging_review",
+            "package_builder": "build_structure_import_promotion_package",
+            "cli_mode": "--promotion-package",
+            "required_artifacts": [
+                "dry_run_report",
+                "operator_approval",
+                "adapter_apply_smoke",
+                "adapter_smoke_review",
+            ],
+            "requires_operator_approval": True,
+            "requires_rollback_metadata": True,
+            "staged_apply_can_mutate_disposable_world": True,
+            "next_action": "Run adapter smoke and review before building a disposable-staging promotion package.",
+        })
+    elif source_class == "luanti_mod":
+        base.update({
+            "promotion_kind": "luanti_mod_metadata_review",
+            "status": "metadata_ready",
+            "package_builder": None,
+            "cli_mode": None,
+            "required_artifacts": ["dry_run_report"],
+            "requires_operator_approval": False,
+            "requires_rollback_metadata": False,
+            "staged_apply_can_mutate_disposable_world": False,
+            "next_action": "Review mapped Luanti mod metadata before defining any runtime registration task.",
+        })
+    elif source_class == "world":
+        base.update({
+            "promotion_kind": "world_metadata_deferral",
+            "status": "deferred_until_conversion_design",
+            "package_builder": None,
+            "cli_mode": None,
+            "required_artifacts": ["dry_run_report", "future_world_conversion_design"],
+            "requires_operator_approval": True,
+            "requires_rollback_metadata": False,
+            "staged_apply_can_mutate_disposable_world": False,
+            "next_action": "Keep world imports metadata-only until a separate safe conversion path is reviewed.",
+        })
+    else:
+        base.update({
+            "promotion_kind": "blocked_source",
+            "status": "blocked",
+            "package_builder": None,
+            "cli_mode": None,
+            "required_artifacts": ["safe_source_reclassification"],
+            "requires_operator_approval": True,
+            "requires_rollback_metadata": False,
+            "staged_apply_can_mutate_disposable_world": False,
+            "next_action": "Resolve source classification or privacy blockers before promotion.",
+        })
+
+    return base
+
+
+def _promotion_queue(rows):
+    return [
+        _promotion_queue_row(index, row)
+        for index, row in enumerate(rows, start=1)
+    ]
+
+
+def _promotion_queue_summary(queue):
+    by_kind = {}
+    by_status = {}
+    for row in queue:
+        by_kind[row["promotion_kind"]] = by_kind.get(row["promotion_kind"], 0) + 1
+        by_status[row["status"]] = by_status.get(row["status"], 0) + 1
+    return {
+        "promotion_sources_total": len(queue),
+        "by_promotion_kind": by_kind,
+        "by_status": by_status,
+        "ready_package_count": sum(1 for row in queue if row.get("package_builder")),
+        "disposable_staging_candidate_count": sum(
+            1 for row in queue if row.get("staged_apply_can_mutate_disposable_world")
+        ),
+        "metadata_only_or_deferred_count": sum(
+            1 for row in queue
+            if not row.get("staged_apply_can_mutate_disposable_world")
+        ),
+    }
+
+
 def _discovery_source_row(index, report, report_path):
     status = _source_discovery_status(report)
     capabilities = _batch_required_capabilities(report)
@@ -1688,6 +1809,7 @@ def build_import_inventory_discovery_report(root, reports_dir=None):
             rows.append(_blocked_discovery_source_row(index, "source_classification_failed"))
 
     summary = _discovery_summary(rows)
+    promotion_queue = _promotion_queue(rows)
     ready = summary["compatibility_import_inventory_ready"]
     report = {
         "report_version": IMPORT_INVENTORY_DISCOVERY_REPORT_VERSION,
@@ -1705,11 +1827,13 @@ def build_import_inventory_discovery_report(root, reports_dir=None):
             "source_count": len(rows),
         },
         "summary": summary,
+        "promotion_queue_summary": _promotion_queue_summary(promotion_queue),
         "readiness": {
             "compatibility_import_inventory_ready": ready,
             "blocking_reasons": summary["blocking_reasons"],
         },
         "sources": rows,
+        "promotion_queue": promotion_queue,
         "safety": {
             "dry_run_only": True,
             "no_assets_copied": True,
@@ -1811,6 +1935,57 @@ def validate_import_inventory_discovery_report(report):
                 )
         if "import.assets" not in (source.get("required_capabilities") or []):
             errors.append(f"sources[{index}].required_capabilities must include import.assets")
+    promotion_queue = report.get("promotion_queue")
+    if not isinstance(promotion_queue, list):
+        errors.append("promotion_queue must be an array")
+        promotion_queue = []
+    if len(promotion_queue) != len(sources):
+        errors.append("promotion_queue length must match sources length")
+    promotion_summary = report.get("promotion_queue_summary")
+    if not isinstance(promotion_summary, dict):
+        errors.append("promotion_queue_summary must be an object")
+        promotion_summary = {}
+    for field in (
+        "promotion_sources_total",
+        "by_promotion_kind",
+        "by_status",
+        "ready_package_count",
+        "disposable_staging_candidate_count",
+        "metadata_only_or_deferred_count",
+    ):
+        if field not in promotion_summary:
+            errors.append(f"promotion_queue_summary.{field} is required")
+    for index, row in enumerate(promotion_queue):
+        for field in (
+            "promotion_id",
+            "source_id",
+            "source_class",
+            "source_status",
+            "promotion_kind",
+            "status",
+            "required_artifacts",
+            "required_capabilities",
+            "requires_operator_approval",
+            "requires_rollback_metadata",
+            "staged_apply_can_mutate_disposable_world",
+            "next_action",
+            "safety",
+        ):
+            if field not in row:
+                errors.append(f"promotion_queue[{index}].{field} is required")
+        safety = row.get("safety") or {}
+        for field in (
+            "dry_run_only",
+            "no_assets_copied",
+            "no_raw_payloads",
+            "no_live_server_mutation",
+        ):
+            if safety.get(field) is not True:
+                errors.append(f"promotion_queue[{index}].safety.{field} must be true")
+        if safety.get("promotion_package_executes_world_mutation") is not False:
+            errors.append(
+                f"promotion_queue[{index}].safety.promotion_package_executes_world_mutation must be false"
+            )
     serialized = json.dumps(report, sort_keys=True)
     if PRIVATE_DISCOVERY_PATTERNS.search(serialized):
         errors.append("report contains private or raw payload references")

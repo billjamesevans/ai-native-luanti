@@ -12,8 +12,10 @@
     "inventory_input_format",
     "root",
     "summary",
+    "promotion_queue_summary",
     "readiness",
     "sources",
+    "promotion_queue",
     "safety"
   ],
   "properties": {
@@ -129,10 +131,51 @@
         }
       }
     },
+    "promotion_queue_summary": {
+      "type": "object",
+      "required": [
+        "promotion_sources_total",
+        "by_promotion_kind",
+        "by_status",
+        "ready_package_count",
+        "disposable_staging_candidate_count",
+        "metadata_only_or_deferred_count"
+      ],
+      "properties": {
+        "promotion_sources_total": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "by_promotion_kind": {
+          "type": "object"
+        },
+        "by_status": {
+          "type": "object"
+        },
+        "ready_package_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "disposable_staging_candidate_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "metadata_only_or_deferred_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
     "sources": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/source"
+      }
+    },
+    "promotion_queue": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/promotion_queue_row"
       }
     },
     "safety": {
@@ -271,6 +314,119 @@
             "string",
             "null"
           ]
+        }
+      }
+    },
+    "promotion_queue_row": {
+      "type": "object",
+      "required": [
+        "promotion_id",
+        "source_id",
+        "source_class",
+        "source_status",
+        "promotion_kind",
+        "status",
+        "required_artifacts",
+        "required_capabilities",
+        "requires_operator_approval",
+        "requires_rollback_metadata",
+        "staged_apply_can_mutate_disposable_world",
+        "next_action",
+        "safety"
+      ],
+      "properties": {
+        "promotion_id": {
+          "type": "string"
+        },
+        "source_id": {
+          "type": "string"
+        },
+        "source_class": {
+          "type": "string"
+        },
+        "source_status": {
+          "type": "string"
+        },
+        "promotion_kind": {
+          "enum": [
+            "asset_reference_promotion_package",
+            "structure_import_promotion_package",
+            "luanti_mod_metadata_review",
+            "world_metadata_deferral",
+            "blocked_source"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "report_path": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "package_builder": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cli_mode": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "required_artifacts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "required_capabilities": {
+          "type": "array",
+          "contains": {
+            "const": "import.assets"
+          }
+        },
+        "requires_operator_approval": {
+          "type": "boolean"
+        },
+        "requires_rollback_metadata": {
+          "type": "boolean"
+        },
+        "staged_apply_can_mutate_disposable_world": {
+          "type": "boolean"
+        },
+        "next_action": {
+          "type": "string"
+        },
+        "safety": {
+          "type": "object",
+          "required": [
+            "dry_run_only",
+            "no_assets_copied",
+            "no_raw_payloads",
+            "no_live_server_mutation",
+            "promotion_package_executes_world_mutation"
+          ],
+          "properties": {
+            "dry_run_only": {
+              "const": true
+            },
+            "no_assets_copied": {
+              "const": true
+            },
+            "no_raw_payloads": {
+              "const": true
+            },
+            "no_live_server_mutation": {
+              "const": true
+            },
+            "promotion_package_executes_world_mutation": {
+              "const": false
+            }
+          }
         }
       }
     },

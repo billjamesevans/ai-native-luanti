@@ -264,10 +264,25 @@ Bedrock pack metadata, Luanti mods, metadata-only structure/schematic preflights
 and world-export metadata. It records source class counts, content-hash
 provenance, mapped/skipped/blocked/unsupported dry-run classifications,
 required capabilities, and planned actions that can later become
-`core.ai_import_ops` queued work. It remains metadata-and-reference-only:
-private-looking source names are redacted and blocked, asset bytes are never
-embedded, and whole-world imports stay blocked until a future conversion path is
-reviewed.
+`core.ai_import_ops` queued work. It also emits a `promotion_queue` that turns
+each source into one explicit next step:
+
+- `asset_reference_promotion_package`: Java or Bedrock resource-pack metadata
+  can be packaged for no-world-mutation asset-reference review.
+- `structure_import_promotion_package`: public-safe structure or schematic
+  preflights need adapter smoke, review, approval, rollback metadata, and
+  disposable-staging evidence before promotion.
+- `luanti_mod_metadata_review`: mapped Luanti mod metadata is ready for manual
+  review, but no runtime registration package is implied yet.
+- `world_metadata_deferral`: world exports remain metadata-only and blocked from
+  conversion apply until a separate safe conversion design exists.
+- `blocked_source`: classification or privacy blockers must be resolved before
+  promotion.
+
+The promotion queue remains metadata-and-reference-only: private-looking source
+names are redacted and blocked, asset bytes are never embedded, promotion
+packages do not execute world mutation, and whole-world imports stay blocked
+until a future conversion path is reviewed.
 
 When the report is written at
 `local/benchmarks/compatibility-import-inventory-discovery-report.json`, the
