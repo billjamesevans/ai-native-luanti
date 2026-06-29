@@ -10,7 +10,8 @@ python3 util/ai_native_low_power_pi_evidence.py \
   --ssh-target "<operator-supplied-target>" \
   --confirm-backup-first \
   --backup-artifact-label "<backup-archive-name>" \
-  --backup-sha256 "<backup-sha256>"
+  --backup-sha256 "<backup-sha256>" \
+  --soak-target quick
 ```
 
 The command creates a temporary null-video client config on the remote checkout,
@@ -26,8 +27,55 @@ The generated manifest is local evidence and stays ignored by Git. It records
 the hardware class, clean profile, fork commit, product-profile status,
 clean-profile workload status, `headless_client_load` player-load probe status,
 attempted/connected synthetic player counts, join-log latency proxy evidence,
-and the expected port split: family server on UDP `30000`, fork test service on
-UDP `30001`.
+compatibility import staging-pilot status, ranked follow-up issue seeds, soak
+target duration evidence, and the expected port split: family server on UDP
+`30000`, fork test service on UDP `30001`.
+
+## Soak Targets
+
+Use named targets so a retained manifest can prove whether a quick check, the
+first promoted one-hour gate, or the overnight path was actually met.
+
+Quick side-by-side check:
+
+```bash
+python3 util/ai_native_low_power_pi_evidence.py \
+  --ssh-target "<operator-supplied-target>" \
+  --confirm-backup-first \
+  --backup-artifact-label "<backup-archive-name>" \
+  --backup-sha256 "<backup-sha256>" \
+  --soak-target quick
+```
+
+First promoted gate:
+
+```bash
+python3 util/ai_native_low_power_pi_evidence.py \
+  --ssh-target "<operator-supplied-target>" \
+  --confirm-backup-first \
+  --backup-artifact-label "<backup-archive-name>" \
+  --backup-sha256 "<backup-sha256>" \
+  --soak-target one-hour \
+  --soak-iterations 13 \
+  --soak-interval-seconds 300
+```
+
+Overnight path:
+
+```bash
+python3 util/ai_native_low_power_pi_evidence.py \
+  --ssh-target "<operator-supplied-target>" \
+  --confirm-backup-first \
+  --backup-artifact-label "<backup-archive-name>" \
+  --backup-sha256 "<backup-sha256>" \
+  --soak-target overnight \
+  --soak-iterations 17 \
+  --soak-interval-seconds 1800
+```
+
+The manifest fails with `soak_target_duration_not_met` if the declared target
+does not run long enough. The quick target is for post-deploy proof only; v0.3
+promotion requires the one-hour target before the overnight lane is meaningful.
 
 ## Safety Boundary
 

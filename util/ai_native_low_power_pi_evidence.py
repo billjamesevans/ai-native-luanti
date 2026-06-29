@@ -17,6 +17,26 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = ROOT / "local" / "benchmarks"
 EVIDENCE_NAME = "pi-low-power-evidence.json"
+SOAK_TARGETS = {
+    "quick": {
+        "minimum_duration_seconds": 0,
+        "recommended_iterations": 1,
+        "recommended_interval_seconds": 0,
+        "next_target": "one-hour",
+    },
+    "one-hour": {
+        "minimum_duration_seconds": 3600,
+        "recommended_iterations": 13,
+        "recommended_interval_seconds": 300,
+        "next_target": "overnight",
+    },
+    "overnight": {
+        "minimum_duration_seconds": 8 * 60 * 60,
+        "recommended_iterations": 17,
+        "recommended_interval_seconds": 1800,
+        "next_target": None,
+    },
+}
 
 PRIVATE_REDACTIONS = (
     (re.compile(r"/Users/[^\s\"']+"), "<local-path>"),
@@ -217,6 +237,16 @@ def integer(value):
     return int(parsed)
 
 
+def soak_target_config(args) -> dict:
+    config = dict(SOAK_TARGETS[args.soak_target])
+    if args.soak_min_duration_seconds is not None:
+        config["minimum_duration_seconds"] = max(
+            float(config["minimum_duration_seconds"]),
+            float(args.soak_min_duration_seconds),
+        )
+    return config
+
+
 def parse_remote_manifest_path(output: str) -> str:
     for line in reversed(output.splitlines()):
         line = line.strip()
@@ -254,6 +284,7 @@ def backup_evidence(args) -> dict:
 def runtime_evidence(remote_manifest: dict) -> dict:
     clean = remote_manifest.get("clean_profile_evidence") or {}
     product = remote_manifest.get("product_profile_evidence") or {}
+    compat = remote_manifest.get("compat_import_staging_pilot_evidence") or {}
     server_step_workload = clean.get("server_step_workload") or {}
     avg_cpu = clean.get("avg_process_cpu_percent")
     max_cpu = clean.get("max_interval_cpu_percent")
@@ -294,11 +325,22 @@ def runtime_evidence(remote_manifest: dict) -> dict:
         "rss_sample_count": clean.get("rss_sample_count"),
         "max_rss_kb": max_rss_kb,
         "max_rss_mb": max_rss_mb,
+        "compat_import_staging_pilot_status": sanitize_text(
+            compat.get("compat_import_staging_pilot_status", "unknown")
+        ),
+        "compat_import_inventory_ready": compat.get("compat_import_inventory_ready") is True,
+        "compat_import_node_writes": compat.get("compat_import_node_writes"),
+        "compat_import_mapblock_churn": compat.get("compat_import_mapblock_churn"),
+        "compat_import_refusal_gates": compat.get("compat_import_refusal_gates"),
         "failure_count": len(remote_manifest.get("failure_reasons") or []),
     }
 
 
-def build_soak_evidence(args, remote_manifests: list[dict]) -> dict:
+def build_soak_evidence(args, remote_manifests: list[dict], elapsed_seconds: float | None = None) -> dict:
+    target = soak_target_config(args)
+    target_minimum = float(target["minimum_duration_seconds"])
+    elapsed = round(float(elapsed_seconds), 3) if elapsed_seconds is not None else None
+    duration_met = elapsed is not None and elapsed >= target_minimum
     samples = []
     max_avg_cpu = None
     max_interval_cpu = None
@@ -314,6 +356,7 @@ def build_soak_evidence(args, remote_manifests: list[dict]) -> dict:
             "clean_profile_status": evidence["clean_profile_status"],
             "server_step_workload_status": evidence["server_step_workload_status"],
             "player_load_probe_status": evidence["player_load_probe_status"],
+            "compat_import_staging_pilot_status": evidence["compat_import_staging_pilot_status"],
             "cpu_status": evidence["cpu_status"],
             "cpu_sample_count": evidence["cpu_sample_count"],
             "avg_process_cpu_percent": evidence["avg_process_cpu_percent"],
@@ -354,6 +397,15 @@ def build_soak_evidence(args, remote_manifests: list[dict]) -> dict:
         "iterations_passed": passed,
         "iterations_failed": max(0, len(samples) - passed),
         "sample_interval_seconds": float(args.soak_interval_seconds),
+        "target": {
+            "name": args.soak_target,
+            "minimum_duration_seconds": target_minimum,
+            "elapsed_seconds": elapsed,
+            "duration_met": duration_met,
+            "recommended_iterations": int(target["recommended_iterations"]),
+            "recommended_interval_seconds": float(target["recommended_interval_seconds"]),
+            "next_target": target["next_target"],
+        },
         "resource_budgets": {
             "max_avg_cpu_percent": float(args.max_avg_cpu_percent),
             "max_interval_cpu_percent": float(args.max_interval_cpu_percent),
@@ -373,12 +425,95 @@ def build_soak_evidence(args, remote_manifests: list[dict]) -> dict:
     }
 
 
+def ranked_follow_up_issues(failures: list[str]) -> list[dict]:
+    issue_map = {
+        "public_safety_violation": (
+            "P0",
+            "Private-data flag in Pi evidence output",
+            "Sanitize the retained Pi evidence before promotion.",
+        ),
+        "fork_restart_budget_exceeded": (
+            "P1",
+            "Fork service restarted during Pi soak",
+            "Inspect systemd journal and service limits before the next promotion.",
+        ),
+        "fork_restart_evidence_missing": (
+            "P1",
+            "Fork restart evidence missing from Pi soak",
+            "Capture systemd restart counters so restarts cannot be hidden.",
+        ),
+        "memory_rss_budget_exceeded": (
+            "P1",
+            "Pi soak exceeded RSS memory budget",
+            "Investigate OOM risk and memory growth before longer soaks.",
+        ),
+        "max_cpu_budget_exceeded": (
+            "P2",
+            "Pi soak had CPU spike above budget",
+            "Review server-step samples and profile hot paths.",
+        ),
+        "avg_cpu_budget_exceeded": (
+            "P2",
+            "Pi soak exceeded average CPU budget",
+            "Tune runtime workload or lower background agent pressure.",
+        ),
+        "actionable_warning_budget_exceeded": (
+            "P2",
+            "Pi soak produced actionable warnings",
+            "Review verifier warnings and split defects into focused issues.",
+        ),
+        "server_log_error_budget_exceeded": (
+            "P2",
+            "Pi soak produced server log errors",
+            "Review retained logs and open a bug for each reproducible error.",
+        ),
+        "soak_target_duration_not_met": (
+            "P2",
+            "Declared Pi soak target duration was not met",
+            "Rerun with the recommended target iterations and interval.",
+        ),
+        "headless_player_probe_not_measured": (
+            "P2",
+            "Headless player join proxy was not measured",
+            "Fix the null-video client probe before accepting low-power evidence.",
+        ),
+        "headless_player_latency_not_measured": (
+            "P2",
+            "Headless player join latency proxy was not measured",
+            "Restore join-log latency evidence for multiplayer readiness.",
+        ),
+        "compat_import_staging_pilot_not_pass": (
+            "P2",
+            "Compatibility staging pilot failed during Pi evidence run",
+            "Keep compatibility apply expansion gated until the pilot passes.",
+        ),
+    }
+    ranked = []
+    for reason in failures:
+        if reason not in issue_map:
+            continue
+        severity, title, action = issue_map[reason]
+        ranked.append({
+            "rank": len(ranked) + 1,
+            "severity": severity,
+            "source_failure": reason,
+            "title": title,
+            "recommended_action": action,
+        })
+    severity_order = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
+    ranked.sort(key=lambda item: (severity_order.get(item["severity"], 9), item["rank"]))
+    for index, item in enumerate(ranked, start=1):
+        item["rank"] = index
+    return ranked
+
+
 def build_manifest(
     args,
     remote_manifest: dict,
     service_values: dict,
     *,
     soak_manifests: list[dict] | None = None,
+    soak_elapsed_seconds: float | None = None,
     now_fn=utc_now,
 ) -> dict:
     remote_manifest = sanitize_value(remote_manifest)
@@ -391,7 +526,7 @@ def build_manifest(
         or "unknown"
     )
     fork_restart_count = integer(service_values.get("fork_restart_count"))
-    soak_evidence = build_soak_evidence(args, soak_manifests)
+    soak_evidence = build_soak_evidence(args, soak_manifests, soak_elapsed_seconds)
     manifest = {
         "schema_version": 1,
         "evidence_kind": "ai_native_low_power_pi_evidence",
@@ -430,6 +565,7 @@ def build_manifest(
             "records_private_target": False,
             "mutates_services": False,
         },
+        "ranked_follow_up_issue_seeds": [],
         "safety": {
             "public_safe_output": True,
             "private_target_redacted": True,
@@ -448,6 +584,8 @@ def build_manifest(
         failures.append("soak_iterations_incomplete")
     if soak_evidence["iterations_passed"] != int(args.soak_iterations):
         failures.append("soak_iteration_failed")
+    if not soak_evidence["target"]["duration_met"]:
+        failures.append("soak_target_duration_not_met")
     if remote_manifest.get("overall_status") != "pass":
         failures.append("remote_low_power_verifier_not_pass")
     if remote_manifest.get("hardware_class") != "low-power-server":
@@ -461,6 +599,8 @@ def build_manifest(
     if manifest["runtime_verification_evidence"]["clean_profile_status"] != "pass":
         failures.append("clean_profile_evidence_not_pass")
     runtime = manifest["runtime_verification_evidence"]
+    if runtime["compat_import_staging_pilot_status"] != "pass":
+        failures.append("compat_import_staging_pilot_not_pass")
     attempted_players = runtime.get("attempted_synthetic_player_count")
     connected_players = runtime.get("connected_synthetic_player_count")
     if (
@@ -519,6 +659,7 @@ def build_manifest(
         failures.append("public_safety_violation")
         manifest["safety"]["public_safe_output"] = False
 
+    manifest["ranked_follow_up_issue_seeds"] = ranked_follow_up_issues(failures)
     manifest["overall_status"] = "fail" if failures else "pass"
     return manifest
 
@@ -537,7 +678,8 @@ def read_remote_manifest(args, remote_path: str, runner) -> tuple[CommandRun, di
         return result, None
 
 
-def run(args, *, runner=run_subprocess, now_fn=utc_now):
+def run(args, *, runner=run_subprocess, now_fn=utc_now, monotonic_fn=time.monotonic, sleep_fn=time.sleep):
+    soak_started = monotonic_fn()
     remote_manifests = []
     verify_returncodes = []
     for iteration in range(int(args.soak_iterations)):
@@ -563,7 +705,7 @@ def run(args, *, runner=run_subprocess, now_fn=utc_now):
             }
         remote_manifests.append(remote_manifest)
         if iteration + 1 < int(args.soak_iterations) and args.soak_interval_seconds > 0:
-            time.sleep(args.soak_interval_seconds)
+            sleep_fn(args.soak_interval_seconds)
 
     remote_manifest = remote_manifests[-1]
 
@@ -572,6 +714,7 @@ def run(args, *, runner=run_subprocess, now_fn=utc_now):
         timeout=args.ssh_timeout,
     )
     service_values = parse_key_values(service_result.stdout)
+    soak_elapsed_seconds = max(0.0, monotonic_fn() - soak_started)
     if service_result.returncode != 0:
         service_values.setdefault("family_service_active", "unknown")
         service_values.setdefault("fork_service_active", "unknown")
@@ -583,6 +726,7 @@ def run(args, *, runner=run_subprocess, now_fn=utc_now):
         remote_manifest,
         service_values,
         soak_manifests=remote_manifests,
+        soak_elapsed_seconds=soak_elapsed_seconds,
         now_fn=now_fn,
     )
     if any(returncode != 0 for returncode in verify_returncodes):
@@ -613,6 +757,8 @@ def parse_args(argv=None):
     parser.add_argument("--fork-port", type=int, default=30001)
     parser.add_argument("--headless-player-count", type=int, default=1)
     parser.add_argument("--headless-player-timeout", type=float, default=2.0)
+    parser.add_argument("--soak-target", choices=tuple(SOAK_TARGETS), default="quick", help="Named soak gate target to record and enforce.")
+    parser.add_argument("--soak-min-duration-seconds", type=float, help="Optional extra minimum duration; cannot lower the named target.")
     parser.add_argument("--soak-iterations", type=int, default=1, help="Number of repeated low-power verifier samples to collect.")
     parser.add_argument("--soak-interval-seconds", type=float, default=0.0, help="Delay between soak iterations.")
     parser.add_argument("--max-avg-cpu-percent", type=float, default=85.0)
