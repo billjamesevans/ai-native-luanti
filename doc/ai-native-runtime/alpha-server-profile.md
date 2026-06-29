@@ -50,6 +50,20 @@ The clean alpha profile does not grant `admin.override`, `import.assets`,
 `combat.defend`, or other-player controls by default. Those belong in explicit
 operator or optional plugin profiles.
 
+## Required clean runtime surfaces
+
+The clean profile must expose the product runtime surfaces operators need before
+agent plugins become richer:
+
+- `/ai_runtime_operator_status` returns bounded public-safe runtime status.
+- `/ai_runtime_operator_task_control` applies receipt-gated task cancel/retry
+  decisions only.
+
+Both commands require the `server` privilege. They are loaded by default because
+they are product runtime surfaces, not smoke tests or benchmark fixtures.
+Rollback execution, import promotion, structure apply, and world mutation stay
+outside the task-control command boundary.
+
 ## Operator Flow
 
 Local alpha verification should use the normal pre-PR verifier:
