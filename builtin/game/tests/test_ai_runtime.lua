@@ -3954,6 +3954,26 @@ assert(guide_chat_text:find("import plan", 1, true))
 assert(guide_chat_text:find("come", 1, true))
 assert(guide_chat_text:find("stay", 1, true))
 
+local defend_gated_ok, defend_gated_text = core.registered_chatcommands.nova.func(
+	"Wills", "defend")
+assert(defend_gated_ok == false)
+assert(defend_gated_text:find("status=blocked action=defend", 1, true))
+assert(defend_gated_text:find("surface=defender", 1, true))
+assert(defend_gated_text:find("reason=surface_capability_not_granted", 1, true))
+assert(defend_gated_text:find("required_capabilities=combat.defend", 1, true))
+assert(defend_gated_text:find("required_capabilities_granted=false", 1, true))
+assert(defend_gated_text:find("default_clean_profile_grant=not_granted", 1, true))
+
+local import_gated_ok, import_gated_text = core.registered_chatcommands.nova.func(
+	"Wills", "import plan")
+assert(import_gated_ok == false)
+assert(import_gated_text:find("status=blocked action=import_plan", 1, true))
+assert(import_gated_text:find("surface=importer", 1, true))
+assert(import_gated_text:find("reason=surface_capability_not_granted", 1, true))
+assert(import_gated_text:find("required_capabilities=import.assets", 1, true))
+assert(import_gated_text:find("required_capabilities_granted=false", 1, true))
+assert(import_gated_text:find("default_clean_profile_grant=not_granted", 1, true))
+
 local pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(
 	"ChatUser", "build marker")
 assert(pending_chat_ok == true)
@@ -4944,6 +4964,24 @@ assert(foreign_rollback_by_id.reason == "rollback_record_not_found_or_not_owned"
 assert(foreign_rollback_by_id.no_rollback_execution == true)
 assert(#product_loop_records >= 2)
 core.ai_rollback_storage.configure(nil)
+
+local clean_defend_reply = core.ai_agent_plugin.handle_command("Wills", "defend", {})
+assert(clean_defend_reply.ok == false)
+assert(clean_defend_reply.action == "defend")
+assert(clean_defend_reply.surface_id == "defender")
+assert(clean_defend_reply.reason == "surface_capability_not_granted")
+assert(clean_defend_reply.task_id == nil)
+assert(clean_defend_reply.required_capabilities[1] == "combat.defend")
+assert(clean_defend_reply.required_capabilities_granted == false)
+
+local clean_import_reply = core.ai_agent_plugin.handle_command("Wills", "import plan", {})
+assert(clean_import_reply.ok == false)
+assert(clean_import_reply.action == "import_plan")
+assert(clean_import_reply.surface_id == "importer")
+assert(clean_import_reply.reason == "surface_capability_not_granted")
+assert(clean_import_reply.task_id == nil)
+assert(clean_import_reply.required_capabilities[1] == "import.assets")
+assert(clean_import_reply.required_capabilities_granted == false)
 
 core.ai_agent_plugin.configure({
 	capability_profile = "operator",
