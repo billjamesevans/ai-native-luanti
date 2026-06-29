@@ -24,6 +24,7 @@ Offline contract smoke, without network or credentials:
 
 ```bash
 python3 tools/agents_sdk_model_adapter/main.py --smoke
+python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke
 ```
 
 Live agent mode requires `openai-agents` and `OPENAI_API_KEY`:
@@ -32,6 +33,15 @@ Live agent mode requires `openai-agents` and `OPENAI_API_KEY`:
 cd tools/agents_sdk_model_adapter
 uv run python main.py --host 127.0.0.1 --port 8766
 curl -fsS http://127.0.0.1:8766/health
+```
+
+Managed HTTP readiness, still without provider credentials:
+
+```bash
+python3 util/ai_native_agents_sdk_sidecar_readiness.py \
+  --mode managed-http \
+  --port 8766 \
+  --output local/benchmarks/agents-sdk-sidecar-readiness.json
 ```
 
 Adapter endpoint:

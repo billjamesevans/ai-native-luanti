@@ -137,6 +137,22 @@ Expected smoke result:
 - The fork commit matches the release candidate.
 - The fork service journal has no actionable warnings or server errors.
 
+When the release candidate includes the Agents SDK model adapter bridge, prove
+the sidecar wiring before any long soak:
+
+```sh
+python3 util/ai_native_agents_sdk_sidecar_readiness.py \
+  --mode managed-http \
+  --port 8766 \
+  --output local/benchmarks/agents-sdk-sidecar-readiness.json
+```
+
+This readiness probe intentionally removes `OPENAI_API_KEY` from the managed
+child process. A passing result proves loopback service wiring, `/health`,
+`POST /v1/model-adapter`, provider-neutral envelopes, and no retained provider
+credentials. Live provider execution is a separate operator action after
+server-local secrets are configured.
+
 ## Evidence Retention
 
 Attach these evidence classes to a release candidate:
@@ -145,6 +161,8 @@ Attach these evidence classes to a release candidate:
   `python3 util/ai_native_alpha_release_gate.py --root .`
 - Local clean-profile verifier:
   `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime`
+- Agents SDK sidecar readiness:
+  `python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode managed-http --port 8766`
 - Low-power evidence:
   `python3 util/ai_native_low_power_pi_evidence.py --ssh-target "$AI_NATIVE_PI_SSH_TARGET" --confirm-backup-first --backup-artifact-label "$BACKUP_ARTIFACT_LABEL" --backup-sha256 "$BACKUP_SHA256" --soak-target quick`
 - Promoted low-power evidence after quick proof:
