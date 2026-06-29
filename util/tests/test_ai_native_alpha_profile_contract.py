@@ -35,8 +35,12 @@ class AlphaProfileContractTests(unittest.TestCase):
         self.assertIn("games/ai_runtime", doc)
         self.assertIn("must not include", doc)
         self.assertIn("test fixtures", doc)
+        self.assertIn("Required clean runtime surfaces", doc)
+        self.assertIn("/ai_runtime_operator_status", doc)
+        self.assertIn("/ai_runtime_operator_task_control", doc)
         self.assertIn("Alpha server profile", index)
         self.assertIn("player-ready alpha game profile", profile_readme)
+        self.assertIn("operator status and receipt-gated task-control commands", profile_readme)
         self.assertIn("Runtime unit tests", profile_readme)
         self.assertNotRegex(doc, PRIVATE_OR_SHOWCASE)
 
