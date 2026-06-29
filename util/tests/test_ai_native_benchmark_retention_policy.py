@@ -176,6 +176,59 @@ class BenchmarkRetentionPolicyTests(unittest.TestCase):
         self.assertEqual(payload["baseline_ref"]["luanti_commit"], "baseline")
         self.assertEqual(payload["branch_ref"]["luanti_commit"], "branch")
 
+    def test_compare_records_branch_only_scenarios_as_additive_coverage(self):
+        baseline = mutation_report("baseline", max_lag_ms=10.0)
+        branch = mutation_report("branch", max_lag_ms=10.0)
+        branch["scenarios"].append(
+            {
+                "scenario_id": "first_party_agent_product_loop_approval",
+                "category": "agent_product_loop",
+                "metrics": {
+                    "avg_step_ms": 1.0,
+                    "p95_step_ms": 1.1,
+                    "max_lag_ms": 1.2,
+                    "node_writes_per_step": 0,
+                    "node_writes": 0,
+                    "rollback_records": 0,
+                    "warnings": [],
+                    "errors": [],
+                },
+            }
+        )
+
+        code, payload = self.run_compare(baseline, branch)
+
+        self.assertEqual(code, 0)
+        self.assertEqual(payload["overall_status"], "pass")
+        self.assertIn("first_party_agent_product_loop_approval", payload["branch_only_scenarios"])
+        additive_gates = [
+            gate
+            for gate in payload["gates"]
+            if gate["scenario_id"] == "first_party_agent_product_loop_approval"
+        ]
+        self.assertEqual(len(additive_gates), 1)
+        self.assertEqual(additive_gates[0]["metric"], "scenario_presence")
+        self.assertEqual(additive_gates[0]["status"], "pass")
+
+    def test_compare_fails_when_branch_drops_baseline_scenario(self):
+        baseline = mutation_report("baseline", max_lag_ms=10.0)
+        branch = mutation_report("branch", max_lag_ms=10.0)
+        branch["scenarios"] = []
+
+        code, payload = self.run_compare(baseline, branch)
+
+        self.assertEqual(code, 1)
+        self.assertEqual(payload["overall_status"], "fail")
+        self.assertIn("small_build_rollback", payload["baseline_only_scenarios"])
+        self.assertTrue(
+            any(
+                gate["scenario_id"] == "small_build_rollback"
+                and gate["metric"] == "scenario_presence"
+                and gate["status"] == "fail"
+                for gate in payload["gates"]
+            )
+        )
+
     def test_compare_fails_when_max_lag_regresses(self):
         code, payload = self.run_compare(
             mutation_report("baseline", max_lag_ms=10.0),
