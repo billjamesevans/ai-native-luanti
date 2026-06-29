@@ -91,15 +91,20 @@ run keeps both the raw package and the operator-facing report adapter. It then d
 any future execution controls exist. It also derives
 `ai-runtime-operator-action-approval-receipt.json` with
 `util/ai_native_operator_action_approval_receipt.py` as a bounded receipt artifact that marks plan
-entries as needs-review by default. The probe uses a temporary local world only: no family server,
-no private world, no private assets, no provider prompts, and no model-network calls.
+entries as needs-review by default. Finally, it runs the receipt-gated task control executor in
+`util/ai_native_operator_task_control_executor.py` and writes
+`ai-runtime-operator-action-execution-result.json` so the verifier proves the task cancel/retry only
+execution contract against synthetic task state. The probe uses a temporary local world only: no
+family server, no private world, no private assets, no provider prompts, and no model-network calls.
 
 The verifier also validates the live package's `operator_control` section and the derived
 operator-control report adapter: both must be read-only, dry-run-only, contain safe next actions
 instead of mutating commands, and preserve public-safe redaction boundaries. The derived approval
 plan must remain non-mutating, approval-required, and bounded by
 `--operator-action-approval-plan-max-bytes`. The derived receipt artifacts must stay receipt-only,
-non-mutating, and bounded by `--operator-action-approval-receipt-max-bytes`.
+non-mutating, and bounded by `--operator-action-approval-receipt-max-bytes`. The derived execution
+result must stay receipt-gated, synthetic-task-state-only, task cancel/retry only, and bounded by
+`--operator-action-execution-result-max-bytes`.
 
 If the live command path is unavailable in a narrow utility-only lane, use
 `--operator-status-source surrogate` to write `ai-runtime-operator-status.json` with
@@ -127,7 +132,8 @@ routes `--game-profile ai_runtime` through benchmark capture. The run directory 
 `clean-profile-benchmark-summary.json` together with `ai-runtime-operator-status-live.json` and
 `ai-runtime-operator-control-report.json` and
 `ai-runtime-operator-action-approval-plan.json` and
-`ai-runtime-operator-action-approval-receipt.json`. It still requires no family server, no private
+`ai-runtime-operator-action-approval-receipt.json` and
+`ai-runtime-operator-action-execution-result.json`. It still requires no family server, no private
 world, no private assets, no provider prompts, and no model-network calls.
 
 The smoke scenario itself remains synthetic: no live server, no private world, and no model
