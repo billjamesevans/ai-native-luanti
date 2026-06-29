@@ -141,6 +141,47 @@ Repeat the same flow for `low-power-server` only after backup-first readiness, k
 
 Do not promote either lane unless the clean-profile summary has `overall_status=pass`, `server_step_workload.workload_status=pass`, `server_step_workload.failed_sample_count=0`, `player_load_tick_probe.probe_status=pass`, `probe_kind=headless_client_load`, `headless_player_supported=true`, `synthetic_player_count>0`, connected synthetic players equal attempted synthetic players, `latency_probe_kind=headless_join_log_observation`, `latency_proxy_supported=true`, and nonzero `join_latency_proxy_ms.sample_count`.
 
+## Reviewing The Alpha Baseline
+
+Issue-level alpha review uses accepted local and low-power lanes plus the
+Minecraft-parity harness. The accepted lanes stay local-only:
+
+- `local/benchmarks/local-mac/accepted/`
+- `local/benchmarks/low-power-server/accepted/`
+
+The low-power lane must be backed by a passing
+`pi-low-power-evidence.json` from the side-by-side Pi test service. That
+evidence proves backup-first readiness, family server UDP `30000`, fork test
+server UDP `30001`, true `headless_client_load`, join-log latency proxy
+evidence, and public-safe redaction. It must not include private worlds,
+copied assets, private hosts, remote paths, provider prompts, family-world
+content, or showcase content.
+
+After promoting reviewed captures, regenerate parity and write the local review
+artifact:
+
+```sh
+python3 util/ai_native_minecraft_parity_harness.py \
+  --output-root local/benchmarks
+
+python3 util/ai_native_alpha_baseline_review.py \
+  --output-root local/benchmarks
+```
+
+The review writes:
+
+```text
+local/benchmarks/alpha-baseline-review.json
+```
+
+`alpha-baseline-review.json` is ignored local evidence. It checks that both
+accepted lanes include a passing clean profile, mutation report, scale-16 demo
+entity report, first-party agent product-loop proof, CPU sampling,
+server-step workload, true headless player-load evidence, join latency proxy
+evidence, map/chunk churn, and a public-safe Minecraft-parity report with
+ranked next actions when gaps remain. Do not commit the generated review unless
+a future issue defines a scrubbed public baseline package.
+
 For entity-scale refreshes, review the generated `generic-demo-entity-benchmark-report.json` before promotion. The report must include `entity_scale_16`, and the clean-profile summary must show `entity_runtime_operations.max_entity_count >= 16`, `max_active_peak >= 16`, and `max_remaining_entities = 0`. Promote the local and `low-power-server` captures with labels that identify the scale refresh, then regenerate the scorecard and confirm `entity_scale_runtime_probe` is no longer ranked:
 
 ```sh
