@@ -76,12 +76,17 @@ For pre-PR work, prefer the one-command local harness:
 python3 util/ai_native_runtime_verify.py --hardware-class local-mac
 ```
 
-The harness runs the AI-native utility contracts, the branch benchmark gate, the live operator
-status command probe, the receipt-gated task-control command probe, and the focused
+The harness runs the AI-native utility contracts, the product-profile hygiene gate, the branch
+benchmark gate, the live operator status command probe, the receipt-gated task-control command probe, and the focused
 `TestAIRuntime` smoke in a repeatable order. It writes
 `ai-runtime-verification-manifest.json` under
 `local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
-failure reasons, and local artifact paths. The default operator-status step launches a
+failure reasons, and local artifact paths. The product-profile step writes
+`ai-runtime-product-profile-hygiene.json` with the standalone
+`util/ai_native_product_profile_verify.py` report and fails the run if the clean `ai_runtime`
+profile loads fixture mods by default, enables dev surfaces without explicit settings, loses its
+`ai_runtime_base` product-mod boundary, or contains private/showcase content. The default
+operator-status step launches a
 disposable `ai_runtime` world with a temporary probe worldmod, executes the registered
 `/ai_runtime_operator_status` command function, writes `ai-runtime-operator-status-live.json`, and
 records source_kind = `live_command` with direct command execution evidence. It also derives
@@ -140,9 +145,10 @@ python3 util/ai_native_runtime_verify.py \
   --game-profile ai_runtime
 ```
 
-The clean-profile verifier keeps the normal branch gate and focused AI runtime unit smoke, and also
-routes `--game-profile ai_runtime` through benchmark capture. The run directory keeps
-`benchmark-gate-manifest.json`, `ai-runtime-verification-manifest.json`, and
+The clean-profile verifier keeps the normal product-profile gate, branch gate, and focused AI
+runtime unit smoke, and also routes `--game-profile ai_runtime` through benchmark capture. The run
+directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifest.json`,
+`ai-runtime-product-profile-hygiene.json`, and
 `clean-profile-benchmark-summary.json` together with `ai-runtime-operator-status-live.json` and
 `ai-runtime-operator-control-report.json` and
 `ai-runtime-operator-action-approval-plan.json` and

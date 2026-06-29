@@ -33,6 +33,7 @@ OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-rec
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
 OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-task-control-command-result.json"
+PRODUCT_PROFILE_HYGIENE_NAME = "ai-runtime-product-profile-hygiene.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -142,6 +143,10 @@ def logical_path(args, filename: str) -> str:
 
 def operator_status_artifact_path(args) -> Path:
     return physical_run_dir(args) / operator_status_artifact_name(args)
+
+
+def product_profile_hygiene_artifact_path(args) -> Path:
+    return physical_run_dir(args) / PRODUCT_PROFILE_HYGIENE_NAME
 
 
 def operator_control_report_artifact_path(args) -> Path:
@@ -269,6 +274,7 @@ def build_steps(args) -> list[CommandStep]:
             [args.python, "-m", "unittest", "discover", "util/tests"],
             python_manifest_command("-m", "unittest", "discover", "util/tests"),
         ),
+        build_product_profile_hygiene_step(args),
         CommandStep(
             "branch_benchmark_gate",
             "Branch benchmark gate against accepted local baseline",
@@ -332,6 +338,28 @@ def build_steps(args) -> list[CommandStep]:
         )
 
     return steps
+
+
+def build_product_profile_hygiene_step(args) -> CommandStep:
+    return CommandStep(
+        "product_profile_hygiene",
+        "Clean ai_runtime product-profile fixture and privacy gate",
+        [
+            args.python,
+            "util/ai_native_product_profile_verify.py",
+            "--root",
+            ".",
+            "--output",
+            str(product_profile_hygiene_artifact_path(args)),
+        ],
+        python_manifest_command(
+            "util/ai_native_product_profile_verify.py",
+            "--root",
+            ".",
+            "--output",
+            logical_path(args, PRODUCT_PROFILE_HYGIENE_NAME),
+        ),
+    )
 
 
 def build_operator_status_step(args) -> CommandStep:
@@ -711,6 +739,70 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def product_profile_evidence(args) -> tuple[dict, list[str]]:
+    path = product_profile_hygiene_artifact_path(args)
+    source_path = logical_path(args, PRODUCT_PROFILE_HYGIENE_NAME)
+    evidence = {
+        "status": "fail",
+        "source_path": source_path,
+        "game_profile": None,
+        "manifest_path": None,
+        "product_mods": [],
+        "violation_count": None,
+        "no_private_content": False,
+        "dev_surfaces_disabled_by_default": False,
+        "test_fixtures_explicit_only": False,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("product_profile_hygiene artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+
+    try:
+        raw_payload = path.read_text(encoding="utf-8")
+        payload = json.loads(raw_payload)
+    except (OSError, json.JSONDecodeError) as exc:
+        reasons.append(f"product_profile_hygiene artifact unreadable: {type(exc).__name__}")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+
+    if artifact_has_private_content(raw_payload):
+        reasons.append("product_profile_hygiene contains private patterns")
+
+    profile = payload.get("profile") if isinstance(payload.get("profile"), dict) else {}
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
+    violations = payload.get("violations") if isinstance(payload.get("violations"), list) else []
+    product_mods = profile.get("product_mods") if isinstance(profile.get("product_mods"), list) else []
+    evidence.update({
+        "status": "fail",
+        "game_profile": sanitize_text(str(profile.get("gameid", ""))),
+        "manifest_path": sanitize_text(str(profile.get("manifest_path", ""))),
+        "product_mods": [sanitize_text(str(mod)) for mod in product_mods],
+        "violation_count": len(violations),
+        "no_private_content": safety.get("no_private_content") is True,
+        "dev_surfaces_disabled_by_default": safety.get("dev_surfaces_disabled_by_default") is True,
+        "test_fixtures_explicit_only": safety.get("test_fixtures_explicit_only") is True,
+    })
+
+    if payload.get("status") != "pass":
+        reasons.append("product_profile_hygiene status is not pass")
+    if profile.get("gameid") != "ai_runtime":
+        reasons.append("product_profile_hygiene gameid is not ai_runtime")
+    if product_mods != ["ai_runtime_base"]:
+        reasons.append("product_profile_hygiene product_mods changed from clean profile")
+    if safety.get("no_private_content") is not True:
+        reasons.append("product_profile_hygiene private content scan failed")
+    if safety.get("dev_surfaces_disabled_by_default") is not True:
+        reasons.append("product_profile_hygiene dev surfaces are not disabled by default")
+    if safety.get("test_fixtures_explicit_only") is not True:
+        reasons.append("product_profile_hygiene test fixtures are not explicit-only")
+
+    evidence["status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def operator_task_control_live_evidence(args) -> tuple[dict, list[str]]:
     path = operator_task_control_live_result_artifact_path(args)
     source_path = logical_path(args, OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME)
@@ -801,6 +893,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     }
     operator_status_step_ran = False
     for step, result in command_results:
+        if step.id == "product_profile_hygiene":
+            artifact_paths["product_profile_hygiene"] = logical_path(
+                args,
+                PRODUCT_PROFILE_HYGIENE_NAME,
+            )
         if step.id == "branch_benchmark_gate":
             artifact_paths["benchmark_gate_manifest"] = benchmark_gate_artifact(args, result)
             if args.game_profile == "ai_runtime":
@@ -834,6 +931,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME,
             )
+
+    product_profile = None
+    if any(step.id == "product_profile_hygiene" for step, _ in command_results):
+        product_profile, product_profile_failures = product_profile_evidence(args)
+        failure_reasons.extend(product_profile_failures)
 
     operator_evidence = None
     if operator_status_step_ran:
@@ -884,6 +986,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             else []
         ),
     }
+    if product_profile is not None:
+        manifest["product_profile_evidence"] = product_profile
     if operator_evidence is not None:
         manifest["operator_status_evidence"] = operator_evidence
     if operator_task_control_live is not None:
