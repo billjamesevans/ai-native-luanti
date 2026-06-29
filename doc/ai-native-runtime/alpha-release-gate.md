@@ -57,3 +57,18 @@ In short: the Pi test service is a deployment lane, not a replacement for the fa
 Any Pi deploy must be backup-first and must preserve the existing family
 service unless an operator explicitly chooses otherwise outside the public
 alpha gate.
+
+After a backup-first deploy, collect low-power evidence with:
+
+```bash
+python3 util/ai_native_low_power_pi_evidence.py \
+  --ssh-target "<operator-supplied-target>" \
+  --confirm-backup-first \
+  --backup-artifact-label "<backup-archive-name>" \
+  --backup-sha256 "<backup-sha256>"
+```
+
+The generated manifest must stay public-safe: it records the low-power verifier
+summary and the UDP `30000`/`30001` service split, but not the private SSH
+target, private host/IP, remote checkout path, family-world content, or copied
+assets.

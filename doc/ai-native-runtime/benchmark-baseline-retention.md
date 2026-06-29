@@ -212,7 +212,7 @@ python3 util/ai_native_benchmark_compare.py \
   --output local/benchmarks/local-mac/current/mutation-comparison.json
 ```
 
-The comparator writes a JSON result that includes only report family, hardware class, commit labels, compared scenarios, threshold percentage, and gate results. It intentionally does not copy input file paths into the comparison output.
+The comparator writes a JSON result that includes only report family, hardware class, commit labels, compared scenarios, baseline-only scenarios, branch-only scenarios, threshold percentage, and gate results. It intentionally does not copy input file paths into the comparison output.
 
 ## Merge Gates
 
@@ -231,6 +231,8 @@ The branch must not merge when these safety metrics regress:
 - errors: branch runtime errors block merge
 - node writes: branch node writes must not exceed the accepted baseline or scenario budget
 - rollback records: mutating scenarios must preserve required rollback records
+- baseline-only scenarios: a branch that drops a scenario from the accepted baseline blocks merge
+- branch-only scenarios: new additive benchmark coverage is recorded in the comparison output and should be reviewed before the next baseline promotion
 
 Comparison is only valid inside the same hardware class. Do not compare `local-mac` reports against `low-power-server` reports.
 

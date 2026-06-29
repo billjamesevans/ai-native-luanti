@@ -158,11 +158,26 @@ def compare_reports(baseline: dict, branch: dict, max_regression: float) -> dict
     branch_scenarios = scenario_index(branch)
     scenario_ids = sorted(set(baseline_scenarios) | set(branch_scenarios))
     compared_scenarios = []
+    baseline_only_scenarios = []
+    branch_only_scenarios = []
 
     for scenario_id in scenario_ids:
         base_scenario = baseline_scenarios.get(scenario_id)
         branch_scenario = branch_scenarios.get(scenario_id)
-        if not base_scenario or not branch_scenario:
+        if not base_scenario and branch_scenario:
+            branch_only_scenarios.append(scenario_id)
+            gates.append(make_gate(
+                scenario_id,
+                "scenario_presence",
+                False,
+                True,
+                "pass",
+                "new benchmark coverage should be reviewed before the next baseline promotion",
+                "branch includes an additive scenario that is not yet in the accepted baseline",
+            ))
+            continue
+        if base_scenario and not branch_scenario:
+            baseline_only_scenarios.append(scenario_id)
             gates.append(make_gate(
                 scenario_id,
                 "scenario_presence",
@@ -170,7 +185,7 @@ def compare_reports(baseline: dict, branch: dict, max_regression: float) -> dict
                 bool(branch_scenario),
                 "fail",
                 "must not merge with missing benchmark scenarios",
-                "baseline and branch must include the same scenarios",
+                "branch is missing a scenario from the accepted baseline",
             ))
             continue
 
@@ -268,6 +283,8 @@ def compare_reports(baseline: dict, branch: dict, max_regression: float) -> dict
         "threshold_percent": max_regression * 100,
         "overall_status": "fail" if failed else "pass",
         "compared_scenarios": compared_scenarios,
+        "baseline_only_scenarios": baseline_only_scenarios,
+        "branch_only_scenarios": branch_only_scenarios,
         "gates": gates,
     }
 
