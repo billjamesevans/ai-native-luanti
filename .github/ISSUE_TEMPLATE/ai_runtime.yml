@@ -1,0 +1,28 @@
+name: AI runtime
+description: Report or propose work on the clean AI runtime profile
+labels: ["ai-runtime"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for engine/runtime behavior in the clean ai_runtime profile.
+        Public/private boundary: do not include private worlds, prompts, secrets,
+        coordinates, raw assets, or family-server content.
+  - type: textarea
+    attributes:
+      label: Runtime behavior
+      description: What should the clean ai_runtime profile do?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Verification evidence
+      description: Include verifier output, runtime command output, or a public-safe reproduction.
+    validations:
+      required: true
+  - type: checkboxes
+    attributes:
+      label: Public/private boundary
+      options:
+        - label: This issue does not include private worlds, secrets, prompts, raw assets, spacebase, themepark, disneyland100, or family-server content.
+          required: true

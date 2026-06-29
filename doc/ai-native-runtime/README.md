@@ -27,6 +27,10 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [MVP spec](mvp-spec.md)
 - [MVP gap checklist](mvp-gap-checklist.md)
 - [Post-MVP alpha roadmap](post-mvp-alpha-roadmap.md)
+- [Alpha release gate](alpha-release-gate.md)
+- [Clean ai_runtime install/run guide](clean-ai-runtime-install.md)
+- [Public-safe sample data policy](public-safe-sample-data-policy.md)
+- [Release notes template](release-notes-template.md)
 - [Agent identity and capability API](agent-api.md)
 - [Agent capability profiles](agent-capability-profiles.md)
 - [Alpha server profile](alpha-server-profile.md)
@@ -63,7 +67,8 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Live task-control boundary: disposable live `ai_runtime` queue probe, task cancel/retry only, no rollback execution, no import promotion execution, and no world mutation.
 - Live operator status command: `/ai_runtime_operator_status`
 - Live operator task-control command: `/ai_runtime_operator_task_control`
-- One-command local pre-PR verification with clean-profile workload evidence: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac`
+- Alpha release package gate: `python3 util/ai_native_alpha_release_gate.py`
+- One-command local pre-PR verification with clean-profile workload evidence: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime`
 - Synthetic-only utility fallback: add `--game-profile sample-synthetic`
 - Strict headless-player verification: add `--require-headless-player-probe` with a disposable `--headless-player-command`
 - One-command product-profile artifact: `ai-runtime-product-profile-hygiene.json`
