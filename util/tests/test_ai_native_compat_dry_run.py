@@ -606,6 +606,181 @@ class CompatibilityDryRunTests(unittest.TestCase):
         review = review_adapter_apply_smoke(smoke)
         return report, request, smoke, review
 
+    def build_asset_reference_request(self, report, action_names=None):
+        action_names = action_names or {"map_texture", "map_sound", "copy_asset_reference"}
+        action_indexes = [
+            index for index, action in enumerate(report["planned_actions"])
+            if action["action"] in action_names
+        ]
+        request = self.build_apply_request(report, action_indexes=action_indexes)
+        request["report_id"] = "asset-reference-report"
+        request["target_world"] = {
+            "world_id": "operator-asset-manifest",
+            "staging": False,
+            "disposable": False,
+            "world_mutation_allowed": False,
+        }
+        request["budget"].update({
+            "max_node_writes_total": 0,
+            "max_node_writes_per_step": 0,
+            "max_mapblock_churn_total": 0,
+        })
+        request["rollback_policy"]["policy"] = "no_world_mutation"
+        return request
+
+    def test_asset_reference_promotion_package_binds_java_resource_pack_apply_plan(self):
+        report = build_report(self.fixture_root / "java_pack")
+        request = self.build_asset_reference_request(report)
+        builder = getattr(compat, "build_asset_reference_promotion_package", None)
+
+        self.assertTrue(callable(builder), "asset-reference promotion package builder is missing")
+        package = builder(report, request)
+
+        self.assertEqual(package["mode"], "asset_reference_promotion_package")
+        self.assertEqual(package["status"], "ready_for_operator_asset_reference_promotion")
+        self.assertEqual(package["report_id"], "asset-reference-report")
+        self.assertEqual(package["dry_run"]["source_class"], "java_resource_pack")
+        self.assertEqual(package["dry_run"]["license_status"], "user_supplied")
+        self.assertEqual(package["dry_run"]["rights_status"], "operator_confirmed")
+        self.assertEqual(package["dry_run"]["estimated_world_mutations"]["node_writes"], 0)
+        inventory_paths = {
+            entry["source_path"] for entry in package["dry_run"]["source_inventory"]
+        }
+        self.assertIn("pack.mcmeta", inventory_paths)
+        self.assertIn("assets/synthetic/models_item.json", inventory_paths)
+        approved_actions = package["approved_asset_reference_actions"]
+        self.assertEqual([action["action"] for action in approved_actions], ["copy_asset_reference"])
+        self.assertEqual(package["apply_plan_summary"]["status"], "planned")
+        self.assertEqual(package["apply_plan_summary"]["mutation_cost_actual"]["node_writes"], 0)
+        self.assertFalse(package["apply_plan_summary"]["safety"]["world_mutation_executed"])
+        task_summary = package["no_world_mutation_task_summary"]
+        self.assertEqual(task_summary["task_count"], 1)
+        self.assertEqual(task_summary["labels"], ["compat.asset.reference"])
+        self.assertEqual(task_summary["mutation_classes"], ["metadata_only"])
+        self.assertEqual(task_summary["queued_task_count"], 0)
+        self.assertEqual(package["budget_gates"]["node_writes"]["status"], "within_reviewed_limit")
+        self.assertEqual(package["budget_gates"]["mapblock_churn"]["expected"], 0)
+        self.assertIn("import.assets", package["capability_gates"]["required_capabilities"])
+        self.assertEqual(package["unsupported_feature_summary"]["count"], 0)
+        self.assertTrue(package["safety"]["public_safe_source"])
+        self.assertTrue(package["safety"]["assets_remain_operator_supplied"])
+        self.assertTrue(package["safety"]["no_asset_bytes_embedded"])
+        self.assertTrue(package["safety"]["no_raw_payloads"])
+        self.assertTrue(package["safety"]["no_live_family_world_mutation"])
+        self.assertFalse(package["safety"]["world_mutation_executed"])
+        serialized = json.dumps(package)
+        self.assertNotIn(str(self.fixture_root), serialized)
+        self.assertNotIn("asset_payload", serialized.lower())
+
+    def test_asset_reference_promotion_package_supports_bedrock_metadata_pack(self):
+        report = build_report(self.fixture_root / "bedrock_asset_pack")
+        request = self.build_asset_reference_request(report)
+        builder = getattr(compat, "build_asset_reference_promotion_package", None)
+
+        self.assertTrue(callable(builder), "asset-reference promotion package builder is missing")
+        package = builder(report, request)
+
+        self.assertEqual(package["dry_run"]["source_class"], "bedrock_resource_pack")
+        self.assertEqual(package["dry_run"]["license_status"], "user_supplied")
+        self.assertEqual(package["approved_asset_reference_actions"][0]["action"], "copy_asset_reference")
+        self.assertIn(
+            "models/entity/example.geo.json",
+            {entry["source_path"] for entry in package["dry_run"]["source_inventory"]},
+        )
+        self.assertEqual(package["no_world_mutation_task_summary"]["task_count"], 1)
+        self.assertEqual(package["unsupported_feature_summary"]["count"], 0)
+
+    def test_asset_reference_promotion_package_rejects_unsafe_or_mutating_inputs(self):
+        base_report = build_report(self.fixture_root / "java_pack")
+        base_request = self.build_asset_reference_request(base_report)
+        builder = getattr(compat, "build_asset_reference_promotion_package", None)
+        self.assertTrue(callable(builder), "asset-reference promotion package builder is missing")
+
+        cases = {
+            "approved_actions must contain": lambda report, request: request.update({
+                "approved_actions": [],
+            }),
+            "user_supplied": lambda report, request: report["source"].update({
+                "license_status": "unknown",
+            }),
+            "private source paths": lambda report, request: report["source"]["inventory"][0].update({
+                "source_path": "/private/assets/example.png",
+            }),
+            "raw asset payloads": lambda report, request: report["source"]["inventory"][0].update({
+                "asset_payload": "base64:not-allowed",
+            }),
+            "copied protected content": lambda report, request: report.update({
+                "copied_protected_content": True,
+            }),
+            "behavior-script execution": lambda report, request: (
+                report["planned_actions"].append({
+                    "action": "execute_behavior_script",
+                    "status": "blocked",
+                    "description": "Do not execute source behavior scripts.",
+                    "required_capabilities": ["import.assets"],
+                    "mutation_cost": {
+                        "node_writes": 0,
+                        "mapblock_churn": 0,
+                        "media_files": 0,
+                        "entity_definitions": 0,
+                        "manual_review_items": 1,
+                    },
+                }),
+                request["approved_actions"].append({
+                    "action_index": len(report["planned_actions"]) - 1,
+                    "action": "execute_behavior_script",
+                    "status": "blocked",
+                }),
+            ),
+            "live family world": lambda report, request: request["target_world"].update({
+                "world_id": "family_voxelibre",
+            }),
+            "world-mutating actions": lambda report, request: report["planned_actions"][0]["mutation_cost"].update({
+                "node_writes": 1,
+            }),
+            "asset bytes": lambda report, request: report.update({
+                "asset_bytes": "not-allowed",
+            }),
+        }
+
+        for expected_message, mutate in cases.items():
+            with self.subTest(expected_message=expected_message):
+                report = json.loads(json.dumps(base_report))
+                request = json.loads(json.dumps(base_request))
+                mutate(report, request)
+
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    builder(report, request)
+
+    def test_asset_reference_promotion_package_cli_writes_machine_readable_artifact(self):
+        report = build_report(self.fixture_root / "java_pack")
+        request = self.build_asset_reference_request(report)
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            report_path = tmpdir / "dry-run.json"
+            request_path = tmpdir / "apply-request.json"
+            package_path = tmpdir / "asset-promotion-package.json"
+            report_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+            request_path.write_text(json.dumps(request, indent=2, sort_keys=True), encoding="utf-8")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                exit_code = main([
+                    "--asset-promotion-package", str(report_path),
+                    "--approval", str(request_path),
+                    "--output", str(package_path),
+                    "--summary",
+                ])
+
+            self.assertEqual(exit_code, 0)
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            self.assertEqual(package["status"], "ready_for_operator_asset_reference_promotion")
+            self.assertIn(
+                "asset_promotion=ready_for_operator_asset_reference_promotion",
+                stdout.getvalue(),
+            )
+            self.assertIn("asset_tasks=1", stdout.getvalue())
+
     def synthetic_planned_action(self, action, status="partial"):
         return {
             "action": action,
