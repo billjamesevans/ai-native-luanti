@@ -43,7 +43,14 @@ local PRODUCT_SURFACES = {
 		default_clean_profile_grant = "granted",
 		required_capabilities = { "world.read", "world.place" },
 		optional_capabilities = { "task.cancel" },
-		commands = { "build plan", "build marker", "approve build", "light" },
+		commands = {
+			"build plan",
+			"build marker",
+			"build plan platform width N depth N",
+			"build platform width N depth N",
+			"approve build",
+			"light",
+		},
 		runtime_entrypoints = {
 			"core.build_agent.plan",
 			"core.build_agent.define_task",
@@ -367,7 +374,7 @@ local function format_command_reply(result)
 			append(lines, "surfaces=" .. join_limited(surfaces, 8))
 		end
 		if type(result.commands) == "table" then
-			append(lines, "commands=" .. join_limited(result.commands, 18))
+			append(lines, "commands=" .. join_limited(result.commands, 24))
 		end
 		local pending = pending_approval_summary(result.pending_approval)
 		if pending then
@@ -390,6 +397,15 @@ local function format_command_reply(result)
 		append_task_details(lines, result)
 		if result.task_label then
 			append(lines, "task_label=" .. tostring(result.task_label))
+		end
+		if result.build_kind then
+			append(lines, "build_kind=" .. tostring(result.build_kind))
+		end
+		if result.build_width then
+			append(lines, "width=" .. tostring(result.build_width))
+		end
+		if result.build_depth then
+			append(lines, "depth=" .. tostring(result.build_depth))
 		end
 		if result.last_result_status then
 			append(lines, "last_result_status=" .. tostring(result.last_result_status))
@@ -426,6 +442,15 @@ local function format_command_reply(result)
 	elseif result.action == "build_plan" or result.action == "repair_plan" then
 		append_task_details(lines, result)
 		append(lines, "surface=" .. tostring(result.surface_id or "unknown"))
+		if result.build_kind then
+			append(lines, "build_kind=" .. tostring(result.build_kind))
+		end
+		if result.build_width then
+			append(lines, "width=" .. tostring(result.build_width))
+		end
+		if result.build_depth then
+			append(lines, "depth=" .. tostring(result.build_depth))
+		end
 		if result.repair_radius then
 			append(lines, "radius=" .. tostring(result.repair_radius))
 		end
@@ -442,6 +467,15 @@ local function format_command_reply(result)
 		append_task_details(lines, result)
 		if result.pending_action then
 			append(lines, "pending_action=" .. tostring(result.pending_action))
+		end
+		if result.build_kind then
+			append(lines, "build_kind=" .. tostring(result.build_kind))
+		end
+		if result.build_width then
+			append(lines, "width=" .. tostring(result.build_width))
+		end
+		if result.build_depth then
+			append(lines, "depth=" .. tostring(result.build_depth))
 		end
 		if result.repair_radius then
 			append(lines, "radius=" .. tostring(result.repair_radius))
@@ -706,6 +740,9 @@ local function approval_context(context)
 		persist_record = context.persist_record,
 		persist_rollback_record = context.persist_rollback_record,
 		rollback_policy = context.rollback_policy,
+		build_kind = context.build_kind,
+		build_width = context.build_width,
+		build_depth = context.build_depth,
 		repair_radius = context.repair_radius,
 		sample_limit = context.sample_limit,
 		max_node_writes_per_step = context.max_node_writes_per_step,
@@ -724,6 +761,9 @@ local function compact_pending_approval(pending)
 		plan = pending.plan,
 		candidate_count = pending.candidate_count,
 		planned_node_writes = pending.planned_node_writes,
+		build_kind = pending.build_kind,
+		build_width = pending.build_width,
+		build_depth = pending.build_depth,
 		repair_radius = pending.repair_radius,
 		sample_limit = pending.sample_limit,
 	}
@@ -739,6 +779,9 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		context = approval_context(context),
 		candidate_count = extra.candidate_count,
 		planned_node_writes = extra.planned_node_writes,
+		build_kind = extra.build_kind,
+		build_width = extra.build_width,
+		build_depth = extra.build_depth,
 		repair_radius = extra.repair_radius,
 		sample_limit = extra.sample_limit,
 	}
@@ -1656,28 +1699,103 @@ local function handle_follow(name, prompt, context)
 	return queue_plugin_task(name, "follow", "follow " .. name, steps, context)
 end
 
+local function parse_build_positive_int(raw_value)
+	if type(raw_value) ~= "string" or raw_value == "" then
+		return nil
+	end
+	local number = tonumber(raw_value)
+	if not number then
+		return nil
+	end
+	number = math.floor(number)
+	if number < 1 then
+		return nil
+	end
+	return number
+end
+
+local function build_kind_for(context)
+	context = context or {}
+	return context.build_kind or "marker"
+end
+
+local function build_width_for(context)
+	context = context or {}
+	return context.build_width or 2
+end
+
+local function build_depth_for(context)
+	context = context or {}
+	return context.build_depth or 2
+end
+
+local function build_options_for(name, context, task_id)
+	context = context or {}
+	local kind = build_kind_for(context)
+	local options = {
+		kind = kind,
+		task_id = task_id,
+		agent_id = surface_agent_id_for(name, "builder"),
+		owner = name,
+		world_id = context.world_id or "ai_agent_plugin",
+		origin = default_pos(context),
+		get_node = context.get_node,
+		set_node = context.set_node,
+		max_node_writes_per_step = context.max_node_writes_per_step,
+		persist_record = context.persist_record or context.persist_rollback_record,
+		rollback_policy = context.rollback_policy,
+		operation_label = "ai_agent_plugin.build",
+		sample_limit = context.sample_limit or settings.max_lights,
+	}
+	if kind == "platform" then
+		options.width = build_width_for(context)
+		options.depth = build_depth_for(context)
+		options.max_node_writes_per_step = options.max_node_writes_per_step
+			or math.min(options.width * options.depth, settings.max_lights)
+	else
+		options.kind = "marker"
+		options.max_node_writes_per_step = options.max_node_writes_per_step or 1
+	end
+	return options
+end
+
+local function parse_build_options(raw_prompt, context)
+	local parsed = table.copy(context or {})
+	if raw_prompt:lower():find("platform", 1, true) then
+		parsed.build_kind = "platform"
+		local width_text = raw_prompt:match("[Ww][Ii][Dd][Tt][Hh]%s+([%-%d]+)")
+		local depth_text = raw_prompt:match("[Dd][Ee][Pp][Tt][Hh]%s+([%-%d]+)")
+		if not width_text or not depth_text then
+			local x_width, x_depth = raw_prompt:match("(%d+)%s*[Xx]%s*(%d+)")
+			width_text = width_text or x_width
+			depth_text = depth_text or x_depth
+		end
+		local width = parse_build_positive_int(width_text or "2")
+		local depth = parse_build_positive_int(depth_text or "2")
+		if not width or not depth then
+			return nil, "invalid_build_dimensions"
+		end
+		if width * depth > settings.max_lights then
+			return nil, "build_shape_out_of_bounds"
+		end
+		parsed.build_width = width
+		parsed.build_depth = depth
+	else
+		parsed.build_kind = "marker"
+		parsed.build_width = nil
+		parsed.build_depth = nil
+	end
+	return parsed, nil
+end
+
 local function queue_build_task(name, context)
 	context = context or {}
 	configure_product_surfaces()
-	local pos = default_pos(context)
 	local task_id = next_task_id(name, "build")
-	local agent_id = surface_agent_id_for(name, "builder")
 	plugin.ensure_surface_agent(name, "builder")
-	return queue_defined_task(name, "build", "build marker",
-		core.build_agent.define_task({
-			kind = "marker",
-			task_id = task_id,
-			agent_id = agent_id,
-			owner = name,
-			world_id = context.world_id or "ai_agent_plugin",
-			origin = pos,
-			get_node = context.get_node,
-			set_node = context.set_node,
-			max_node_writes_per_step = 1,
-			persist_record = context.persist_record or context.persist_rollback_record,
-			rollback_policy = context.rollback_policy,
-			operation_label = "ai_agent_plugin.build",
-		}), "builder")
+	local build_options = build_options_for(name, context, task_id)
+	return queue_defined_task(name, "build", "build " .. build_options.kind,
+		core.build_agent.define_task(build_options), "builder")
 end
 
 local function build_plan_for(name, context)
@@ -1685,16 +1803,9 @@ local function build_plan_for(name, context)
 	configure_product_surfaces()
 	local agent_id = surface_agent_id_for(name, "builder")
 	plugin.ensure_surface_agent(name, "builder")
-	local result = core.build_agent.plan({
-		kind = "marker",
-		task_id = context.task_id,
-		agent_id = agent_id,
-		owner = name,
-		world_id = context.world_id or "ai_agent_plugin",
-		origin = default_pos(context),
-		rollback_policy = context.rollback_policy,
-		sample_limit = context.sample_limit or settings.max_lights,
-	})
+	local build_options = build_options_for(name, context, context.task_id)
+	build_options.agent_id = agent_id
+	local result = core.build_agent.plan(build_options)
 	local plan = table.copy(result.plan or {})
 	plan.operation = result.operation
 	plan.status = result.status
@@ -1705,6 +1816,9 @@ local function build_plan_for(name, context)
 	plan.skipped = result.skipped
 	plan.samples = result.samples or {}
 	plan.metrics = result.metrics or {}
+	plan.build_kind = build_options.kind
+	plan.build_width = build_options.width
+	plan.build_depth = build_options.depth
 	return result, plan
 end
 
@@ -1714,6 +1828,9 @@ local function handle_build_plan(name, context)
 		surface_id = "builder",
 		plan = plan,
 		planned_node_writes = plan.metrics.planned_node_writes or 0,
+		build_kind = plan.build_kind,
+		build_width = plan.build_width,
+		build_depth = plan.build_depth,
 	})
 end
 
@@ -1723,6 +1840,9 @@ local function handle_build(name, context)
 	local pending = remember_pending_approval(name, "build", plan, context, {
 		surface_id = "builder",
 		planned_node_writes = plan.metrics.planned_node_writes or 0,
+		build_kind = plan.build_kind,
+		build_width = plan.build_width,
+		build_depth = plan.build_depth,
 	})
 	return public_reply(name, "build", "pending_approval",
 		"Build plan is pending approval before mutation.", {
@@ -1731,6 +1851,9 @@ local function handle_build(name, context)
 			pending_action = "build",
 			plan = plan,
 			planned_node_writes = plan.metrics.planned_node_writes or 0,
+			build_kind = plan.build_kind,
+			build_width = plan.build_width,
+			build_depth = plan.build_depth,
 			plan_status = result.status,
 		})
 end
@@ -2050,6 +2173,7 @@ local function handle_guide(name)
 			"light",
 			"build plan",
 			"build marker",
+			"build platform width N depth N",
 			"repair plan",
 			"repair radius N",
 			"repair",
@@ -2386,7 +2510,15 @@ function plugin.handle_command(name, param, context)
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
 			and (prompt:find("build", 1, true) or prompt:find("marker", 1, true)) then
-		return handle_build_plan(name, context)
+		local build_context, reason = parse_build_options(raw_prompt, context)
+		if not build_context then
+			return public_reply(name, "build_plan", "blocked",
+				"Build plan parameters are outside the configured bounds.", {
+					surface_id = "builder",
+					reason = reason,
+				})
+		end
+		return handle_build_plan(name, build_context)
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
 			and (prompt:find("repair", 1, true) or prompt:find("fix", 1, true)) then
@@ -2420,7 +2552,15 @@ function plugin.handle_command(name, param, context)
 		return handle_import_plan(name, context)
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
-		return handle_build(name, context)
+		local build_context, reason = parse_build_options(raw_prompt, context)
+		if not build_context then
+			return public_reply(name, "build", "blocked",
+				"Build parameters are outside the configured bounds.", {
+					surface_id = "builder",
+					reason = reason,
+				})
+		end
+		return handle_build(name, build_context)
 	end
 	return handle_model(name, prompt, context)
 end
