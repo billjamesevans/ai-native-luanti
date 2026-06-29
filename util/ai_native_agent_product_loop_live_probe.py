@@ -220,12 +220,16 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "",
             "  local build_preview = handle(\"BuilderLive\", \"build plan\", live_context(build_pos))",
             "  local build_pending = handle(\"BuilderLive\", \"build marker\", live_context(build_pos))",
+            "  local build_pending_review = handle(\"BuilderLive\", \"pending plan\", {})",
+            "  local build_edit = handle(\"BuilderLive\", \"edit plan platform width 2 depth 2\", live_context(build_pos))",
             "  local build_approved = handle(\"BuilderLive\", \"approve\", {})",
             "  task_ids[#task_ids + 1] = build_approved.task_id",
             "  local build_status = step_until_final(build_approved.task_id, 3)",
             "",
             "  local repair_preview = handle(\"RepairLive\", \"repair plan\", live_context(repair_pos))",
             "  local repair_pending = handle(\"RepairLive\", \"repair\", live_context(repair_pos))",
+            "  local repair_pending_review = handle(\"RepairLive\", \"pending plan\", {})",
+            "  local repair_edit = handle(\"RepairLive\", \"plan edit radius 0\", live_context(repair_pos))",
             "  local repair_approved = handle(\"RepairLive\", \"approve\", {})",
             "  task_ids[#task_ids + 1] = repair_approved.task_id",
             "  local repair_status = step_until_final(repair_approved.task_id, 3)",
@@ -251,6 +255,16 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "  local audit_reply = handle(\"BuilderLive\", \"audit\", {})",
             "  local build_rollback_reply = handle(\"BuilderLive\", \"rollback\", {})",
             "  local repair_rollback_reply = handle(\"RepairLive\", \"rollback\", {})",
+            "  local targeted_audit_reply = handle(\"BuilderLive\", \"audit \" .. build_approved.task_id, {})",
+            "  local targeted_rollback_reply = handle(\"BuilderLive\", \"rollback \" .. build_approved.task_id, {})",
+            "  local targeted_rollback_record_id = nil",
+            "  if targeted_rollback_reply.rollback_records and targeted_rollback_reply.rollback_records[1] then",
+            "    targeted_rollback_record_id = targeted_rollback_reply.rollback_records[1].rollback_record_id",
+            "  end",
+            "  local targeted_rollback_record_reply = { status = \"blocked\", rollback_records = {} }",
+            "  if targeted_rollback_record_id then",
+            "    targeted_rollback_record_reply = handle(\"BuilderLive\", \"rollback \" .. targeted_rollback_record_id, {})",
+            "  end",
             "  local surface_by_id = {}",
             "  for _, surface in ipairs(guide_reply.product_surfaces or {}) do",
             "    surface_by_id[surface.surface_id] = surface",
@@ -378,6 +392,9 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "  local repair_rollback_count = #(repair_rollback_reply.rollback_records or {})",
             "  local rollback_count = build_rollback_count + repair_rollback_count",
             "  local audit_count = #(audit_reply.audit_events or {})",
+            "  local targeted_audit_count = #(targeted_audit_reply.audit_events or {})",
+            "  local targeted_rollback_count = #(targeted_rollback_reply.rollback_records or {})",
+            "  local targeted_rollback_record_count = #(targeted_rollback_record_reply.rollback_records or {})",
             "  local final_bad = count_bad_final_tasks(task_ids)",
             "",
             "  local payload = {",
@@ -398,7 +415,14 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "      build = {",
             "        preview_status = build_preview.status,",
             "        pending_status = build_pending.status,",
+            "        pending_review_status = build_pending_review.status,",
             "        approval_id = build_pending.approval_id,",
+            "        edit_status = build_edit.status,",
+            "        edit_approval_id = build_edit.approval_id,",
+            "        edit_build_kind = build_edit.build_kind,",
+            "        edit_build_width = build_edit.build_width,",
+            "        edit_build_depth = build_edit.build_depth,",
+            "        edit_planned_node_writes = build_edit.planned_node_writes,",
             "        approved_status = build_approved.status,",
             "        task_id = build_approved.task_id,",
             "        task_status = build_status,",
@@ -408,7 +432,12 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "      repair = {",
             "        preview_status = repair_preview.status,",
             "        pending_status = repair_pending.status,",
+            "        pending_review_status = repair_pending_review.status,",
             "        approval_id = repair_pending.approval_id,",
+            "        edit_status = repair_edit.status,",
+            "        edit_approval_id = repair_edit.approval_id,",
+            "        edit_repair_radius = repair_edit.repair_radius,",
+            "        edit_candidate_count = repair_edit.candidate_count,",
             "        approved_status = repair_approved.status,",
             "        task_id = repair_approved.task_id,",
             "        task_status = repair_status,",
@@ -425,6 +454,23 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "        retry_blocked_reason = retry_blocked_reason,",
             "        retry_result_status = retry_result.status,",
             "        retry_final_status = retry_final_status,",
+            "      },",
+            "      targeted_reviews = {",
+            "        audit_status = targeted_audit_reply.status,",
+            "        audit_target_kind = targeted_audit_reply.target_kind,",
+            "        audit_target_id = targeted_audit_reply.target_id,",
+            "        audit_event_count = targeted_audit_count,",
+            "        rollback_status = targeted_rollback_reply.status,",
+            "        rollback_target_kind = targeted_rollback_reply.target_kind,",
+            "        rollback_target_id = targeted_rollback_reply.target_id,",
+            "        rollback_record_count = targeted_rollback_count,",
+            "        rollback_record_id = targeted_rollback_record_id,",
+            "        rollback_record_status = targeted_rollback_record_reply.status,",
+            "        rollback_record_target_kind = targeted_rollback_record_reply.target_kind,",
+            "        rollback_record_target_id = targeted_rollback_record_reply.target_id,",
+            "        rollback_record_review_count = targeted_rollback_record_count,",
+            "        no_rollback_execution = targeted_rollback_reply.no_rollback_execution == true",
+            "          and targeted_rollback_record_reply.no_rollback_execution == true,",
             "      },",
             "      surfaces = {",
             "        guide_command_checked = guide_reply.status == \"success\" and guide_reply.surfaces.builder == true,",
@@ -444,6 +490,31 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "        tasks_command_checked = tasks_reply.status == \"success\",",
             "        audit_review_checked = audit_count > 0,",
             "        rollback_review_checked = rollback_count >= 2,",
+            "        pending_plan_review_checked = build_pending_review.status == \"success\"",
+            "          and repair_pending_review.status == \"success\",",
+            "        plan_edit_checked = build_edit.status == \"success\"",
+            "          and repair_edit.status == \"success\"",
+            "          and build_edit.approval_id == build_pending.approval_id",
+            "          and repair_edit.approval_id == repair_pending.approval_id",
+            "          and build_edit.build_kind == \"platform\"",
+            "          and build_edit.build_width == 2",
+            "          and build_edit.build_depth == 2",
+            "          and repair_edit.repair_radius == 0,",
+            "        targeted_audit_review_checked = targeted_audit_reply.status == \"success\"",
+            "          and targeted_audit_reply.target_kind == \"task\"",
+            "          and targeted_audit_reply.target_id == build_approved.task_id",
+            "          and targeted_audit_count > 0,",
+            "        targeted_rollback_review_checked = targeted_rollback_reply.status == \"success\"",
+            "          and targeted_rollback_reply.target_kind == \"task\"",
+            "          and targeted_rollback_reply.target_id == build_approved.task_id",
+            "          and targeted_rollback_reply.no_rollback_execution == true",
+            "          and targeted_rollback_count > 0,",
+            "        targeted_rollback_record_review_checked = targeted_rollback_record_id ~= nil",
+            "          and targeted_rollback_record_reply.status == \"success\"",
+            "          and targeted_rollback_record_reply.target_kind == \"rollback\"",
+            "          and targeted_rollback_record_reply.target_id == targeted_rollback_record_id",
+            "          and targeted_rollback_record_reply.no_rollback_execution == true",
+            "          and targeted_rollback_record_count > 0,",
             "        defender_command_checked = defend_status == \"completed\" and defended == true,",
             "        import_preview_checked = import_status == \"completed\",",
             "        operator_status_checked = operator_status_snapshot.status == \"ready\"",
@@ -455,13 +526,18 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "    operator_status_snapshot = operator_status_snapshot,",
             "    summary = {",
             "      preview_plan_count = 2,",
+            "      pending_plan_review_count = 2,",
+            "      plan_edit_count = 2,",
             "      approval_plan_count = 2,",
             "      approved_task_count = 2,",
             "      task_count = #task_ids,",
             "      task_status_counts = count_statuses(task_ids),",
             "      rollback_record_count = rollback_count,",
             "      audit_event_count = audit_count,",
-            "      node_writes_verified = 2,",
+            "      targeted_audit_review_count = targeted_audit_count > 0 and 1 or 0,",
+            "      targeted_rollback_review_count = (targeted_rollback_count > 0 and 1 or 0)",
+            "        + (targeted_rollback_record_count > 0 and 1 or 0),",
+            "      node_writes_verified = 5,",
             "      transient_blocked_outcomes = retry_blocked_status == \"blocked\" and 1 or 0,",
             "      final_blocked_or_unsafe_outcomes = final_bad,",
             "    },",
@@ -566,6 +642,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         if isinstance(workflow.get("task_control"), dict)
         else {}
     )
+    targeted_reviews = (
+        workflow.get("targeted_reviews")
+        if isinstance(workflow.get("targeted_reviews"), dict)
+        else {}
+    )
     surfaces = workflow.get("surfaces") if isinstance(workflow.get("surfaces"), dict) else {}
 
     for name, section in (("build", build), ("repair", repair)):
@@ -573,6 +654,12 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError(f"agent product loop {name} preview did not pass")
         if section.get("pending_status") != "pending_approval":
             raise ValueError(f"agent product loop {name} did not require approval")
+        if section.get("pending_review_status") != "success":
+            raise ValueError(f"agent product loop {name} pending review did not pass")
+        if section.get("edit_status") != "success":
+            raise ValueError(f"agent product loop {name} plan edit did not pass")
+        if section.get("edit_approval_id") != section.get("approval_id"):
+            raise ValueError(f"agent product loop {name} plan edit changed approval id")
         if section.get("approved_status") != "queued":
             raise ValueError(f"agent product loop {name} approval did not queue")
         if section.get("task_status") != "completed":
@@ -585,8 +672,18 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError(f"agent product loop {name} rollback evidence missing")
     if build.get("node_after") != "ai_runtime_base:cobble":
         raise ValueError("agent product loop build node result is invalid")
+    if build.get("edit_build_kind") != "platform":
+        raise ValueError("agent product loop build edit did not switch to platform")
+    if build.get("edit_build_width") != 2 or build.get("edit_build_depth") != 2:
+        raise ValueError("agent product loop build edit dimensions are invalid")
+    if build.get("edit_planned_node_writes") != 4:
+        raise ValueError("agent product loop build edit write plan is invalid")
     if repair.get("node_after") != "air":
         raise ValueError("agent product loop repair node result is invalid")
+    if repair.get("edit_repair_radius") != 0:
+        raise ValueError("agent product loop repair edit radius is invalid")
+    if not isinstance(repair.get("edit_candidate_count"), int) or repair["edit_candidate_count"] < 1:
+        raise ValueError("agent product loop repair edit candidate evidence missing")
 
     _require_bool(task_control, "cancel_checked")
     if task_control.get("cancel_before_status") != "queued":
@@ -601,6 +698,38 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     if task_control.get("retry_final_status") != "completed":
         raise ValueError("agent product loop retry did not complete")
 
+    if targeted_reviews.get("audit_status") != "success":
+        raise ValueError("agent product loop targeted audit did not pass")
+    if targeted_reviews.get("audit_target_kind") != "task":
+        raise ValueError("agent product loop targeted audit target kind is invalid")
+    if targeted_reviews.get("audit_target_id") != build.get("task_id"):
+        raise ValueError("agent product loop targeted audit target id is invalid")
+    if not isinstance(targeted_reviews.get("audit_event_count"), int) or targeted_reviews["audit_event_count"] < 1:
+        raise ValueError("agent product loop targeted audit evidence missing")
+    if targeted_reviews.get("rollback_status") != "success":
+        raise ValueError("agent product loop targeted rollback review did not pass")
+    if targeted_reviews.get("rollback_target_kind") != "task":
+        raise ValueError("agent product loop targeted rollback target kind is invalid")
+    if targeted_reviews.get("rollback_target_id") != build.get("task_id"):
+        raise ValueError("agent product loop targeted rollback target id is invalid")
+    if not isinstance(targeted_reviews.get("rollback_record_count"), int) or targeted_reviews["rollback_record_count"] < 1:
+        raise ValueError("agent product loop targeted rollback evidence missing")
+    rollback_record_id = targeted_reviews.get("rollback_record_id")
+    if not isinstance(rollback_record_id, str) or not rollback_record_id:
+        raise ValueError("agent product loop targeted rollback record id missing")
+    if targeted_reviews.get("rollback_record_status") != "success":
+        raise ValueError("agent product loop targeted rollback-record review did not pass")
+    if targeted_reviews.get("rollback_record_target_kind") != "rollback":
+        raise ValueError("agent product loop targeted rollback-record target kind is invalid")
+    if targeted_reviews.get("rollback_record_target_id") != rollback_record_id:
+        raise ValueError("agent product loop targeted rollback-record target id is invalid")
+    if (
+        not isinstance(targeted_reviews.get("rollback_record_review_count"), int)
+        or targeted_reviews["rollback_record_review_count"] < 1
+    ):
+        raise ValueError("agent product loop targeted rollback-record evidence missing")
+    _require_bool(targeted_reviews, "no_rollback_execution")
+
     for field in (
         "guide_command_checked",
         "product_surface_catalog_checked",
@@ -612,6 +741,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "tasks_command_checked",
         "audit_review_checked",
         "rollback_review_checked",
+        "pending_plan_review_checked",
+        "plan_edit_checked",
+        "targeted_audit_review_checked",
+        "targeted_rollback_review_checked",
+        "targeted_rollback_record_review_checked",
         "defender_command_checked",
         "import_preview_checked",
         "operator_status_checked",
@@ -642,10 +776,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     expected_counts = {
         "preview_plan_count": 2,
+        "pending_plan_review_count": 2,
+        "plan_edit_count": 2,
         "approval_plan_count": 2,
         "approved_task_count": 2,
         "rollback_record_count": 2,
-        "node_writes_verified": 2,
+        "targeted_audit_review_count": 1,
+        "targeted_rollback_review_count": 2,
+        "node_writes_verified": 5,
         "transient_blocked_outcomes": 1,
         "final_blocked_or_unsafe_outcomes": 0,
     }
@@ -693,13 +831,22 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_product_loop_live_status": "pass",
         "agent_product_loop_live_output_bytes": output_bytes,
         "agent_product_loop_preview_plans": summary["preview_plan_count"],
+        "agent_product_loop_pending_plan_reviews": summary["pending_plan_review_count"],
+        "agent_product_loop_plan_edits": summary["plan_edit_count"],
         "agent_product_loop_approval_plans": summary["approval_plan_count"],
         "agent_product_loop_approved_tasks": summary["approved_task_count"],
         "agent_product_loop_rollback_records": summary["rollback_record_count"],
         "agent_product_loop_audit_events": summary["audit_event_count"],
+        "agent_product_loop_targeted_audit_reviews": summary["targeted_audit_review_count"],
+        "agent_product_loop_targeted_rollback_reviews": summary["targeted_rollback_review_count"],
         "agent_product_loop_cancel_checked": True,
         "agent_product_loop_retry_checked": True,
         "agent_product_loop_operator_status_checked": True,
+        "agent_product_loop_pending_plan_review_checked": True,
+        "agent_product_loop_plan_edit_checked": True,
+        "agent_product_loop_targeted_audit_review_checked": True,
+        "agent_product_loop_targeted_rollback_review_checked": True,
+        "agent_product_loop_targeted_rollback_record_review_checked": True,
         "agent_product_loop_product_surface_catalog_checked": True,
         "agent_product_loop_builder_surface_agent_checked": True,
         "agent_product_loop_repair_surface_agent_checked": True,
