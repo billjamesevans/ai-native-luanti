@@ -58,6 +58,29 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         self.assertTrue(report["safety"]["family_content_excluded"])
         self.assertTrue(report["safety"]["pi_side_by_side_only"])
         self.assertTrue(report["safety"]["release_notes_separate_engine_plugins_family_content"])
+        self.assertTrue(report["safety"]["clean_profile_package_verified"])
+        self.assertEqual(report["clean_profile_package"]["status"], "pass")
+        self.assertEqual(report["clean_profile_package"]["profile"]["gameid"], "ai_runtime")
+        self.assertTrue(
+            report["clean_profile_package"]["safety"]["startup_inventory_matches_default_runtime"]
+        )
+        self.assertTrue(report["clean_profile_package"]["safety"]["profile_code_fixture_free"])
+        command_plan = {
+            step["step"]: step["command"]
+            for step in report["alpha_package"]["fresh_checkout_command_plan"]
+        }
+        self.assertEqual(
+            command_plan["configure_server_release"][:5],
+            ["cmake", "-S", ".", "-B", "build/server-release"],
+        )
+        self.assertEqual(
+            command_plan["smoke_test_runtime"],
+            ["bin/luantiserver", "--run-unittests", "--test-module", "TestAIRuntime"],
+        )
+        self.assertEqual(
+            command_plan["run_one_command_verifier"],
+            report["alpha_package"]["one_command_local_verifier"],
+        )
         self.assertEqual(
             {
                 template["kind"]: template["status"]
@@ -102,6 +125,7 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             report = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(report["status"], "pass")
             self.assertTrue(report["safety"]["public_sample_data_only"])
+            self.assertTrue(report["safety"]["clean_profile_package_verified"])
 
 
 if __name__ == "__main__":
