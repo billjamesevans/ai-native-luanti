@@ -77,7 +77,8 @@ python3 util/ai_native_runtime_verify.py --hardware-class local-mac
 ```
 
 The harness runs the AI-native utility contracts, the branch benchmark gate, the live operator
-status command probe, and the focused `TestAIRuntime` smoke in a repeatable order. It writes
+status command probe, the receipt-gated task-control command probe, and the focused
+`TestAIRuntime` smoke in a repeatable order. It writes
 `ai-runtime-verification-manifest.json` under
 `local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
 failure reasons, and local artifact paths. The default operator-status step launches a
@@ -99,6 +100,11 @@ execution contract against synthetic task state. It then runs
 against a disposable live `ai_runtime` queue probe and writes
 `ai-runtime-operator-task-control-live-result.json`. The probe uses a temporary local world only: no
 family server, no private world, no private assets, no provider prompts, and no model-network calls.
+The verifier then runs `util/ai_native_operator_task_control_command_probe.py` as a receipt-gated
+task-control command probe against the registered `/ai_runtime_operator_task_control` command and
+writes `ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`. That command probe uses the same
+temporary local-world boundary and exists to prove the operator command adapter separately from the
+disposable live queue probe.
 
 The verifier also validates the live package's `operator_control` section and the derived
 operator-control report adapter: both must be read-only, dry-run-only, contain safe next actions
@@ -110,6 +116,9 @@ result must stay receipt-gated, synthetic-task-state-only, task cancel/retry onl
 `--operator-action-execution-result-max-bytes`. The live task-control result must stay receipt-gated,
 disposable-live-queue-only, task cancel/retry only, no rollback execution, no import promotion execution,
 no world mutation, and bounded by `--operator-taREDACTED_KEY_FIXTURE`.
+The task-control command result must stay receipt-gated, command-surface-only, task cancel/retry only,
+no rollback execution, no import promotion execution, no world mutation, and bounded by
+`--operator-taREDACTED_KEY_FIXTURE`.
 
 If the live command path is unavailable in a narrow utility-only lane, use
 `--operator-status-source surrogate` to write `ai-runtime-operator-status.json` with
@@ -139,7 +148,8 @@ routes `--game-profile ai_runtime` through benchmark capture. The run directory 
 `ai-runtime-operator-action-approval-plan.json` and
 `ai-runtime-operator-action-approval-receipt.json` and
 `ai-runtime-operator-action-execution-result.json` and
-`ai-runtime-operator-task-control-live-result.json`. It still requires no family server, no private
+`ai-runtime-operator-task-control-live-result.json` and
+`ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`. It still requires no family server, no private
 world, no private assets, no provider prompts, and no model-network calls.
 
 The smoke scenario itself remains synthetic: no live server, no private world, and no model
