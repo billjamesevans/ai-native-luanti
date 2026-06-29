@@ -6,6 +6,11 @@ It intentionally ships only a tiny base mod for mapgen aliases. It includes no p
 
 The base mod also declares `capability_profile = "clean"` for the first-party agent capability policy. It grants bounded world, entity, task, and model-adapter capabilities, and excludes privileged operator/import/player-combat grants.
 
+The first-party plugin splits `/nova` behavior into Builder, Repair, Guide,
+Defender, and Importer role agents. In this clean profile, Builder, Repair,
+and Guide can receive only their relevant clean grants; Defender does not get
+`combat.defend`, and Importer does not get `import.assets` by default.
+
 Default rollback storage is enabled for this profile so rollback-backed build and repair commands can persist local rollback metadata before mutating a disposable world.
 
 The clean profile expects the core operator status and receipt-gated task-control commands to be present as product runtime surfaces. They are server-privileged, bounded, public-safe, and separate from synthetic smoke or benchmark commands.
