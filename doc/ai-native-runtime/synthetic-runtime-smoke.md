@@ -87,6 +87,10 @@ records source_kind = `live_command` with direct command execution evidence. The
 temporary local world only: no family server, no private world, no private assets, no provider
 prompts, and no model-network calls.
 
+The verifier also validates the live package's `operator_control` section: it must be read-only,
+dry-run-only, contain safe next actions instead of mutating commands, and preserve public-safe
+redaction boundaries.
+
 If the live command path is unavailable in a narrow utility-only lane, use
 `--operator-status-source surrogate` to write `ai-runtime-operator-status.json` with
 `util/ai_native_operator_status_package.py`. The manifest records

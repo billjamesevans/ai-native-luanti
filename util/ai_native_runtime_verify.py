@@ -32,6 +32,7 @@ OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "rollback",
     "imports",
     "benchmarks",
+    "operator_control",
     "safety",
     "bounds",
 }
@@ -395,6 +396,61 @@ def artifact_has_private_content(raw_payload: str) -> bool:
     return any(pattern.search(raw_payload) for pattern, _ in PRIVATE_REDACTIONS)
 
 
+def operator_control_findings(payload: dict, step_id: str) -> tuple[dict, list[str]]:
+    evidence = {
+        "operator_control_status": "fail",
+        "operator_control_action_mode": "missing",
+        "operator_control_recommendations": None,
+    }
+    reasons = []
+    control = payload.get("operator_control")
+    if not isinstance(control, dict):
+        reasons.append(f"{step_id} operator_control missing or invalid")
+        return evidence, reasons
+
+    action_mode = control.get("action_mode")
+    recommendations_total = control.get("recommendations_total")
+    summaries = control.get("summaries")
+    evidence["operator_control_action_mode"] = sanitize_text(str(action_mode))
+    evidence["operator_control_recommendations"] = recommendations_total
+
+    if control.get("surface_kind") != "read_only_task_rollback_control":
+        reasons.append(f"{step_id} operator_control surface_kind is invalid")
+    if action_mode != "dry_run_only":
+        reasons.append(f"{step_id} operator_control action_mode is not dry_run_only")
+    if control.get("mutation_performed") is not False:
+        reasons.append(f"{step_id} operator_control mutation_performed is not false")
+    if not isinstance(recommendations_total, int):
+        reasons.append(f"{step_id} operator_control recommendations_total is not numeric")
+    if summaries is None and recommendations_total == 0:
+        summaries = []
+    if not isinstance(summaries, list):
+        reasons.append(f"{step_id} operator_control summaries is not a list")
+        evidence["operator_control_status"] = "fail"
+        return evidence, reasons
+
+    for index, summary in enumerate(summaries):
+        if not isinstance(summary, dict):
+            reasons.append(f"{step_id} operator_control summary {index} is invalid")
+            continue
+        if summary.get("dry_run_only") is not True:
+            reasons.append(f"{step_id} operator_control summary {index} is not dry_run_only")
+        if summary.get("will_mutate") is not False:
+            reasons.append(f"{step_id} operator_control summary {index} can mutate")
+        if not isinstance(summary.get("target_id"), str) or not summary.get("target_id"):
+            reasons.append(f"{step_id} operator_control summary {index} missing target_id")
+        if not isinstance(summary.get("target_kind"), str) or not summary.get("target_kind"):
+            reasons.append(f"{step_id} operator_control summary {index} missing target_kind")
+        safe_next_action = summary.get("safe_next_action")
+        if not isinstance(safe_next_action, str) or not safe_next_action:
+            reasons.append(f"{step_id} operator_control summary {index} missing safe_next_action")
+        elif safe_next_action.startswith(("cancel_", "execute_", "apply_", "approve_", "mutate_")):
+            reasons.append(f"{step_id} operator_control summary {index} safe_next_action mutates")
+
+    evidence["operator_control_status"] = "fail" if reasons else "pass"
+    return evidence, reasons
+
+
 def operator_status_evidence(args) -> tuple[dict, list[str]]:
     path = operator_status_artifact_path(args)
     source_path = logical_path(args, operator_status_artifact_name(args))
@@ -449,6 +505,9 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
     if safety.get("public_safe_output") is not True:
         reasons.append(f"{step_id} public_safe_output is not true")
 
+    control_evidence, control_reasons = operator_control_findings(payload, step_id)
+    reasons.extend(control_reasons)
+
     evidence.update({
         "status": "fail" if reasons else "pass",
         "package_status": sanitize_text(str(payload.get("status", "unknown"))),
@@ -459,6 +518,7 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
         "private_scan_status": "fail" if artifact_has_private_content(raw_payload) else "pass",
         "failure_count": len(reasons),
     })
+    evidence.update(control_evidence)
     return evidence, reasons
 
 

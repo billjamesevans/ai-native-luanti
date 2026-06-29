@@ -9,6 +9,7 @@ The package gives an operator one safe shape for:
 - agent and capability inventory;
 - task queue status;
 - rollback record availability;
+- dry-run-only operator-control recommendations with safe next actions;
 - compatibility/import review and promotion package summaries;
 - benchmark or verifier gate summaries;
 - product-profile hygiene from `util/ai_native_product_profile_verify.py`.
@@ -38,7 +39,7 @@ Live server command:
 /ai_runtime_operator_status
 ```
 
-The live command requires `server` privilege and returns compact JSON with `package_kind = "ai_native_operator_status_package"`. It summarizes registered agents, task counts, recent rollback/import audit availability, optional benchmark gates, and product-profile hygiene. It rejects unknown parameters and accepts `generated_at=...` and `max_bytes=N` for reproducible checks.
+The live command requires `server` privilege and returns compact JSON with `package_kind = "ai_native_operator_status_package"`. It summarizes registered agents, task counts, recent rollback/import audit availability, optional benchmark gates, `operator_control`, and product-profile hygiene. It rejects unknown parameters and accepts `generated_at=...` and `max_bytes=N` for reproducible checks.
 
 ## Boundary
 
@@ -55,6 +56,8 @@ The output must stay public-safe:
 
 Runtime sections are summaries, not raw records. Rollback and import entries show ids, statuses, and review state; they do not embed rollback node snapshots, source asset bytes, or live-world payloads.
 
+The `operator_control` section is read-only and dry-run-only. It exposes stable target IDs, target kinds, current statuses, and safe next actions such as `inspect_task_before_action`, `review_rollback_record_before_execution`, and `review_import_blocker`. These are action affordances for a future CLI/dashboard; this package does not cancel tasks, execute rollback, approve imports, apply structures, or mutate worlds.
+
 ## Product Use
 
 The first product use is an operator readout that can answer:
@@ -65,5 +68,6 @@ The first product use is an operator readout that can answer:
 - Are rollback records available before an operator approves risky work?
 - Are compatibility/import reviews and promotion packages approved, ready, or blocked?
 - Are benchmark and verifier gates passing?
+- What safe next actions should an operator review before cancelling, retrying, approving, or rolling back AI work?
 
 Future UI work should consume this package before adding a separate schema.
