@@ -2395,6 +2395,37 @@ local function run_compat_structure_apply_tests()
 	assert(missing_rollback_task.last_result.metrics.rollback_failures == 1)
 	assert(structure_writes == writes_before_missing_rollback)
 
+	local missing_policy_origin = vector.add(apply_base, { x = 40, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(missing_policy_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_missing_policy = structure_writes
+	core.ai_import_ops.queue_structure_apply_task({
+		task_id = "compat-structure:missing-rollback-policy",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		placements = structure_placements(missing_policy_origin),
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 1,
+		persist_record = function()
+			error("rollback must not be written when rollback policy is missing")
+		end,
+	})
+	core.step_ai_tasks()
+	local missing_policy_task = core.get_ai_task(
+		"compat-structure:missing-rollback-policy")
+	assert(missing_policy_task.status == "blocked")
+	assert(missing_policy_task.last_result.operation == "ai_import.structure_apply")
+	assert(missing_policy_task.last_result.reason == "rollback_policy_not_mutating")
+	assert(missing_policy_task.last_result.changed == 0)
+	assert(structure_writes == writes_before_missing_policy)
+
 	local missing_cap_origin = vector.add(apply_base, { x = 48, y = 0, z = 0 })
 	for _, placement in ipairs(structure_placements(missing_cap_origin)) do
 		set_test_node(placement.pos, { name = "air" })

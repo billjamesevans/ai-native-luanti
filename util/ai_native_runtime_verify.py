@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
 import ai_native_agent_product_loop_live_probe
+import ai_native_compat_import_staging_pilot
 import ai_native_operator_action_approval_plan
 import ai_native_operator_action_approval_receipt
 import ai_native_operator_task_control_executor
@@ -33,6 +34,7 @@ OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.j
 OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-receipt.json"
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
 AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME = "ai-runtime-agent-product-loop-live-result.json"
+COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME = "ai-runtime-compat-import-staging-pilot-result.json"
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
 OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-task-control-command-result.json"
 PRODUCT_PROFILE_HYGIENE_NAME = "ai-runtime-product-profile-hygiene.json"
@@ -174,6 +176,10 @@ def operator_action_execution_result_artifact_path(args) -> Path:
 
 def agent_product_loop_live_result_artifact_path(args) -> Path:
     return physical_run_dir(args) / AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME
+
+
+def compat_import_staging_pilot_result_artifact_path(args) -> Path:
+    return physical_run_dir(args) / COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME
 
 
 def operator_task_control_live_result_artifact_path(args) -> Path:
@@ -319,6 +325,7 @@ def build_steps(args) -> list[CommandStep]:
         ),
         build_operator_status_step(args),
         build_agent_product_loop_live_step(args),
+        build_compat_import_staging_pilot_step(args),
         build_operator_task_control_live_step(args),
         build_operator_task_control_command_step(args),
         CommandStep(
@@ -474,6 +481,44 @@ def build_agent_product_loop_live_step(args) -> CommandStep:
             str(args.agent_product_loop_live_result_max_bytes),
             "--timeout",
             str(args.agent_product_loop_live_timeout),
+        ),
+    )
+
+
+def build_compat_import_staging_pilot_step(args) -> CommandStep:
+    return CommandStep(
+        "compat_import_staging_pilot",
+        "Public-safe compatibility import pilot in disposable ai_runtime staging world",
+        [
+            args.python,
+            "util/ai_native_compat_import_staging_pilot.py",
+            "--root",
+            ".",
+            "--server-bin",
+            args.server_bin,
+            "--output",
+            str(compat_import_staging_pilot_result_artifact_path(args)),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.compat_import_staging_pilot_result_max_bytes),
+            "--timeout",
+            str(args.compat_import_staging_pilot_timeout),
+        ],
+        python_manifest_command(
+            "util/ai_native_compat_import_staging_pilot.py",
+            "--root",
+            ".",
+            "--server-bin",
+            server_manifest_bin(args.server_bin),
+            "--output",
+            logical_path(args, COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.compat_import_staging_pilot_result_max_bytes),
+            "--timeout",
+            str(args.compat_import_staging_pilot_timeout),
         ),
     )
 
@@ -1220,6 +1265,35 @@ def agent_product_loop_live_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def compat_import_staging_pilot_evidence(args) -> tuple[dict, list[str]]:
+    path = compat_import_staging_pilot_result_artifact_path(args)
+    source_path = logical_path(args, COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME)
+    evidence = {
+        "compat_import_staging_pilot_status": "fail",
+        "compat_import_staging_pilot_path": source_path,
+        "source_kind": "disposable_live_ai_runtime_compat_import_staging_pilot",
+        "direct_command_execution": True,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("compat_import_staging_pilot artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        evidence.update(
+            ai_native_compat_import_staging_pilot.validate_live_result(
+                payload,
+                max_bytes=args.compat_import_staging_pilot_result_max_bytes,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"compat_import_staging_pilot artifact invalid: {type(exc).__name__}")
+    evidence["compat_import_staging_pilot_status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def operator_task_control_command_evidence(args) -> tuple[dict, list[str]]:
     path = operator_task_control_command_result_artifact_path(args)
     source_path = logical_path(args, OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME)
@@ -1314,6 +1388,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME,
             )
+        if step.id == "compat_import_staging_pilot":
+            artifact_paths["compat_import_staging_pilot_result"] = logical_path(
+                args,
+                COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME,
+            )
         if step.id == "operator_task_control_live_probe":
             artifact_paths["operator_task_control_live_result"] = logical_path(
                 args,
@@ -1346,6 +1425,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     if any(step.id == "agent_product_loop_live_probe" for step, _ in command_results):
         agent_product_loop_live, agent_product_loop_failures = agent_product_loop_live_evidence(args)
         failure_reasons.extend(agent_product_loop_failures)
+
+    compat_import_staging_pilot = None
+    if any(step.id == "compat_import_staging_pilot" for step, _ in command_results):
+        compat_import_staging_pilot, compat_import_failures = compat_import_staging_pilot_evidence(args)
+        failure_reasons.extend(compat_import_failures)
 
     operator_task_control_live = None
     if any(step.id == "operator_task_control_live_probe" for step, _ in command_results):
@@ -1383,6 +1467,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "Use the low-power lane only after backup-first readiness is confirmed.",
             "Operator status uses a disposable ai_runtime live command probe by default.",
             "First-party agent product-loop proof uses a disposable ai_runtime world and synthetic public nodes.",
+            "Compatibility import pilot runs public-safe inventory, dry-run, reviewed staging apply, rollback, and refusal gates in a disposable ai_runtime world.",
         ]
         + (
             [
@@ -1400,6 +1485,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         manifest["operator_status_evidence"] = operator_evidence
     if agent_product_loop_live is not None:
         manifest["agent_product_loop_live_evidence"] = agent_product_loop_live
+    if compat_import_staging_pilot is not None:
+        manifest["compat_import_staging_pilot_evidence"] = compat_import_staging_pilot
     if operator_task_control_live is not None:
         manifest["operator_task_control_live_evidence"] = operator_task_control_live
     if operator_task_control_command is not None:
@@ -1584,6 +1671,18 @@ def parse_args(argv=None):
         type=float,
         default=20.0,
         help="Seconds to wait for the disposable first-party agent product-loop live probe.",
+    )
+    parser.add_argument(
+        "--compat-import-staging-pilot-result-max-bytes",
+        type=int,
+        default=30000,
+        help="Maximum byte budget for the compatibility import staging pilot artifact.",
+    )
+    parser.add_argument(
+        "--compat-import-staging-pilot-timeout",
+        type=float,
+        default=20.0,
+        help="Seconds to wait for the disposable compatibility import staging pilot.",
     )
     parser.add_argument(
         "--operator-task-control-live-result-max-bytes",
