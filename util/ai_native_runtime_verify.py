@@ -34,6 +34,7 @@ OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-re
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
 OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json"
 PRODUCT_PROFILE_HYGIENE_NAME = "ai-runtime-product-profile-hygiene.json"
+CLEAN_PROFILE_SUMMARY_NAME = "clean-profile-benchmark-summary.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -147,6 +148,10 @@ def operator_status_artifact_path(args) -> Path:
 
 def product_profile_hygiene_artifact_path(args) -> Path:
     return physical_run_dir(args) / PRODUCT_PROFILE_HYGIENE_NAME
+
+
+def clean_profile_summary_artifact_path(args) -> Path:
+    return physical_run_dir(args) / CLEAN_PROFILE_SUMMARY_NAME
 
 
 def operator_control_report_artifact_path(args) -> Path:
@@ -803,6 +808,225 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def positive_number(value) -> bool:
+    return type(value) in (int, float) and value > 0
+
+
+def nonnegative_number(value) -> bool:
+    return type(value) in (int, float) and value >= 0
+
+
+def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
+    path = clean_profile_summary_artifact_path(args)
+    source_path = logical_path(args, CLEAN_PROFILE_SUMMARY_NAME)
+    evidence = {
+        "status": "fail",
+        "source_path": source_path,
+        "overall_status": None,
+        "game_profile": None,
+        "failure_note_count": None,
+        "private_scan_status": "fail",
+        "server_step_workload_status": "missing",
+        "server_step_workload_kind": None,
+        "server_step_attempted_samples": None,
+        "server_step_completed_samples": None,
+        "server_step_failed_samples": None,
+        "server_step_stayed_listening": False,
+        "player_load_probe_status": "missing",
+        "player_load_probe_kind": None,
+        "headless_player_supported": False,
+        "headless_player_required": args.require_headless_player_probe,
+        "attempted_synthetic_player_count": None,
+        "connected_synthetic_player_count": None,
+        "latency_proxy_supported": False,
+        "map_chunk_workload_status": "missing",
+        "map_chunk_workload_kind": None,
+        "mapblock_rows_created": None,
+        "cpu_status": "missing",
+        "cpu_sample_count": None,
+        "avg_process_cpu_percent": None,
+        "max_interval_cpu_percent": None,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("clean_profile_summary artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+
+    try:
+        raw_payload = path.read_text(encoding="utf-8")
+        payload = json.loads(raw_payload)
+    except (OSError, json.JSONDecodeError) as exc:
+        reasons.append(f"clean_profile_summary artifact unreadable: {type(exc).__name__}")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+
+    private_scan_failed = artifact_has_private_content(raw_payload)
+    if private_scan_failed:
+        reasons.append("clean_profile_summary contains private patterns")
+
+    game_profile = payload.get("game_profile") if isinstance(payload.get("game_profile"), dict) else {}
+    failure_notes = payload.get("failure_notes")
+    if not isinstance(failure_notes, list):
+        failure_notes = []
+        reasons.append("clean_profile_summary failure_notes is not a list")
+    evidence.update({
+        "overall_status": sanitize_text(str(payload.get("overall_status", ""))),
+        "game_profile": sanitize_text(str(game_profile.get("gameid", ""))),
+        "failure_note_count": len(failure_notes),
+        "private_scan_status": "fail" if private_scan_failed else "pass",
+    })
+
+    if payload.get("overall_status") != "pass":
+        reasons.append("clean_profile_summary overall_status is not pass")
+    if game_profile.get("gameid") != "ai_runtime":
+        reasons.append("clean_profile_summary game_profile.gameid is not ai_runtime")
+    if failure_notes:
+        reasons.append("clean_profile_summary failure_notes present")
+
+    run_context = payload.get("run_context") if isinstance(payload.get("run_context"), dict) else {}
+    for flag in (
+        "requires_private_world",
+        "requires_private_assets",
+        "requires_live_pi",
+        "requires_model_network",
+    ):
+        if run_context.get(flag) is True:
+            reasons.append(f"clean_profile_summary {flag} is true")
+
+    comparison_summary = (
+        payload.get("comparison_summary")
+        if isinstance(payload.get("comparison_summary"), dict)
+        else {}
+    )
+    server_step = comparison_summary.get("server_step_workload")
+    if not isinstance(server_step, dict):
+        reasons.append("clean_profile_summary server_step_workload missing")
+    else:
+        attempted = server_step.get("attempted_sample_count")
+        completed = server_step.get("completed_sample_count")
+        failed = server_step.get("failed_sample_count")
+        evidence.update({
+            "server_step_workload_status": sanitize_text(str(server_step.get("workload_status", ""))),
+            "server_step_workload_kind": sanitize_text(str(server_step.get("workload_kind", ""))),
+            "server_step_attempted_samples": attempted,
+            "server_step_completed_samples": completed,
+            "server_step_failed_samples": failed,
+            "server_step_stayed_listening": server_step.get("server_stayed_listening") is True,
+        })
+        if server_step.get("workload_status") != "pass":
+            reasons.append("clean_profile_summary server_step_workload status is not pass")
+        if server_step.get("workload_kind") != "server_step_liveness":
+            reasons.append("clean_profile_summary server_step_workload kind is invalid")
+        if not positive_number(attempted):
+            reasons.append("clean_profile_summary server_step_workload attempted_sample_count must be positive")
+        if not positive_number(completed):
+            reasons.append("clean_profile_summary server_step_workload completed_sample_count must be positive")
+        if failed != 0:
+            reasons.append("clean_profile_summary server_step_workload failed_sample_count must be 0")
+        if server_step.get("server_stayed_listening") is not True:
+            reasons.append("clean_profile_summary server_step_workload server_stayed_listening is not true")
+        if (server_step.get("server_log_error_count") or 0) != 0:
+            reasons.append("clean_profile_summary server_step_workload server_log_error_count must be 0")
+
+    player_probe = comparison_summary.get("player_load_tick_probe")
+    if not isinstance(player_probe, dict):
+        reasons.append("clean_profile_summary player_load_tick_probe missing")
+    else:
+        attempted_players = player_probe.get("attempted_synthetic_player_count")
+        connected_players = player_probe.get("connected_synthetic_player_count")
+        join_latency = (
+            player_probe.get("join_latency_proxy_ms")
+            if isinstance(player_probe.get("join_latency_proxy_ms"), dict)
+            else {}
+        )
+        evidence.update({
+            "player_load_probe_status": sanitize_text(str(player_probe.get("probe_status", ""))),
+            "player_load_probe_kind": sanitize_text(str(player_probe.get("probe_kind", ""))),
+            "headless_player_supported": player_probe.get("headless_player_supported") is True,
+            "attempted_synthetic_player_count": attempted_players,
+            "connected_synthetic_player_count": connected_players,
+            "latency_proxy_supported": player_probe.get("latency_proxy_supported") is True,
+        })
+        if player_probe.get("probe_status") != "pass":
+            reasons.append("clean_profile_summary player_load_tick_probe status is not pass")
+        if player_probe.get("probe_kind") not in {"server_process_liveness", "headless_client_load"}:
+            reasons.append("clean_profile_summary player_load_tick_probe kind is invalid")
+        if player_probe.get("server_stayed_listening") is not True:
+            reasons.append("clean_profile_summary player_load_tick_probe server_stayed_listening is not true")
+        if (player_probe.get("server_log_error_count") or 0) != 0:
+            reasons.append("clean_profile_summary player_load_tick_probe server_log_error_count must be 0")
+        if not positive_number(player_probe.get("sample_count")):
+            reasons.append("clean_profile_summary player_load_tick_probe sample_count must be positive")
+        if args.require_headless_player_probe:
+            if (
+                player_probe.get("probe_kind") != "headless_client_load"
+                or player_probe.get("headless_player_supported") is not True
+            ):
+                reasons.append(
+                    "clean_profile_summary headless player probe required but not measured"
+                )
+            if not positive_number(attempted_players):
+                reasons.append("clean_profile_summary attempted_synthetic_player_count must be positive")
+            if not positive_number(connected_players):
+                reasons.append("clean_profile_summary connected_synthetic_player_count must be positive")
+            if (
+                nonnegative_number(attempted_players)
+                and nonnegative_number(connected_players)
+                and connected_players != attempted_players
+            ):
+                reasons.append("clean_profile_summary connected synthetic players must equal attempted synthetic players")
+            if player_probe.get("latency_proxy_supported") is not True:
+                reasons.append("clean_profile_summary latency_proxy_supported must be true")
+            if player_probe.get("latency_probe_kind") != "headless_join_log_observation":
+                reasons.append("clean_profile_summary latency_probe_kind must be headless_join_log_observation")
+            if not positive_number(join_latency.get("sample_count")):
+                reasons.append("clean_profile_summary join_latency_proxy_ms.sample_count must be positive")
+
+    map_workload = comparison_summary.get("map_chunk_workload")
+    if not isinstance(map_workload, dict):
+        reasons.append("clean_profile_summary map_chunk_workload missing")
+    else:
+        evidence.update({
+            "map_chunk_workload_status": sanitize_text(str(map_workload.get("workload_status", ""))),
+            "map_chunk_workload_kind": sanitize_text(str(map_workload.get("workload_kind", ""))),
+            "mapblock_rows_created": map_workload.get("mapblock_rows_created"),
+        })
+        if map_workload.get("workload_status") != "pass":
+            reasons.append("clean_profile_summary map_chunk_workload status is not pass")
+        if map_workload.get("workload_kind") != "synthetic_sqlite_mapblock_churn":
+            reasons.append("clean_profile_summary map_chunk_workload kind is invalid")
+        if not positive_number(map_workload.get("mapblock_rows_created")):
+            reasons.append("clean_profile_summary mapblock_rows_created must be positive")
+        if (map_workload.get("warning_count") or 0) != 0:
+            reasons.append("clean_profile_summary map_chunk_workload warning_count must be 0")
+        if (map_workload.get("error_count") or 0) != 0:
+            reasons.append("clean_profile_summary map_chunk_workload error_count must be 0")
+
+    cpu = comparison_summary.get("cpu")
+    if not isinstance(cpu, dict):
+        reasons.append("clean_profile_summary cpu missing")
+    else:
+        evidence.update({
+            "cpu_status": sanitize_text(str(cpu.get("sample_status", ""))),
+            "cpu_sample_count": cpu.get("cpu_sample_count"),
+            "avg_process_cpu_percent": cpu.get("avg_process_cpu_percent"),
+            "max_interval_cpu_percent": cpu.get("max_interval_cpu_percent"),
+        })
+        if cpu.get("sample_status") != "measured":
+            reasons.append("clean_profile_summary cpu sample_status is not measured")
+        if not positive_number(cpu.get("cpu_sample_count")) or cpu.get("cpu_sample_count") < 2:
+            reasons.append("clean_profile_summary cpu_sample_count must be at least 2")
+        if cpu.get("avg_process_cpu_percent") is None:
+            reasons.append("clean_profile_summary avg_process_cpu_percent is required")
+        if cpu.get("max_interval_cpu_percent") is None:
+            reasons.append("clean_profile_summary max_interval_cpu_percent is required")
+
+    evidence["status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def operator_task_control_live_evidence(args) -> tuple[dict, list[str]]:
     path = operator_task_control_live_result_artifact_path(args)
     source_path = logical_path(args, OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME)
@@ -937,6 +1161,13 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         product_profile, product_profile_failures = product_profile_evidence(args)
         failure_reasons.extend(product_profile_failures)
 
+    clean_profile = None
+    if args.game_profile == "ai_runtime" and any(
+        step.id == "branch_benchmark_gate" for step, _ in command_results
+    ):
+        clean_profile, clean_profile_failures = clean_profile_workload_evidence(args)
+        failure_reasons.extend(clean_profile_failures)
+
     operator_evidence = None
     if operator_status_step_ran:
         operator_evidence, operator_failures = operator_status_evidence(args)
@@ -988,6 +1219,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     }
     if product_profile is not None:
         manifest["product_profile_evidence"] = product_profile
+    if clean_profile is not None:
+        manifest["clean_profile_evidence"] = clean_profile
     if operator_evidence is not None:
         manifest["operator_status_evidence"] = operator_evidence
     if operator_task_control_live is not None:
@@ -1083,6 +1316,14 @@ def parse_args(argv=None):
         type=float,
         default=2.0,
         help="Seconds to wait while cleaning up each synthetic player process.",
+    )
+    parser.add_argument(
+        "--require-headless-player-probe",
+        action="store_true",
+        help=(
+            "Fail clean-profile verification unless the benchmark summary contains "
+            "a measured headless-client load probe with join-latency evidence."
+        ),
     )
     parser.add_argument(
         "--python",
