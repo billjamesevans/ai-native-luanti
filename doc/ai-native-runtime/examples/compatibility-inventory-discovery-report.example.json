@@ -6,6 +6,7 @@
       "bedrock_resource_pack",
       "bedrock_behavior_pack",
       "luanti_mod",
+      "schematic",
       "structure",
       "world"
     ],
@@ -49,6 +50,12 @@
         "partial": 0,
         "skipped": 0,
         "supported": 1,
+        "unsupported": 0
+      },
+      "dry_run_classification_counts": {
+        "blocked": 1,
+        "mapped": 2,
+        "skipped": 0,
         "unsupported": 0
       },
       "inventory_count": 2,
@@ -104,6 +111,12 @@
         "supported": 1,
         "unsupported": 1
       },
+      "dry_run_classification_counts": {
+        "blocked": 1,
+        "mapped": 2,
+        "skipped": 0,
+        "unsupported": 1
+      },
       "inventory_count": 3,
       "license_status": "user_supplied",
       "path_policy": "external_reference",
@@ -155,6 +168,12 @@
         "partial": 0,
         "skipped": 0,
         "supported": 2,
+        "unsupported": 0
+      },
+      "dry_run_classification_counts": {
+        "blocked": 0,
+        "mapped": 2,
+        "skipped": 1,
         "unsupported": 0
       },
       "inventory_count": 2,
@@ -210,6 +229,12 @@
         "supported": 0,
         "unsupported": 0
       },
+      "dry_run_classification_counts": {
+        "blocked": 1,
+        "mapped": 1,
+        "skipped": 1,
+        "unsupported": 0
+      },
       "inventory_count": 1,
       "license_status": "user_supplied",
       "path_policy": "external_reference",
@@ -252,7 +277,7 @@
         "supported": 0,
         "unsupported": 0
       },
-      "source_class": "structure",
+      "source_class": "schematic",
       "source_id": "open_platform.ai-schematic-preflight.json",
       "status": "partial",
       "unsupported_feature_count": 2
@@ -270,6 +295,12 @@
         "partial": 0,
         "skipped": 0,
         "supported": 0,
+        "unsupported": 0
+      },
+      "dry_run_classification_counts": {
+        "blocked": 1,
+        "mapped": 0,
+        "skipped": 1,
         "unsupported": 0
       },
       "inventory_count": 1,
@@ -318,10 +349,16 @@
       "bedrock_resource_pack": 1,
       "java_resource_pack": 1,
       "luanti_mod": 1,
-      "structure": 1,
+      "schematic": 1,
       "world": 1
     },
     "compatibility_import_inventory_ready": true,
+    "dry_run_classification_counts": {
+      "blocked": 4,
+      "mapped": 7,
+      "skipped": 3,
+      "unsupported": 1
+    },
     "inventory_classification_counts": {
       "blocked": 4,
       "partial": 0,
