@@ -65,9 +65,15 @@ Implemented deterministic commands:
 - `status`: returns current state and runtime metrics.
 - `guide`, `help`: returns the available builder, repair, guide, defender, and `importer` surfaces plus current task records.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
+- `task <task_id>`, `task status <task_id>`: returns one remembered
+  player-owned plugin task by id without exposing unrelated runtime tasks.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
-- `approve`, `approve build`, `approve repair`: queues the latest pending
-  build or repair plan after the player has seen the preview.
+- `cancel <task_id>`, `stop <task_id>`: cancels one remembered player-owned
+  plugin task and reports before/after status.
+- `approve`, `approve build`, `approve repair`, `approve <approval_id>`:
+  queues the latest pending build or repair plan after the player has seen the
+  preview. Approval ids are emitted by the preview/chat response so players can
+  approve the exact pending plan they reviewed.
 - `follow`, `follow me`, `follow N`: queues bounded continuous follow steps for the player's helper entity. Each task runs a finite number of server-step slices, recalculates the player's current position per slice, and moves through `core.ai_entity_ops.move` with per-step and total-distance budgets.
 - `come`, `come here`: queues bounded movement for the player's helper entity to the requested target position.
 - `light`, `place N lights`: queues a rollback-backed `build_agent` lights task.
@@ -93,6 +99,12 @@ candidate counts, cancellation counts, audit counts, rollback counts, and gated
 surface reasons. The structured Lua result remains available to tests and
 operator tooling, but the registered chat command must not hide those details
 behind a generic success string.
+
+Targeted task and approval commands are deliberately scoped to remembered
+player-owned plugin tasks and the current player's pending approval. They do not
+provide a general runtime task browser, do not bypass `core.cancel_ai_task`
+owner checks, and do not approve mutation without the same rollback-backed build
+or repair task path.
 
 Unknown prompts go to the configured model adapter. The adapter boundary is explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
 
