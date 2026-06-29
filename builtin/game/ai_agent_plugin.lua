@@ -76,7 +76,17 @@ local PRODUCT_SURFACES = {
 		default_clean_profile_grant = "granted",
 		required_capabilities = { "world.read" },
 		optional_capabilities = { "task.cancel", "http.llm" },
-		commands = { "guide", "tasks", "pending plan", "discard plan", "cancel", "audit", "rollback" },
+		commands = {
+			"guide",
+			"tasks",
+			"pending plan",
+			"discard plan",
+			"cancel",
+			"audit",
+			"audit <task_id>",
+			"rollback",
+			"rollback <task_id|rollback_id>",
+		},
 		runtime_entrypoints = {
 			"core.get_ai_task",
 			"core.get_ai_runtime_audit",
@@ -490,6 +500,12 @@ local function format_command_reply(result)
 			append(lines, "candidates=" .. tostring(result.candidate_count))
 		end
 	elseif result.action == "audit" then
+		if result.target_kind then
+			append(lines, "target_kind=" .. tostring(result.target_kind))
+		end
+		if result.target_id then
+			append(lines, "target_id=" .. tostring(result.target_id))
+		end
 		append(lines, "audit_events=" .. tostring(#(result.audit_events or {})))
 		local summaries = {}
 		for _, record in ipairs(result.audit_events or {}) do
@@ -500,7 +516,16 @@ local function format_command_reply(result)
 			append(lines, "recent=" .. join_limited(summaries, 5))
 		end
 	elseif result.action == "rollback" then
+		if result.target_kind then
+			append(lines, "target_kind=" .. tostring(result.target_kind))
+		end
+		if result.target_id then
+			append(lines, "target_id=" .. tostring(result.target_id))
+		end
 		append(lines, "rollback_records=" .. tostring(#(result.rollback_records or {})))
+		if result.no_rollback_execution then
+			append(lines, "no_rollback_execution=true")
+		end
 		local summaries = {}
 		for _, record in ipairs(result.rollback_records or {}) do
 			append(summaries, tostring(record.rollback_record_id or "rollback"))
@@ -2109,7 +2134,21 @@ local function compact_audit_record(record)
 	}
 end
 
-local function audit_events_for(name, limit)
+local function audit_record_matches_filter(record, filter)
+	if type(filter) ~= "table" then
+		return true
+	end
+	if filter.task_id and record.task_id ~= filter.task_id then
+		return false
+	end
+	if filter.rollback_record_id
+			and record.rollback_record_id ~= filter.rollback_record_id then
+		return false
+	end
+	return true
+end
+
+local function audit_events_for(name, limit, filter)
 	local agent_ids = {
 		[agent_id_for(name)] = true,
 	}
@@ -2118,11 +2157,21 @@ local function audit_events_for(name, limit)
 	end
 	local events = {}
 	for _, record in ipairs(core.get_ai_runtime_audit({ limit = limit or 25 })) do
-		if agent_ids[record.agent_id] then
+		if agent_ids[record.agent_id] and audit_record_matches_filter(record, filter) then
 			events[#events + 1] = compact_audit_record(record)
 		end
 	end
 	return events
+end
+
+local function rollback_records_for(name, limit, filter)
+	local records = {}
+	for _, record in ipairs(audit_events_for(name, limit, filter)) do
+		if record.event_type == "rollback.record" and record.rollback_record_id then
+			records[#records + 1] = record
+		end
+	end
+	return records
 end
 
 local function handle_guide(name)
@@ -2180,7 +2229,9 @@ local function handle_guide(name)
 			"defend",
 			"import plan",
 			"audit",
+			"audit <task_id>",
 			"rollback",
+			"rollback <task_id|rollback_id>",
 		},
 		navigation_contract = plugin.get_navigation_contract(),
 		tasks = active_player_tasks(name),
@@ -2188,25 +2239,74 @@ local function handle_guide(name)
 	})
 end
 
-local function handle_audit(name)
+local function handle_audit(name, requested_task_id)
 	plugin.ensure_surface_agent(name, "guide")
+	local filter
+	local target_kind
+	local target_id
+	if requested_task_id then
+		local task, canonical_task_id = player_task_by_id(name, requested_task_id)
+		if not task then
+			return public_reply(name, "audit", "blocked",
+				"Requested task was not found for this player.", {
+					surface_id = "guide",
+					reason = "task_not_found_or_not_owned",
+					task_id = canonical_task_id,
+					target_kind = "task",
+					target_id = canonical_task_id,
+					audit_events = {},
+				})
+		end
+		filter = { task_id = task.task_id }
+		target_kind = "task"
+		target_id = task.task_id
+	end
 	return public_reply(name, "audit", "success", "Recent agent audit events returned.", {
 		surface_id = "guide",
-		audit_events = audit_events_for(name, 50),
+		task_id = target_kind == "task" and target_id or nil,
+		target_kind = target_kind,
+		target_id = target_id,
+		audit_events = audit_events_for(name, 50, filter),
 	})
 end
 
-local function handle_rollback_review(name)
+local function handle_rollback_review(name, requested_token)
 	plugin.ensure_surface_agent(name, "guide")
-	local records = {}
-	for _, record in ipairs(audit_events_for(name, 100)) do
-		if record.event_type == "rollback.record" and record.rollback_record_id then
-			records[#records + 1] = record
+	local filter
+	local target_kind
+	local target_id
+	local reason_if_empty = "rollback_record_not_found_or_not_owned"
+	if requested_token then
+		local task = player_task_by_id(name, requested_token)
+		if task then
+			filter = { task_id = task.task_id }
+			target_kind = "task"
+			target_id = task.task_id
+			reason_if_empty = "task_has_no_rollback_records"
+		else
+			filter = { rollback_record_id = requested_token }
+			target_kind = "rollback"
+			target_id = requested_token
 		end
+	end
+	local records = rollback_records_for(name, 100, filter)
+	if requested_token and #records == 0 then
+		return public_reply(name, "rollback", "blocked",
+			"Requested rollback record was not found for this player.", {
+				surface_id = "guide",
+				reason = reason_if_empty,
+				target_kind = target_kind,
+				target_id = target_id,
+				rollback_records = {},
+				no_rollback_execution = true,
+			})
 	end
 	return public_reply(name, "rollback", "success", "Recent rollback records returned.", {
 		surface_id = "guide",
+		target_kind = target_kind,
+		target_id = target_id,
 		rollback_records = records,
+		no_rollback_execution = true,
 	})
 end
 
@@ -2456,8 +2556,19 @@ function plugin.handle_command(name, param, context)
 	if prompt == "guide" or prompt == "help" then
 		return handle_guide(name)
 	end
+	local requested_audit_task_id = raw_prompt:match("^[Aa][Uu][Dd][Ii][Tt]%s+(.+)$")
+		or raw_prompt:match("^[Hh][Ii][Ss][Tt][Oo][Rr][Yy]%s+(.+)$")
+	if requested_audit_task_id then
+		return handle_audit(name, requested_audit_task_id:trim())
+	end
 	if prompt == "audit" or prompt == "history" then
 		return handle_audit(name)
+	end
+	local requested_rollback_token =
+		raw_prompt:match("^[Rr][Oo][Ll][Ll][Bb][Aa][Cc][Kk]%s+[Rr][Ee][Vv][Ii][Ee][Ww]%s+(.+)$")
+		or raw_prompt:match("^[Rr][Oo][Ll][Ll][Bb][Aa][Cc][Kk]%s+(.+)$")
+	if requested_rollback_token then
+		return handle_rollback_review(name, requested_rollback_token:trim())
 	end
 	if prompt == "rollback" or prompt == "rollback review" then
 		return handle_rollback_review(name)
