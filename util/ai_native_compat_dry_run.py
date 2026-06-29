@@ -47,6 +47,8 @@ MUTATION_COST_REQUIRED = (
 )
 STRUCTURE_BYTES_PER_NODE_ESTIMATE = 64
 MAPBLOCK_NODE_VOLUME = 16 * 16 * 16
+SYNTHETIC_STRUCTURE_FIXTURE_KIND = "ai_native_synthetic_structure"
+SYNTHETIC_STRUCTURE_ADAPTER_KIND = "synthetic_structure_v1"
 SECTION_REQUIRED = ("name", "items_total", "status", "message")
 UNSUPPORTED_FEATURE_REQUIRED = (
     "feature",
@@ -97,8 +99,8 @@ APPLY_BUDGET_REQUIRED = (
     "max_wall_time_ms",
 )
 ROLLBACK_POLICY_REQUIRED = ("policy", "metadata_required")
-ROLLBACK_POLICIES = ("snapshot", "manifest_only", "no_world_mutation")
-WORLD_MUTATING_ROLLBACK_POLICIES = ("snapshot", "manifest_only")
+ROLLBACK_POLICIES = ("snapshot", "manifest_only", "chunked", "no_world_mutation")
+WORLD_MUTATING_ROLLBACK_POLICIES = ("snapshot", "manifest_only", "chunked")
 APPLY_SUMMARY_REQUIRED = (
     "summary_version",
     "apply_id",
@@ -221,6 +223,120 @@ def _read_entry_text(source, filename):
             return handle.read().decode("utf-8")
 
 
+def _mapblock_key(pos):
+    return (
+        math.floor(pos["x"] / 16),
+        math.floor(pos["y"] / 16),
+        math.floor(pos["z"] / 16),
+    )
+
+
+def _mapblock_churn_from_positions(placements):
+    return len({_mapblock_key(placement["pos"]) for placement in placements})
+
+
+def _check_int(value, field):
+    if not isinstance(value, int):
+        raise ValueError(f"{field} must be an integer")
+    return value
+
+
+def _normalize_structure_pos(value, field):
+    if not isinstance(value, dict):
+        raise ValueError(f"{field} must be an object")
+    return {
+        "x": _check_int(value.get("x"), f"{field}.x"),
+        "y": _check_int(value.get("y"), f"{field}.y"),
+        "z": _check_int(value.get("z"), f"{field}.z"),
+    }
+
+
+def _normalize_synthetic_structure_fixture(raw, source):
+    if raw.get("fixture_kind") != SYNTHETIC_STRUCTURE_FIXTURE_KIND:
+        return None
+    if raw.get("fixture_version") != 1:
+        raise ValueError("fixture_version must be 1")
+    placements = raw.get("placements")
+    if not isinstance(placements, list) or not placements:
+        raise ValueError("placements must be a non-empty array")
+
+    palette = raw.get("palette", {})
+    if not isinstance(palette, dict):
+        raise ValueError("palette must be an object")
+    normalized_palette = {
+        str(alias): str(node_name)
+        for alias, node_name in palette.items()
+    }
+
+    normalized_placements = []
+    for index, placement in enumerate(placements):
+        if not isinstance(placement, dict):
+            raise ValueError(f"placements[{index}] must be an object")
+        node_ref = placement.get("node") or placement.get("node_name")
+        if not isinstance(node_ref, str) or not node_ref:
+            raise ValueError(f"placements[{index}].node must be a non-empty string")
+        node_name = normalized_palette.get(node_ref, node_ref)
+        if ":" not in node_name and node_name != "air":
+            raise ValueError(
+                f"placements[{index}].node must resolve to a namespaced node or air"
+            )
+        normalized = {
+            "pos": _normalize_structure_pos(placement.get("pos"), f"placements[{index}].pos"),
+            "node_name": node_name,
+        }
+        if "param1" in placement:
+            normalized["param1"] = _check_int(placement["param1"], f"placements[{index}].param1")
+        if "param2" in placement:
+            normalized["param2"] = _check_int(placement["param2"], f"placements[{index}].param2")
+        normalized_placements.append(normalized)
+
+    unsupported_fields = raw.get("unsupported_fields", [])
+    if not isinstance(unsupported_fields, list):
+        raise ValueError("unsupported_fields must be an array")
+    normalized_unsupported = []
+    for index, item in enumerate(unsupported_fields):
+        if not isinstance(item, dict):
+            raise ValueError(f"unsupported_fields[{index}] must be an object")
+        field = item.get("field")
+        if not isinstance(field, str) or not field:
+            raise ValueError(f"unsupported_fields[{index}].field must be a non-empty string")
+        normalized_unsupported.append({
+            "field": field,
+            "reason": str(item.get("reason") or "requires_manual_review"),
+            "message": str(item.get("message") or f"{field} requires manual review."),
+            "recommendation": str(item.get("recommendation")
+                or "Keep the field out of staged apply until an adapter supports it."),
+        })
+
+    chunk_size = raw.get("recommended_chunk_size", 2)
+    chunk_size = _check_int(chunk_size, "recommended_chunk_size")
+    if chunk_size <= 0:
+        raise ValueError("recommended_chunk_size must be positive")
+
+    return {
+        "adapter_kind": SYNTHETIC_STRUCTURE_ADAPTER_KIND,
+        "fixture_name": str(raw.get("name") or source.stem),
+        "fixture_version": 1,
+        "synthetic": True,
+        "palette": normalized_palette,
+        "placements": normalized_placements,
+        "recommended_chunk_size": chunk_size,
+        "unsupported_fields": normalized_unsupported,
+    }
+
+
+def _load_synthetic_structure_fixture(source):
+    if not source.is_file() or source.suffix.lower() != ".json":
+        return None
+    try:
+        raw = _read_json(source)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    return _normalize_synthetic_structure_fixture(raw, source)
+
+
 def _parse_luanti_mod_conf(text):
     metadata = {}
     for line in text.splitlines():
@@ -232,7 +348,17 @@ def _parse_luanti_mod_conf(text):
     return metadata
 
 
-def _metadata_for(source, entries):
+def _metadata_for(source, entries, synthetic_structure=None):
+    if synthetic_structure:
+        return "structure", {
+            "adapter_kind": synthetic_structure["adapter_kind"],
+            "fixture_name": synthetic_structure["fixture_name"],
+            "fixture_version": synthetic_structure["fixture_version"],
+            "placement_count": len(synthetic_structure["placements"]),
+            "palette_count": len(synthetic_structure["palette"]),
+            "unsupported_field_count": len(synthetic_structure["unsupported_fields"]),
+        }
+
     names = {entry["path"] for entry in entries}
     if source.is_dir() and (source / "pack.mcmeta").is_file():
         metadata = _read_json(source / "pack.mcmeta").get("pack", {})
@@ -295,7 +421,7 @@ def _inventory_hash(entries):
     return digest.hexdigest()
 
 
-def _category_counts(entries):
+def _category_counts(entries, synthetic_structure=None):
     counts = {
         "metadata": 0,
         "textures": 0,
@@ -326,10 +452,15 @@ def _category_counts(entries):
             counts["structures"] += 1
         if path.endswith("level.dat") or suffix == ".mcworld":
             counts["world"] += 1
+    if synthetic_structure:
+        counts["metadata"] = 0
+        counts["structures"] = max(1, counts["structures"])
     return counts
 
 
-def _source_kind(entry):
+def _source_kind(entry, synthetic_structure=None):
+    if synthetic_structure:
+        return "structure"
     path = entry["path"].lower()
     suffix = pathlib.PurePosixPath(path).suffix
     wrapped = f"/{path}"
@@ -370,11 +501,14 @@ def _inventory_classification(source_kind, source_class):
     return "unknown", "unclassified_entry"
 
 
-def _source_inventory(entries, source_class):
+def _source_inventory(entries, source_class, synthetic_structure=None):
     inventory = []
     for index, entry in enumerate(entries):
-        source_kind = _source_kind(entry)
+        source_kind = _source_kind(entry, synthetic_structure)
         classification, reason = _inventory_classification(source_kind, source_class)
+        if synthetic_structure and source_kind == "structure":
+            classification = "blocked"
+            reason = "synthetic_structure_adapter_review_required"
         inventory.append({
             "entry_id": f"entry:{index + 1}",
             "source_path": entry["path"],
@@ -462,7 +596,7 @@ def _section_message(name, status):
     return "Items were detected but need importer support."
 
 
-def _unsupported_features(entries, source_class):
+def _unsupported_features(entries, source_class, synthetic_structure=None):
     features = []
     for entry in entries:
         path = entry["path"]
@@ -508,6 +642,17 @@ def _unsupported_features(entries, source_class):
             "message": "The source format could not be classified safely.",
             "recommendation": "Provide a Java pack.mcmeta, Bedrock manifest.json, or known structure file.",
         })
+    if synthetic_structure:
+        for item in synthetic_structure["unsupported_fields"]:
+            features.append({
+                "feature": f"structure.{item['field']}",
+                "source_path": f"{synthetic_structure['fixture_name']}#{item['field']}",
+                "status": "unsupported",
+                "reason": "requires_manual_review",
+                "severity": "warning",
+                "message": item["message"],
+                "recommendation": item["recommendation"],
+            })
     return features
 
 
@@ -525,7 +670,27 @@ def _mutation_cost(counts, unsupported_count):
     }
 
 
-def _structure_cost(entries):
+def _structure_cost(entries, synthetic_structure=None):
+    if synthetic_structure:
+        placements = synthetic_structure["placements"]
+        node_writes = len(placements)
+        mapblock_churn = _mapblock_churn_from_positions(placements)
+        return {
+            "structure_files": 1,
+            "node_writes": node_writes,
+            "mapblock_churn": mapblock_churn,
+            "manual_review_items": 2,
+            "calibration": {
+                "strategy": "synthetic_structure_adapter",
+                "adapter_kind": synthetic_structure["adapter_kind"],
+                "recommended_chunk_size": synthetic_structure["recommended_chunk_size"],
+                "notes": [
+                    "Synthetic fixture placements are parsed as metadata for review.",
+                    "Dry-run does not queue tasks or mutate a world.",
+                ],
+            },
+        }
+
     structure_entries = [
         entry for entry in entries
         if pathlib.PurePosixPath(entry["path"].lower()).suffix
@@ -563,7 +728,25 @@ def _structure_cost_from_counts(counts):
     }
 
 
-def _planned_actions(counts, unsupported_features, structure_cost):
+def _structure_adapter_payload(synthetic_structure, structure_cost):
+    if not synthetic_structure:
+        return None
+    placement_count = len(synthetic_structure["placements"])
+    chunk_size = min(synthetic_structure["recommended_chunk_size"], placement_count)
+    return {
+        "adapter_kind": synthetic_structure["adapter_kind"],
+        "fixture_name": synthetic_structure["fixture_name"],
+        "synthetic": True,
+        "placement_count": placement_count,
+        "mapblock_churn": structure_cost["mapblock_churn"],
+        "recommended_chunk_size": chunk_size,
+        "recommended_chunk_count": math.ceil(placement_count / chunk_size),
+        "placements": synthetic_structure["placements"],
+        "unsupported_field_count": len(synthetic_structure["unsupported_fields"]),
+    }
+
+
+def _planned_actions(counts, unsupported_features, structure_cost, synthetic_structure=None):
     actions = []
     if counts["textures"]:
         actions.append(_action("map_texture", "partial", "Map user-owned texture references after rights are confirmed.", counts, 0))
@@ -581,6 +764,7 @@ def _planned_actions(counts, unsupported_features, structure_cost):
             counts,
             structure_cost["manual_review_items"],
             structure_cost,
+            _structure_adapter_payload(synthetic_structure, structure_cost),
         ))
     if unsupported_features:
         actions.append(_action("skip_feature", "skipped", "Record unsupported features without importing them.", counts, len(unsupported_features)))
@@ -589,12 +773,13 @@ def _planned_actions(counts, unsupported_features, structure_cost):
     return actions
 
 
-def _action(action, status, description, counts, manual_review_items, structure_cost=None):
+def _action(action, status, description, counts, manual_review_items,
+            structure_cost=None, structure_adapter=None):
     structure_cost = structure_cost or {
         "node_writes": 0,
         "mapblock_churn": 0,
     }
-    return {
+    payload = {
         "action": action,
         "status": status,
         "description": description,
@@ -607,6 +792,9 @@ def _action(action, status, description, counts, manual_review_items, structure_
             "manual_review_items": manual_review_items,
         },
     }
+    if action == "import_structure" and structure_adapter:
+        payload["structure_adapter"] = structure_adapter
+    return payload
 
 
 def _risk_level(source_class, counts, unsupported_count):
@@ -617,17 +805,17 @@ def _risk_level(source_class, counts, unsupported_count):
     return "low"
 
 
-def build_report(source):
+def _build_report(source, synthetic_structure=None):
     source = pathlib.Path(source)
     if not source.exists():
         raise FileNotFoundError(source)
 
     entries = _entries_for(source)
-    source_class, metadata = _metadata_for(source, entries)
-    inventory = _source_inventory(entries, source_class)
-    counts = _category_counts(entries)
-    structure_cost = _structure_cost(entries)
-    unsupported_features = _unsupported_features(entries, source_class)
+    source_class, metadata = _metadata_for(source, entries, synthetic_structure)
+    inventory = _source_inventory(entries, source_class, synthetic_structure)
+    counts = _category_counts(entries, synthetic_structure)
+    structure_cost = _structure_cost(entries, synthetic_structure)
+    unsupported_features = _unsupported_features(entries, source_class, synthetic_structure)
     unsupported_count = len(unsupported_features)
     partial_count = sum(1 for value in counts.values() if value > 0) - (1 if counts["metadata"] else 0)
     supported_count = 1 if counts["metadata"] else 0
@@ -640,8 +828,8 @@ def build_report(source):
         "source": {
             "source_id": source.name,
             "source_class": source_class,
-            "path_policy": "external_reference",
-            "license_status": "user_supplied",
+            "path_policy": "synthetic_fixture" if synthetic_structure else "external_reference",
+            "license_status": "synthetic" if synthetic_structure else "user_supplied",
             "metadata": metadata,
             "inventory": inventory,
             "content_hashes": [{
@@ -672,7 +860,12 @@ def build_report(source):
         },
         "sections": _sections(counts, unsupported_features, structure_cost),
         "unsupported_features": unsupported_features,
-        "planned_actions": _planned_actions(counts, unsupported_features, structure_cost),
+        "planned_actions": _planned_actions(
+            counts,
+            unsupported_features,
+            structure_cost,
+            synthetic_structure,
+        ),
         "safety": {
             "no_assets_copied": True,
             "no_world_mutation": True,
@@ -684,6 +877,21 @@ def build_report(source):
             ],
         },
     }
+
+
+def build_structure_adapter_report(source):
+    """Build a dry-run report for a public-safe synthetic structure fixture."""
+    source = pathlib.Path(source)
+    synthetic_structure = _load_synthetic_structure_fixture(source)
+    if not synthetic_structure:
+        raise ValueError("source is not a supported synthetic structure fixture")
+    return _build_report(source, synthetic_structure)
+
+
+def build_report(source):
+    source = pathlib.Path(source)
+    synthetic_structure = _load_synthetic_structure_fixture(source)
+    return _build_report(source, synthetic_structure)
 
 
 def _require_mapping(errors, value, path):
@@ -710,6 +918,34 @@ def _require_keys(errors, mapping, path, keys):
 
 def _validate_mutation_cost(errors, value, path):
     _require_keys(errors, value, path, MUTATION_COST_REQUIRED)
+
+
+def _validate_structure_adapter(errors, value, path):
+    required = (
+        "adapter_kind",
+        "fixture_name",
+        "synthetic",
+        "placement_count",
+        "mapblock_churn",
+        "recommended_chunk_size",
+        "recommended_chunk_count",
+        "placements",
+    )
+    _require_keys(errors, value, path, required)
+    if not isinstance(value, dict):
+        return
+    if value.get("adapter_kind") != SYNTHETIC_STRUCTURE_ADAPTER_KIND:
+        errors.append(f"{path}.adapter_kind must be {SYNTHETIC_STRUCTURE_ADAPTER_KIND}")
+    if value.get("synthetic") is not True:
+        errors.append(f"{path}.synthetic must be true")
+    placements = value.get("placements")
+    if _require_sequence(errors, placements, f"{path}.placements"):
+        if len(placements) != value.get("placement_count"):
+            errors.append(f"{path}.placement_count must match placements length")
+        for index, placement in enumerate(placements):
+            _require_keys(errors, placement, f"{path}.placements[{index}]", ("pos", "node_name"))
+            if isinstance(placement, dict):
+                _require_keys(errors, placement.get("pos"), f"{path}.placements[{index}].pos", ("x", "y", "z"))
 
 
 def validate_report(report, expected_unsupported_features=None):
@@ -765,6 +1001,12 @@ def validate_report(report, expected_unsupported_features=None):
             _require_keys(errors, action, f"planned_actions[{index}]", PLANNED_ACTION_REQUIRED)
             if isinstance(action, dict):
                 _validate_mutation_cost(errors, action.get("mutation_cost"), f"planned_actions[{index}].mutation_cost")
+                if "structure_adapter" in action:
+                    _validate_structure_adapter(
+                        errors,
+                        action.get("structure_adapter"),
+                        f"planned_actions[{index}].structure_adapter",
+                    )
 
     safety = report.get("safety")
     _require_keys(errors, safety, "safety", SAFETY_REQUIRED_TRUE)
@@ -815,7 +1057,7 @@ def validate_apply_request(request):
             errors.append("rollback_policy.metadata_required must be true")
         if rollback_policy.get("policy") not in ROLLBACK_POLICIES:
             errors.append(
-                "rollback_policy.policy must be snapshot, manifest_only, or no_world_mutation"
+                "rollback_policy.policy must be snapshot, manifest_only, chunked, or no_world_mutation"
             )
 
     return errors
@@ -945,10 +1187,16 @@ def _enforce_runtime_handoff_gates(report, request, approved_actions):
             raise ValueError("target_world.staging must be true for import_structure prototype")
         if rollback_policy not in WORLD_MUTATING_ROLLBACK_POLICIES:
             raise ValueError(
-                "rollback_policy.policy must be manifest_only or snapshot for import_structure"
+                "rollback_policy.policy must be manifest_only, snapshot, or chunked for import_structure"
             )
         if report.get("source", {}).get("source_class") not in {"structure", "world"}:
             raise ValueError("import_structure requires a structure or world dry-run source")
+        adapter = planned.get("structure_adapter")
+        if adapter:
+            if adapter.get("synthetic") is not True:
+                raise ValueError("structure_adapter.synthetic must be true")
+            if adapter.get("placement_count") != cost["node_writes"]:
+                raise ValueError("structure_adapter placement_count must match node writes")
 
 
 def _validated_approved_actions(report, request):
@@ -978,6 +1226,46 @@ def _validated_approved_actions(report, request):
     return approved_actions
 
 
+def _structure_runtime_entrypoint(planned, request):
+    if planned["action"] != "import_structure":
+        return None
+    cost = _calibrated_action_cost(planned)
+    if (
+        request["rollback_policy"]["policy"] == "chunked"
+        or cost["node_writes"] > request["budget"]["max_node_writes_per_step"]
+    ):
+        return "core.ai_import_ops.define_chunked_structure_apply_task"
+    return "core.ai_import_ops.define_structure_apply_task"
+
+
+def _structure_staged_apply_handoff(planned, request, runtime_entrypoint):
+    adapter = planned.get("structure_adapter")
+    if not adapter:
+        return None
+    placement_count = adapter["placement_count"]
+    chunk_size = min(
+        adapter["recommended_chunk_size"],
+        max(1, request["budget"]["max_node_writes_per_step"]),
+    )
+    return {
+        "status": "review_required",
+        "task_constructor": runtime_entrypoint,
+        "rollback_plan_entrypoint": "core.ai_import_ops.plan_structure_rollback",
+        "rollback_execute_entrypoint": "core.ai_import_ops.queue_chunked_structure_rollback_task",
+        "placements": adapter["placements"],
+        "placement_count": placement_count,
+        "chunk_size": chunk_size,
+        "chunk_count": math.ceil(placement_count / chunk_size),
+        "target_world": {
+            "world_id": request["target_world"]["world_id"],
+            "staging": request["target_world"]["staging"],
+        },
+        "rollback_policy": request["rollback_policy"]["policy"],
+        "requires_explicit_approval": True,
+        "allow_mutation": False,
+    }
+
+
 def build_apply_task_definitions(report, request):
     """Map approved compatibility actions to inert AI task definition records."""
     task_definitions = []
@@ -990,7 +1278,20 @@ def build_apply_task_definitions(report, request):
             *planned.get("required_capabilities", []),
             *mapping.get("extra_capabilities", ()),
         })
-        task_definitions.append({
+        runtime_entrypoint = _structure_runtime_entrypoint(planned, request)
+        runtime_handoff = {
+            "status": "staged_executor_available"
+                if planned["action"] == "import_structure" else "staging_noop",
+            "operation": mapping["label"],
+            "mutation_enabled": False,
+            "requires_capabilities": required_capabilities,
+            "runtime_entrypoint": runtime_entrypoint,
+            "rollback_plan_entrypoint": "core.ai_import_ops.plan_structure_rollback"
+                if planned["action"] == "import_structure" else None,
+            "rollback_execute_entrypoint": "core.ai_import_ops.queue_chunked_structure_rollback_task"
+                if planned["action"] == "import_structure" else None,
+        }
+        definition = {
             "task_id": f"compat:{request['report_id']}:{action_index}",
             "agent_id": request["agent_id"],
             "owner": request["operator"],
@@ -1018,13 +1319,7 @@ def build_apply_task_definitions(report, request):
                 "world_mutating": mapping["requires_safe_world_ops"],
             },
             "runtime_handoff": {
-                "status": "staged_executor_available"
-                    if planned["action"] == "import_structure" else "staging_noop",
-                "operation": mapping["label"],
-                "mutation_enabled": False,
-                "requires_capabilities": required_capabilities,
-                "runtime_entrypoint": "core.ai_import_ops.define_structure_apply_task"
-                    if planned["action"] == "import_structure" else None,
+                **runtime_handoff,
             },
             "calibrated_cost": _calibrated_action_cost(planned),
             "provenance": {
@@ -1046,7 +1341,15 @@ def build_apply_task_definitions(report, request):
                 "description": planned["description"],
                 "mutation_cost": planned["mutation_cost"],
             },
-        })
+        }
+        staged_apply = _structure_staged_apply_handoff(
+            planned,
+            request,
+            runtime_entrypoint,
+        )
+        if staged_apply:
+            definition["staged_apply"] = staged_apply
+        task_definitions.append(definition)
     return task_definitions
 
 

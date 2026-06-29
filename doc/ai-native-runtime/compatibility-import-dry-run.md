@@ -150,11 +150,27 @@ Initial action types:
 
 Each action should include an estimated `mutation_cost` with counts such as node writes, mapblock churn, media files, entity definitions, or manual review items.
 
+## Public-Safe Structure Adapter
+
+The first structure adapter is intentionally narrow and synthetic. It reads a JSON fixture with:
+
+- `fixture_kind: ai_native_synthetic_structure`
+- `fixture_version: 1`
+- `name`
+- `recommended_chunk_size`
+- `palette`: local fixture aliases mapped to Luanti node names such as `ai_runtime_test:stone`
+- `placements`: relative `{x,y,z}` positions plus `node` or `node_name`, with optional `param1` and `param2`
+- `unsupported_fields`: optional review-only rows for fields such as entities or block entities
+
+The adapter output remains a dry-run report. It adds an `import_structure` planned action with a `structure_adapter` payload containing synthetic placements, placement count, mapblock-churn estimate, and chunking guidance. It does not queue tasks, copy assets, parse proprietary structure payloads, execute behavior, or mutate a world.
+
+Unsupported fixture fields become explicit `unsupported_features` rows, so the operator can review what was skipped before any apply request exists.
+
 ## Structure Cost Calibration
 
 Structure sources are still dry-run only. The reporter must not parse proprietary structure payloads, copy structures into the fork, or place nodes in a world during calibration.
 
-For public-safe synthetic fixtures, structure cost is estimated from file inventory metadata:
+For public-safe synthetic adapter fixtures, structure cost is computed from reviewed synthetic placements. For opaque schematic or structure files, cost remains conservatively estimated from file inventory metadata:
 
 - `node_writes`: conservative estimated placed-node count.
 - `mapblock_churn`: estimated count of touched mapblocks.

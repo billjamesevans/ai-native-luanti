@@ -1,0 +1,62 @@
+{
+  "fixture_kind": "ai_native_synthetic_structure",
+  "fixture_version": 1,
+  "name": "synthetic-two-chunk-structure",
+  "recommended_chunk_size": 2,
+  "palette": {
+    "stone": "ai_runtime_test:stone",
+    "marker": "ai_runtime_test:stone"
+  },
+  "placements": [
+    {
+      "pos": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "node": "stone"
+    },
+    {
+      "pos": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "node": "marker",
+      "param1": 3,
+      "param2": 7
+    },
+    {
+      "pos": {
+        "x": 17,
+        "y": 0,
+        "z": 0
+      },
+      "node": "stone"
+    },
+    {
+      "pos": {
+        "x": 18,
+        "y": 0,
+        "z": 0
+      },
+      "node": "stone"
+    },
+    {
+      "pos": {
+        "x": 34,
+        "y": 0,
+        "z": 0
+      },
+      "node": "stone"
+    }
+  ],
+  "unsupported_fields": [
+    {
+      "field": "entities",
+      "reason": "requires_manual_review",
+      "message": "Structure entities are inventoried but not converted by the synthetic adapter.",
+      "recommendation": "Create equivalent Luanti entities manually after staged node apply is reviewed."
+    }
+  ]
+}
