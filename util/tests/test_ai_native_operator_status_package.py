@@ -149,6 +149,38 @@ class AIOperatorStatusPackageTests(unittest.TestCase):
         self.assertGreater(package["safety"]["redactions_applied"], 0)
         self.assert_public_safe(package)
 
+    def test_large_runtime_strings_are_compacted_to_the_requested_bound(self):
+        status_package = load_status_module()
+        source_state = {
+            "tasks": [
+                {
+                    "task_id": "task:oversized",
+                    "agent_id": "agent:one",
+                    "status": "running",
+                    "label": "x" * 20000,
+                    "reason": "y" * 20000,
+                }
+            ],
+            "benchmark_gates": [
+                {
+                    "gate_id": "gate:oversized",
+                    "status": "pass",
+                    "source": "z" * 20000,
+                }
+            ],
+        }
+
+        package = status_package.build_package(
+            ROOT,
+            generated_at="2026-06-29T00:00:00Z",
+            source_state=source_state,
+            max_bytes=2000,
+        )
+
+        self.assertLessEqual(package["bounds"]["output_bytes"], 2000)
+        self.assertTrue(package["bounds"]["truncated"])
+        self.assert_public_safe(package)
+
     def test_cli_writes_machine_readable_report(self):
         status_package = load_status_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -186,10 +218,13 @@ class AIOperatorStatusPackageTests(unittest.TestCase):
         doc = DOC.read_text(encoding="utf-8")
 
         self.assertIn("operator-status-package.md", readme)
+        self.assertIn("/ai_runtime_operator_status", readme)
         self.assertIn("future CLI/dashboard", doc)
         self.assertIn("bounded JSON", doc)
         self.assertIn("does not mutate a world", doc)
         self.assertIn("family-server content", doc)
+        self.assertIn("/ai_runtime_operator_status", doc)
+        self.assertIn("requires `server` privilege", doc)
 
 
 if __name__ == "__main__":

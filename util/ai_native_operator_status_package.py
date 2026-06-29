@@ -17,6 +17,7 @@ import ai_native_product_profile_verify
 
 DEFAULT_MAX_BYTES = 24000
 SUMMARY_LIMIT = 12
+FIELD_TEXT_LIMIT = 240
 
 PRIVATE_REDACTIONS = (
     (re.compile(r"/Users/[^\s\"']+"), "<redacted-local-path>"),
@@ -37,13 +38,21 @@ def utc_now() -> str:
 class Redactor:
     def __init__(self) -> None:
         self.redactions_applied = 0
+        self.truncations_applied = 0
+
+    def _bounded_text(self, value: str) -> str:
+        encoded = value.encode("utf-8")
+        if len(encoded) <= FIELD_TEXT_LIMIT:
+            return value
+        self.truncations_applied += 1
+        return encoded[:FIELD_TEXT_LIMIT].decode("utf-8", "ignore") + "<truncated>"
 
     def text(self, value) -> str:
         sanitized = str(value)
         for pattern, replacement in PRIVATE_REDACTIONS:
             sanitized, count = pattern.subn(replacement, sanitized)
             self.redactions_applied += count
-        return sanitized
+        return self._bounded_text(sanitized)
 
     def optional_text(self, value):
         if value is None:
@@ -213,6 +222,37 @@ def _package_status(package) -> str:
 
 
 def _with_bounds(package, max_bytes: int) -> dict:
+    def refresh_size() -> int:
+        package["bounds"]["output_bytes"] = len(json.dumps(package, sort_keys=True).encode("utf-8"))
+        return package["bounds"]["output_bytes"]
+
+    def trim_lists(limit: int) -> None:
+        for section in ("agents", "tasks", "rollback", "imports", "benchmarks"):
+            if "summaries" in package[section]:
+                package[section]["summaries"] = package[section]["summaries"][:limit]
+                package[section]["truncated"] = True
+        if "promotion_summaries" in package["imports"]:
+            package["imports"]["promotion_summaries"] = package["imports"]["promotion_summaries"][:limit]
+            package["imports"]["truncated"] = True
+        if "gates" in package["benchmarks"]:
+            package["benchmarks"]["gates"] = package["benchmarks"]["gates"][:limit]
+            package["benchmarks"]["truncated"] = True
+        package["bounds"]["truncated"] = True
+
+    def drop_verbose_fields() -> None:
+        for task in package["tasks"].get("summaries", []):
+            task.pop("label", None)
+            task.pop("reason", None)
+        for record in package["rollback"].get("summaries", []):
+            record.pop("storage_ref", None)
+        for review in package["imports"].get("summaries", []):
+            review.pop("source", None)
+        for promotion in package["imports"].get("promotion_summaries", []):
+            promotion.pop("source", None)
+        for gate in package["benchmarks"].get("gates", []):
+            gate.pop("source", None)
+        package["bounds"]["truncated"] = True
+
     package["bounds"] = {
         "max_bytes": max_bytes,
         "output_bytes": 0,
@@ -221,17 +261,15 @@ def _with_bounds(package, max_bytes: int) -> dict:
             for section in ("agents", "tasks", "rollback", "imports", "benchmarks")
         ),
     }
-    package["bounds"]["output_bytes"] = len(json.dumps(package, sort_keys=True).encode("utf-8"))
+    if refresh_size() > max_bytes:
+        trim_lists(3)
+        refresh_size()
     if package["bounds"]["output_bytes"] > max_bytes:
-        for section in ("agents", "tasks", "rollback", "imports", "benchmarks"):
-            if "summaries" in package[section]:
-                package[section]["summaries"] = package[section]["summaries"][:3]
-                package[section]["truncated"] = True
-        if "gates" in package["benchmarks"]:
-            package["benchmarks"]["gates"] = package["benchmarks"]["gates"][:3]
-            package["benchmarks"]["truncated"] = True
-        package["bounds"]["truncated"] = True
-        package["bounds"]["output_bytes"] = len(json.dumps(package, sort_keys=True).encode("utf-8"))
+        drop_verbose_fields()
+        refresh_size()
+    if package["bounds"]["output_bytes"] > max_bytes:
+        trim_lists(0)
+        refresh_size()
     return package
 
 
@@ -269,6 +307,7 @@ def build_package(
     package["safety"] = {
         "public_safe_output": True,
         "redactions_applied": redactor.redactions_applied,
+        "truncations_applied": redactor.truncations_applied,
         "no_raw_assets": True,
         "no_provider_prompts": True,
         "no_family_world_coordinates": True,
