@@ -1,0 +1,44 @@
+{
+  "format_kind": "ai_native_public_structure",
+  "format_version": 1,
+  "name": "private-reference-open-structure",
+  "structure_format": "ai_native_structure_v1",
+  "recommended_chunk_size": 2,
+  "license": {
+    "status": "user_supplied",
+    "rights_confirmed": true
+  },
+  "dimensions": {
+    "x": 2,
+    "y": 1,
+    "z": 1
+  },
+  "palette": {
+    "stone": "ai_runtime_test:stone"
+  },
+  "placements": [
+    {
+      "pos": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      },
+      "node": "stone"
+    },
+    {
+      "pos": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      },
+      "node": "stone"
+    }
+  ],
+  "private_references": [
+    {
+      "id": "local-only-texture",
+      "kind": "texture",
+      "redacted_id": "asset-ref:local-only-texture"
+    }
+  ]
+}

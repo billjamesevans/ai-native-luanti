@@ -149,7 +149,7 @@ Each rollback execution chunk writes rollback-of-rollback metadata before it mut
 
 ## Reviewed Adapter Apply Smoke
 
-The public-safe synthetic structure adapter can now produce a reviewed apply-and-rollback smoke manifest for disposable staging worlds. This mode consumes the `structure_adapter` handoff emitted by the dry-run report and turns it into a machine-readable runtime sequence:
+The structure adapter path can now produce a reviewed apply-and-rollback smoke manifest for disposable staging worlds. This mode consumes the `structure_adapter` handoff emitted by the dry-run report and turns it into a machine-readable runtime sequence:
 
 - `core.ai_import_ops.define_chunked_structure_apply_task` for approved structure placement.
 - `core.ai_import_ops.plan_structure_rollback` for readback of generated rollback records.
@@ -157,7 +157,7 @@ The public-safe synthetic structure adapter can now produce a reviewed apply-and
 
 The smoke manifest is not a live-world importer. It requires:
 
-- an approved synthetic structure-adapter `import_structure` action
+- an approved `import_structure` action from a supported structure adapter
 - `target_world.staging = true`
 - `target_world.disposable = true`
 - `rollback_policy.policy = chunked`
@@ -186,6 +186,18 @@ python3 util/ai_native_compat_dry_run.py \
 ```
 
 The review output is machine-readable and never mutates a world. It reports `ready` only when the manifest still targets a disposable staging world, uses the expected apply/rollback entrypoints, carries explicit approval, includes rollback tasks, keeps runtime hooks available for node read/write and rollback persistence/readback, and stays within the reviewed mutation budgets. Missing approval, missing rollback, missing hooks, forbidden family/prod world ids, non-staging targets, non-disposable targets, and inflated write/churn budgets produce `blocked` findings before any runtime apply task is considered promotable.
+
+## Public-Safe Structure Format
+
+The first real structure-format slice is `ai_native_structure_v1`, carried by a JSON file with `format_kind = ai_native_public_structure`. It is deliberately small and public-safe:
+
+- `license.status = user_supplied` and `license.rights_confirmed = true` are required.
+- `dimensions` bounds every placement.
+- `palette` maps local aliases to Luanti node names or `air`.
+- `placements` hold position, node alias/name, and optional `param1`/`param2`.
+- `unsupported_fields` and redacted `private_references` are reported as unsupported/manual-review items, not imported silently.
+
+The adapter emits `public_safe_structure_v1` metadata into the dry-run report, then reuses the same approval, adapter-smoke, operator-review, chunked apply, rollback planning, and rollback execution gates. It does not parse proprietary Minecraft server behavior, ship Mojang assets, ship family-world assets, or mutate the live family world.
 
 ## Audit Requirements
 
@@ -260,6 +272,7 @@ This summary is separate from the dry-run report so the dry-run artifact remains
 5. Add structure placement only after rollback metadata and safe world operations are covered by tests.
 6. Add reviewed adapter apply smoke for disposable staging worlds before broadening supported structure formats.
 7. Add operator review for adapter smoke manifests before broadening supported structure formats.
+8. Add the first public-safe structure format adapter behind operator review before broader schematic or world conversion support.
 
 This order keeps compatibility import aligned with the fork strategy: AI-native runtime first, compatibility automation second, world mutation last.
 

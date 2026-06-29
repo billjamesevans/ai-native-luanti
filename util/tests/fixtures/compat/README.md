@@ -13,6 +13,9 @@ Rules:
   unsupported-feature reporting.
 - Placeholder structure, world, and mod metadata files are tiny synthetic
   fixtures used only to exercise classifier paths.
+- Public structure fixtures are tiny original `ai_native_structure_v1` JSON
+  files used to exercise the reviewed structure adapter path. They do not
+  contain copied Minecraft, marketplace, family-world, or showcase payloads.
 
 The reporter may inventory these files, but tests must keep them small and free
   of binary media payloads.
