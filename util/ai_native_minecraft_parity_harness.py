@@ -30,6 +30,17 @@ STATUS_TO_SCORECARD = {
     "qualitative_gap": "fail",
 }
 GAP_AREAS = ("engine_runtime", "game_content", "first_party_plugin", "operator_experience")
+ACTIONABLE_GAP_AREA_PRIORITY = {
+    "engine_runtime": 0,
+    "first_party_plugin": 1,
+    "operator_experience": 2,
+    "game_content": 3,
+}
+ACTIONABLE_STATUS_PRIORITY = {
+    "fail": 0,
+    "warn": 1,
+    "pass": 2,
+}
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
     r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|"
@@ -689,6 +700,92 @@ def gap_summary_by_area(gaps: list[dict]) -> dict:
     return summary
 
 
+def public_safe_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "_", value.strip().lower()).strip("_")
+    return slug or "action"
+
+
+def ordered_hardware_classes(values: set[str]) -> list[str]:
+    default_order = {
+        hardware_class: index
+        for index, hardware_class in enumerate(DEFAULT_HARDWARE_CLASSES)
+    }
+    return sorted(values, key=lambda item: (default_order.get(item, len(default_order)), item))
+
+
+def actionable_scorecard(gaps: list[dict]) -> list[dict]:
+    grouped: dict[tuple[str, str, str, str], dict] = {}
+    for gap_item in gaps:
+        key = (
+            gap_item.get("dimension_id", "unknown"),
+            gap_item.get("title", "Untitled parity gap"),
+            gap_item.get("next_action", ""),
+            gap_item.get("gap_area", "engine_runtime"),
+        )
+        entry = grouped.setdefault(
+            key,
+            {
+                "scorecard_status": gap_item.get("scorecard_status", "fail"),
+                "gap_area": gap_item.get("gap_area", "engine_runtime"),
+                "title": gap_item.get("title", "Untitled parity gap"),
+                "hardware_classes": set(),
+                "dimension_ids": set(),
+                "evidence": set(),
+                "gap_count": 0,
+                "next_action": gap_item.get("next_action", ""),
+            },
+        )
+        entry["gap_count"] += 1
+        gap_status_priority = ACTIONABLE_STATUS_PRIORITY.get(
+            gap_item.get("scorecard_status", "fail"),
+            0,
+        )
+        entry_status_priority = ACTIONABLE_STATUS_PRIORITY.get(entry["scorecard_status"], 0)
+        if gap_status_priority < entry_status_priority:
+            entry["scorecard_status"] = gap_item.get("scorecard_status", "fail")
+        if gap_item.get("hardware_class"):
+            entry["hardware_classes"].add(gap_item["hardware_class"])
+        if gap_item.get("dimension_id"):
+            entry["dimension_ids"].add(gap_item["dimension_id"])
+        if gap_item.get("evidence"):
+            entry["evidence"].add(gap_item["evidence"])
+
+    actions = []
+    for entry in grouped.values():
+        dimension_ids = sorted(entry["dimension_ids"])
+        hardware_classes = ordered_hardware_classes(entry["hardware_classes"])
+        title = entry["title"]
+        gap_area = entry["gap_area"]
+        actions.append(
+            {
+                "action_id": f"parity-{public_safe_slug('-'.join(dimension_ids))}-{public_safe_slug(title)}",
+                "scorecard_status": entry["scorecard_status"],
+                "gap_area": gap_area,
+                "title": title,
+                "hardware_classes": hardware_classes,
+                "dimension_ids": dimension_ids,
+                "gap_count": entry["gap_count"],
+                "evidence": sorted(entry["evidence"]),
+                "next_action": entry["next_action"],
+                "suggested_issue_title": f"Parity: {title}",
+                "blocks_minecraft_parity": True,
+                "blocks_compatibility_import": gap_area in {"engine_runtime", "first_party_plugin"},
+            }
+        )
+
+    actions.sort(
+        key=lambda item: (
+            ACTIONABLE_STATUS_PRIORITY.get(item["scorecard_status"], 99),
+            ACTIONABLE_GAP_AREA_PRIORITY.get(item["gap_area"], 99),
+            item["title"],
+            item["action_id"],
+        )
+    )
+    for rank, action in enumerate(actions, start=1):
+        action["rank"] = rank
+    return actions
+
+
 def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
     lanes = [
         scorecard.build_lane_evidence(
@@ -735,6 +832,7 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
         "benchmark_scenarios": benchmark_scenarios(),
         "measured_facts": measured_facts,
         "qualitative_minecraft_parity_gaps": qualitative_gaps,
+        "actionable_scorecard": actionable_scorecard(qualitative_gaps),
         "gap_summary_by_area": gap_summary_by_area(qualitative_gaps),
         "retention": {
             "logical_default_output": "local/benchmarks/minecraft-parity-comparison-report.json",
