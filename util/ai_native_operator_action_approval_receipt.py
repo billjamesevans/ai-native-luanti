@@ -24,7 +24,7 @@ PRIVATE_PATTERNS = (
     re.compile(r"\bminecraftpi(?:\.home)?\b", re.I),
     re.compile(r"\b192\.168(?:\.\d{1,3}){2}\b"),
     re.compile(r"\bspacebase|themepark|showcase100|disneyland100\b", re.I),
-    re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}"),
     re.compile(r"\bOPENAI_API_KEY\b"),
     re.compile(r"\bprivate_prompt\b"),
     re.compile(r"\basset_payload\b"),
