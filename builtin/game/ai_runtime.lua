@@ -1192,7 +1192,9 @@ local function blocked_import_structure_result(result, reason, message)
 end
 
 local function normalize_structure_rollback_policy(policy)
-	policy = policy or "snapshot"
+	if policy == nil then
+		return nil
+	end
 	if policy == "manifest_only" then
 		return "manifest"
 	end

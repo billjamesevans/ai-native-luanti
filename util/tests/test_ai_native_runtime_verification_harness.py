@@ -299,6 +299,156 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    def write_compat_import_staging_pilot_artifact(self, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "live_result_kind": "ai_native_compat_import_staging_pilot_result",
+            "generated_at": "2026-06-28T12:00:00Z",
+            "runtime_context": {
+                "mode": "disposable_live_ai_runtime_compat_import_staging_pilot",
+                "gameid": "ai_runtime",
+                "requires_live_pi": False,
+                "requires_private_world": False,
+                "requires_private_assets": False,
+                "requires_model_network": False,
+                "world_mutation_performed": True,
+                "world_mutation_scope": "disposable_synthetic_ai_runtime_staging_world",
+            },
+            "workflow": {
+                "inventory": {
+                    "status": "ready_for_import_preview",
+                    "ready": True,
+                    "sources_total": 1,
+                    "required_capabilities": ["import.assets", "world.batch", "world.place"],
+                },
+                "dry_run": {
+                    "report_id": "public-safe-structure-staging-pilot",
+                    "report_version": 1,
+                    "source_id": "open_platform.ai-structure.json",
+                    "source_class": "structure",
+                    "license_status": "user_supplied",
+                    "planned_actions_count": 2,
+                    "import_action_index": 0,
+                    "estimated_world_mutations": {
+                        "node_writes": 5,
+                        "mapblock_churn": 3,
+                        "media_files": 0,
+                        "entity_definitions": 0,
+                        "manual_review_items": 1,
+                    },
+                    "apply_plan_status": "planned",
+                },
+                "operator_review": {
+                    "smoke_status": "ready",
+                    "review_status": "ready",
+                    "machine_promotable": True,
+                    "promotion_status": "ready_for_operator_promotion",
+                },
+                "apply": {
+                    "task_id": "compat:public-safe-structure-staging-pilot:0:apply-smoke",
+                    "task_status": "completed",
+                    "step_count": 3,
+                    "progress_current": 3,
+                    "progress_total": 3,
+                    "apply_summary_status": "completed",
+                    "completed_task_count": 1,
+                    "node_writes_actual": 5,
+                    "mapblock_churn_actual": 3,
+                    "rollback_record_count": 3,
+                    "node_writes_verified": 5,
+                    "param_round_trip_checked": True,
+                },
+                "rollback": {
+                    "plan_status": "success",
+                    "apply_rollback_ref_count": 3,
+                    "plan_record_count": 3,
+                    "planned_node_writes": 5,
+                    "planned_mapblock_churn": 3,
+                    "task_id": "compat:public-safe-structure-staging-pilot:0:rollback-smoke",
+                    "task_status": "completed",
+                    "step_count": 3,
+                    "progress_current": 3,
+                    "progress_total": 3,
+                    "nodes_reverted": 5,
+                    "rollback_execution_records": 3,
+                },
+            },
+            "refusal_gates": {
+                "missing_approval": {
+                    "status": "blocked",
+                    "reason": "approval_required",
+                    "changed": 0,
+                    "writes_attempted": 0,
+                    "passed": True,
+                },
+                "missing_rollback_policy": {
+                    "status": "blocked",
+                    "reason": "rollback_policy_not_mutating",
+                    "changed": 0,
+                    "writes_attempted": 0,
+                    "passed": True,
+                },
+                "unsafe_private_payload": {
+                    "status": "blocked",
+                    "reason": "payload_rejected",
+                    "changed": 0,
+                    "writes_attempted": 0,
+                    "passed": True,
+                },
+                "non_staging_target": {
+                    "status": "blocked",
+                    "reason": "staging_target_required",
+                    "changed": 0,
+                    "writes_attempted": 0,
+                    "passed": True,
+                },
+                "over_budget": {
+                    "status": "blocked",
+                    "reason": "node_write_budget_exceeded",
+                    "changed": 0,
+                    "writes_attempted": 0,
+                    "passed": True,
+                },
+            },
+            "benchmark_coverage": {
+                "status": "pass",
+                "expected_node_writes": 5,
+                "actual_node_writes": 5,
+                "expected_mapblock_churn": 3,
+                "actual_mapblock_churn": 3,
+                "expected_apply_chunks": 3,
+                "actual_apply_chunks": 3,
+                "max_node_writes_total": 5,
+                "max_node_writes_per_step": 2,
+                "max_mapblock_churn_total": 3,
+                "over_budget_refused": True,
+                "mapblock_churn_recorded": True,
+            },
+            "safety": {
+                "public_safe_output": True,
+                "disposable_live_world_only": True,
+                "staging_target_only": True,
+                "world_mutation_performed": True,
+                "world_mutation_scope": "disposable_synthetic_ai_runtime_staging_world",
+                "rollback_execution_performed": True,
+                "import_promotion_execution_performed": False,
+                "assets_copied": False,
+                "no_raw_assets": True,
+                "no_provider_prompts": True,
+                "no_family_world_coordinates": True,
+                "no_live_family_world_mutation": True,
+                "all_refusal_gates_passed": True,
+            },
+            "bounds": {
+                "max_bytes": 30000,
+                "output_bytes": 0,
+                "truncated": False,
+            },
+        }
+        payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
     def write_operator_task_control_command_artifact(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -621,6 +771,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     step.actual_command[step.actual_command.index("--output") + 1]
                 )
                 self.write_agent_product_loop_live_artifact(output_path)
+            if step.id == "compat_import_staging_pilot":
+                output_path = pathlib.Path(
+                    step.actual_command[step.actual_command.index("--output") + 1]
+                )
+                self.write_compat_import_staging_pilot_artifact(output_path)
             if step.id == "operator_task_control_live_probe":
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
@@ -667,6 +822,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -698,6 +854,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_live_command",
                     "agent_product_loop_live_probe",
+                    "compat_import_staging_pilot",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
                     "ai_runtime_focused_tests",
@@ -735,6 +892,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["agent_product_loop_live_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-agent-product-loop-live-result.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["compat_import_staging_pilot_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-compat-import-staging-pilot-result.json",
             )
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_live_result"],
@@ -870,6 +1031,25 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 0,
             )
             self.assertEqual(
+                manifest["compat_import_staging_pilot_evidence"]["compat_import_staging_pilot_status"],
+                "pass",
+            )
+            self.assertTrue(
+                manifest["compat_import_staging_pilot_evidence"]["compat_import_inventory_ready"]
+            )
+            self.assertEqual(
+                manifest["compat_import_staging_pilot_evidence"]["compat_import_node_writes"],
+                5,
+            )
+            self.assertEqual(
+                manifest["compat_import_staging_pilot_evidence"]["compat_import_mapblock_churn"],
+                3,
+            )
+            self.assertEqual(
+                manifest["compat_import_staging_pilot_evidence"]["compat_import_refusal_gates"],
+                5,
+            )
+            self.assertEqual(
                 manifest["operator_task_control_live_evidence"]["operator_task_control_live_items"],
                 5,
             )
@@ -924,7 +1104,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 12000)
+            self.assertLess(len(serialized), 13000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
@@ -963,6 +1143,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1068,6 +1249,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1222,6 +1404,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status package ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1243,6 +1426,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_package",
                     "agent_product_loop_live_probe",
+                    "compat_import_staging_pilot",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
                     "ai_runtime_focused_tests",
@@ -1369,6 +1553,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1426,6 +1611,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1474,6 +1660,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "compat_import_staging_pilot":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_compat_import_staging_pilot_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1532,6 +1723,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1569,6 +1761,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "compat_import_staging_pilot":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_compat_import_staging_pilot_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1627,6 +1824,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1655,6 +1853,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "compat_import_staging_pilot":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_compat_import_staging_pilot_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1714,6 +1917,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1764,6 +1968,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1824,6 +2029,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status package ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1874,6 +2080,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "compat_import_staging_pilot":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_compat_import_staging_pilot_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -1936,6 +2147,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "agent product loop live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "compat import staging pilot ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
@@ -1983,6 +2195,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "compat_import_staging_pilot":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_compat_import_staging_pilot_artifact(output_path)
                 if step.id == "operator_task_control_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2040,6 +2257,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-operator-action-approval-receipt.json",
             "ai-runtime-operator-action-execution-result.json",
             "ai-runtime-agent-product-loop-live-result.json",
+            "ai-runtime-compat-import-staging-pilot-result.json",
             "ai-runtime-operator-task-control-live-result.json",
             "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
             "/ai_runtime_operator_status",
@@ -2049,6 +2267,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "util/ai_native_operator_action_approval_receipt.py",
             "util/ai_native_operator_task_control_executor.py",
             "util/ai_native_agent_product_loop_live_probe.py",
+            "util/ai_native_compat_import_staging_pilot.py",
             "util/ai_native_operator_task_control_live_probe.py",
             "util/ai_native_operator_task_control_command_probe.py",
             "product-profile hygiene gate",
@@ -2057,6 +2276,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "--operator-action-approval-receipt-max-bytes",
             "--operator-action-execution-result-max-bytes",
             "--agent-product-loop-live-result-max-bytes",
+            "--compat-import-staging-pilot-result-max-bytes",
+            "--compat-import-staging-pilot-timeout",
             "--operator-taREDACTED_KEY_FIXTURE",
             "--operator-taREDACTED_KEY_FIXTURE",
             "--operator-status-source surrogate",
@@ -2073,6 +2294,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "receipt artifacts",
             "receipt-gated task control executor",
             "first-party product-loop live result",
+            "compatibility import staging pilot result",
             "receipt-gated live task-control probe",
             "receipt-gated task-control command probe",
             "non-mutating",

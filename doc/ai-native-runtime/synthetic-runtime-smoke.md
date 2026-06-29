@@ -77,7 +77,8 @@ python3 util/ai_native_runtime_verify.py --hardware-class local-mac
 ```
 
 The harness runs the AI-native utility contracts, the product-profile hygiene gate, the branch
-benchmark gate, the live operator status command probe, the receipt-gated task-control command probe, and the focused
+benchmark gate, the live operator status command probe, the compatibility import staging pilot,
+the receipt-gated task-control command probe, and the focused
 `TestAIRuntime` smoke in a repeatable order. It writes
 `ai-runtime-verification-manifest.json` under
 `local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
@@ -108,6 +109,13 @@ tasks, cancel a queued task, retry a rollback-blocked task, and check guide/task
 defender, and importer-preview surfaces without private content. It also captures a compact
 same-world operator-status snapshot proving the live status surface sees the product-loop tasks,
 rollback records, and import review without retaining private payloads. It then runs
+`util/ai_native_compat_import_staging_pilot.py` against a disposable live `ai_runtime` staging world
+and writes `ai-runtime-compat-import-staging-pilot-result.json`. That pilot runs public-safe
+inventory discovery, dry-run report generation, reviewed adapter smoke, operator review, chunked
+staging apply, rollback planning, rollback execution, and refusal gates for missing approval,
+missing rollback policy, unsafe private payloads, non-staging targets, and over-budget writes. It
+records node-write, apply-chunk, rollback-record, and mapblock-churn evidence without copying raw
+assets or mutating the family server. It then runs
 `util/ai_native_operator_task_control_live_probe.py` as a receipt-gated live task-control probe
 against a disposable live `ai_runtime` queue probe and writes
 `ai-runtime-operator-task-control-live-result.json`. The probe uses a temporary local world only: no
@@ -128,7 +136,10 @@ result must stay receipt-gated, synthetic-task-state-only, task cancel/retry onl
 `--operator-action-execution-result-max-bytes`. The first-party product-loop live result must stay
 disposable-world-only, public-safe, rollback-backed for build and repair, explicit-approval-gated for
 build and repair mutation, operator-status-visible, no rollback execution, no import promotion execution, and bounded by
-`--agent-product-loop-live-result-max-bytes`. The live task-control result must stay receipt-gated,
+`--agent-product-loop-live-result-max-bytes`. The compatibility import staging pilot result must
+stay public-safe, disposable-staging-only, approval-gated, rollback-backed, family-world-free,
+asset-copy-free, and bounded by `--compat-import-staging-pilot-result-max-bytes` and
+`--compat-import-staging-pilot-timeout`. The live task-control result must stay receipt-gated,
 disposable-live-queue-only, task cancel/retry only, no rollback execution, no import promotion execution,
 no world mutation, and bounded by `--operator-taREDACTED_KEY_FIXTURE`.
 The task-control command result must stay receipt-gated, command-surface-only, task cancel/retry only,
@@ -170,6 +181,7 @@ directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifes
 `ai-runtime-operator-action-approval-receipt.json` and
 `ai-runtime-operator-action-execution-result.json` and
 `ai-runtime-agent-product-loop-live-result.json` and
+`ai-runtime-compat-import-staging-pilot-result.json` and
 `ai-runtime-operator-task-control-live-result.json` and
 `ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`. It still requires no family server, no private
 world, no private assets, no provider prompts, and no model-network calls.
