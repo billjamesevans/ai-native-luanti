@@ -1153,6 +1153,102 @@ def actionable_scorecard(gaps: list[dict]) -> list[dict]:
     return actions
 
 
+def issue_seed_labels(action: dict) -> list[str]:
+    labels = [
+        "minecraft-parity",
+        "benchmark",
+        f"gap-area:{public_safe_slug(action.get('gap_area', 'engine_runtime')).replace('_', '-')}",
+        f"status:{public_safe_slug(action.get('scorecard_status', 'fail')).replace('_', '-')}",
+    ]
+    labels.extend(
+        f"dimension:{public_safe_slug(dimension_id).replace('_', '-')}"
+        for dimension_id in action.get("dimension_ids", [])
+    )
+    return labels
+
+
+def issue_seed_acceptance(action: dict) -> list[str]:
+    hardware_classes = ", ".join(action.get("hardware_classes", [])) or "required hardware lanes"
+    acceptance = [
+        (
+            "Refresh accepted benchmark lanes for "
+            f"{hardware_classes} with public-safe synthetic evidence only."
+        ),
+        (
+            "Regenerate local/benchmarks/minecraft-parity-comparison-report.json "
+            "with privacy_scan.status=passed."
+        ),
+        (
+            "Confirm source_policy.uses_proprietary_minecraft_code_or_assets=false "
+            "and source_policy.uses_copied_server_jars_or_game_data=false."
+        ),
+    ]
+    for dimension_id in action.get("dimension_ids", []):
+        acceptance.append(
+            f"Clear qualitative_minecraft_parity_gaps entries for dimension {dimension_id}."
+        )
+        acceptance.append(
+            f"Meet target band for {dimension_id}: "
+            f"{json.dumps(target_band(dimension_id), sort_keys=True)}."
+        )
+    return acceptance
+
+
+def issue_seeds_from_scorecard(actions: list[dict]) -> list[dict]:
+    seeds = []
+    for action in actions:
+        seeds.append(
+            {
+                "issue_key": action["action_id"],
+                "rank": action["rank"],
+                "title": action["suggested_issue_title"],
+                "scorecard_status": action["scorecard_status"],
+                "gap_area": action["gap_area"],
+                "dimension_ids": list(action["dimension_ids"]),
+                "hardware_classes": list(action["hardware_classes"]),
+                "evidence": list(action["evidence"]),
+                "next_action": action["next_action"],
+                "labels": issue_seed_labels(action),
+                "acceptance": issue_seed_acceptance(action),
+                "created_from": {
+                    "report": "local/benchmarks/minecraft-parity-comparison-report.json",
+                    "source": "actionable_scorecard",
+                    "action_id": action["action_id"],
+                },
+                "public_safety": {
+                    "requires_private_world": False,
+                    "requires_private_assets": False,
+                    "uses_proprietary_minecraft_assets": False,
+                    "uses_copied_server_jars_or_game_data": False,
+                    "dry_run_or_synthetic_evidence_only": True,
+                },
+                "blocks_minecraft_parity": action["blocks_minecraft_parity"],
+                "blocks_compatibility_import": action["blocks_compatibility_import"],
+            }
+        )
+    return seeds
+
+
+def issue_seed_summary(issue_seeds: list[dict]) -> dict:
+    by_gap_area = {area: 0 for area in GAP_AREAS}
+    by_scorecard_status = {status: 0 for status in ACTIONABLE_STATUS_PRIORITY}
+    by_hardware_class = {hardware_class: 0 for hardware_class in DEFAULT_HARDWARE_CLASSES}
+    for seed in issue_seeds:
+        by_gap_area[seed["gap_area"]] = by_gap_area.get(seed["gap_area"], 0) + 1
+        by_scorecard_status[seed["scorecard_status"]] = (
+            by_scorecard_status.get(seed["scorecard_status"], 0) + 1
+        )
+        for hardware_class in seed.get("hardware_classes", []):
+            by_hardware_class[hardware_class] = by_hardware_class.get(hardware_class, 0) + 1
+    return {
+        "issue_seed_count": len(issue_seeds),
+        "scorecard_status": "pass" if not issue_seeds else "fail",
+        "by_gap_area": by_gap_area,
+        "by_scorecard_status": by_scorecard_status,
+        "by_hardware_class": by_hardware_class,
+    }
+
+
 def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
     compatibility_import_inventory = load_compatibility_import_inventory(output_root)
     lanes = [
@@ -1179,6 +1275,8 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
             }
         )
         qualitative_gaps.extend(gaps)
+    actions = actionable_scorecard(qualitative_gaps)
+    issue_seeds = issue_seeds_from_scorecard(actions)
 
     report = {
         "schema_version": 1,
@@ -1214,7 +1312,9 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
         "benchmark_scenarios": benchmark_scenarios(),
         "measured_facts": measured_facts,
         "qualitative_minecraft_parity_gaps": qualitative_gaps,
-        "actionable_scorecard": actionable_scorecard(qualitative_gaps),
+        "actionable_scorecard": actions,
+        "issue_seeds": issue_seeds,
+        "issue_seed_summary": issue_seed_summary(issue_seeds),
         "gap_summary_by_area": gap_summary_by_area(qualitative_gaps),
         "retention": {
             "logical_default_output": "local/benchmarks/minecraft-parity-comparison-report.json",
