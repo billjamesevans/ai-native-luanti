@@ -100,6 +100,8 @@ The default node/entity settings are intentionally generic and may not match eve
 
 `max_follow_steps`, `max_follow_step_distance`, `max_follow_total_distance`, `max_follow_stop_distance`, and `max_follow_wall_time_ms` bound continuous follow. A follow task is still a normal player-owned AI task, so the player can cancel it with `cancel`/`stop`, and the task result exposes `ai_agent.follow_step` status, movement result, distance moved, skipped or blocked reasons, and path metrics.
 
+Follow can use an operator-supplied `find_path(current_pos, target_pos, options)` callback or an explicit `use_core_pathfinder` context flag. The plugin accepts only positional waypoints from the callback and still moves at most one bounded step per queued task slice. If pathfinding is unavailable, invalid, or blocked, follow falls back to the existing direct-line bounded step. Result metrics expose `pathfinder_used`, `path_waypoint_count`, and `path_status` so playtests can distinguish direct movement from waypointed movement without retaining private map data.
+
 `capability_profile` is a short policy label such as `clean` or `operator`. It is copied into the registered agent limits for audit/debug visibility.
 
 `capabilities` is the first-party grant policy for newly registered player agents. Clean profiles should declare it explicitly and should not include privileged capabilities such as `admin.override`, compatibility/import grants such as `import.assets`, or other-player controls unless that server profile is intentionally operator-only.
@@ -129,7 +131,7 @@ Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin 
 
 ## Current Limits
 
-- Follow uses a small direct-line pathfinding slice: each queued task step recomputes the player target, moves no more than the configured step distance, stops inside the configured follow distance, and blocks when the total movement budget would be exceeded. Richer obstacle-aware navigation remains a later slice.
+- Follow uses a small bounded waypoint slice: each queued task step recomputes the player target, optionally asks a pathfinder for waypoints, moves no more than the configured step distance, stops inside the configured follow distance, and blocks when the total movement budget would be exceeded. Richer obstacle-aware navigation remains opt-in so default clean-profile playtests stay deterministic.
 - Come remains a one-shot bounded helper-entity move.
 - Build remains small lights and marker tasks, not a showcase structure system.
 - Repair only applies configured repair rules around the requested target position.

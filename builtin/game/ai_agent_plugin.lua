@@ -357,6 +357,112 @@ local function step_toward(current_pos, target_pos, max_step_distance, stop_dist
 	}, travel, distance, "direct_line_bounded"
 end
 
+local function is_pos(pos)
+	return type(pos) == "table" and type(pos.x) == "number"
+		and type(pos.y) == "number" and type(pos.z) == "number"
+end
+
+local function compact_waypoints(path)
+	if type(path) ~= "table" then
+		return nil
+	end
+	local waypoints = {}
+	for _, waypoint in ipairs(path) do
+		if is_pos(waypoint) then
+			waypoints[#waypoints + 1] = copy_pos(waypoint)
+		end
+	end
+	if #waypoints == 0 then
+		return nil
+	end
+	return waypoints
+end
+
+local function call_follow_pathfinder(current_pos, target_pos, options, context)
+	if context.find_path then
+		local ok, path = pcall(context.find_path, copy_pos(current_pos),
+			copy_pos(target_pos), {
+				max_step_distance = options.max_step_distance,
+				stop_distance = options.stop_distance,
+				max_total_distance = options.max_total_distance,
+				max_total_distance_remaining = options.max_total_distance_remaining,
+				max_waypoints = options.max_waypoints,
+			})
+		if ok then
+			return compact_waypoints(path)
+		end
+		return nil
+	end
+	if context.use_core_pathfinder and core.find_path then
+		local search_distance = math.max(1, math.ceil(distance_between(current_pos,
+			target_pos)) + 2)
+		local ok, path = pcall(core.find_path, current_pos, target_pos,
+			search_distance, 1, 4, "A*")
+		if ok then
+			return compact_waypoints(path)
+		end
+	end
+	return nil
+end
+
+local function follow_next_step(current_pos, target_pos, options, context, follow_state)
+	local next_pos, step_distance, distance_to_target, path_status =
+		step_toward(current_pos, target_pos, options.max_step_distance,
+			options.stop_distance)
+	if step_distance <= 0 then
+		return next_pos, step_distance, distance_to_target, path_status, {
+			pathfinder_used = false,
+			path_waypoint_count = 0,
+		}
+	end
+
+	local path_options = {
+		max_step_distance = options.max_step_distance,
+		stop_distance = options.stop_distance,
+		max_total_distance = options.max_total_distance,
+		max_total_distance_remaining = math.max(0,
+			options.max_total_distance - (follow_state.distance_moved or 0)),
+		max_waypoints = math.max(1,
+			options.max_steps - (follow_state.steps_run or 0) + 1),
+	}
+	local waypoints = call_follow_pathfinder(current_pos, target_pos,
+		path_options, context)
+	if not waypoints then
+		return next_pos, step_distance, distance_to_target, path_status, {
+			pathfinder_used = false,
+			path_waypoint_count = 0,
+		}
+	end
+
+	local waypoint = nil
+	for _, candidate in ipairs(waypoints) do
+		if distance_between(current_pos, candidate) > 0.001 then
+			waypoint = candidate
+			break
+		end
+	end
+	if not waypoint then
+		return next_pos, step_distance, distance_to_target, path_status, {
+			pathfinder_used = false,
+			path_waypoint_count = #waypoints,
+		}
+	end
+
+	local waypoint_distance = distance_between(current_pos, waypoint)
+	if waypoint_distance <= options.max_step_distance then
+		next_pos = copy_pos(waypoint)
+		step_distance = waypoint_distance
+	else
+		next_pos, step_distance = step_toward(current_pos, waypoint,
+			options.max_step_distance, 0)
+	end
+	return next_pos, step_distance, distance_to_target,
+		"pathfinder_waypoint_bounded", {
+			pathfinder_used = true,
+			path_waypoint_count = #waypoints,
+		}
+end
+
 local function follow_target_pos(name, context)
 	local get_player = context.get_player_by_name or core.get_player_by_name
 	if get_player then
@@ -428,6 +534,8 @@ local function make_follow_result(name, context, state, status, reason, message,
 			max_total_distance = state.max_total_distance,
 			stop_distance = state.stop_distance,
 			path_status = extra.path_status,
+			path_waypoint_count = extra.path_waypoint_count or 0,
+			pathfinder_used = extra.pathfinder_used == true,
 			skipped_reason = extra.skipped_reason,
 		},
 	}
@@ -471,9 +579,9 @@ local function handle_follow(name, prompt, context)
 			end
 
 			local current_pos = setup_result.entity and setup_result.entity.pos or target_pos
-			local next_pos, step_distance, distance_to_target, path_status =
-				step_toward(current_pos, target_pos, options.max_step_distance,
-					options.stop_distance)
+			local next_pos, step_distance, distance_to_target, path_status, path_meta =
+				follow_next_step(current_pos, target_pos, options, context,
+					follow_state)
 			if step_distance <= 0 then
 				return make_follow_result(name, context, follow_state, "success",
 					"follow_target_reached", "Helper is within follow distance.", {
@@ -483,6 +591,8 @@ local function handle_follow(name, prompt, context)
 						step_distance = 0,
 						distance_to_target = distance_to_target,
 						path_status = path_status,
+						path_waypoint_count = path_meta.path_waypoint_count,
+						pathfinder_used = path_meta.pathfinder_used,
 						skipped_reason = "within_stop_distance",
 					})
 			end
@@ -496,6 +606,8 @@ local function handle_follow(name, prompt, context)
 						step_distance = step_distance,
 						distance_to_target = distance_to_target,
 						path_status = path_status,
+						path_waypoint_count = path_meta.path_waypoint_count,
+						pathfinder_used = path_meta.pathfinder_used,
 						skipped_reason = "max_total_distance",
 					})
 			end
@@ -524,6 +636,8 @@ local function handle_follow(name, prompt, context)
 					distance_to_target = distance_to_target,
 					distance_moved = moved.metrics and moved.metrics.distance or 0,
 					path_status = path_status,
+					path_waypoint_count = path_meta.path_waypoint_count,
+					pathfinder_used = path_meta.pathfinder_used,
 					skipped_reason = moved.skipped > 0 and moved.reason or nil,
 				})
 		end

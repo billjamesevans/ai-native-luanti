@@ -37,7 +37,7 @@ KNOWN_PROFILE_WARNING_PATTERNS = (
     (
         "run_in_place_builtin_sha_changed",
         re.compile(
-            r"(SHA256 of builtin file .*builtin[\\/]game[\\/](init|ai_runtime)\.lua.*does not match"
+            r"(SHA256 of builtin file .*builtin[\\/]game[\\/][A-Za-z0-9_.\\/-]+\.lua.*does not match"
             r"|Expected:\s+[A-Fa-f0-9]{6,}|Found:\s+[A-Fa-f0-9]{6,})",
             re.I,
         ),
