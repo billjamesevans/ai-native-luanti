@@ -25,7 +25,25 @@ REQUIRED_DOCS = [
         "phrases": [
             "one-command local verifier",
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
+            "operator-alpha-release-runbook.md",
             "deployment lane, not a replacement for the family server",
+            "spacebase",
+            "themepark",
+            "disneyland100",
+        ],
+    },
+    {
+        "path": "doc/ai-native-runtime/operator-alpha-release-runbook.md",
+        "kind": "operator_alpha_release_runbook",
+        "phrases": [
+            "ai-native-luanti-test.service",
+            "luanti-family.service",
+            "UDP `30000`",
+            "UDP `30001`",
+            "backup-first",
+            "rollback stops only the fork alpha lane",
+            "Release Candidate Contents",
+            "Evidence Retention",
             "spacebase",
             "themepark",
             "disneyland100",
@@ -107,6 +125,7 @@ REQUIRED_REPO_FILES = [
         "kind": "runtime_readme",
         "phrases": [
             "alpha-release-gate.md",
+            "operator-alpha-release-runbook.md",
             "clean-ai-runtime-install.md",
             "public-safe-sample-data-policy.md",
             "release-notes-template.md",
