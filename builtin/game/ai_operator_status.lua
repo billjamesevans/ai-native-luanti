@@ -141,6 +141,37 @@ local function task_counts(tasks)
 	return counts
 end
 
+local function compact_navigation_metrics(metrics, context)
+	if type(metrics) ~= "table" then
+		return nil
+	end
+	if metrics.path_status == nil and metrics.blocked_reason == nil
+			and metrics.nodes_searched == nil then
+		return nil
+	end
+	return {
+		path_status = redact(metrics.path_status, context),
+		path_planner = redact(metrics.path_planner, context),
+		blocked_reason = redact(metrics.blocked_reason, context),
+		skipped_reason = redact(metrics.skipped_reason, context),
+		step_distance = metrics.step_distance,
+		distance_to_target = metrics.distance_to_target,
+		distance_moved = metrics.distance_moved,
+		total_distance_moved = metrics.total_distance_moved,
+		steps_run = metrics.steps_run,
+		max_steps = metrics.max_steps,
+		max_step_distance = metrics.max_step_distance,
+		max_total_distance = metrics.max_total_distance,
+		path_waypoint_count = metrics.path_waypoint_count,
+		pathfinder_used = metrics.pathfinder_used == true,
+		nodes_searched = metrics.nodes_searched,
+		max_nodes_searched = metrics.max_nodes_searched,
+		obstacles_seen = metrics.obstacles_seen,
+		navigation_elapsed_us = metrics.navigation_elapsed_us,
+		max_wall_time_ms = metrics.max_wall_time_ms,
+	}
+end
+
 local function summarize_tasks(context, limit)
 	local tasks = sorted_tasks()
 	local summaries = {}
@@ -149,6 +180,7 @@ local function summarize_tasks(context, limit)
 			task_id = redact(task.task_id, context),
 			agent_id = redact(task.agent_id, context),
 			status = redact(task.status or "unknown", context),
+			duration_us = task.duration_us,
 		}
 		if task.label then
 			summary.label = redact(task.label, context)
@@ -156,6 +188,13 @@ local function summarize_tasks(context, limit)
 		local reason = task.last_result and task.last_result.reason
 		if reason then
 			summary.reason = redact(reason, context)
+		end
+		local navigation = compact_navigation_metrics(
+			task.last_result and task.last_result.metrics,
+			context
+		)
+		if navigation then
+			summary.navigation = navigation
 		end
 		summaries[#summaries + 1] = summary
 	end
@@ -201,6 +240,7 @@ local function compact_task_detail(task, context)
 			skipped = last_result.skipped,
 			rollback_record_id = redact(last_result.rollback_record_id, context),
 			rollback_storage_ref = redact(last_result.rollback_storage_ref, context),
+			navigation = compact_navigation_metrics(last_result.metrics, context),
 		},
 	}
 	return detail

@@ -22,6 +22,7 @@ local settings = {
 	max_follow_total_distance = 24,
 	max_follow_stop_distance = 1,
 	max_follow_wall_time_ms = 250,
+	max_navigation_nodes = 64,
 	max_defend_distance = 8,
 	capabilities = table.copy(default_capabilities),
 }
@@ -305,6 +306,9 @@ function plugin.configure(options)
 	if options.max_follow_wall_time_ms then
 		settings.max_follow_wall_time_ms = options.max_follow_wall_time_ms
 	end
+	if options.max_navigation_nodes then
+		settings.max_navigation_nodes = options.max_navigation_nodes
+	end
 	if options.max_defend_distance then
 		settings.max_defend_distance = options.max_defend_distance
 	end
@@ -336,6 +340,7 @@ function plugin.ensure_player_agent(name)
 			max_follow_steps = settings.max_follow_steps,
 			max_follow_step_distance = settings.max_follow_step_distance,
 			max_follow_total_distance = settings.max_follow_total_distance,
+			max_navigation_nodes = settings.max_navigation_nodes,
 		},
 	})
 end
@@ -364,8 +369,42 @@ function plugin.ensure_surface_agent(name, surface_id)
 			max_follow_steps = settings.max_follow_steps,
 			max_follow_step_distance = settings.max_follow_step_distance,
 			max_follow_total_distance = settings.max_follow_total_distance,
+			max_navigation_nodes = settings.max_navigation_nodes,
 		},
 	})
+end
+
+function plugin.get_navigation_contract()
+	return {
+		schema_version = 1,
+		contract_kind = "ai_native_navigation_perception_contract",
+		surfaces = { "builder", "guide", "helper" },
+		commands = { "follow", "come" },
+		planner = "bounded_same_level_grid_or_injected_pathfinder",
+		bounds = {
+			max_nodes_searched = settings.max_navigation_nodes,
+			max_step_distance = settings.max_follow_step_distance,
+			max_total_distance = settings.max_follow_total_distance,
+			max_wall_time_ms = settings.max_follow_wall_time_ms,
+			max_entities = 1,
+			node_writes = 0,
+		},
+		perception = {
+			node_reader = "context.get_node_or_opt_in_core.get_node",
+			obstacle_policy = "air_or_nonwalkable_nodes_are_passable",
+			public_safe = true,
+		},
+		blocked_reasons = {
+			"navigation_obstacle_blocked",
+			"navigation_node_budget_exhausted",
+			"navigation_wall_time_budget_exceeded",
+			"follow_distance_limit_exceeded",
+			"owner_mismatch",
+			"entity_limit_exceeded",
+			"task_cancelled",
+			"lag_threshold_exceeded",
+		},
+	}
 end
 
 function plugin.ensure_product_agents(name)
@@ -577,23 +616,149 @@ local function ensure_agent_entity(name, pos, context, state)
 	return entity_id, spawned
 end
 
+local follow_options
+local follow_next_step
+local make_follow_result
+
 local function handle_agent_move(name, action, label, target_pos, state, context)
 	context = context or {}
 	local target = copy_pos(target_pos)
-	return queue_plugin_task(name, action, label, {
-		function()
+	local move_context = table.copy(context)
+	if move_context.max_follow_steps == nil then
+		move_context.max_follow_steps = 1
+	end
+	if move_context.max_follow_stop_distance == nil then
+		move_context.max_follow_stop_distance = 0
+	end
+	local options = follow_options("follow", move_context)
+	local move_state = {
+		steps_run = 0,
+		distance_moved = 0,
+		max_steps = options.max_steps,
+		max_step_distance = options.max_step_distance,
+		max_total_distance = options.max_total_distance,
+		stop_distance = options.stop_distance,
+		max_nodes_searched = options.max_nodes_searched,
+	}
+	local steps = {}
+	for _ = 1, options.max_steps do
+		steps[#steps + 1] = function()
+			move_state.steps_run = move_state.steps_run + 1
 			local entity_id, setup_result = ensure_agent_entity(name, target, context, state)
 			if not entity_id then
 				return setup_result
 			end
-			local options = entity_options(name, context)
-			local moved = core.ai_entity_ops.move(entity_id, target, options)
+			local current_pos = setup_result.entity and setup_result.entity.pos or target
+			local next_pos, step_distance, distance_to_target, path_status, path_meta =
+				follow_next_step(current_pos, target, options, context, move_state)
+			if path_meta.blocked then
+				return make_follow_result(name, context, move_state, "blocked",
+					path_meta.blocked_reason or "navigation_obstacle_blocked",
+					"Come navigation could not find a bounded path.", {
+						operation = "ai_agent.navigation_step",
+						entity = setup_result.entity,
+						examined = path_meta.nodes_searched or 0,
+						skipped = 1,
+						step_distance = 0,
+						distance_to_target = distance_to_target,
+						path_status = path_status,
+						path_planner = path_meta.planner,
+						path_waypoint_count = path_meta.path_waypoint_count,
+						pathfinder_used = path_meta.pathfinder_used,
+						nodes_searched = path_meta.nodes_searched,
+						max_nodes_searched = path_meta.max_nodes_searched,
+						obstacles_seen = path_meta.obstacles_seen,
+						navigation_elapsed_us = path_meta.elapsed_us,
+						max_wall_time_ms = path_meta.max_wall_time_ms,
+						skipped_reason = path_meta.blocked_reason,
+						blocked_reason = path_meta.blocked_reason,
+					})
+			end
+			if step_distance <= 0 then
+				return make_follow_result(name, context, move_state, "success",
+					"navigation_target_reached", "Helper is within navigation distance.", {
+						operation = "ai_agent.navigation_step",
+						entity = setup_result.entity,
+						examined = 1,
+						skipped = 1,
+						step_distance = 0,
+						distance_to_target = distance_to_target,
+						path_status = path_status,
+						path_planner = path_meta.planner,
+						path_waypoint_count = path_meta.path_waypoint_count,
+						pathfinder_used = path_meta.pathfinder_used,
+						nodes_searched = path_meta.nodes_searched,
+						max_nodes_searched = path_meta.max_nodes_searched,
+						obstacles_seen = path_meta.obstacles_seen,
+						navigation_elapsed_us = path_meta.elapsed_us,
+						max_wall_time_ms = path_meta.max_wall_time_ms,
+						skipped_reason = "within_stop_distance",
+					})
+			end
+			if move_state.distance_moved + step_distance > options.max_total_distance then
+				return make_follow_result(name, context, move_state, "blocked",
+					"navigation_distance_limit_exceeded",
+					"Navigation task exceeded its total movement distance limit.", {
+						operation = "ai_agent.navigation_step",
+						entity = setup_result.entity,
+						examined = 1,
+						skipped = 1,
+						step_distance = step_distance,
+						distance_to_target = distance_to_target,
+						path_status = path_status,
+						path_planner = path_meta.planner,
+						path_waypoint_count = path_meta.path_waypoint_count,
+						pathfinder_used = path_meta.pathfinder_used,
+						nodes_searched = path_meta.nodes_searched,
+						max_nodes_searched = path_meta.max_nodes_searched,
+						obstacles_seen = path_meta.obstacles_seen,
+						navigation_elapsed_us = path_meta.elapsed_us,
+						max_wall_time_ms = path_meta.max_wall_time_ms,
+						skipped_reason = "max_total_distance",
+						blocked_reason = "navigation_distance_limit_exceeded",
+					})
+			end
+			local move_context = table.copy(context)
+			move_context.max_entity_move_distance = options.max_step_distance
+			local moved = core.ai_entity_ops.move(entity_id, next_pos,
+				entity_options(name, move_context))
 			if moved.ok and moved.entity then
+				local moved_distance = moved.metrics and moved.metrics.distance or step_distance
+				move_state.distance_moved = move_state.distance_moved + moved_distance
 				update_player_entity_state(name, state, moved.entity.entity_id)
 			end
-			return moved
-		end,
-	}, context)
+			return make_follow_result(name, context, move_state, moved.status,
+				moved.reason, moved.message, {
+					operation = "ai_agent.navigation_step",
+					entity = moved.entity,
+					movement_result = {
+						operation = moved.operation,
+						status = moved.status,
+						reason = moved.reason,
+						message = moved.message,
+					},
+					examined = moved.examined,
+					skipped = moved.skipped,
+					step_distance = step_distance,
+					distance_to_target = distance_to_target,
+					distance_moved = moved.metrics and moved.metrics.distance or 0,
+					path_status = path_status,
+					path_planner = path_meta.planner,
+					path_waypoint_count = path_meta.path_waypoint_count,
+					pathfinder_used = path_meta.pathfinder_used,
+					nodes_searched = path_meta.nodes_searched,
+					max_nodes_searched = path_meta.max_nodes_searched,
+					obstacles_seen = path_meta.obstacles_seen,
+					navigation_elapsed_us = path_meta.elapsed_us,
+					max_wall_time_ms = path_meta.max_wall_time_ms,
+					skipped_reason = moved.skipped > 0 and moved.reason or nil,
+					blocked_reason = moved.skipped > 0 and moved.reason or nil,
+				})
+		end
+	end
+	context.max_node_writes_per_step = 0
+	context.max_wall_time_ms = options.wall_time_ms
+	return queue_plugin_task(name, action, label, steps, context)
 end
 
 local function numeric_limit(value, fallback, minimum, maximum)
@@ -653,6 +818,216 @@ local function compact_waypoints(path)
 	return waypoints
 end
 
+local function rounded_coord(value)
+	return math.floor(value + 0.5)
+end
+
+local function navigation_grid_pos(pos)
+	return {
+		x = rounded_coord(pos.x),
+		y = rounded_coord(pos.y),
+		z = rounded_coord(pos.z),
+	}
+end
+
+local function navigation_key(pos)
+	return pos.x .. ":" .. pos.y .. ":" .. pos.z
+end
+
+local function navigation_get_node(pos, context)
+	local get_node = context.get_node
+	if not get_node and context.use_core_perception then
+		get_node = core.get_node
+	end
+	if not get_node then
+		return nil
+	end
+	local ok, node = pcall(get_node, copy_pos(pos))
+	if ok and type(node) == "table" then
+		return node
+	end
+	return nil
+end
+
+local function has_navigation_perception(context)
+	return type(context.is_path_blocked) == "function"
+		or type(context.get_node) == "function"
+		or (context.use_core_perception == true and type(core.get_node) == "function")
+end
+
+local function navigation_pos_passable(pos, context, metrics)
+	if context.is_path_blocked then
+		local ok, blocked = pcall(context.is_path_blocked, copy_pos(pos))
+		if ok and blocked == true then
+			metrics.obstacles_seen = metrics.obstacles_seen + 1
+			return false, "navigation_obstacle_blocked"
+		elseif ok then
+			return true
+		end
+	end
+
+	local node = navigation_get_node(pos, context)
+	if not node then
+		return true
+	end
+	if node.name == "air" then
+		return true
+	end
+	local def = core.registered_nodes and core.registered_nodes[node.name] or nil
+	if def and (def.walkable == false or def.buildable_to == true) then
+		return true
+	end
+	metrics.obstacles_seen = metrics.obstacles_seen + 1
+	return false, "navigation_obstacle_blocked"
+end
+
+local function navigation_elapsed_us(start_us)
+	if not start_us or not core.get_us_time then
+		return 0
+	end
+	return math.max(0, core.get_us_time() - start_us)
+end
+
+local function make_navigation_meta(options, status, reason, metrics)
+	metrics = metrics or {}
+	return {
+		pathfinder_used = true,
+		planner = "bounded_same_level_grid",
+		path_status = status,
+		blocked = status == "blocked",
+		blocked_reason = reason,
+		path_waypoint_count = metrics.path_waypoint_count or 0,
+		nodes_searched = metrics.nodes_searched or 0,
+		max_nodes_searched = options.max_nodes_searched,
+		obstacles_seen = metrics.obstacles_seen or 0,
+		elapsed_us = metrics.elapsed_us or 0,
+		max_wall_time_ms = options.wall_time_ms,
+	}
+end
+
+local function bounded_grid_path(current_pos, target_pos, options, context)
+	local start_us = core.get_us_time and core.get_us_time() or nil
+	local start = navigation_grid_pos(current_pos)
+	local goal = navigation_grid_pos(target_pos)
+	local max_nodes = math.max(1, math.floor(options.max_nodes_searched or 1))
+	local max_distance_remaining = math.max(0, options.max_total_distance_remaining or 0)
+	local metrics = {
+		nodes_searched = 0,
+		obstacles_seen = 0,
+	}
+	local function fail(reason)
+		metrics.elapsed_us = navigation_elapsed_us(start_us)
+		return nil, make_navigation_meta(options, "blocked", reason, metrics)
+	end
+	local function passable(pos)
+		return navigation_pos_passable(pos, context, metrics)
+	end
+
+	local start_ok = passable(start)
+	if not start_ok then
+		return fail("navigation_start_blocked")
+	end
+	local goal_ok = passable(goal)
+	if not goal_ok then
+		return fail("navigation_goal_blocked")
+	end
+
+	local start_key = navigation_key(start)
+	local queue = {
+		{
+			pos = start,
+			path = { copy_pos(start) },
+			distance = 0,
+		},
+	}
+	local seen = {
+		[start_key] = true,
+	}
+	local head = 1
+	local directions = {
+		{ x = 1, z = 0 },
+		{ x = 0, z = 1 },
+		{ x = 0, z = -1 },
+		{ x = -1, z = 0 },
+	}
+
+	while head <= #queue do
+		if metrics.nodes_searched >= max_nodes then
+			return fail("navigation_node_budget_exhausted")
+		end
+		if options.wall_time_ms > 0
+				and navigation_elapsed_us(start_us) > options.wall_time_ms * 1000 then
+			return fail("navigation_wall_time_budget_exceeded")
+		end
+
+		local item = queue[head]
+		head = head + 1
+		metrics.nodes_searched = metrics.nodes_searched + 1
+		if distance_between(item.pos, goal) <= options.stop_distance then
+			metrics.path_waypoint_count = #item.path
+			metrics.elapsed_us = navigation_elapsed_us(start_us)
+			return item.path, make_navigation_meta(options,
+				"bounded_grid_path", nil, metrics)
+		end
+
+		for _, direction in ipairs(directions) do
+			local next_pos = {
+				x = item.pos.x + direction.x,
+				y = item.pos.y,
+				z = item.pos.z + direction.z,
+			}
+			local key = navigation_key(next_pos)
+			if not seen[key] then
+				seen[key] = true
+				local next_distance = item.distance + 1
+				if next_distance <= max_distance_remaining then
+					local open = passable(next_pos)
+					if open then
+						local next_path = table.copy(item.path)
+						next_path[#next_path + 1] = copy_pos(next_pos)
+						queue[#queue + 1] = {
+							pos = next_pos,
+							path = next_path,
+							distance = next_distance,
+						}
+					end
+				end
+			end
+		end
+	end
+
+	return fail("navigation_obstacle_blocked")
+end
+
+local function direct_path_blocked(current_pos, next_pos, context)
+	if not has_navigation_perception(context) then
+		return false
+	end
+	local distance = distance_between(current_pos, next_pos)
+	local samples = math.max(1, math.ceil(distance))
+	local checked = {}
+	local metrics = {
+		obstacles_seen = 0,
+	}
+	for i = 1, samples do
+		local ratio = i / samples
+		local sample = navigation_grid_pos({
+			x = current_pos.x + (next_pos.x - current_pos.x) * ratio,
+			y = current_pos.y + (next_pos.y - current_pos.y) * ratio,
+			z = current_pos.z + (next_pos.z - current_pos.z) * ratio,
+		})
+		local key = navigation_key(sample)
+		if not checked[key] then
+			checked[key] = true
+			local open = navigation_pos_passable(sample, context, metrics)
+			if not open then
+				return true
+			end
+		end
+	end
+	return false
+end
+
 local function call_follow_pathfinder(current_pos, target_pos, options, context)
 	if context.find_path then
 		local ok, path = pcall(context.find_path, copy_pos(current_pos),
@@ -662,11 +1037,28 @@ local function call_follow_pathfinder(current_pos, target_pos, options, context)
 				max_total_distance = options.max_total_distance,
 				max_total_distance_remaining = options.max_total_distance_remaining,
 				max_waypoints = options.max_waypoints,
+				max_nodes_searched = options.max_nodes_searched,
+				max_wall_time_ms = options.wall_time_ms,
 			})
 		if ok then
-			return compact_waypoints(path)
+			local waypoints = compact_waypoints(path)
+			if waypoints then
+				return waypoints, {
+					pathfinder_used = true,
+					planner = "injected_pathfinder",
+					path_status = "pathfinder_waypoint_bounded",
+					path_waypoint_count = #waypoints,
+					nodes_searched = 0,
+					max_nodes_searched = options.max_nodes_searched,
+					obstacles_seen = 0,
+					elapsed_us = 0,
+					max_wall_time_ms = options.wall_time_ms,
+				}
+			end
 		end
-		return nil
+	end
+	if has_navigation_perception(context) then
+		return bounded_grid_path(current_pos, target_pos, options, context)
 	end
 	if context.use_core_pathfinder and core.find_path then
 		local search_distance = math.max(1, math.ceil(distance_between(current_pos,
@@ -674,13 +1066,26 @@ local function call_follow_pathfinder(current_pos, target_pos, options, context)
 		local ok, path = pcall(core.find_path, current_pos, target_pos,
 			search_distance, 1, 4, "A*")
 		if ok then
-			return compact_waypoints(path)
+			local waypoints = compact_waypoints(path)
+			if waypoints then
+				return waypoints, {
+					pathfinder_used = true,
+					planner = "core.find_path",
+					path_status = "pathfinder_waypoint_bounded",
+					path_waypoint_count = #waypoints,
+					nodes_searched = 0,
+					max_nodes_searched = options.max_nodes_searched,
+					obstacles_seen = 0,
+					elapsed_us = 0,
+					max_wall_time_ms = options.wall_time_ms,
+				}
+			end
 		end
 	end
-	return nil
+	return nil, nil
 end
 
-local function follow_next_step(current_pos, target_pos, options, context, follow_state)
+function follow_next_step(current_pos, target_pos, options, context, follow_state)
 	local next_pos, step_distance, distance_to_target, path_status =
 		step_toward(current_pos, target_pos, options.max_step_distance,
 			options.stop_distance)
@@ -699,13 +1104,31 @@ local function follow_next_step(current_pos, target_pos, options, context, follo
 			options.max_total_distance - (follow_state.distance_moved or 0)),
 		max_waypoints = math.max(1,
 			options.max_steps - (follow_state.steps_run or 0) + 1),
+		max_nodes_searched = options.max_nodes_searched,
+		wall_time_ms = options.wall_time_ms,
 	}
-	local waypoints = call_follow_pathfinder(current_pos, target_pos,
-		path_options, context)
+	local should_plan = context.force_navigation_search == true
+		or context.find_path ~= nil
+		or context.use_core_pathfinder == true
+		or direct_path_blocked(current_pos, next_pos, context)
+	local waypoints, path_meta
+	if should_plan then
+		waypoints, path_meta = call_follow_pathfinder(current_pos, target_pos,
+			path_options, context)
+	end
 	if not waypoints then
+		if path_meta and path_meta.blocked then
+			return copy_pos(current_pos), 0, distance_to_target,
+				path_meta.path_status, path_meta
+		end
 		return next_pos, step_distance, distance_to_target, path_status, {
 			pathfinder_used = false,
 			path_waypoint_count = 0,
+			nodes_searched = 0,
+			max_nodes_searched = options.max_nodes_searched,
+			obstacles_seen = 0,
+			elapsed_us = 0,
+			max_wall_time_ms = options.wall_time_ms,
 		}
 	end
 
@@ -720,6 +1143,11 @@ local function follow_next_step(current_pos, target_pos, options, context, follo
 		return next_pos, step_distance, distance_to_target, path_status, {
 			pathfinder_used = false,
 			path_waypoint_count = #waypoints,
+			nodes_searched = path_meta and path_meta.nodes_searched or 0,
+			max_nodes_searched = options.max_nodes_searched,
+			obstacles_seen = path_meta and path_meta.obstacles_seen or 0,
+			elapsed_us = path_meta and path_meta.elapsed_us or 0,
+			max_wall_time_ms = options.wall_time_ms,
 		}
 	end
 
@@ -732,9 +1160,15 @@ local function follow_next_step(current_pos, target_pos, options, context, follo
 			options.max_step_distance, 0)
 	end
 	return next_pos, step_distance, distance_to_target,
-		"pathfinder_waypoint_bounded", {
+		(path_meta and path_meta.path_status) or "pathfinder_waypoint_bounded", {
 			pathfinder_used = true,
 			path_waypoint_count = #waypoints,
+			planner = path_meta and path_meta.planner or "unknown",
+			nodes_searched = path_meta and path_meta.nodes_searched or 0,
+			max_nodes_searched = options.max_nodes_searched,
+			obstacles_seen = path_meta and path_meta.obstacles_seen or 0,
+			elapsed_us = path_meta and path_meta.elapsed_us or 0,
+			max_wall_time_ms = options.wall_time_ms,
 		}
 end
 
@@ -758,7 +1192,7 @@ local function follow_target_pos(name, context)
 	return nil, "follow_target_not_found"
 end
 
-local function follow_options(prompt, context)
+function follow_options(prompt, context)
 	context = context or {}
 	local requested_steps = context.max_follow_steps
 		or tonumber(prompt:match("follow%s+(%d+)"))
@@ -779,15 +1213,17 @@ local function follow_options(prompt, context)
 		stop_distance = stop_distance,
 		wall_time_ms = numeric_limit(context.max_follow_wall_time_ms,
 			settings.max_follow_wall_time_ms, 0, settings.max_follow_wall_time_ms),
+		max_nodes_searched = numeric_limit(context.max_navigation_nodes,
+			settings.max_navigation_nodes, 1, settings.max_navigation_nodes),
 	}
 end
 
-local function make_follow_result(name, context, state, status, reason, message, extra)
+function make_follow_result(name, context, state, status, reason, message, extra)
 	extra = extra or {}
 	local result = {
 		ok = status == "success" or status == "partial",
 		status = status,
-		operation = "ai_agent.follow_step",
+		operation = extra.operation or "ai_agent.follow_step",
 		agent_id = agent_id_for(name),
 		task_id = context.task_id,
 		changed = 0,
@@ -809,9 +1245,16 @@ local function make_follow_result(name, context, state, status, reason, message,
 			max_total_distance = state.max_total_distance,
 			stop_distance = state.stop_distance,
 			path_status = extra.path_status,
+			path_planner = extra.path_planner,
 			path_waypoint_count = extra.path_waypoint_count or 0,
 			pathfinder_used = extra.pathfinder_used == true,
+			nodes_searched = extra.nodes_searched or 0,
+			max_nodes_searched = extra.max_nodes_searched or state.max_nodes_searched,
+			obstacles_seen = extra.obstacles_seen or 0,
+			navigation_elapsed_us = extra.navigation_elapsed_us or 0,
+			max_wall_time_ms = extra.max_wall_time_ms,
 			skipped_reason = extra.skipped_reason,
+			blocked_reason = extra.blocked_reason,
 		},
 	}
 	return result
@@ -826,6 +1269,7 @@ local function handle_follow(name, prompt, context)
 		max_steps = options.max_steps,
 		max_step_distance = options.max_step_distance,
 		max_total_distance = options.max_total_distance,
+		max_navigation_nodes = options.max_nodes_searched,
 	})
 	local follow_state = {
 		steps_run = 0,
@@ -834,6 +1278,7 @@ local function handle_follow(name, prompt, context)
 		max_step_distance = options.max_step_distance,
 		max_total_distance = options.max_total_distance,
 		stop_distance = options.stop_distance,
+		max_nodes_searched = options.max_nodes_searched,
 	}
 	local steps = {}
 	for _ = 1, options.max_steps do
@@ -857,6 +1302,28 @@ local function handle_follow(name, prompt, context)
 			local next_pos, step_distance, distance_to_target, path_status, path_meta =
 				follow_next_step(current_pos, target_pos, options, context,
 					follow_state)
+			if path_meta.blocked then
+				return make_follow_result(name, context, follow_state, "blocked",
+					path_meta.blocked_reason or "navigation_obstacle_blocked",
+					"Follow navigation could not find a bounded path.", {
+						entity = setup_result.entity,
+						examined = path_meta.nodes_searched or 0,
+						skipped = 1,
+						step_distance = 0,
+						distance_to_target = distance_to_target,
+						path_status = path_status,
+						path_planner = path_meta.planner,
+						path_waypoint_count = path_meta.path_waypoint_count,
+						pathfinder_used = path_meta.pathfinder_used,
+						nodes_searched = path_meta.nodes_searched,
+						max_nodes_searched = path_meta.max_nodes_searched,
+						obstacles_seen = path_meta.obstacles_seen,
+						navigation_elapsed_us = path_meta.elapsed_us,
+						max_wall_time_ms = path_meta.max_wall_time_ms,
+						skipped_reason = path_meta.blocked_reason,
+						blocked_reason = path_meta.blocked_reason,
+					})
+			end
 			if step_distance <= 0 then
 				return make_follow_result(name, context, follow_state, "success",
 					"follow_target_reached", "Helper is within follow distance.", {
@@ -866,8 +1333,14 @@ local function handle_follow(name, prompt, context)
 						step_distance = 0,
 						distance_to_target = distance_to_target,
 						path_status = path_status,
+						path_planner = path_meta.planner,
 						path_waypoint_count = path_meta.path_waypoint_count,
 						pathfinder_used = path_meta.pathfinder_used,
+						nodes_searched = path_meta.nodes_searched,
+						max_nodes_searched = path_meta.max_nodes_searched,
+						obstacles_seen = path_meta.obstacles_seen,
+						navigation_elapsed_us = path_meta.elapsed_us,
+						max_wall_time_ms = path_meta.max_wall_time_ms,
 						skipped_reason = "within_stop_distance",
 					})
 			end
@@ -881,9 +1354,16 @@ local function handle_follow(name, prompt, context)
 						step_distance = step_distance,
 						distance_to_target = distance_to_target,
 						path_status = path_status,
+						path_planner = path_meta.planner,
 						path_waypoint_count = path_meta.path_waypoint_count,
 						pathfinder_used = path_meta.pathfinder_used,
+						nodes_searched = path_meta.nodes_searched,
+						max_nodes_searched = path_meta.max_nodes_searched,
+						obstacles_seen = path_meta.obstacles_seen,
+						navigation_elapsed_us = path_meta.elapsed_us,
+						max_wall_time_ms = path_meta.max_wall_time_ms,
 						skipped_reason = "max_total_distance",
+						blocked_reason = "follow_distance_limit_exceeded",
 					})
 			end
 
@@ -911,9 +1391,16 @@ local function handle_follow(name, prompt, context)
 					distance_to_target = distance_to_target,
 					distance_moved = moved.metrics and moved.metrics.distance or 0,
 					path_status = path_status,
+					path_planner = path_meta.planner,
 					path_waypoint_count = path_meta.path_waypoint_count,
 					pathfinder_used = path_meta.pathfinder_used,
+					nodes_searched = path_meta.nodes_searched,
+					max_nodes_searched = path_meta.max_nodes_searched,
+					obstacles_seen = path_meta.obstacles_seen,
+					navigation_elapsed_us = path_meta.elapsed_us,
+					max_wall_time_ms = path_meta.max_wall_time_ms,
 					skipped_reason = moved.skipped > 0 and moved.reason or nil,
+					blocked_reason = moved.skipped > 0 and moved.reason or nil,
 				})
 		end
 	end
@@ -1238,6 +1725,7 @@ local function handle_guide(name)
 			"audit",
 			"rollback",
 		},
+		navigation_contract = plugin.get_navigation_contract(),
 		tasks = active_player_tasks(name),
 		pending_approval = compact_pending_approval(player_pending_approvals[name]),
 	})
@@ -1380,6 +1868,7 @@ function plugin.handle_command(name, param, context)
 		return public_reply(name, "status", "success", "Nova agent is ready.", {
 			state = plugin.get_player_state(name),
 			metrics = core.get_ai_runtime_metrics(),
+			navigation_contract = plugin.get_navigation_contract(),
 		})
 	end
 	if prompt == "guide" or prompt == "help" then
