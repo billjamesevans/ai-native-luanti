@@ -3892,6 +3892,7 @@ core.ai_agent_plugin.configure({
 		["ai_runtime_test:hazard"] = true,
 	},
 	max_lights = 3,
+	max_repair_radius = 2,
 	capabilities = {
 		["world.read"] = true,
 		["world.place"] = true,
@@ -4528,6 +4529,38 @@ assert(repair_plan_reply.plan.metrics.node_writes == 0)
 assert(repair_plan_reply.candidate_count == 1)
 assert(get_test_node(repair_plan_pos).name == "ai_runtime_test:hazard")
 
+local repair_radius_pos = test_pos(42095)
+local repair_radius_neighbor = vector.add(repair_radius_pos, { x = 1, y = 0, z = 0 })
+set_test_node(repair_radius_pos, { name = "ai_runtime_test:hazard" })
+set_test_node(repair_radius_neighbor, { name = "ai_runtime_test:hazard" })
+local repair_radius_plan = core.ai_agent_plugin.handle_command("Wills", "repair plan radius 1", {
+	pos = repair_radius_pos,
+	get_node = get_test_node,
+	set_node = function()
+		error("repair radius plan must not mutate")
+	end,
+})
+assert(repair_radius_plan.ok == true)
+assert(repair_radius_plan.action == "repair_plan")
+assert(repair_radius_plan.repair_radius == 1)
+assert(repair_radius_plan.sample_limit == 3)
+assert(repair_radius_plan.candidate_count == 2)
+assert(repair_radius_plan.plan.repair_radius == 1)
+assert(get_test_node(repair_radius_pos).name == "ai_runtime_test:hazard")
+assert(get_test_node(repair_radius_neighbor).name == "ai_runtime_test:hazard")
+
+local repair_radius_blocked = core.ai_agent_plugin.handle_command("Wills", "repair plan radius 9", {
+	pos = repair_radius_pos,
+	get_node = get_test_node,
+	set_node = function()
+		error("blocked repair radius plan must not mutate")
+	end,
+})
+assert(repair_radius_blocked.ok == false)
+assert(repair_radius_blocked.action == "repair_plan")
+assert(repair_radius_blocked.status == "blocked")
+assert(repair_radius_blocked.reason == "repair_radius_out_of_bounds")
+
 local build_pos = test_pos(4210)
 set_test_node(build_pos, { name = "air" })
 local build_reply = core.ai_agent_plugin.handle_command("Wills", "build marker", {
@@ -4603,6 +4636,34 @@ assert(completed_repair.status == "completed")
 assert(completed_repair.last_result.operation == "repair_agent.apply_plan")
 assert(completed_repair.last_result.changed == 1)
 assert(completed_repair.last_result.rollback_record_id ~= nil)
+
+local repair_radius_apply_pos = test_pos(4225)
+local repair_radius_apply_neighbor = vector.add(repair_radius_apply_pos, { x = 1, y = 0, z = 0 })
+set_test_node(repair_radius_apply_pos, { name = "ai_runtime_test:hazard" })
+set_test_node(repair_radius_apply_neighbor, { name = "ai_runtime_test:hazard" })
+local repair_radius_reply = core.ai_agent_plugin.handle_command("Wills", "repair radius 1", {
+	pos = repair_radius_apply_pos,
+	world_id = "product-loop-world",
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(repair_radius_reply.ok == true)
+assert(repair_radius_reply.action == "repair")
+assert(repair_radius_reply.status == "pending_approval")
+assert(repair_radius_reply.repair_radius == 1)
+assert(repair_radius_reply.candidate_count == 2)
+assert(get_test_node(repair_radius_apply_pos).name == "ai_runtime_test:hazard")
+assert(get_test_node(repair_radius_apply_neighbor).name == "ai_runtime_test:hazard")
+local approved_repair_radius = core.ai_agent_plugin.handle_command("Wills", "approve repair", {})
+assert(approved_repair_radius.ok == true)
+assert(approved_repair_radius.action == "approve")
+assert(approved_repair_radius.approved_action == "repair")
+core.step_ai_tasks()
+assert(get_test_node(repair_radius_apply_pos).name == "air")
+assert(get_test_node(repair_radius_apply_neighbor).name == "air")
+local completed_radius_repair = core.get_ai_task(approved_repair_radius.task_id)
+assert(completed_radius_repair.status == "completed")
+assert(completed_radius_repair.last_result.changed == 2)
 
 local guide_reply = core.ai_agent_plugin.handle_command("Wills", "guide", {})
 assert(guide_reply.ok == true)

@@ -86,6 +86,9 @@ Implemented deterministic commands:
 - `build`, `build marker`, `marker`: creates a pending read-only marker build
   plan; `approve` queues the rollback-backed `build_agent` marker task.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
+- `repair plan radius N`, `repair radius N`: plans a bounded wider repair
+  area before approval. `N` must be within the configured `max_repair_radius`
+  and the plan remains rollback-backed and approval-gated.
 - `repair`, `fix`: creates a pending read-only repair plan for configured
   repair nodes; `approve` queues the rollback-backed `repair_agent` apply task.
 - `defend`: queues a bounded defensive player task through `core.ai_player_ops.defend`.
@@ -135,6 +138,7 @@ core.ai_agent_plugin.configure({
 	max_follow_total_distance = 24,
 	max_follow_stop_distance = 1,
 	max_follow_wall_time_ms = 250,
+	max_repair_radius = 2,
 	max_defend_distance = 8,
 	capabilities = {
 		["world.read"] = true,
@@ -205,7 +209,8 @@ payloads, or raw asset payloads are blocked with `adapter_payload_rejected`.
 - Repair only applies configured repair rules around the requested target position.
 - Build and repair commands now create pending previews first; players can
   review or discard the current pending plan, and explicit approval queues the
-  mutation. Richer parameter editing remains a later slice.
+  mutation. Repair radius is player-editable within the configured
+  `max_repair_radius`; broader build-shape editing remains a later slice.
 - Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
 - Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
 - Importer behavior is dry-run-only and depends on an operator-supplied plan;
