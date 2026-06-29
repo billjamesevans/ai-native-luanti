@@ -177,6 +177,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["operator_status_live_command"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-status-live.json",
             )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_control_report"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-control-report.json",
+            )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["package_status"], "ready")
             self.assertEqual(
@@ -190,6 +194,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["operator_status_evidence"]["operator_control_recommendations"],
                 1,
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_control_report_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_control_report_path"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-control-report.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["output_bytes"], 1200)
             self.assertEqual(manifest["operator_status_evidence"]["max_bytes"], 24000)
@@ -311,8 +323,16 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["operator_status_live_command"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-status-live.json",
             )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_control_report"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-control-report.json",
+            )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "live_command")
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_control_report_status"],
+                "pass",
+            )
             self.assertIn("clean-profile verification", " ".join(manifest["notes"]))
 
             serialized = json.dumps(manifest, sort_keys=True)
@@ -372,6 +392,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["operator_status_package"],
                 "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-status.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_control_report"],
+                "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-control-report.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "command_surrogate")
             self.assertFalse(manifest["operator_status_evidence"]["direct_command_execution"])
@@ -565,7 +589,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "util/ai_native_runtime_verify.py",
             "ai-runtime-verification-manifest.json",
             "ai-runtime-operator-status-live.json",
+            "ai-runtime-operator-control-report.json",
             "/ai_runtime_operator_status",
+            "util/ai_native_operator_control_report.py",
             "--operator-status-max-bytes",
             "--operator-status-source surrogate",
             "disposable `ai_runtime` world",
