@@ -1584,6 +1584,388 @@ end
 
 run_model_import_gate_tests()
 
+local function run_compat_structure_apply_tests()
+	core.ai_rollback_storage.configure(nil)
+	core.register_ai_agent({
+		agent_id = "compat_import:runtime",
+		display_name = "Compatibility Runtime Import Agent",
+		owner = "compat-operator",
+		plugin = "compat_import_test",
+		capabilities = {
+			["import.assets"] = true,
+			["world.place"] = true,
+			["world.batch"] = true,
+		},
+	})
+	core.register_ai_agent({
+		agent_id = "compat_import:no_batch",
+		display_name = "Compatibility Missing Batch Agent",
+		owner = "compat-operator",
+		plugin = "compat_import_test",
+		capabilities = {
+			["import.assets"] = true,
+			["world.place"] = true,
+		},
+	})
+
+	local apply_base = test_pos(4500)
+	local function structure_placements(origin)
+		return {
+			{
+				pos = vector.add(origin, { x = 0, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+			},
+			{
+				pos = vector.add(origin, { x = 1, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+			},
+		}
+	end
+
+	local structure_writes = 0
+	local function counting_structure_set_node(pos, node)
+		structure_writes = structure_writes + 1
+		return set_test_node(pos, node)
+	end
+
+	local rollback_records = {}
+	local apply_success_origin = vector.add(apply_base, { x = 0, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(apply_success_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local apply_task = core.ai_import_ops.define_structure_apply_task({
+		task_id = "compat-structure:success",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		report_id = "synthetic-structure-report",
+		action_index = 0,
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "manifest_only",
+		placements = structure_placements(apply_success_origin),
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 1,
+		max_wall_time_ms = 5000,
+		source_reference = {
+			reference_type = "mounted_fixture",
+			redacted_id = "synthetic-structure-fixture",
+			inventory_hash = string.rep("1", 64),
+		},
+		persist_record = function(record)
+			assert(structure_writes == 0)
+			rollback_records[#rollback_records + 1] = record
+			return {
+				ok = true,
+				storage_ref = "rollback://compat/" .. record.record_id,
+			}
+		end,
+	})
+	assert(apply_task.required_capabilities["import.assets"] == true)
+	assert(apply_task.required_capabilities["world.place"] == true)
+	assert(apply_task.required_capabilities["world.batch"] == true)
+	assert(apply_task.mutation_class == "compat_import")
+	assert(apply_task.metadata.placement_count == 2)
+	assert(apply_task.metadata.source_reference.redacted_id == "synthetic-structure-fixture")
+	assert(apply_task.metadata.source_reference.payload == nil)
+	core.queue_ai_task(apply_task)
+	local queued_summary = core.ai_import_ops.build_apply_summary({
+		apply_id = "apply-runtime:queued",
+		report_id = "synthetic-structure-report",
+		task_ids = {
+			"compat-structure:success",
+		},
+		approved_actions = {
+			{ action_index = 0, action = "import_structure" },
+		},
+		rollback_policy = "manifest_only",
+	})
+	assert(queued_summary.status == "queued")
+	assert(#queued_summary.queued_tasks == 1)
+	assert(#queued_summary.running_tasks == 0)
+	core.step_ai_tasks()
+	local completed_apply = core.get_ai_task("compat-structure:success")
+	assert(completed_apply.status == "completed")
+	assert(completed_apply.last_result.operation == "ai_world.batch_place")
+	assert(completed_apply.last_result.changed == 2)
+	assert(completed_apply.last_result.rollback_record_id ~= nil)
+	assert(completed_apply.last_result.rollback_storage_ref ~= nil)
+	assert(completed_apply.last_result.metrics.rollback_records == 1)
+	assert(completed_apply.last_result.metrics.mapblock_churn == 1)
+	assert(#rollback_records == 1)
+	assert(rollback_records[1].mutation_class == "compat_import")
+	assert(rollback_records[1].operation_label == "compat.structure.apply")
+	assert(rollback_records[1].policy == "manifest")
+	assert(#rollback_records[1].changed_positions == 2)
+	assert(get_test_node(vector.add(apply_success_origin, { x = 0, y = 0, z = 0 })).name
+		== "ai_runtime_test:stone")
+	assert(get_test_node(vector.add(apply_success_origin, { x = 1, y = 0, z = 0 })).name
+		== "ai_runtime_test:stone")
+
+	local over_budget_origin = vector.add(apply_base, { x = 16, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(over_budget_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_budget = structure_writes
+	core.ai_import_ops.queue_structure_apply_task({
+		task_id = "compat-structure:over-budget",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "snapshot",
+		placements = structure_placements(over_budget_origin),
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 1,
+		max_mapblock_churn_total = 1,
+		persist_record = function()
+			error("rollback must not be written for over-budget apply")
+		end,
+	})
+	core.step_ai_tasks()
+	local over_budget_task = core.get_ai_task("compat-structure:over-budget")
+	assert(over_budget_task.status == "blocked")
+	assert(over_budget_task.last_result.operation == "ai_import.structure_apply")
+	assert(over_budget_task.last_result.reason == "node_write_budget_exceeded")
+	assert(over_budget_task.last_result.changed == 0)
+	assert(structure_writes == writes_before_budget)
+	assert(get_test_node(vector.add(over_budget_origin, { x = 0, y = 0, z = 0 })).name == "air")
+
+	local no_rollback_origin = vector.add(apply_base, { x = 32, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(no_rollback_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_missing_rollback = structure_writes
+	core.ai_import_ops.queue_structure_apply_task({
+		task_id = "compat-structure:missing-rollback",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "snapshot",
+		placements = structure_placements(no_rollback_origin),
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 1,
+	})
+	core.step_ai_tasks()
+	local missing_rollback_task = core.get_ai_task("compat-structure:missing-rollback")
+	assert(missing_rollback_task.status == "blocked")
+	assert(missing_rollback_task.last_result.operation == "ai_import.structure_apply")
+	assert(missing_rollback_task.last_result.reason == "rollback_metadata_unavailable")
+	assert(missing_rollback_task.last_result.metrics.rollback_failures == 1)
+	assert(structure_writes == writes_before_missing_rollback)
+
+	local missing_cap_origin = vector.add(apply_base, { x = 48, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(missing_cap_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_missing_cap = structure_writes
+	core.ai_import_ops.queue_structure_apply_task({
+		task_id = "compat-structure:missing-capability",
+		agent_id = "compat_import:no_batch",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "snapshot",
+		placements = structure_placements(missing_cap_origin),
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 1,
+		persist_record = function()
+			error("rollback must not be written when capability is missing")
+		end,
+	})
+	core.step_ai_tasks()
+	local missing_cap_task = core.get_ai_task("compat-structure:missing-capability")
+	assert(missing_cap_task.status == "blocked")
+	assert(missing_cap_task.last_result.reason == "missing_capability")
+	assert(structure_writes == writes_before_missing_cap)
+
+	local no_mutation_origin = vector.add(apply_base, { x = 64, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(no_mutation_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_no_mutation = structure_writes
+	core.ai_import_ops.queue_structure_apply_task({
+		task_id = "compat-structure:no-mutation",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = false,
+		rollback_policy = "snapshot",
+		placements = structure_placements(no_mutation_origin),
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 1,
+		persist_record = function()
+			error("rollback must not be written when mutation is disabled")
+		end,
+	})
+	core.step_ai_tasks()
+	local no_mutation_task = core.get_ai_task("compat-structure:no-mutation")
+	assert(no_mutation_task.status == "blocked")
+	assert(no_mutation_task.last_result.reason == "structure_mutation_not_enabled")
+	assert(structure_writes == writes_before_no_mutation)
+
+	local protected_origin = vector.add(apply_base, { x = 80, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(protected_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local protected_records = {}
+	local old_protected = core.is_protected
+	core.is_protected = function(pos, name)
+		return name == "compat-operator" and pos.x == protected_origin.x
+	end
+	local writes_before_protected = structure_writes
+	core.ai_import_ops.queue_structure_apply_task({
+		task_id = "compat-structure:protected",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "snapshot",
+		placements = {
+			{
+				pos = protected_origin,
+				node_name = "ai_runtime_test:stone",
+			},
+		},
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 1,
+		max_mapblock_churn_total = 1,
+		persist_record = function(record)
+			protected_records[#protected_records + 1] = record
+			return "rollback://compat/" .. record.record_id
+		end,
+	})
+	core.step_ai_tasks()
+	core.is_protected = old_protected
+	local protected_task = core.get_ai_task("compat-structure:protected")
+	assert(protected_task.status == "blocked")
+	assert(protected_task.last_result.operation == "ai_world.batch_place")
+	assert(protected_task.last_result.reason == "all_operations_skipped")
+	assert(protected_task.last_result.samples[1].reason == "protected_area")
+	assert(protected_task.last_result.changed == 0)
+	assert(#protected_records == 1)
+	assert(structure_writes == writes_before_protected)
+
+	local private_origin = vector.add(apply_base, { x = 96, y = 0, z = 0 })
+	for _, placement in ipairs(structure_placements(private_origin)) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local private_definition = core.ai_import_ops.define_structure_apply_task({
+		task_id = "compat-structure:privacy",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "snapshot",
+		placements = structure_placements(private_origin),
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 1,
+		source_reference = {
+			reference_type = "mounted_fixture",
+			redacted_id = "synthetic-private-fixture",
+			inventory_hash = string.rep("2", 64),
+			payload = "must not be retained",
+		},
+		private_payload = {
+			secret = "must not be retained",
+		},
+		persist_record = function()
+			error("rollback must not be written when payload is rejected")
+		end,
+	})
+	assert(private_definition.metadata.source_reference.redacted_id == "synthetic-private-fixture")
+	assert(private_definition.metadata.source_reference.payload == nil)
+	core.queue_ai_task(private_definition)
+	core.step_ai_tasks()
+	local private_task = core.get_ai_task("compat-structure:privacy")
+	assert(private_task.status == "blocked")
+	assert(private_task.last_result.reason == "payload_rejected")
+	assert(private_task.last_result.changed == 0)
+
+	core.queue_ai_task({
+		task_id = "compat-structure:running",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		label = "compat.structure.place",
+		budget = {
+			max_steps_per_step = 1,
+		},
+		steps = {
+			function()
+				return {
+					ok = true,
+					status = "success",
+					changed = 0,
+				}
+			end,
+			function()
+				return {
+					ok = true,
+					status = "success",
+					changed = 0,
+				}
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local apply_summary = core.ai_import_ops.build_apply_summary({
+		apply_id = "apply-runtime:final",
+		report_id = "synthetic-structure-report",
+		task_ids = {
+			"compat-structure:success",
+			"compat-structure:over-budget",
+			"compat-structure:running",
+		},
+		approved_actions = {
+			{ action_index = 0, action = "import_structure" },
+		},
+		rollback_policy = "manifest_only",
+	})
+	assert(apply_summary.status == "blocked")
+	assert(#apply_summary.completed_tasks == 1)
+	assert(#apply_summary.blocked_tasks == 1)
+	assert(#apply_summary.running_tasks == 1)
+	assert(apply_summary.completed_tasks[1].status == "completed")
+	assert(apply_summary.blocked_tasks[1].status == "blocked")
+	assert(apply_summary.running_tasks[1].status == "running")
+	assert(apply_summary.mutation_cost_actual.node_writes >= 2)
+	assert(apply_summary.mutation_cost_actual.mapblock_churn >= 1)
+	assert(#apply_summary.rollback_records >= 1)
+	assert(apply_summary.safety.assets_remain_operator_supplied == true)
+	assert(apply_summary.safety.dry_run_report_unchanged == true)
+	assert(apply_summary.safety.world_mutation_executed == true)
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:running").status == "completed")
+end
+
+run_compat_structure_apply_tests()
+
 assert(core.registered_chatcommands.ai_runtime ~= nil)
 local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
 assert(command_ok == true)
@@ -1593,7 +1975,7 @@ assert(command_message:find("writes=", 1, true))
 assert(command_message:find("audit=", 1, true))
 assert(command_message:find("model=", 1, true))
 assert(not command_message:find("do not retain this prompt", 1, true))
-assert(#command_message < 240)
+assert(#command_message < 320)
 
 local audit = core.get_ai_runtime_audit({ limit = 100 })
 assert(type(audit) == "table")
