@@ -502,6 +502,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "verify-success",
                     "--server-bin",
                     "bin/luantiserver",
+                    "--game-profile",
+                    "sample-synthetic",
                 ]
             )
             runs = iter(
@@ -719,6 +721,73 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertLess(len(serialized), 12000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
+    def test_default_profile_records_clean_profile_workload_evidence(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-default-clean-profile",
+                    "--server-bin",
+                    "bin/luantiserver",
+                ]
+            )
+            self.assertEqual(args.game_profile, "ai_runtime")
+            gate_step = harness.build_steps(args)[2]
+            self.assertIn("--game-profile", gate_step.actual_command)
+            self.assertIn("ai_runtime", gate_step.actual_command)
+
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-default-clean-profile/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=self.runner_with_operator_artifact(runs),
+                now_fn=lambda: "2026-06-28T12:08:00Z",
+            )
+
+            self.assertEqual(status, 0)
+            self.assertEqual(manifest["game_profile"], "ai_runtime")
+            self.assertEqual(
+                manifest["artifact_paths"]["clean_profile_summary"],
+                "local/benchmarks/local-mac/2026-06-28/verify-default-clean-profile/clean-profile-benchmark-summary.json",
+            )
+            self.assertEqual(manifest["clean_profile_evidence"]["status"], "pass")
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["server_step_workload_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["player_load_probe_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["map_chunk_workload_status"],
+                "pass",
+            )
+            self.assertEqual(manifest["clean_profile_evidence"]["cpu_status"], "measured")
 
     def test_operator_status_accepts_live_lua_empty_operator_control_summaries(self):
         harness = load_harness_module()
@@ -1505,7 +1574,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "--operator-taREDACTED_KEY_FIXTURE",
             "--operator-taREDACTED_KEY_FIXTURE",
             "--operator-status-source surrogate",
+            "--game-profile sample-synthetic",
             "disposable `ai_runtime` world",
+            "default `ai_runtime` profile",
             "disposable live `ai_runtime` queue probe",
             "source_kind = `live_command`",
             "source_kind = `command_surrogate`",
