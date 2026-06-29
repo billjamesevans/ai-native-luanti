@@ -586,10 +586,13 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(schema["title"], "Compatibility Import Inventory Discovery Report")
         self.assertIn("inventory_input_format", schema["required"])
         self.assertIn("readiness", schema["required"])
+        self.assertIn("promotion_queue", schema["required"])
+        self.assertIn("promotion_queue_summary", schema["required"])
         self.assertIn(
             "ready_for_import_preview",
             schema["properties"]["status"]["enum"],
         )
+        self.assertIn("promotion_queue_row", schema["$defs"])
 
         report = json.loads(example_path.read_text(encoding="utf-8"))
         self.assertEqual(report["mode"], "import_inventory_discovery")
@@ -1030,6 +1033,12 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertGreater(report["summary"]["source_status_counts"]["blocked"], 0)
         self.assertGreater(report["summary"]["planned_actions_total"], 0)
         self.assertIn("import.assets", report["summary"]["required_capabilities"])
+        self.assertEqual(report["promotion_queue_summary"]["promotion_sources_total"], 5)
+        self.assertEqual(report["promotion_queue_summary"]["ready_package_count"], 3)
+        self.assertEqual(
+            report["promotion_queue_summary"]["disposable_staging_candidate_count"],
+            1,
+        )
         self.assertTrue(report["safety"]["dry_run_only"])
         self.assertTrue(report["safety"]["no_assets_copied"])
         self.assertTrue(report["safety"]["no_world_mutation"])
@@ -1045,6 +1054,44 @@ class CompatibilityDryRunTests(unittest.TestCase):
             {"mapped": 1, "skipped": 1, "blocked": 1, "unsupported": 0},
         )
         self.assertEqual(by_class["world"]["status"], "blocked")
+        promotion_by_class = {item["source_class"]: item for item in report["promotion_queue"]}
+        self.assertEqual(
+            promotion_by_class["java_resource_pack"]["promotion_kind"],
+            "asset_reference_promotion_package",
+        )
+        self.assertEqual(
+            promotion_by_class["bedrock_resource_pack"]["promotion_kind"],
+            "asset_reference_promotion_package",
+        )
+        self.assertEqual(
+            promotion_by_class["schematic"]["promotion_kind"],
+            "structure_import_promotion_package",
+        )
+        self.assertEqual(
+            promotion_by_class["luanti_mod"]["promotion_kind"],
+            "luanti_mod_metadata_review",
+        )
+        self.assertEqual(
+            promotion_by_class["world"]["promotion_kind"],
+            "world_metadata_deferral",
+        )
+        self.assertFalse(
+            promotion_by_class["java_resource_pack"]["staged_apply_can_mutate_disposable_world"]
+        )
+        self.assertFalse(
+            promotion_by_class["java_resource_pack"]["safety"][
+                "promotion_package_executes_world_mutation"
+            ]
+        )
+        self.assertTrue(
+            promotion_by_class["schematic"]["staged_apply_can_mutate_disposable_world"]
+        )
+        self.assertTrue(promotion_by_class["schematic"]["requires_rollback_metadata"])
+        self.assertIn("adapter_apply_smoke", promotion_by_class["schematic"]["required_artifacts"])
+        self.assertFalse(
+            promotion_by_class["world"]["staged_apply_can_mutate_disposable_world"]
+        )
+        self.assertIn("future_world_conversion_design", promotion_by_class["world"]["required_artifacts"])
         for item in report["sources"]:
             self.assertIn("provenance", item)
             self.assertIn("content_hash", item["provenance"])
@@ -1089,6 +1136,11 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertFalse(report["summary"]["compatibility_import_inventory_ready"])
         self.assertIn("private_source_reference_rejected", report["readiness"]["blocking_reasons"])
         self.assertEqual(validate_import_inventory_discovery_report(report), [])
+        promotion = report["promotion_queue"][0]
+        self.assertEqual(promotion["promotion_kind"], "blocked_source")
+        self.assertEqual(promotion["status"], "blocked")
+        self.assertIsNone(promotion["report_path"])
+        self.assertFalse(promotion["safety"]["promotion_package_executes_world_mutation"])
         self.assertNotIn("minecraftpi", json.dumps(report).lower())
 
     def test_inventory_discovery_cli_writes_report_and_source_reports(self):
@@ -1113,6 +1165,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
             self.assertEqual(validate_import_inventory_discovery_report(report), [])
             self.assertIn("inventory_discovery=ready_for_import_preview", stdout.getvalue())
             self.assertIn("sources=5", stdout.getvalue())
+            self.assertEqual(report["promotion_queue_summary"]["promotion_sources_total"], 5)
             self.assertTrue(all((reports_dir / item["report_path"]).is_file()
                 for item in report["sources"]))
 
