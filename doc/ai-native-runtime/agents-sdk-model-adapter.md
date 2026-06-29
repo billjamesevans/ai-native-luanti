@@ -70,6 +70,7 @@ Offline smoke:
 
 ```bash
 python3 tools/agents_sdk_model_adapter/main.py --smoke
+python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke
 ```
 
 Live sidecar:
@@ -81,6 +82,21 @@ uv run python main.py --host 127.0.0.1 --port 8766
 
 Live mode requires `OPENAI_API_KEY`. The key belongs in server-local secret
 configuration, never in the repository, runtime manifests, or public evidence.
+
+Managed readiness probe, without provider credentials:
+
+```bash
+python3 util/ai_native_agents_sdk_sidecar_readiness.py \
+  --mode managed-http \
+  --port 8766 \
+  --output local/benchmarks/agents-sdk-sidecar-readiness.json
+```
+
+The readiness probe starts the sidecar on loopback, removes `OPENAI_API_KEY`
+from the child process, checks `GET /health`, posts a sample
+`ai_native_model_adapter_request` to `POST /v1/model-adapter`, and emits a
+bounded JSON report. It is intended for local and Pi release evidence before
+enabling live provider credentials.
 
 ## Luanti Adapter
 
@@ -133,6 +149,7 @@ Run:
 
 ```bash
 python3 util/ai_native_agents_sdk_bridge_contract.py
+python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode managed-http --port 8766
 python3 tools/agents_sdk_model_adapter/main.py --smoke
 bin/luantiserver --run-unittests --test-module TestAIRuntime
 ```
