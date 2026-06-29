@@ -4504,9 +4504,46 @@ assert(build_plan_reply.agent_id == "nova_agent:Wills:builder")
 assert(build_plan_reply.task_id == nil)
 assert(build_plan_reply.plan.operation == "build_agent.plan")
 assert(build_plan_reply.plan.will_mutate == false)
+assert(build_plan_reply.build_kind == "marker")
 assert(build_plan_reply.planned_node_writes == 1)
 assert(build_plan_reply.plan.metrics.node_writes == 0)
 assert(get_test_node(build_plan_pos).name == "air")
+
+local platform_plan_pos = test_pos(42085)
+set_test_node(platform_plan_pos, { name = "air" })
+set_test_node(vector.add(platform_plan_pos, { x = 1, y = 0, z = 0 }), { name = "air" })
+local platform_plan_reply = core.ai_agent_plugin.handle_command(
+	"Wills", "build plan platform width 2 depth 1", {
+		pos = platform_plan_pos,
+		get_node = get_test_node,
+		set_node = function()
+			error("platform build plan must not mutate")
+		end,
+	})
+assert(platform_plan_reply.ok == true)
+assert(platform_plan_reply.action == "build_plan")
+assert(platform_plan_reply.build_kind == "platform")
+assert(platform_plan_reply.build_width == 2)
+assert(platform_plan_reply.build_depth == 1)
+assert(platform_plan_reply.planned_node_writes == 2)
+assert(platform_plan_reply.plan.build_kind == "platform")
+assert(platform_plan_reply.plan.build_width == 2)
+assert(platform_plan_reply.plan.build_depth == 1)
+assert(platform_plan_reply.plan.metrics.node_writes == 0)
+assert(get_test_node(platform_plan_pos).name == "air")
+assert(get_test_node(vector.add(platform_plan_pos, { x = 1, y = 0, z = 0 })).name == "air")
+
+local platform_plan_blocked = core.ai_agent_plugin.handle_command(
+	"Wills", "build plan platform width 2 depth 2", {
+		pos = platform_plan_pos,
+		get_node = get_test_node,
+		set_node = function()
+			error("blocked platform plan must not mutate")
+		end,
+	})
+assert(platform_plan_blocked.ok == false)
+assert(platform_plan_blocked.action == "build_plan")
+assert(platform_plan_blocked.reason == "build_shape_out_of_bounds")
 
 local repair_plan_pos = test_pos(4209)
 set_test_node(repair_plan_pos, { name = "ai_runtime_test:hazard" })
@@ -4598,6 +4635,39 @@ assert(completed_plugin_build.status == "completed")
 assert(completed_plugin_build.last_result.rollback_record_id ~= nil)
 assert(completed_plugin_build.last_result.rollback_storage_ref:find(
 	"rollback://product-loop/", 1, true))
+
+local platform_build_pos = test_pos(4215)
+local platform_build_next = vector.add(platform_build_pos, { x = 1, y = 0, z = 0 })
+set_test_node(platform_build_pos, { name = "air" })
+set_test_node(platform_build_next, { name = "air" })
+local platform_build = core.ai_agent_plugin.handle_command(
+	"Wills", "build platform width 2 depth 1", {
+		pos = platform_build_pos,
+		world_id = "product-loop-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+	})
+assert(platform_build.ok == true)
+assert(platform_build.action == "build")
+assert(platform_build.status == "pending_approval")
+assert(platform_build.build_kind == "platform")
+assert(platform_build.build_width == 2)
+assert(platform_build.build_depth == 1)
+assert(platform_build.planned_node_writes == 2)
+assert(get_test_node(platform_build_pos).name == "air")
+assert(get_test_node(platform_build_next).name == "air")
+local approved_platform = core.ai_agent_plugin.handle_command("Wills", "approve build", {})
+assert(approved_platform.ok == true)
+assert(approved_platform.action == "approve")
+assert(approved_platform.approved_action == "build")
+assert(approved_platform.status == "queued")
+core.step_ai_tasks()
+assert(get_test_node(platform_build_pos).name == "ai_runtime_test:stone")
+assert(get_test_node(platform_build_next).name == "ai_runtime_test:stone")
+local completed_platform = core.get_ai_task(approved_platform.task_id)
+assert(completed_platform.status == "completed")
+assert(completed_platform.last_result.metrics.node_writes == 2)
+assert(completed_platform.last_result.rollback_record_id ~= nil)
 
 local repair_pos = test_pos(4220)
 set_test_node(repair_pos, { name = "ai_runtime_test:hazard" })

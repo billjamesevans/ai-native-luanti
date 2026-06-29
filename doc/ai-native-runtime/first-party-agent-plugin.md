@@ -15,7 +15,7 @@ split into five first-party role agents:
 
 | Surface | Agent id shape | Clean profile boundary | Runtime path |
 | --- | --- | --- | --- |
-| Builder Agent | `nova_agent:<player>:builder` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Build and light mutations require preview, explicit approval for marker builds, and rollback metadata before writes. | `core.build_agent.plan`, `core.build_agent.define_task` |
+| Builder Agent | `nova_agent:<player>:builder` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Build and light mutations require preview, explicit approval for marker/platform builds, and rollback metadata before writes. | `core.build_agent.plan`, `core.build_agent.define_task` |
 | Repair Agent | `nova_agent:<player>:repair` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Repair mutation requires preview, explicit approval, and rollback metadata before writes. | `core.repair_agent.plan_area`, `core.repair_agent.queue_apply_task` |
 | Guide Agent | `nova_agent:<player>:guide` | Granted `world.read` plus optional `task.cancel` and `http.llm` when configured. It owns read-only guide, task, audit, rollback-review, and owner task-control views. | `core.get_ai_task`, `core.get_ai_runtime_audit`, `core.cancel_ai_task` |
 | Defender Agent | `nova_agent:<player>:defender` | Not granted in the default clean profile. A server profile or optional plugin must explicitly grant `combat.defend`. | `core.ai_player_ops.defend` |
@@ -40,7 +40,7 @@ The plugin uses:
 - `core.register_ai_agent` for one agent per player.
 - `core.queue_ai_task` for all task-backed work.
 - `core.cancel_ai_task` for player-owned cancellation.
-- `core.build_agent.plan` and `core.build_agent.define_task` for read-only build previews and rollback-backed light/marker build tasks.
+- `core.build_agent.plan` and `core.build_agent.define_task` for read-only build previews and rollback-backed light, marker, and bounded platform build tasks.
 - `core.repair_agent.queue_apply_task` for rollback-backed repair apply tasks.
 - `core.ai_import_ops.plan` for dry-run-only Importer planning tasks that
   require `import.assets` and never copy assets or mutate worlds.
@@ -85,6 +85,9 @@ Implemented deterministic commands:
 - `build plan`, `preview build`: returns a read-only marker build plan before mutation.
 - `build`, `build marker`, `marker`: creates a pending read-only marker build
   plan; `approve` queues the rollback-backed `build_agent` marker task.
+- `build plan platform width N depth N`, `build platform width N depth N`:
+  plans a bounded platform before approval. `width * depth` must fit within
+  the configured build write budget, and the apply path remains rollback-backed.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair plan radius N`, `repair radius N`: plans a bounded wider repair
   area before approval. `N` must be within the configured `max_repair_radius`
@@ -205,12 +208,13 @@ payloads, or raw asset payloads are blocked with `adapter_payload_rejected`.
 
 - Follow uses a small bounded waypoint slice: each queued task step recomputes the player target, optionally asks a pathfinder for waypoints, moves no more than the configured step distance, stops inside the configured follow distance, and blocks when the total movement budget would be exceeded. Richer obstacle-aware navigation remains opt-in so default clean-profile playtests stay deterministic.
 - Come remains a one-shot bounded helper-entity move.
-- Build remains small lights and marker tasks, not a showcase structure system.
+- Build remains small lights, marker tasks, and bounded platforms, not a
+  showcase structure system.
 - Repair only applies configured repair rules around the requested target position.
 - Build and repair commands now create pending previews first; players can
   review or discard the current pending plan, and explicit approval queues the
-  mutation. Repair radius is player-editable within the configured
-  `max_repair_radius`; broader build-shape editing remains a later slice.
+  mutation. Platform width/depth and repair radius are player-editable within
+  configured bounds; broader build-shape editing remains a later slice.
 - Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
 - Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
 - Importer behavior is dry-run-only and depends on an operator-supplied plan;
