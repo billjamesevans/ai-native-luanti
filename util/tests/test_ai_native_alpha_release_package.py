@@ -63,7 +63,15 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         operating_loop = report["project_operating_loop"]
         self.assertEqual(
             [item["issue"] for item in operating_loop["ranked_next_issue_queue"]],
-            ["#253", "#254", "#255", "#256", "#257"],
+            ["#253", "#254", "#255", "#256"],
+        )
+        self.assertEqual(
+            operating_loop["maintenance_invariants"][0]["name"],
+            "operating_loop_maintenance",
+        )
+        self.assertEqual(
+            operating_loop["maintenance_invariants"][0]["status"],
+            "complete_but_enforced",
         )
         self.assertEqual(
             operating_loop["public_boundary"]["excluded_content"],

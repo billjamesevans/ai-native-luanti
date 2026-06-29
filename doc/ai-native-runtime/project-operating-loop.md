@@ -84,9 +84,11 @@ Keep this ranked next-issue queue current after every milestone slice:
 4. #256 Minecraft parity benchmark expansion.
    Use after accepted local and low-power lanes are refreshed. Gate:
    public-safe parity harness with actionable scorecard.
-5. #257 Contributor release automation and project operating loop.
-   Use continuously after each milestone slice. Gate: alpha gate docs,
-   templates, and machine-readable report remain complete.
+
+The contributor release automation and project operating loop lane is complete
+but still enforced. Keep the alpha gate docs, issue/PR templates,
+machine-readable report, and `release_candidate_checklist` complete after each
+milestone slice.
 
 ## Public Boundary
 
