@@ -14,6 +14,7 @@ import zipfile
 
 
 REPORT_VERSION = 1
+BATCH_INVENTORY_QUEUE_VERSION = 1
 APPLY_REQUEST_VERSION = 1
 APPLY_SUMMARY_VERSION = 1
 ADAPTER_APPLY_SMOKE_VERSION = 1
@@ -1238,6 +1239,167 @@ def build_report(source):
     source = pathlib.Path(source)
     synthetic_structure = _load_structure_adapter_fixture(source)
     return _build_report(source, synthetic_structure)
+
+
+def _safe_report_filename(index, source_id):
+    safe = "".join(
+        ch.lower() if ch.isalnum() or ch in {"-", "_", "."} else "_"
+        for ch in str(source_id)
+    ).strip("._-")
+    return f"{index:03d}-{safe or 'source'}.json"
+
+
+def _batch_source_candidates(root):
+    root = pathlib.Path(root)
+    if not root.is_dir():
+        raise ValueError("batch inventory root must be a directory")
+    return sorted(
+        path for path in root.iterdir()
+        if not path.name.startswith(".") and (path.is_file() or path.is_dir())
+    )
+
+
+def _batch_source_status(report):
+    if report["source"]["source_class"] == "unknown":
+        return "blocked"
+    if any(item.get("severity") == "error" for item in report["unsupported_features"]):
+        return "blocked"
+    if any(
+            entry["classification"] == "blocked"
+            for entry in report["source"]["inventory"]):
+        return "manual_review"
+    if report["summary"]["estimated_world_mutations"]["manual_review_items"] > 0:
+        return "manual_review"
+    if report["source"]["inventory"] and all(
+            entry["classification"] == "mapped"
+            for entry in report["source"]["inventory"]):
+        return "mappable"
+    if all(action["action"] == "skip_feature" for action in report["planned_actions"]):
+        return "skippable"
+    return "mappable"
+
+
+def _batch_required_capabilities(report):
+    capabilities = set()
+    for entry in report["source"]["inventory"]:
+        capabilities.update(entry.get("required_capabilities", []))
+    for action in report["planned_actions"]:
+        capabilities.update(action.get("required_capabilities", []))
+    return sorted(capabilities)
+
+
+def _batch_queue_row(index, report, report_path):
+    estimated = report["summary"]["estimated_world_mutations"]
+    blocked_items = sum(
+        1 for entry in report["source"]["inventory"]
+        if entry["classification"] in {"blocked", "unsupported", "unknown"}
+    )
+    return {
+        "queue_id": f"source:{index}",
+        "source_id": report["source"]["source_id"],
+        "source_class": report["source"]["source_class"],
+        "license_status": report["source"]["license_status"],
+        "path_policy": report["source"]["path_policy"],
+        "status": _batch_source_status(report),
+        "risk_level": report["summary"]["risk_level"],
+        "inventory_count": len(report["source"]["inventory"]),
+        "blocked_items": blocked_items,
+        "unsupported_feature_count": len(report["unsupported_features"]),
+        "planned_actions_count": len(report["planned_actions"]),
+        "manual_review_items": estimated["manual_review_items"],
+        "estimated_world_mutations": estimated,
+        "content_hash": report["source"].get("content_hashes", [{}])[0].get("value"),
+        "required_capabilities": _batch_required_capabilities(report),
+        "report_path": report_path,
+    }
+
+
+def _blocked_batch_queue_row(index, source, reason):
+    return {
+        "queue_id": f"source:{index}",
+        "source_id": pathlib.Path(source).name,
+        "source_class": "unknown",
+        "license_status": "blocked",
+        "path_policy": "redacted",
+        "status": "blocked",
+        "risk_level": "high",
+        "inventory_count": 0,
+        "blocked_items": 1,
+        "unsupported_feature_count": 1,
+        "planned_actions_count": 0,
+        "manual_review_items": 1,
+        "estimated_world_mutations": {
+            "node_writes": 0,
+            "mapblock_churn": 0,
+            "media_files": 0,
+            "entity_definitions": 0,
+            "manual_review_items": 1,
+        },
+        "content_hash": None,
+        "required_capabilities": ["import.assets"],
+        "report_path": None,
+        "blocked_reason": reason,
+    }
+
+
+def _batch_summary(rows):
+    by_source_class = {}
+    by_status = {}
+    for row in rows:
+        by_source_class[row["source_class"]] = by_source_class.get(row["source_class"], 0) + 1
+        by_status[row["status"]] = by_status.get(row["status"], 0) + 1
+    return {
+        "sources_total": len(rows),
+        "by_source_class": by_source_class,
+        "by_status": by_status,
+        "inventory_items_total": sum(row["inventory_count"] for row in rows),
+        "blocked_items_total": sum(row["blocked_items"] for row in rows),
+        "unsupported_features_total": sum(row["unsupported_feature_count"] for row in rows),
+        "planned_actions_total": sum(row["planned_actions_count"] for row in rows),
+        "manual_review_items_total": sum(row["manual_review_items"] for row in rows),
+    }
+
+
+def build_batch_inventory_queue(root, reports_dir=None):
+    """Build a public-safe batch inventory queue from immediate source children."""
+    reports_root = pathlib.Path(reports_dir) if reports_dir else None
+    if reports_root:
+        reports_root.mkdir(parents=True, exist_ok=True)
+
+    rows = []
+    for index, source in enumerate(_batch_source_candidates(root), start=1):
+        try:
+            report = build_report(source)
+            report_path = None
+            if reports_root:
+                report_path = _safe_report_filename(index, report["source"]["source_id"])
+                (reports_root / report_path).write_text(
+                    json.dumps(report, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+            rows.append(_batch_queue_row(index, report, report_path))
+        except (OSError, ValueError, json.JSONDecodeError):
+            rows.append(_blocked_batch_queue_row(index, source, "source_classification_failed"))
+
+    return {
+        "queue_version": BATCH_INVENTORY_QUEUE_VERSION,
+        "mode": "batch_inventory",
+        "generated_at": _utc_now(),
+        "root": {
+            "path_policy": "redacted",
+            "source_count": len(rows),
+        },
+        "summary": _batch_summary(rows),
+        "sources": rows,
+        "safety": {
+            "dry_run_only": True,
+            "no_assets_copied": True,
+            "no_world_mutation": True,
+            "source_paths_redacted": True,
+            "no_raw_payloads": True,
+            "no_private_paths": True,
+        },
+    }
 
 
 def _require_mapping(errors, value, path):
@@ -3052,9 +3214,25 @@ def _print_asset_reference_promotion_package_summary(package):
     )
 
 
+def _print_batch_inventory_summary(queue):
+    summary = queue["summary"]
+    print(
+        "batch_sources={sources} inventory_items={items} manual_review={manual} "
+        "blocked={blocked} reports={reports}".format(
+            sources=summary["sources_total"],
+            items=summary["inventory_items_total"],
+            manual=summary["by_status"].get("manual_review", 0),
+            blocked=summary["by_status"].get("blocked", 0),
+            reports=sum(1 for item in queue["sources"] if item.get("report_path")),
+        )
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="User-owned pack, structure, or world source to inspect.")
+    parser.add_argument("--batch-inventory", help="Directory of user-owned sources to inventory as a dry-run queue.")
+    parser.add_argument("--reports-dir", help="Directory for per-source dry-run reports used with --batch-inventory.")
     parser.add_argument("--apply-plan", help="Dry-run report JSON to plan for apply without mutation.")
     parser.add_argument("--adapter-apply-smoke", help="Dry-run report JSON to turn into a reviewed adapter apply smoke.")
     parser.add_argument("--review-adapter-smoke", help="Adapter apply smoke JSON to review for operator gating.")
@@ -3069,6 +3247,7 @@ def main(argv=None):
 
     try:
         selected_modes = [
+            bool(args.batch_inventory),
             bool(args.apply_plan),
             bool(args.adapter_apply_smoke),
             bool(args.review_adapter_smoke),
@@ -3077,13 +3256,22 @@ def main(argv=None):
         ]
         if sum(selected_modes) > 1:
             raise ValueError(
-                "--apply-plan, --adapter-apply-smoke, --review-adapter-smoke, "
+                "--batch-inventory, --apply-plan, --adapter-apply-smoke, --review-adapter-smoke, "
                 "--promotion-package, and --asset-promotion-package "
                 "cannot be used together"
             )
+        if args.reports_dir and not args.batch_inventory:
+            raise ValueError("--reports-dir is only valid with --batch-inventory")
         if (args.adapter_smoke or args.adapter_review) and not args.promotion_package:
             raise ValueError("--adapter-smoke and --adapter-review are only valid with --promotion-package")
-        if args.asset_promotion_package:
+        if args.batch_inventory:
+            if not args.reports_dir:
+                raise ValueError("--reports-dir is required with --batch-inventory")
+            payload_obj = build_batch_inventory_queue(
+                args.batch_inventory,
+                reports_dir=args.reports_dir,
+            )
+        elif args.asset_promotion_package:
             if not args.approval:
                 raise ValueError("--approval is required with --asset-promotion-package")
             report = _read_json(pathlib.Path(args.asset_promotion_package))
@@ -3130,7 +3318,9 @@ def main(argv=None):
             pathlib.Path(args.output).write_text(payload, encoding="utf-8")
         else:
             sys.stdout.write(payload)
-        if args.summary and args.review_adapter_smoke:
+        if args.summary and args.batch_inventory:
+            _print_batch_inventory_summary(payload_obj)
+        elif args.summary and args.review_adapter_smoke:
             _print_adapter_smoke_review_summary(payload_obj)
         elif args.summary and args.asset_promotion_package:
             _print_asset_reference_promotion_package_summary(payload_obj)

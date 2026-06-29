@@ -213,6 +213,35 @@ python3 util/ai_native_compat_dry_run.py \
 
 The output is ignored local evidence. It must remain public-safe: no proprietary structures, no family worlds, no asset payloads, and no world mutation.
 
+## Batch Inventory Queue
+
+Operators can scan a folder of user-owned sources into a single review queue:
+
+```sh
+python3 util/ai_native_compat_dry_run.py \
+  --batch-inventory /path/to/user-owned-import-sources \
+  --reports-dir local/compat-reports \
+  --output local/compat-batch-queue.json \
+  --summary
+```
+
+The batch scanner inspects immediate child files and folders, runs the normal
+dry-run reporter for each source, writes per-source dry-run reports under
+`--reports-dir`, and emits a bounded queue with relative `report_path` values.
+Queue rows include source class, license status, risk level, inventory counts,
+planned-action counts, required capabilities, content hash, estimated mutation
+cost, and one of these review statuses:
+
+- `mappable`: metadata or user-owned references can be mapped later.
+- `skippable`: no useful import action was found.
+- `blocked`: the source could not be classified safely.
+- `manual_review`: the source has blocked entries, unsupported features,
+  structure placement, or other review work before apply.
+
+Batch inventory is still dry-run-only. It does not copy assets, execute apply,
+queue runtime tasks, mutate worlds, or bypass approval, rollback, write-budget,
+and staging-world gates.
+
 ## Safety Requirements
 
 A valid dry-run report must state:
