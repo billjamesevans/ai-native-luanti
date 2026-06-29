@@ -68,7 +68,7 @@ local PRODUCT_SURFACES = {
 		default_clean_profile_grant = "granted",
 		required_capabilities = { "world.read" },
 		optional_capabilities = { "task.cancel", "http.llm" },
-		commands = { "guide", "tasks", "cancel", "audit", "rollback" },
+		commands = { "guide", "tasks", "pending plan", "discard plan", "cancel", "audit", "rollback" },
 		runtime_entrypoints = {
 			"core.get_ai_task",
 			"core.get_ai_runtime_audit",
@@ -395,6 +395,24 @@ local function format_command_reply(result)
 		end
 		if result.last_result_reason then
 			append(lines, "last_result_reason=" .. tostring(result.last_result_reason))
+		end
+	elseif result.action == "pending_plan" then
+		append_task_details(lines, result)
+		local pending = pending_approval_summary(result.pending_approval)
+		append(lines, pending or "pending=none")
+		if result.plan_status then
+			append(lines, "plan_status=" .. tostring(result.plan_status))
+		end
+	elseif result.action == "discard_approval" then
+		append_task_details(lines, result)
+		if result.discarded_action then
+			append(lines, "discarded_action=" .. tostring(result.discarded_action))
+		end
+		if result.planned_node_writes then
+			append(lines, "planned_writes=" .. tostring(result.planned_node_writes))
+		end
+		if result.candidate_count then
+			append(lines, "candidates=" .. tostring(result.candidate_count))
 		end
 	elseif result.action == "status" then
 		local state = result.state or {}
@@ -1920,6 +1938,8 @@ local function handle_guide(name)
 			"status",
 			"tasks",
 			"task <task_id>",
+			"pending plan",
+			"discard plan",
 			"cancel",
 			"cancel <task_id>",
 			"approve",
@@ -2058,6 +2078,81 @@ local function handle_tasks(name, requested_task_id)
 	})
 end
 
+local function pending_approval_matches(pending, requested_action)
+	if not requested_action or requested_action == "" then
+		return true
+	end
+	local requested_lower = requested_action:lower()
+	local approval_lower = pending.approval_id and pending.approval_id:lower() or nil
+	return requested_lower == pending.action
+		or requested_lower == approval_lower
+		or requested_lower == "plan"
+		or requested_lower == "approval"
+end
+
+local function handle_pending_plan(name)
+	plugin.ensure_surface_agent(name, "guide")
+	local pending = player_pending_approvals[name]
+	if not pending then
+		return public_reply(name, "pending_plan", "blocked", "No pending plan to review.", {
+			surface_id = "guide",
+			reason = "no_pending_approval",
+		})
+	end
+	local plan = pending.plan or {}
+	return public_reply(name, "pending_plan", "success", "Pending plan returned without mutation.", {
+		surface_id = pending.surface_id or "guide",
+		pending_approval = compact_pending_approval(pending),
+		approval_id = pending.approval_id,
+		pending_action = pending.action,
+		plan = plan,
+		plan_status = plan.status,
+		candidate_count = pending.candidate_count,
+		planned_node_writes = pending.planned_node_writes,
+	})
+end
+
+local function handle_discard_approval(name, raw_prompt)
+	plugin.ensure_surface_agent(name, "guide")
+	local pending = player_pending_approvals[name]
+	if not pending then
+		return public_reply(name, "discard_approval", "blocked", "No pending approval to discard.", {
+			surface_id = "guide",
+			reason = "no_pending_approval",
+		})
+	end
+	local requested_action = raw_prompt:match("^[Dd][Ii][Ss][Cc][Aa][Rr][Dd]%s+(.+)$")
+		or raw_prompt:match("^[Rr][Ee][Jj][Ee][Cc][Tt]%s+(.+)$")
+		or raw_prompt:match("^[Dd][Ee][Nn][Yy]%s+(.+)$")
+	if requested_action then
+		requested_action = requested_action:trim()
+		if requested_action:lower():match("^plan%s+.+$") then
+			requested_action = requested_action:match("^[Pp][Ll][Aa][Nn]%s+(.+)$"):trim()
+		elseif requested_action:lower():match("^approval%s+.+$") then
+			requested_action = requested_action:match("^[Aa][Pp][Pp][Rr][Oo][Vv][Aa][Ll]%s+(.+)$"):trim()
+		end
+	end
+	if not pending_approval_matches(pending, requested_action) then
+		return public_reply(name, "discard_approval", "blocked",
+			"Pending approval action does not match request.", {
+				surface_id = "guide",
+				reason = "approval_action_mismatch",
+				approval_id = pending.approval_id,
+				pending_action = pending.action,
+				requested_action = requested_action,
+			})
+	end
+	player_pending_approvals[name] = nil
+	return public_reply(name, "discard_approval", "success",
+		"Pending approval discarded before mutation.", {
+			surface_id = pending.surface_id or "guide",
+			approval_id = pending.approval_id,
+			discarded_action = pending.action,
+			candidate_count = pending.candidate_count,
+			planned_node_writes = pending.planned_node_writes,
+		})
+end
+
 local function handle_approve(name, raw_prompt)
 	local pending = player_pending_approvals[name]
 	if not pending then
@@ -2069,12 +2164,7 @@ local function handle_approve(name, raw_prompt)
 	if requested_action then
 		requested_action = requested_action:trim()
 	end
-	local requested_lower = requested_action and requested_action:lower() or nil
-	local approval_lower = pending.approval_id and pending.approval_id:lower() or nil
-	local requested_matches = not requested_action
-		or requested_lower == pending.action
-		or requested_lower == approval_lower
-	if not requested_matches then
+	if not pending_approval_matches(pending, requested_action) then
 		return public_reply(name, "approve", "blocked",
 			"Pending approval action does not match request.", {
 				reason = "approval_action_mismatch",
@@ -2148,6 +2238,10 @@ function plugin.handle_command(name, param, context)
 	if prompt == "tasks" or prompt == "task status" or prompt == "builder" then
 		return handle_tasks(name)
 	end
+	if prompt == "pending" or prompt == "pending plan"
+			or prompt == "plan" or prompt == "review plan" then
+		return handle_pending_plan(name)
+	end
 	local requested_task_id = raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+[Ss][Tt][Aa][Tt][Uu][Ss]%s+(.+)$")
 		or raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+(.+)$")
 	if requested_task_id then
@@ -2160,6 +2254,14 @@ function plugin.handle_command(name, param, context)
 		or raw_prompt:match("^[Ss][Tt][Oo][Pp]%s+(.+)$")
 	if requested_cancel_task_id then
 		return handle_cancel(name, requested_cancel_task_id:trim())
+	end
+	if prompt == "discard" or prompt == "discard plan"
+			or prompt == "reject" or prompt == "reject plan"
+			or prompt == "deny" or prompt == "deny plan"
+			or prompt:match("^discard%s+.+$")
+			or prompt:match("^reject%s+.+$")
+			or prompt:match("^deny%s+.+$") then
+		return handle_discard_approval(name, raw_prompt)
 	end
 	if prompt == "approve" or prompt:match("^approve%s+.+$") then
 		return handle_approve(name, raw_prompt)

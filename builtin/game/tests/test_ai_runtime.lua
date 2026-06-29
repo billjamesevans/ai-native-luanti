@@ -3958,6 +3958,33 @@ assert(pending_chat_text:find("status=pending_approval action=build", 1, true))
 assert(pending_chat_text:find("approval_id=", 1, true))
 assert(pending_chat_text:find("pending_action=build", 1, true))
 assert(pending_chat_text:find("surface=builder", 1, true))
+local discard_approval_id = pending_chat_text:match("approval_id=([^%s]+)")
+assert(discard_approval_id ~= nil)
+
+local pending_plan_ok, pending_plan_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "pending plan")
+assert(pending_plan_ok == true)
+assert(pending_plan_text:find("status=success action=pending_plan", 1, true))
+assert(pending_plan_text:find("pending=build", 1, true))
+assert(pending_plan_text:find("approval_id=" .. discard_approval_id, 1, true))
+
+local discard_chat_ok, discard_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "discard " .. discard_approval_id)
+assert(discard_chat_ok == true)
+assert(discard_chat_text:find("status=success action=discard_approval", 1, true))
+assert(discard_chat_text:find("approval_id=" .. discard_approval_id, 1, true))
+assert(discard_chat_text:find("discarded_action=build", 1, true))
+
+local no_pending_plan_ok, no_pending_plan_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "pending plan")
+assert(no_pending_plan_ok == false)
+assert(no_pending_plan_text:find("status=blocked action=pending_plan", 1, true))
+assert(no_pending_plan_text:find("reason=no_pending_approval", 1, true))
+
+pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "build marker")
+assert(pending_chat_ok == true)
+assert(pending_chat_text:find("status=pending_approval action=build", 1, true))
 
 local tasks_chat_ok, tasks_chat_text = core.registered_chatcommands.nova.func(
 	"ChatUser", "tasks")
