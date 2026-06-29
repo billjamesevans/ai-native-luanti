@@ -365,6 +365,12 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertEqual(results["world_edit_throughput"]["status"], "evidence_gap")
             self.assertEqual(results["persistence"]["status"], "measured")
             self.assertEqual(results["mod_plugin_ergonomics"]["status"], "partial")
+            self.assertFalse(
+                results["mod_plugin_ergonomics"]["metrics"]["first_party_agent_loop_ready"]
+            )
+            self.assertFalse(
+                results["mod_plugin_ergonomics"]["metrics"]["compatibility_import_plugin_ready"]
+            )
             self.assertEqual(results["operator_visibility"]["status"], "measured")
             self.assertEqual(results["recovery"]["status"], "measured")
             self.assertEqual(results["memory"]["status"], "measured")
@@ -451,10 +457,13 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertNotIn("world_edit_throughput", gap_ids)
             self.assertNotIn("cpu", gap_ids)
             self.assertNotIn("latency", gap_ids)
-            self.assertEqual(len(report["actionable_scorecard"]), 1)
+            self.assertEqual(len(report["actionable_scorecard"]), 2)
             self.assertEqual(
-                report["actionable_scorecard"][0]["dimension_ids"],
-                ["mod_plugin_ergonomics"],
+                sorted(item["title"] for item in report["actionable_scorecard"]),
+                [
+                    "Build compatibility import inventory discovery",
+                    "Prove first-party agent product loop in accepted lanes",
+                ],
             )
 
     def test_harness_marks_partial_headless_evidence_as_measured_failure(self):
@@ -544,12 +553,13 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 item for item in report["actionable_scorecard"]
                 if item["dimension_ids"] == ["mod_plugin_ergonomics"]
             ]
-            self.assertEqual(len(plugin_actions), 1)
-            self.assertEqual(
-                plugin_actions[0]["hardware_classes"],
-                ["local-mac", "low-power-server"],
-            )
-            self.assertEqual(plugin_actions[0]["gap_count"], 2)
+            self.assertEqual(len(plugin_actions), 2)
+            for action in plugin_actions:
+                self.assertEqual(
+                    action["hardware_classes"],
+                    ["local-mac", "low-power-server"],
+                )
+                self.assertEqual(action["gap_count"], 2)
 
     def test_docs_explain_public_safe_harness_and_retention(self):
         for doc in (DOC, README):
