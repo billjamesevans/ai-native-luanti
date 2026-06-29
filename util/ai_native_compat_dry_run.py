@@ -1653,6 +1653,94 @@ def _promotion_queue_summary(queue):
     }
 
 
+def _promotion_plan_lane(row):
+    promotion_kind = row.get("promotion_kind")
+    if promotion_kind == "luanti_mod_metadata_review":
+        return "metadata_review"
+    if promotion_kind == "asset_reference_promotion_package":
+        return "asset_reference_review"
+    if promotion_kind == "structure_import_promotion_package":
+        return "disposable_structure_staging"
+    if promotion_kind == "world_metadata_deferral":
+        return "world_conversion_design"
+    return "source_reclassification"
+
+
+def _promotion_plan_priority(row):
+    status_order = {
+        "metadata_ready": 0,
+        "ready_for_no_mutation_package": 1,
+        "requires_disposable_staging_review": 2,
+        "deferred_until_conversion_design": 3,
+        "blocked": 4,
+    }
+    mutation_order = 1 if row.get("staged_apply_can_mutate_disposable_world") else 0
+    return (
+        status_order.get(row.get("status"), 5),
+        mutation_order,
+        str(row.get("source_class") or ""),
+        str(row.get("source_id") or ""),
+    )
+
+
+def _promotion_plan_risk_label(row):
+    if row.get("promotion_kind") == "world_metadata_deferral":
+        return "deferred_world_conversion"
+    if row.get("status") == "blocked":
+        return "blocked_source"
+    if row.get("staged_apply_can_mutate_disposable_world"):
+        return "disposable_staging_with_rollback"
+    if row.get("requires_operator_approval"):
+        return "no_world_mutation_operator_review"
+    return "metadata_only_review"
+
+
+def _ranked_promotion_plan(queue):
+    plan = []
+    for rank, row in enumerate(sorted(queue, key=_promotion_plan_priority), start=1):
+        plan.append({
+            "rank": rank,
+            "promotion_id": row.get("promotion_id"),
+            "source_id": row.get("source_id"),
+            "source_class": row.get("source_class"),
+            "promotion_kind": row.get("promotion_kind"),
+            "status": row.get("status"),
+            "owner_lane": _promotion_plan_lane(row),
+            "risk_label": _promotion_plan_risk_label(row),
+            "report_path": row.get("report_path"),
+            "package_builder": row.get("package_builder"),
+            "cli_mode": row.get("cli_mode"),
+            "required_artifacts": list(row.get("required_artifacts") or []),
+            "required_capabilities": list(row.get("required_capabilities") or []),
+            "requires_operator_approval": row.get("requires_operator_approval") is True,
+            "requires_rollback_metadata": row.get("requires_rollback_metadata") is True,
+            "staged_apply_can_mutate_disposable_world":
+                row.get("staged_apply_can_mutate_disposable_world") is True,
+            "next_action": row.get("next_action"),
+            "safety": dict(row.get("safety") or {}),
+        })
+    return plan
+
+
+def _promotion_plan_summary(plan):
+    by_owner_lane = {}
+    by_risk_label = {}
+    for row in plan:
+        by_owner_lane[row["owner_lane"]] = by_owner_lane.get(row["owner_lane"], 0) + 1
+        by_risk_label[row["risk_label"]] = by_risk_label.get(row["risk_label"], 0) + 1
+    return {
+        "plan_items_total": len(plan),
+        "by_owner_lane": by_owner_lane,
+        "by_risk_label": by_risk_label,
+        "disposable_staging_items_total": sum(
+            1 for row in plan if row["staged_apply_can_mutate_disposable_world"]
+        ),
+        "world_conversion_deferred": any(
+            row["owner_lane"] == "world_conversion_design" for row in plan
+        ),
+    }
+
+
 def _discovery_source_row(index, report, report_path):
     status = _source_discovery_status(report)
     capabilities = _batch_required_capabilities(report)
@@ -1810,6 +1898,7 @@ def build_import_inventory_discovery_report(root, reports_dir=None):
 
     summary = _discovery_summary(rows)
     promotion_queue = _promotion_queue(rows)
+    ranked_promotion_plan = _ranked_promotion_plan(promotion_queue)
     ready = summary["compatibility_import_inventory_ready"]
     report = {
         "report_version": IMPORT_INVENTORY_DISCOVERY_REPORT_VERSION,
@@ -1828,12 +1917,14 @@ def build_import_inventory_discovery_report(root, reports_dir=None):
         },
         "summary": summary,
         "promotion_queue_summary": _promotion_queue_summary(promotion_queue),
+        "promotion_plan_summary": _promotion_plan_summary(ranked_promotion_plan),
         "readiness": {
             "compatibility_import_inventory_ready": ready,
             "blocking_reasons": summary["blocking_reasons"],
         },
         "sources": rows,
         "promotion_queue": promotion_queue,
+        "ranked_promotion_plan": ranked_promotion_plan,
         "safety": {
             "dry_run_only": True,
             "no_assets_copied": True,
@@ -1985,6 +2076,61 @@ def validate_import_inventory_discovery_report(report):
         if safety.get("promotion_package_executes_world_mutation") is not False:
             errors.append(
                 f"promotion_queue[{index}].safety.promotion_package_executes_world_mutation must be false"
+            )
+    promotion_plan = report.get("ranked_promotion_plan")
+    if not isinstance(promotion_plan, list):
+        errors.append("ranked_promotion_plan must be an array")
+        promotion_plan = []
+    if len(promotion_plan) != len(promotion_queue):
+        errors.append("ranked_promotion_plan length must match promotion_queue length")
+    promotion_plan_summary = report.get("promotion_plan_summary")
+    if not isinstance(promotion_plan_summary, dict):
+        errors.append("promotion_plan_summary must be an object")
+        promotion_plan_summary = {}
+    for field in (
+        "plan_items_total",
+        "by_owner_lane",
+        "by_risk_label",
+        "disposable_staging_items_total",
+        "world_conversion_deferred",
+    ):
+        if field not in promotion_plan_summary:
+            errors.append(f"promotion_plan_summary.{field} is required")
+    expected_rank = 1
+    queue_ids = {row.get("promotion_id") for row in promotion_queue}
+    for index, row in enumerate(promotion_plan):
+        for field in (
+            "rank",
+            "promotion_id",
+            "source_id",
+            "source_class",
+            "promotion_kind",
+            "status",
+            "owner_lane",
+            "risk_label",
+            "required_artifacts",
+            "required_capabilities",
+            "requires_operator_approval",
+            "requires_rollback_metadata",
+            "staged_apply_can_mutate_disposable_world",
+            "next_action",
+            "safety",
+        ):
+            if field not in row:
+                errors.append(f"ranked_promotion_plan[{index}].{field} is required")
+        if row.get("rank") != expected_rank:
+            errors.append(f"ranked_promotion_plan[{index}].rank must be {expected_rank}")
+        expected_rank += 1
+        if row.get("promotion_id") not in queue_ids:
+            errors.append(f"ranked_promotion_plan[{index}].promotion_id must match promotion_queue")
+        if "import.assets" not in (row.get("required_capabilities") or []):
+            errors.append(
+                f"ranked_promotion_plan[{index}].required_capabilities must include import.assets"
+            )
+        safety = row.get("safety") or {}
+        if safety.get("promotion_package_executes_world_mutation") is not False:
+            errors.append(
+                f"ranked_promotion_plan[{index}].safety.promotion_package_executes_world_mutation must be false"
             )
     serialized = json.dumps(report, sort_keys=True)
     if PRIVATE_DISCOVERY_PATTERNS.search(serialized):
