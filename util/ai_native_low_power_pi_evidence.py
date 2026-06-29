@@ -117,15 +117,37 @@ def ssh_command(args, remote_command: str) -> list[str]:
 def remote_verify_command(args) -> str:
     date_arg = shlex.quote(args.date)
     commit_expr = shlex.quote(args.luanti_commit) if args.luanti_commit else "$(git rev-parse --short HEAD)"
+    client_bin = shlex.quote(args.remote_client_bin)
+    client_config_prefix = shlex.quote(args.remote_client_config_prefix)
     return "\n".join(
         [
             "set -euo pipefail",
             f"cd {shlex.quote(args.remote_repo)}",
             "commit=" + commit_expr,
+            f"headless_client_config=$(mktemp {client_config_prefix})",
+            "cleanup_headless_client_config() { rm -f \"$headless_client_config\"; }",
+            "trap cleanup_headless_client_config EXIT",
+            "printf '%s\\n' "
+            "'video_driver = null' "
+            "'enable_minimap = false' "
+            "'enable_post_processing = false' "
+            "'enable_client_modding = false' "
+            "'viewing_range = 10' "
+            "'mute_sound = true' "
+            "> \"$headless_client_config\"",
+            (
+                "headless_player_command=$(printf "
+                "'%s --config %s --go --address {host} --port {port} --name {name}' "
+                f"{client_bin} \"$headless_client_config\")"
+            ),
             "python3 util/ai_native_runtime_verify.py "
             "--hardware-class low-power-server "
             "--game-profile ai_runtime "
             f"--server-bin {shlex.quote(args.remote_server_bin)} "
+            "--headless-player-command \"$headless_player_command\" "
+            f"--headless-player-count {int(args.headless_player_count)} "
+            f"--headless-player-timeout {float(args.headless_player_timeout)} "
+            "--require-headless-player-probe "
             "--confirm-low-power-backup "
             f"--date {date_arg} "
             "--luanti-commit \"$commit\"",
@@ -220,6 +242,13 @@ def runtime_evidence(remote_manifest: dict) -> dict:
         "clean_profile_status": sanitize_text(clean.get("overall_status", "unknown")),
         "player_load_probe_status": sanitize_text(clean.get("player_load_probe_status", "unknown")),
         "player_load_probe_kind": sanitize_text(clean.get("player_load_probe_kind", "unknown")),
+        "headless_player_supported": clean.get("headless_player_supported") is True,
+        "attempted_synthetic_player_count": clean.get("attempted_synthetic_player_count"),
+        "connected_synthetic_player_count": clean.get("connected_synthetic_player_count"),
+        "completed_synthetic_player_count": clean.get("completed_synthetic_player_count"),
+        "latency_proxy_supported": clean.get("latency_proxy_supported") is True,
+        "latency_probe_kind": sanitize_text(clean.get("latency_probe_kind", "unknown")),
+        "join_latency_proxy_sample_count": clean.get("join_latency_proxy_sample_count"),
         "server_step_workload_status": sanitize_text(
             clean.get("server_step_workload_status")
             or server_step_workload.get("status")
@@ -299,6 +328,26 @@ def build_manifest(args, remote_manifest: dict, service_values: dict, *, now_fn=
         failures.append("product_profile_private_content_detected")
     if manifest["runtime_verification_evidence"]["clean_profile_status"] != "pass":
         failures.append("clean_profile_evidence_not_pass")
+    runtime = manifest["runtime_verification_evidence"]
+    attempted_players = runtime.get("attempted_synthetic_player_count")
+    connected_players = runtime.get("connected_synthetic_player_count")
+    if (
+        runtime["player_load_probe_kind"] != "headless_client_load"
+        or runtime["headless_player_supported"] is not True
+        or not isinstance(attempted_players, (int, float))
+        or attempted_players <= 0
+        or not isinstance(connected_players, (int, float))
+        or connected_players <= 0
+        or connected_players != attempted_players
+    ):
+        failures.append("headless_player_probe_not_measured")
+    if (
+        runtime["latency_proxy_supported"] is not True
+        or runtime["latency_probe_kind"] != "headless_join_log_observation"
+        or not isinstance(runtime.get("join_latency_proxy_sample_count"), (int, float))
+        or runtime["join_latency_proxy_sample_count"] <= 0
+    ):
+        failures.append("headless_player_latency_not_measured")
     if not manifest["service_boundary"]["family_service"]["active"]:
         failures.append("family_service_not_active")
     if not manifest["service_boundary"]["family_service"]["udp_listening"]:
@@ -387,10 +436,14 @@ def parse_args(argv=None):
     parser.add_argument("--luanti-commit", help="Expected fork commit; defaults to the remote checkout commit.")
     parser.add_argument("--remote-repo", default="/opt/ai-native-luanti/src")
     parser.add_argument("--remote-server-bin", default="/opt/ai-native-luanti/src/bin/luantiserver")
+    parser.add_argument("--remote-client-bin", default="bin/luanti")
+    parser.add_argument("--remote-client-config-prefix", default="/tmp/ai-native-headless-client.XXXXXX")
     parser.add_argument("--family-service", default="luanti-family.service")
     parser.add_argument("--fork-service", default="ai-native-luanti-test.service")
     parser.add_argument("--family-port", type=int, default=30000)
     parser.add_argument("--fork-port", type=int, default=30001)
+    parser.add_argument("--headless-player-count", type=int, default=1)
+    parser.add_argument("--headless-player-timeout", type=float, default=2.0)
     parser.add_argument("--confirm-backup-first", action="store_true")
     parser.add_argument("--backup-artifact-label", help="Backup archive basename or label from the preceding deploy.")
     parser.add_argument("--backup-sha256", help="SHA256 of the preceding backup archive.")
