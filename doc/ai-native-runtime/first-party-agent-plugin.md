@@ -79,6 +79,11 @@ Implemented deterministic commands:
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
 - `cancel <task_id>`, `stop <task_id>`: cancels one remembered player-owned
   plugin task and reports before/after status.
+- `stay`, `wait`: stops the player's helper movement by cancelling only
+  queued/running/paused follow or come tasks, preserving the helper entity id,
+  and setting the player-visible helper mode to `stay`. This is guide-owned
+  task control, not a broad task cancel, rollback command, import apply path,
+  or direct world mutation.
 - `discard`, `discard plan`, `reject`, `deny`, `discard <approval_id>`:
   clears the current pending approval before mutation. Targeted discard tokens
   must match the pending action or approval id.
@@ -181,6 +186,11 @@ The default node/entity settings are intentionally generic and may not match eve
 `agent_entity_name` is the registered entity type used for queued bounded entity movement. The clean `games/ai_runtime` profile registers and configures the code-only `ai_runtime_base:helper` entity for normal playtesting. The `ai_demo_benchmark:helper` entity remains a benchmark fixture behind its explicit dev setting and should not be required by the default product profile.
 
 `max_follow_steps`, `max_follow_step_distance`, `max_follow_total_distance`, `max_follow_stop_distance`, and `max_follow_wall_time_ms` bound continuous follow. A follow task is still a normal player-owned AI task, so the player can cancel it with `cancel`/`stop`, and the task result exposes `ai_agent.follow_step` status, movement result, distance moved, skipped or blocked reasons, and path metrics.
+
+Players can also use `stay` or `wait` when they only want to stop helper
+movement. Unlike `cancel`/`stop`, `stay` targets movement tasks only; queued
+build, repair, defend, import, audit, and rollback-review work remains under
+the normal task controls.
 
 Follow can use an operator-supplied `find_path(current_pos, target_pos, options)` callback or an explicit `use_core_pathfinder` context flag. The plugin accepts only positional waypoints from the callback and still moves at most one bounded step per queued task slice. If pathfinding is unavailable, invalid, or blocked, follow falls back to the existing direct-line bounded step. Result metrics expose `pathfinder_used`, `path_waypoint_count`, and `path_status` so playtests can distinguish direct movement from waypointed movement without retaining private map data.
 
