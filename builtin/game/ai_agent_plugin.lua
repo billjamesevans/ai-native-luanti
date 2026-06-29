@@ -79,6 +79,8 @@ local PRODUCT_SURFACES = {
 		commands = {
 			"status",
 			"guide",
+			"help",
+			"commands",
 			"tasks",
 			"task <task_id>",
 			"pending plan",
@@ -2337,6 +2339,8 @@ local function handle_guide(name)
 		},
 		commands = {
 			"status",
+			"help",
+			"commands",
 			"tasks",
 			"task <task_id>",
 			"pending plan",
@@ -2851,7 +2855,7 @@ function plugin.handle_command(name, param, context)
 	if prompt == "" or prompt == "status" then
 		return handle_status(name)
 	end
-	if prompt == "guide" or prompt == "help" then
+	if prompt == "guide" or prompt == "help" or prompt == "commands" then
 		return handle_guide(name)
 	end
 	local requested_audit_task_id = raw_prompt:match("^[Aa][Uu][Dd][Ii][Tt]%s+(.+)$")

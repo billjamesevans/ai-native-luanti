@@ -317,6 +317,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "surfaces": {
                     "status_context_checked": True,
                     "guide_command_checked": True,
+                    "commands_alias_checked": True,
                     "product_surface_catalog_checked": True,
                     "builder_surface_agent_checked": True,
                     "repair_surface_agent_checked": True,
@@ -368,6 +369,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "come_command_count": 1,
                 "clean_gated_command_count": 2,
                 "status_context_count": 1,
+                "commands_alias_count": 1,
                 "node_writes_verified": 5,
                 "transient_blocked_outcomes": 1,
                 "final_blocked_or_unsafe_outcomes": 0,
@@ -1225,6 +1227,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "agent_product_loop_status_context_checked"
                 ]
             )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_commands_alias_checked"
+                ]
+            )
             self.assertEqual(
                 manifest["agent_product_loop_live_evidence"][
                     "agent_product_loop_follow_helper_entity"
@@ -1308,6 +1315,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["agent_product_loop_live_evidence"][
                     "agent_product_loop_status_contexts"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_commands_aliases"
                 ],
                 1,
             )

@@ -64,7 +64,7 @@ Implemented deterministic commands:
 
 - `status`: returns current state, runtime metrics, product-surface readiness,
   known player task summaries, and any pending approval id.
-- `guide`, `help`: returns the available builder, repair, guide, defender, and `importer` surfaces plus current task records.
+- `guide`, `help`, `commands`: returns the available builder, repair, guide, defender, and `importer` surfaces plus current task records.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `task <task_id>`, `task status <task_id>`: returns one remembered
   player-owned plugin task by id without exposing unrelated runtime tasks.
