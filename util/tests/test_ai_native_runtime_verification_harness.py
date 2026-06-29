@@ -181,6 +181,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["operator_control_report"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-control-report.json",
             )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_action_approval_plan"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-action-approval-plan.json",
+            )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["package_status"], "ready")
             self.assertEqual(
@@ -202,6 +206,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["operator_status_evidence"]["operator_control_report_path"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-control-report.json",
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_action_approval_plan_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_action_approval_plan_path"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-action-approval-plan.json",
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_action_approval_plan_items"],
+                1,
             )
             self.assertEqual(manifest["operator_status_evidence"]["output_bytes"], 1200)
             self.assertEqual(manifest["operator_status_evidence"]["max_bytes"], 24000)
@@ -327,10 +343,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["operator_control_report"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-control-report.json",
             )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_action_approval_plan"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-action-approval-plan.json",
+            )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "live_command")
             self.assertEqual(
                 manifest["operator_status_evidence"]["operator_control_report_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["operator_status_evidence"]["operator_action_approval_plan_status"],
                 "pass",
             )
             self.assertIn("clean-profile verification", " ".join(manifest["notes"]))
@@ -396,6 +420,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["operator_control_report"],
                 "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-control-report.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_action_approval_plan"],
+                "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-action-approval-plan.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "command_surrogate")
             self.assertFalse(manifest["operator_status_evidence"]["direct_command_execution"])
@@ -590,9 +618,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-verification-manifest.json",
             "ai-runtime-operator-status-live.json",
             "ai-runtime-operator-control-report.json",
+            "ai-runtime-operator-action-approval-plan.json",
             "/ai_runtime_operator_status",
             "util/ai_native_operator_control_report.py",
+            "util/ai_native_operator_action_approval_plan.py",
             "--operator-status-max-bytes",
+            "--operator-action-approval-plan-max-bytes",
             "--operator-status-source surrogate",
             "disposable `ai_runtime` world",
             "source_kind = `live_command`",
@@ -600,6 +631,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "operator_control",
             "dry-run-only",
             "safe next actions",
+            "approval-plan artifacts",
+            "non-mutating",
             "after the branch benchmark gate and `/ai_runtime_smoke`",
             "--game-profile ai_runtime",
             "clean-profile-benchmark-summary.json",

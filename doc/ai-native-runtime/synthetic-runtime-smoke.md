@@ -85,13 +85,17 @@ disposable `ai_runtime` world with a temporary probe worldmod, executes the regi
 `/ai_runtime_operator_status` command function, writes `ai-runtime-operator-status-live.json`, and
 records source_kind = `live_command` with direct command execution evidence. It also derives
 `ai-runtime-operator-control-report.json` with `util/ai_native_operator_control_report.py` so the
-run keeps both the raw package and the operator-facing report adapter. The probe uses a temporary
-local world only: no family server, no private world, no private assets, no provider prompts, and
-no model-network calls.
+run keeps both the raw package and the operator-facing report adapter. It then derives
+`ai-runtime-operator-action-approval-plan.json` with
+`util/ai_native_operator_action_approval_plan.py` so approval-plan artifacts are available before
+any future execution controls exist. The probe uses a temporary local world only: no family server,
+no private world, no private assets, no provider prompts, and no model-network calls.
 
 The verifier also validates the live package's `operator_control` section and the derived
 operator-control report adapter: both must be read-only, dry-run-only, contain safe next actions
-instead of mutating commands, and preserve public-safe redaction boundaries.
+instead of mutating commands, and preserve public-safe redaction boundaries. The derived approval
+plan must remain non-mutating, approval-required, and bounded by
+`--operator-action-approval-plan-max-bytes`.
 
 If the live command path is unavailable in a narrow utility-only lane, use
 `--operator-status-source surrogate` to write `ai-runtime-operator-status.json` with
@@ -117,8 +121,9 @@ The clean-profile verifier keeps the normal branch gate and focused AI runtime u
 routes `--game-profile ai_runtime` through benchmark capture. The run directory keeps
 `benchmark-gate-manifest.json`, `ai-runtime-verification-manifest.json`, and
 `clean-profile-benchmark-summary.json` together with `ai-runtime-operator-status-live.json` and
-`ai-runtime-operator-control-report.json`. It still requires no family server, no private world,
-no private assets, no provider prompts, and no model-network calls.
+`ai-runtime-operator-control-report.json` and
+`ai-runtime-operator-action-approval-plan.json`. It still requires no family server, no private
+world, no private assets, no provider prompts, and no model-network calls.
 
 The smoke scenario itself remains synthetic: no live server, no private world, and no model
 network. The verifier's live operator-status probe uses only a disposable local world and does not
