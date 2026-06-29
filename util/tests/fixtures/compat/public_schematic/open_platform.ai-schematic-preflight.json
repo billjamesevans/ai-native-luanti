@@ -1,0 +1,84 @@
+{
+  "dimensions": {
+    "x": 35,
+    "y": 2,
+    "z": 1
+  },
+  "estimated_placements": [
+    {
+      "node": "floor",
+      "pos": {
+        "x": 0,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "node": "floor",
+      "param1": 1,
+      "param2": 2,
+      "pos": {
+        "x": 1,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "node": "marker",
+      "pos": {
+        "x": 16,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "node": "marker",
+      "pos": {
+        "x": 17,
+        "y": 0,
+        "z": 0
+      }
+    },
+    {
+      "node": "air",
+      "pos": {
+        "x": 34,
+        "y": 1,
+        "z": 0
+      }
+    }
+  ],
+  "format_kind": "ai_native_public_schematic_preflight",
+  "format_version": 1,
+  "license": {
+    "rights_confirmed": true,
+    "status": "user_supplied"
+  },
+  "name": "open_platform_schematic_preflight",
+  "palette": {
+    "air": "air",
+    "floor": "default:stone",
+    "marker": "default:glass"
+  },
+  "preflight": {
+    "payload_policy": "metadata_only",
+    "source_format": "schematic",
+    "source_origin": "operator_supplied_metadata"
+  },
+  "recommended_chunk_size": 2,
+  "schematic_format": "ai_native_schematic_preflight_v1",
+  "unsupported_fields": [
+    {
+      "field": "block_entities",
+      "message": "Schematic block entities are reported for manual review and not imported.",
+      "reason": "requires_manual_review",
+      "recommendation": "Map block entities manually after a public-safe adapter supports them."
+    },
+    {
+      "field": "biomes",
+      "message": "Biome metadata is reported for manual review and not imported.",
+      "reason": "requires_manual_review",
+      "recommendation": "Keep biome data out of staged apply until a compatible mapping exists."
+    }
+  ]
+}
