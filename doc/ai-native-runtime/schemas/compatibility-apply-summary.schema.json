@@ -188,6 +188,10 @@
         "manual_review_items": {
           "type": "integer",
           "minimum": 0
+        },
+        "elapsed_us": {
+          "type": "integer",
+          "minimum": 0
         }
       }
     },
