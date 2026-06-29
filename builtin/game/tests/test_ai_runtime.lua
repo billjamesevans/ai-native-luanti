@@ -4778,16 +4778,63 @@ assert(#audit_reply.audit_events > 0)
 for _, record in ipairs(audit_reply.audit_events) do
 	assert(record.private_payload == nil)
 end
+local targeted_audit_reply = core.ai_agent_plugin.handle_command(
+	"Wills", "audit " .. approved_build.task_id, {})
+assert(targeted_audit_reply.ok == true)
+assert(targeted_audit_reply.action == "audit")
+assert(targeted_audit_reply.surface_id == "guide")
+assert(targeted_audit_reply.target_kind == "task")
+assert(targeted_audit_reply.target_id == approved_build.task_id)
+assert(targeted_audit_reply.task_id == approved_build.task_id)
+assert(#targeted_audit_reply.audit_events > 0)
+for _, record in ipairs(targeted_audit_reply.audit_events) do
+	assert(record.task_id == approved_build.task_id)
+	assert(record.private_payload == nil)
+end
+local foreign_audit_reply = core.ai_agent_plugin.handle_command(
+	"Other", "audit " .. approved_build.task_id, {})
+assert(foreign_audit_reply.ok == false)
+assert(foreign_audit_reply.action == "audit")
+assert(foreign_audit_reply.reason == "task_not_found_or_not_owned")
 
 local rollback_reply = core.ai_agent_plugin.handle_command("Wills", "rollback", {})
 assert(rollback_reply.ok == true)
 assert(rollback_reply.action == "rollback")
 assert(rollback_reply.surface_id == "guide")
+assert(rollback_reply.no_rollback_execution == true)
 assert(#rollback_reply.rollback_records >= 2)
 for _, record in ipairs(rollback_reply.rollback_records) do
 	assert(record.rollback_record_id ~= nil)
 	assert(record.rollback_storage_ref ~= nil)
 end
+local targeted_rollback_by_task = core.ai_agent_plugin.handle_command(
+	"Wills", "rollback " .. approved_build.task_id, {})
+assert(targeted_rollback_by_task.ok == true)
+assert(targeted_rollback_by_task.action == "rollback")
+assert(targeted_rollback_by_task.target_kind == "task")
+assert(targeted_rollback_by_task.target_id == approved_build.task_id)
+assert(targeted_rollback_by_task.no_rollback_execution == true)
+assert(#targeted_rollback_by_task.rollback_records >= 1)
+for _, record in ipairs(targeted_rollback_by_task.rollback_records) do
+	assert(record.task_id == approved_build.task_id)
+	assert(record.rollback_record_id ~= nil)
+end
+local targeted_rollback_by_id = core.ai_agent_plugin.handle_command(
+	"Wills", "rollback " .. completed_plugin_build.last_result.rollback_record_id, {})
+assert(targeted_rollback_by_id.ok == true)
+assert(targeted_rollback_by_id.action == "rollback")
+assert(targeted_rollback_by_id.target_kind == "rollback")
+assert(targeted_rollback_by_id.target_id == completed_plugin_build.last_result.rollback_record_id)
+assert(targeted_rollback_by_id.no_rollback_execution == true)
+assert(#targeted_rollback_by_id.rollback_records == 1)
+assert(targeted_rollback_by_id.rollback_records[1].rollback_record_id
+	== completed_plugin_build.last_result.rollback_record_id)
+local foreign_rollback_by_id = core.ai_agent_plugin.handle_command(
+	"Other", "rollback " .. completed_plugin_build.last_result.rollback_record_id, {})
+assert(foreign_rollback_by_id.ok == false)
+assert(foreign_rollback_by_id.action == "rollback")
+assert(foreign_rollback_by_id.reason == "rollback_record_not_found_or_not_owned")
+assert(foreign_rollback_by_id.no_rollback_execution == true)
 assert(#product_loop_records >= 2)
 core.ai_rollback_storage.configure(nil)
 
