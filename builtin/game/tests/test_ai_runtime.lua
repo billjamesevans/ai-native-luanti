@@ -1105,6 +1105,344 @@ end
 test_ai_runtime_operator_status_package_command()
 test_ai_runtime_operator_status_package_command = nil
 
+do
+	local function assert_task_control_result_shape(result, decisions_total, executed_total, rejected_total)
+		assert(type(result) == "table")
+		assert(result.schema_version == 1)
+		assert(result.command_result_kind == "ai_native_operator_task_control_command_result")
+		assert(result.runtime_context.game_profile == "ai_runtime")
+		assert(result.runtime_context.command == "/ai_runtime_operator_task_control")
+		assert(result.runtime_context.world_mutation_performed == false)
+		assert(result.operator_actions.mode == "receipt_gated_task_cancel_retry")
+		assert(result.operator_actions.mutation_scope == "live_task_queue")
+		assert(result.summary.decisions_total == decisions_total)
+		assert(result.summary.executed_total == executed_total)
+		assert(result.summary.rejected_total == rejected_total)
+		assert(result.safety.public_safe_output == true)
+		assert(result.safety.no_world_mutation == true)
+		assert(result.safety.no_rollback_execution == true)
+		assert(result.safety.no_import_promotion_execution == true)
+		assert(result.safety.no_raw_assets == true)
+		assert(result.safety.no_provider_prompts == true)
+		assert(result.safety.no_family_world_coordinates == true)
+		assert(result.bounds.output_bytes <= result.bounds.max_bytes)
+	end
+
+	local function queue_running_task(task_id)
+		core.registered_ai_tasks[task_id] = {
+			task_id = task_id,
+			agent_id = "nova:emma",
+			owner = "emma",
+			label = "operator task control cancel target",
+			status = "running",
+			created_at = 0,
+			updated_at = 0,
+			budget = {},
+			progress = {
+				current = 1,
+				total = 2,
+			},
+			retry_count = 0,
+			last_result = {
+				ok = true,
+				status = "success",
+			},
+			steps = {
+				function()
+					return { ok = true, status = "success", changed = 0 }
+				end,
+				function()
+					return { ok = true, status = "success", changed = 0 }
+				end,
+			},
+		}
+		assert(core.get_ai_task(task_id).status == "running")
+	end
+
+	local function queue_blocked_task(task_id)
+		core.registered_ai_tasks[task_id] = {
+			task_id = task_id,
+			agent_id = "nova:emma",
+			owner = "emma",
+			label = "operator task control retry target",
+			status = "blocked",
+			created_at = 0,
+			updated_at = 0,
+			budget = {},
+			progress = {
+				current = 1,
+				total = 1,
+			},
+			retry_count = 0,
+			last_result = {
+				ok = false,
+				status = "blocked",
+				reason = "operator_review_required",
+				message = "Blocked for receipt-gated retry review.",
+			},
+			steps = {
+				function()
+					return {
+						ok = false,
+						status = "blocked",
+						reason = "operator_review_required",
+						message = "Blocked for receipt-gated retry review.",
+					}
+				end,
+			},
+		}
+		assert(core.get_ai_task(task_id).status == "blocked")
+	end
+
+	local function decision(target_id, operation, overrides)
+		local item = {
+			decision_id = "decision:" .. target_id,
+			decision_status = "approved",
+			approval_kind = "task_cancel_retry_review",
+			target_kind = "task",
+			target_id = target_id,
+			task_operation = operation,
+			safe_next_action = "execute_task_" .. operation,
+			approval_required = true,
+			dry_run_only = true,
+			will_mutate = false,
+			mutation_performed = false,
+			receipt_only = true,
+			prerequisites_required = {
+				"inspect_task_before_action",
+			},
+			prerequisites_acknowledged = {
+				"inspect_task_before_action",
+			},
+			required_capabilities = {
+				"task.inspect",
+				operation == "cancel" and "task.cancel" or "task.retry",
+			},
+		}
+		for key, value in pairs(overrides or {}) do
+			item[key] = value
+		end
+		return item
+	end
+
+	local function receipt(decisions, overrides)
+		local item = {
+			receipt_kind = "ai_native_operator_action_approval_receipt",
+			schema_version = 1,
+			generated_at = "2026-06-29T00:00:00Z",
+			operator_decisions = {
+				mode = "receipt_only",
+				mutation_performed = false,
+				decisions = decisions,
+			},
+			safety = {
+				public_safe_output = true,
+				receipt_only = true,
+				no_world_mutation = true,
+				no_rollback_execution = true,
+				no_import_promotion_execution = true,
+				no_raw_assets = true,
+				no_provider_prompts = true,
+				no_family_world_coordinates = true,
+			},
+			bounds = {
+				output_bytes = 1200,
+				max_bytes = 24000,
+			},
+		}
+		for key, value in pairs(overrides or {}) do
+			item[key] = value
+		end
+		return item
+	end
+
+	local function capability_set(values)
+		local result = {}
+		for _, value in ipairs(values) do
+			result[value] = true
+		end
+		return result
+	end
+
+	assert(type(core.apply_ai_operator_task_control_receipt) == "function")
+
+	queue_running_task("operator-task-control:cancel-api")
+	queue_blocked_task("operator-task-control:retry-api")
+
+	local api_result = core.apply_ai_operator_task_control_receipt(receipt({
+		decision("operator-task-control:cancel-api", "cancel"),
+		decision("operator-task-control:retry-api", "retry"),
+		decision("operator-task-control:denied-api", "cancel", {
+			decision_status = "denied",
+		}),
+		decision("rollback:operator-task-control", "cancel", {
+			target_kind = "rollback",
+			safe_next_action = "execute_rollback",
+		}),
+		decision("import:operator-task-control", "retry", {
+			target_kind = "import_promotion",
+			safe_next_action = "promote_import",
+		}),
+	}), {
+		actor = "emma",
+		generated_at = "2026-06-29T00:00:00Z",
+		max_bytes = 24000,
+		executor_capabilities = capability_set({
+			"task.inspect",
+			"task.cancel",
+			"task.retry",
+		}),
+	})
+	assert_task_control_result_shape(api_result, 5, 2, 3)
+	assert(api_result.operator_actions.mutation_performed == true)
+	assert(core.get_ai_task("operator-task-control:cancel-api").status == "cancelled")
+	assert(core.get_ai_task("operator-task-control:retry-api").status == "queued")
+	assert(api_result.results[1].status == "executed")
+	assert(api_result.results[1].operation == "cancel")
+	assert(api_result.results[1].before_status == "running")
+	assert(api_result.results[1].after_status == "cancelled")
+	assert(api_result.results[2].status == "executed")
+	assert(api_result.results[2].operation == "retry")
+	assert(api_result.results[2].before_status == "blocked")
+	assert(api_result.results[2].after_status == "queued")
+	assert(api_result.results[3].status == "rejected")
+	assert(api_result.results[3].reason == "decision_not_approved")
+	assert(api_result.results[4].reason == "unsupported_target_kind")
+	assert(api_result.results[5].reason == "unsupported_target_kind")
+
+	queue_blocked_task("operator-task-control:missing-capability")
+	local missing_capability = core.apply_ai_operator_task_control_receipt(receipt({
+		decision("operator-task-control:missing-capability", "retry"),
+	}), {
+		actor = "emma",
+		executor_capabilities = capability_set({
+			"task.inspect",
+		}),
+	})
+	assert_task_control_result_shape(missing_capability, 1, 0, 1)
+	assert(missing_capability.results[1].reason == "missing_executor_capability")
+	assert(core.get_ai_task("operator-task-control:missing-capability").status == "blocked")
+
+	queue_blocked_task("operator-task-control:missing-prereq")
+	local missing_prereq = core.apply_ai_operator_task_control_receipt(receipt({
+		decision("operator-task-control:missing-prereq", "retry", {
+			prerequisites_acknowledged = {},
+		}),
+	}), {
+		actor = "emma",
+		executor_capabilities = capability_set({
+			"task.inspect",
+			"task.retry",
+		}),
+	})
+	assert(missing_prereq.results[1].reason == "missing_acknowledged_prerequisite")
+	assert(core.get_ai_task("operator-task-control:missing-prereq").status == "blocked")
+
+	queue_blocked_task("operator-task-control:unauthorized")
+	local unauthorized = core.apply_ai_operator_task_control_receipt(receipt({
+		decision("operator-task-control:unauthorized", "retry"),
+	}), {
+		actor = "nova:disabled",
+		executor_capabilities = capability_set({
+			"task.inspect",
+			"task.retry",
+		}),
+	})
+	assert(unauthorized.results[1].reason == "retry_denied")
+	assert(core.get_ai_task("operator-task-control:unauthorized").status == "blocked")
+
+	local invalid_receipt_result = core.apply_ai_operator_task_control_receipt(receipt({
+		decision("operator-task-control:stale", "cancel"),
+	}, {
+		expired_at = "2026-06-28T00:00:00Z",
+		safety = {
+			public_safe_output = true,
+			receipt_only = true,
+			no_world_mutation = false,
+			no_rollback_execution = true,
+			no_import_promotion_execution = true,
+			no_raw_assets = true,
+			no_provider_prompts = true,
+			no_family_world_coordinates = true,
+		},
+	}), {
+		actor = "emma",
+		generated_at = "2026-06-29T00:00:00Z",
+		executor_capabilities = capability_set({
+			"task.inspect",
+			"task.cancel",
+		}),
+	})
+	assert(invalid_receipt_result.summary.executed_total == 0)
+	assert(invalid_receipt_result.results[1].reason == "receipt_stale")
+
+	local private_receipt_result = core.apply_ai_operator_task_control_receipt(receipt({
+		decision("operator-task-control:private", "cancel", {
+			private_prompt = "minecraftpi.home /Users/billevans/private/spacebase REDACTED_KEY_FIXTURE",
+		}),
+	}), {
+		actor = "emma",
+		executor_capabilities = capability_set({
+			"task.inspect",
+			"task.cancel",
+		}),
+	})
+	assert(private_receipt_result.results[1].reason == "private_receipt_content")
+	local private_result_json = core.write_json(private_receipt_result)
+	assert(not private_result_json:find("minecraftpi", 1, true))
+	assert(not private_result_json:find("/Users/", 1, true))
+	assert(not private_result_json:find("spacebase", 1, true))
+	assert(not private_result_json:find("sk%-", 1, false))
+
+	assert(core.registered_chatcommands.ai_runtime_operator_task_control ~= nil)
+	assert(core.registered_chatcommands.ai_runtime_operator_task_control.privs.server == true)
+	queue_running_task("operator-task-control:cancel-command")
+	queue_blocked_task("operator-task-control:retry-command")
+	local command_receipt = receipt({
+		decision("operator-task-control:cancel-command", "cancel"),
+		decision("operator-task-control:retry-command", "retry"),
+		decision("operator-task-control:needs-review-command", "retry", {
+			decision_status = "needs_review",
+		}),
+	})
+	local command_ok, command_message =
+		core.registered_chatcommands.ai_runtime_operator_task_control.func(
+			"admin",
+			"generated_at=2026-06-29T00:00:00Z max_bytes=24000 receipt_json="
+				.. core.write_json(command_receipt))
+	assert(command_ok == true)
+	local command_result = core.parse_json(command_message)
+	assert_task_control_result_shape(command_result, 3, 2, 1)
+	assert(command_result.runtime_context.actor == "admin")
+	assert(command_result.results[3].reason == "decision_not_approved")
+	assert(core.get_ai_task("operator-task-control:cancel-command").status == "cancelled")
+	assert(core.get_ai_task("operator-task-control:retry-command").status == "queued")
+	assert(#command_message <= 24000)
+	assert(not command_message:find("private_prompt", 1, true))
+	assert(not command_message:find("asset_payload", 1, true))
+
+	queue_blocked_task("operator-task-control:retry-command-spaced-json")
+	local spaced_command_receipt = receipt({
+		decision("operator-task-control:retry-command-spaced-json", "retry", {
+			operator_note = "operator approved retry after reading the task status",
+		}),
+	})
+	local spaced_command_ok, spaced_command_message =
+		core.registered_chatcommands.ai_runtime_operator_task_control.func(
+			"admin",
+			"generated_at=2026-06-29T00:00:00Z max_bytes=24000 receipt_json="
+				.. core.write_json(spaced_command_receipt))
+	assert(spaced_command_ok == true)
+	local spaced_command_result = core.parse_json(spaced_command_message)
+	assert_task_control_result_shape(spaced_command_result, 1, 1, 0)
+	assert(core.get_ai_task("operator-task-control:retry-command-spaced-json").status == "queued")
+
+	local missing_command_ok, missing_command_message =
+		core.registered_chatcommands.ai_runtime_operator_task_control.func("admin", "")
+	assert(missing_command_ok == false)
+	assert(missing_command_message:find("receipt_json", 1, true))
+end
+
 assert(core.demo_entity_benchmark ~= nil)
 local demo_fixture = core.demo_entity_benchmark.get_fixture()
 assert(demo_fixture.fixture_id == "generic_demo_entity:benchmark:v1")

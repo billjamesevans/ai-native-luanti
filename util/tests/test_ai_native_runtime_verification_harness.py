@@ -198,6 +198,105 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    def write_operator_task_control_command_artifact(self, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "command_result_kind": "ai_native_operator_task_control_command_result",
+            "generated_at": "2026-06-28T12:00:00Z",
+            "runtime_context": {
+                "game_profile": "ai_runtime",
+                "command": "/ai_runtime_operator_task_control",
+                "source": "live_runtime_state",
+                "actor": "admin",
+                "world_mutation_performed": False,
+            },
+            "source_receipt": {
+                "receipt_kind": "ai_native_operator_action_approval_receipt",
+                "status": "attention",
+            },
+            "operator_actions": {
+                "mode": "receipt_gated_task_cancel_retry",
+                "mutation_scope": "live_task_queue",
+                "mutation_performed": True,
+                "task_queue_mutation_performed": True,
+                "world_mutation_performed": False,
+                "allowed_operations": ["cancel", "retry"],
+                "allowed_approval_kinds": ["task_cancel_retry_review", "task_retry_review"],
+            },
+            "summary": {
+                "decisions_total": 5,
+                "executed_total": 2,
+                "rejected_total": 3,
+                "skipped_total": 0,
+                "by_result_status": {"executed": 2, "rejected": 3},
+                "by_operation": {"cancel": 1, "retry": 1, "none": 3},
+                "by_rejection_reason": {
+                    "decision_not_approved": 1,
+                    "unsupported_target_kind": 2,
+                },
+                "attention_required": True,
+            },
+            "results": [
+                {
+                    "decision_id": "decision:cancel-command-running",
+                    "status": "executed",
+                    "operation": "cancel",
+                    "before_status": "running",
+                    "after_status": "cancelled",
+                    "reason": "approved_receipt",
+                },
+                {
+                    "decision_id": "decision:retry-command-blocked",
+                    "status": "executed",
+                    "operation": "retry",
+                    "before_status": "blocked",
+                    "after_status": "queued",
+                    "reason": "approved_receipt",
+                },
+                {
+                    "decision_id": "decision:denied-command",
+                    "status": "rejected",
+                    "operation": "none",
+                    "reason": "decision_not_approved",
+                },
+                {
+                    "decision_id": "decision:rollback-command-rejected",
+                    "status": "rejected",
+                    "operation": "none",
+                    "reason": "unsupported_target_kind",
+                },
+                {
+                    "decision_id": "decision:import-command-rejected",
+                    "status": "rejected",
+                    "operation": "none",
+                    "reason": "unsupported_target_kind",
+                },
+            ],
+            "safety": {
+                "public_safe_output": True,
+                "receipt_required": True,
+                "receipt_gated": True,
+                "task_control_only": True,
+                "task_queue_mutation_only": True,
+                "world_mutation_performed": False,
+                "no_world_mutation": True,
+                "no_rollback_execution": True,
+                "no_import_promotion_execution": True,
+                "no_structure_apply": True,
+                "no_raw_assets": True,
+                "no_provider_prompts": True,
+                "no_family_world_coordinates": True,
+            },
+            "bounds": {
+                "max_bytes": 22000,
+                "output_bytes": 0,
+                "truncated": False,
+            },
+        }
+        payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
     def runner_with_operator_artifact(self, runs):
         def run_step(step):
             if step.id in {"operator_status_live_command", "operator_status_package"}:
@@ -211,6 +310,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     step.actual_command[step.actual_command.index("--output") + 1]
                 )
                 self.write_operator_task_control_live_artifact(output_path)
+            if step.id == "operator_task_control_command_probe":
+                output_path = pathlib.Path(
+                    step.actual_command[step.actual_command.index("--output") + 1]
+                )
+                self.write_operator_task_control_command_artifact(output_path)
             return next(runs)
 
         return run_step
@@ -244,6 +348,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -272,6 +377,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_live_command",
                     "operator_task_control_live_probe",
+                    "operator_task_control_command_probe",
                     "ai_runtime_focused_tests",
                 ],
             )
@@ -303,6 +409,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_live_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-task-control-live-result.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_task_control_command_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["package_status"], "ready")
@@ -377,6 +487,26 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["operator_task_control_live_evidence"]["operator_task_control_live_rejected"],
                 3,
+            )
+            self.assertEqual(
+                manifest["operator_task_control_command_evidence"]["operator_task_control_command_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["operator_task_control_command_evidence"]["operator_task_control_command_items"],
+                5,
+            )
+            self.assertEqual(
+                manifest["operator_task_control_command_evidence"]["operator_task_control_command_executed"],
+                2,
+            )
+            self.assertEqual(
+                manifest["operator_task_control_command_evidence"]["operator_task_control_command_rejected"],
+                3,
+            )
+            self.assertEqual(
+                manifest["operator_task_control_command_evidence"]["live_command"],
+                "/ai_runtime_operator_task_control",
             )
             self.assertEqual(manifest["operator_status_evidence"]["output_bytes"], 1200)
             self.assertEqual(manifest["operator_status_evidence"]["max_bytes"], 24000)
@@ -475,6 +605,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -519,6 +650,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["operator_task_control_live_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-task-control-live-result.json",
             )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_task_control_command_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+            )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "live_command")
             self.assertEqual(
@@ -539,6 +674,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["operator_task_control_live_evidence"]["operator_task_control_live_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["operator_task_control_command_evidence"]["operator_task_control_command_status"],
                 "pass",
             )
             self.assertIn("clean-profile verification", " ".join(manifest["notes"]))
@@ -578,6 +717,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status package ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -596,6 +736,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_package",
                     "operator_task_control_live_probe",
+                    "operator_task_control_command_probe",
                     "ai_runtime_focused_tests",
                 ],
             )
@@ -623,6 +764,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["operator_task_control_live_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-task-control-live-result.json",
             )
+            self.assertEqual(
+                manifest["artifact_paths"]["operator_task_control_command_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+            )
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "command_surrogate")
             self.assertFalse(manifest["operator_status_evidence"]["direct_command_execution"])
             self.assertEqual(
@@ -631,6 +776,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["operator_task_control_live_evidence"]["operator_task_control_live_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["operator_task_control_command_evidence"]["operator_task_control_command_status"],
                 "pass",
             )
 
@@ -697,6 +846,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status live command ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -754,6 +904,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     ),
                     harness.CommandRun(0, 0.25, "operator status package ok", ""),
                     harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
                     harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
                 ]
             )
@@ -797,6 +948,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_operator_task_control_live_artifact(output_path)
+                if step.id == "operator_task_control_command_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_command_artifact(output_path)
                 return next(runs)
 
             status, _, manifest = harness.run_harness(
@@ -831,16 +987,20 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-operator-action-approval-receipt.json",
             "ai-runtime-operator-action-execution-result.json",
             "ai-runtime-operator-task-control-live-result.json",
+            "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
             "/ai_runtime_operator_status",
+            "/ai_runtime_operator_task_control",
             "util/ai_native_operator_control_report.py",
             "util/ai_native_operator_action_approval_plan.py",
             "util/ai_native_operator_action_approval_receipt.py",
             "util/ai_native_operator_task_control_executor.py",
             "util/ai_native_operator_task_control_live_probe.py",
+            "util/ai_native_operator_task_control_command_probe.py",
             "--operator-status-max-bytes",
             "--operator-action-approval-plan-max-bytes",
             "--operator-action-approval-receipt-max-bytes",
             "--operator-action-execution-result-max-bytes",
+            "--operator-taREDACTED_KEY_FIXTURE",
             "--operator-taREDACTED_KEY_FIXTURE",
             "--operator-status-source surrogate",
             "disposable `ai_runtime` world",
@@ -854,6 +1014,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "receipt artifacts",
             "receipt-gated task control executor",
             "receipt-gated live task-control probe",
+            "receipt-gated task-control command probe",
             "non-mutating",
             "task cancel/retry only",
             "after the branch benchmark gate and `/ai_runtime_smoke`",

@@ -58,8 +58,11 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Operator action approval receipt: `python3 util/ai_native_operator_action_approval_receipt.py --input local/operator-action-approval-plan.json --decision local/operator-decision.json`
 - Operator task-control executor: `python3 util/ai_native_operator_task_control_executor.py --input local/operator-action-approval-receipt.json`
 - Operator task-control live probe: `python3 util/ai_native_operator_task_control_live_probe.py --output local/ai-runtime-operator-task-control-live-result.json --generated-at 2026-06-29T00:00:00Z`
+- Operator task-control command probe: `python3 util/ai_native_operator_task_control_command_probe.py --output local/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json --generated-at 2026-06-29T00:00:00Z`
+- Command task-control boundary: receipt-gated task-control command probe, task cancel/retry only, no rollback execution, no import promotion execution, and no world mutation.
 - Live task-control boundary: disposable live `ai_runtime` queue probe, task cancel/retry only, no rollback execution, no import promotion execution, and no world mutation.
 - Live operator status command: `/ai_runtime_operator_status`
+- Live operator task-control command: `/ai_runtime_operator_task_control`
 - One-command local pre-PR verification: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac`
 - Clean-profile runtime gap scorecard: `python3 util/ai_native_runtime_gap_scorecard.py --output-root local/benchmarks`
 - Minecraft-parity comparison report: `python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks`
