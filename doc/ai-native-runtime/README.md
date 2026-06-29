@@ -47,6 +47,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Runtime metrics and audit API](metrics-audit-api.md)
 - [First-party agent plugin](first-party-agent-plugin.md)
 - [Family prototype plugin boundaries](family-prototype-plugin-boundaries.md)
+- [Family creatures boundary audit](family-creatures-boundary-audit.md)
 - [Repair agent plugin](repair-agent-plugin.md)
 - [Build agent plugin](build-agent-plugin.md)
 - [Rollback metadata](rollback-metadata.md)
