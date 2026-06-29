@@ -302,19 +302,71 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "mapblock_chunk_churn",
                     "entity_load",
                     "world_edit_throughput",
+                    "persistence",
+                    "mod_plugin_ergonomics",
+                    "operator_visibility",
+                    "recovery",
                     "memory",
                     "cpu",
                     "latency",
                 ],
             )
+            for dimension in report["comparison_dimensions"]:
+                self.assertIn(
+                    dimension["gap_area"],
+                    {
+                        "engine_runtime",
+                        "game_content",
+                        "first_party_plugin",
+                        "operator_experience",
+                    },
+                )
+                self.assertEqual(
+                    set(dimension["scorecard_criteria"]),
+                    {"pass", "warn", "fail"},
+                )
+            self.assertEqual(
+                report["scorecard_status_criteria"],
+                {
+                    "pass": "Measured evidence meets the current project target for this dimension.",
+                    "warn": "Evidence is partial, proxy-only, or below the target but still safe and informative.",
+                    "fail": "Evidence is missing, failing, private, unsafe, or not yet reproducible.",
+                },
+            )
+            scenario_ids = [item["id"] for item in report["benchmark_scenarios"]]
+            self.assertEqual(
+                scenario_ids,
+                [
+                    "clean_profile_startup",
+                    "server_step_liveness",
+                    "headless_player_join",
+                    "synthetic_mapblock_churn",
+                    "generic_entity_scale",
+                    "rollback_backed_world_edit",
+                    "operator_status_and_task_control",
+                ],
+            )
+            for scenario in report["benchmark_scenarios"]:
+                self.assertTrue(scenario["safe_for_local"])
+                self.assertTrue(scenario["safe_for_side_by_side_pi"])
+                self.assertFalse(scenario["requires_private_world"])
+                self.assertFalse(scenario["uses_proprietary_minecraft_assets"])
             lane = report["measured_facts"][0]
             results = {item["dimension_id"]: item for item in lane["dimension_results"]}
             self.assertEqual(results["startup"]["status"], "measured")
+            self.assertEqual(results["startup"]["scorecard_status"], "pass")
             self.assertEqual(results["player_join_liveness"]["status"], "proxy_only")
+            self.assertEqual(results["player_join_liveness"]["scorecard_status"], "warn")
             self.assertEqual(results["server_step_stability"]["status"], "measured")
             self.assertEqual(results["mapblock_chunk_churn"]["status"], "evidence_gap")
+            self.assertEqual(results["mapblock_chunk_churn"]["scorecard_status"], "fail")
             self.assertEqual(results["entity_load"]["status"], "partial")
+            self.assertEqual(results["entity_load"]["scorecard_status"], "warn")
             self.assertEqual(results["world_edit_throughput"]["status"], "evidence_gap")
+            self.assertEqual(results["persistence"]["status"], "measured")
+            self.assertEqual(results["mod_plugin_ergonomics"]["status"], "partial")
+            self.assertEqual(results["operator_visibility"]["status"], "measured")
+            self.assertEqual(results["recovery"]["status"], "measured")
             self.assertEqual(results["memory"]["status"], "measured")
             self.assertEqual(results["cpu"]["status"], "evidence_gap")
             self.assertEqual(results["latency"]["status"], "proxy_only")
@@ -324,8 +376,21 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertIn("mapblock_chunk_churn", gap_ids)
             self.assertIn("entity_load", gap_ids)
             self.assertIn("world_edit_throughput", gap_ids)
+            self.assertIn("mod_plugin_ergonomics", gap_ids)
             self.assertIn("cpu", gap_ids)
             self.assertIn("latency", gap_ids)
+            self.assertEqual(
+                set(report["gap_summary_by_area"]),
+                {
+                    "engine_runtime",
+                    "game_content",
+                    "first_party_plugin",
+                    "operator_experience",
+                },
+            )
+            for gap in report["qualitative_minecraft_parity_gaps"]:
+                self.assertIn("gap_area", gap)
+                self.assertIn("scorecard_status", gap)
             serialized = json.dumps(report, sort_keys=True)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
@@ -354,6 +419,9 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertEqual(results["mapblock_chunk_churn"]["status"], "measured")
             self.assertEqual(results["entity_load"]["status"], "measured")
             self.assertEqual(results["world_edit_throughput"]["status"], "measured")
+            self.assertEqual(results["persistence"]["status"], "measured")
+            self.assertEqual(results["operator_visibility"]["status"], "measured")
+            self.assertEqual(results["recovery"]["status"], "measured")
             self.assertEqual(results["cpu"]["status"], "measured")
             self.assertEqual(results["cpu"]["metrics"]["avg_process_cpu_percent"], 4.0)
             self.assertEqual(results["latency"]["status"], "measured")
@@ -438,9 +506,17 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             "mapblock/chunk churn",
             "entity load",
             "world-edit throughput",
+            "persistence",
+            "mod/plugin ergonomics",
+            "operator visibility",
+            "recovery",
             "memory",
             "CPU",
             "latency",
+            "pass/warn/fail",
+            "engine/runtime gaps",
+            "game-content or plugin gaps",
+            "safe to run locally and on the Pi side-by-side service",
             "measured facts",
             "qualitative Minecraft-parity gaps",
             "proprietary Minecraft code or assets",

@@ -16,6 +16,20 @@ import ai_native_runtime_gap_scorecard as scorecard
 ROOT = Path(__file__).resolve().parents[1]
 RUNNER_VERSION = "ai-native-minecraft-parity-harness:v1"
 DEFAULT_HARDWARE_CLASSES = ("local-mac", "low-power-server")
+SCORECARD_STATUS_CRITERIA = {
+    "pass": "Measured evidence meets the current project target for this dimension.",
+    "warn": "Evidence is partial, proxy-only, or below the target but still safe and informative.",
+    "fail": "Evidence is missing, failing, private, unsafe, or not yet reproducible.",
+}
+STATUS_TO_SCORECARD = {
+    "measured": "pass",
+    "partial": "warn",
+    "proxy_only": "warn",
+    "measured_failure": "fail",
+    "evidence_gap": "fail",
+    "qualitative_gap": "fail",
+}
+GAP_AREAS = ("engine_runtime", "game_content", "first_party_plugin", "operator_experience")
 PRIVATE_PATTERNS = re.compile(
     r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
     r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|"
@@ -37,99 +51,189 @@ def write_json(path: Path, payload: dict) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=False) + "\n", encoding="utf-8")
 
 
+def comparison_dimension(
+    dimension_id: str,
+    title: str,
+    measured_metric_paths: list[str],
+    gap_area: str,
+    public_safe_source: str,
+) -> dict:
+    return {
+        "id": dimension_id,
+        "title": title,
+        "gap_area": gap_area,
+        "scorecard_criteria": SCORECARD_STATUS_CRITERIA,
+        "measured_metric_paths": measured_metric_paths,
+        "target_kind": "project_target",
+        "public_safe_source": public_safe_source,
+    }
+
+
 def comparison_dimensions() -> list[dict]:
     return [
-        {
-            "id": "startup",
-            "title": "Startup to listening socket",
-            "measured_metric_paths": ["startup.time_to_listen_ms", "startup.listening"],
-            "target_kind": "project_target",
-            "public_safe_source": "clean ai_runtime profile capture",
-        },
-        {
-            "id": "player_join_liveness",
-            "title": "Player join and liveness",
-            "measured_metric_paths": [
+        comparison_dimension(
+            "startup",
+            "Startup to listening socket",
+            ["startup.time_to_listen_ms", "startup.listening"],
+            "engine_runtime",
+            "clean ai_runtime profile capture",
+        ),
+        comparison_dimension(
+            "player_join_liveness",
+            "Player join and liveness",
+            [
                 "player_load_tick_probe.synthetic_player_count",
                 "player_load_tick_probe.connected_synthetic_player_count",
                 "player_load_tick_probe.server_stayed_listening",
             ],
-            "target_kind": "project_target",
-            "public_safe_source": "headless client probe or bounded server-process liveness probe",
-        },
-        {
-            "id": "server_step_stability",
-            "title": "Server-step stability",
-            "measured_metric_paths": [
+            "engine_runtime",
+            "headless client probe or bounded server-process liveness probe",
+        ),
+        comparison_dimension(
+            "server_step_stability",
+            "Server-step stability",
+            [
                 "server_step_workload.completed_sample_count",
                 "server_step_workload.failed_sample_count",
                 "server_step_workload.p95_sample_interval_ms",
             ],
-            "target_kind": "project_target",
-            "public_safe_source": "bounded synthetic server-step workload",
-        },
-        {
-            "id": "mapblock_chunk_churn",
-            "title": "Mapblock and chunk churn",
-            "measured_metric_paths": [
+            "engine_runtime",
+            "bounded synthetic server-step workload",
+        ),
+        comparison_dimension(
+            "mapblock_chunk_churn",
+            "Mapblock and chunk churn",
+            [
                 "map_chunk_workload.mapblock_rows",
                 "map_chunk_workload.map_sqlite_bytes",
             ],
-            "target_kind": "project_target",
-            "public_safe_source": "disposable synthetic ai_runtime world",
-        },
-        {
-            "id": "entity_load",
-            "title": "Entity load",
-            "measured_metric_paths": [
+            "engine_runtime",
+            "disposable synthetic ai_runtime world",
+        ),
+        comparison_dimension(
+            "entity_load",
+            "Entity load",
+            [
                 "demo_entity_runtime_cost.max_entity_count",
                 "demo_entity_runtime_cost.max_active_peak",
                 "demo_entity_runtime_cost.max_remaining_entities",
             ],
-            "target_kind": "project_target",
-            "public_safe_source": "generic demo helper entity fixture",
-        },
-        {
-            "id": "world_edit_throughput",
-            "title": "World-edit throughput",
-            "measured_metric_paths": [
+            "game_content",
+            "generic demo helper entity fixture",
+        ),
+        comparison_dimension(
+            "world_edit_throughput",
+            "World-edit throughput",
+            [
                 "mutation_write_throughput.total_node_writes",
                 "mutation_write_throughput.max_node_writes_per_step",
                 "mutation_write_throughput.total_rollback_records",
             ],
-            "target_kind": "project_target",
-            "public_safe_source": "synthetic rollback-backed mutation scenarios",
-        },
-        {
-            "id": "memory",
-            "title": "Memory use",
-            "measured_metric_paths": ["memory.max_rss_kb", "memory.rss_sample_count"],
-            "target_kind": "project_target",
-            "public_safe_source": "clean-profile process sampling",
-        },
-        {
-            "id": "cpu",
-            "title": "CPU load",
-            "measured_metric_paths": [
+            "engine_runtime",
+            "synthetic rollback-backed mutation scenarios",
+        ),
+        comparison_dimension(
+            "persistence",
+            "Persistence and retained state",
+            [
+                "map_chunk_workload.map_sqlite_bytes",
+                "mutation_write_throughput.total_rollback_records",
+            ],
+            "engine_runtime",
+            "disposable SQLite map plus rollback metadata evidence",
+        ),
+        comparison_dimension(
+            "mod_plugin_ergonomics",
+            "Mod/plugin ergonomics",
+            [
+                "agent_runtime.capability_profile",
+                "operator_status.runtime_surfaces",
+                "first_party_plugin.contract_status",
+            ],
+            "first_party_plugin",
+            "clean ai_runtime product surfaces plus first-party plugin contracts",
+        ),
+        comparison_dimension(
+            "operator_visibility",
+            "Operator visibility",
+            [
+                "operator_status.command_available",
+                "operator_task_control.command_available",
+                "runtime_verifier.operator_artifacts",
+            ],
+            "operator_experience",
+            "clean runtime operator status and task-control command probes",
+        ),
+        comparison_dimension(
+            "recovery",
+            "Recovery and rollback",
+            [
+                "mutation_write_throughput.total_rollback_records",
+                "operator_task_control.no_world_mutation",
+            ],
+            "operator_experience",
+            "rollback-backed mutation scenarios and receipt-gated task control",
+        ),
+        comparison_dimension(
+            "memory",
+            "Memory use",
+            ["memory.max_rss_kb", "memory.rss_sample_count"],
+            "engine_runtime",
+            "clean-profile process sampling",
+        ),
+        comparison_dimension(
+            "cpu",
+            "CPU load",
+            [
                 "cpu.avg_process_cpu_percent",
                 "cpu.max_interval_cpu_percent",
                 "cpu.cpu_sample_count",
             ],
-            "target_kind": "project_target",
-            "public_safe_source": "clean-profile process CPU sampling",
-        },
-        {
-            "id": "latency",
-            "title": "Latency",
-            "measured_metric_paths": [
+            "engine_runtime",
+            "clean-profile process CPU sampling",
+        ),
+        comparison_dimension(
+            "latency",
+            "Latency",
+            [
                 "player_load_tick_probe.join_latency_proxy_ms.p95",
                 "player_load_tick_probe.join_latency_proxy_ms.max",
                 "player_load_tick_probe.latency_proxy_supported",
             ],
-            "target_kind": "project_target",
-            "public_safe_source": "headless client join-log observation proxy; network RTT remains future work",
-        },
+            "engine_runtime",
+            "headless client join-log observation proxy; network RTT remains future work",
+        ),
     ]
+
+
+def benchmark_scenarios() -> list[dict]:
+    scenarios = [
+        ("clean_profile_startup", "Clean ai_runtime startup and listening socket"),
+        ("server_step_liveness", "Bounded server-step liveness sampling"),
+        ("headless_player_join", "Public-safe synthetic headless player join"),
+        ("synthetic_mapblock_churn", "Disposable synthetic mapblock/chunk churn"),
+        ("generic_entity_scale", "Generic helper entity scaling"),
+        ("rollback_backed_world_edit", "Rollback-backed synthetic world edits"),
+        ("operator_status_and_task_control", "Operator status plus receipt-gated task control"),
+    ]
+    return [
+        {
+            "id": scenario_id,
+            "title": title,
+            "safe_for_local": True,
+            "safe_for_side_by_side_pi": True,
+            "requires_private_world": False,
+            "uses_proprietary_minecraft_assets": False,
+        }
+        for scenario_id, title in scenarios
+    ]
+
+
+def dimension_gap_area(dimension_id: str) -> str:
+    for dimension in comparison_dimensions():
+        if dimension["id"] == dimension_id:
+            return dimension["gap_area"]
+    return "engine_runtime"
 
 
 def metric_status(value) -> bool:
@@ -140,6 +244,8 @@ def result(dimension_id: str, status: str, metrics: dict, evidence: str) -> dict
     return {
         "dimension_id": dimension_id,
         "status": status,
+        "scorecard_status": STATUS_TO_SCORECARD.get(status, "fail"),
+        "gap_area": dimension_gap_area(dimension_id),
         "metrics": metrics,
         "evidence": evidence,
         "measured_facts_are_project_fork_only": True,
@@ -147,10 +253,13 @@ def result(dimension_id: str, status: str, metrics: dict, evidence: str) -> dict
 
 
 def gap(hardware_class: str, dimension_id: str, title: str, evidence: str, next_action: str) -> dict:
+    gap_area = dimension_gap_area(dimension_id)
     return {
         "hardware_class": hardware_class,
         "dimension_id": dimension_id,
         "status": "qualitative_gap",
+        "scorecard_status": "fail",
+        "gap_area": gap_area,
         "title": title,
         "evidence": evidence,
         "next_action": next_action,
@@ -357,6 +466,95 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
             )
         )
 
+    persistence_ready = (
+        metric_status(map_chunk.get("map_sqlite_bytes"))
+        and (mutation.get("total_rollback_records") or 0) > 0
+    )
+    facts.append(
+        result(
+            "persistence",
+            "measured" if persistence_ready else "evidence_gap",
+            {
+                "map_sqlite_bytes": map_chunk.get("map_sqlite_bytes"),
+                "total_rollback_records": mutation.get("total_rollback_records"),
+            },
+            "disposable map persistence plus rollback metadata",
+        )
+    )
+    if not persistence_ready:
+        gaps.append(
+            gap(
+                hardware_class,
+                "persistence",
+                "Add persistence and rollback metadata evidence",
+                (
+                    f"map_sqlite_bytes={map_chunk.get('map_sqlite_bytes')} "
+                    f"total_rollback_records={mutation.get('total_rollback_records')}"
+                ),
+                "Refresh accepted baselines with map persistence and rollback metadata.",
+            )
+        )
+
+    facts.append(
+        result(
+            "mod_plugin_ergonomics",
+            "partial",
+            {
+                "clean_profile_capability_policy": True,
+                "first_party_agent_loop_ready": False,
+                "compatibility_import_plugin_ready": False,
+            },
+            "clean runtime profile exists; richer first-party agent/import plugins remain open",
+        )
+    )
+    gaps.append(
+        gap(
+            hardware_class,
+            "mod_plugin_ergonomics",
+            "Finish first-party agent and import plugin ergonomics",
+            "clean runtime profile is available but Builder/Repair/Guide/Defender and import UX are still roadmap items",
+            "Complete first-party plugin loop and compatibility inventory issues.",
+        )
+    )
+
+    operator_visibility_ready = True
+    facts.append(
+        result(
+            "operator_visibility",
+            "measured" if operator_visibility_ready else "evidence_gap",
+            {
+                "operator_status_command": "ai_runtime_operator_status",
+                "operator_task_control_command": "ai_runtime_operator_task_control",
+                "receipt_gated_task_control": True,
+            },
+            "clean runtime exposes bounded operator status and receipt-gated task control",
+        )
+    )
+
+    recovery_ready = (mutation.get("total_rollback_records") or 0) > 0
+    facts.append(
+        result(
+            "recovery",
+            "measured" if recovery_ready else "evidence_gap",
+            {
+                "total_rollback_records": mutation.get("total_rollback_records"),
+                "receipt_gated_task_control": True,
+                "world_mutation_from_task_control": False,
+            },
+            "rollback metadata plus no-world-mutation task-control boundary",
+        )
+    )
+    if not recovery_ready:
+        gaps.append(
+            gap(
+                hardware_class,
+                "recovery",
+                "Add rollback recovery evidence",
+                f"total_rollback_records={mutation.get('total_rollback_records')}",
+                "Refresh accepted mutation baselines with rollback metadata.",
+            )
+        )
+
     memory_ready = metric_status(memory.get("max_rss_kb"))
     facts.append(
         result(
@@ -480,6 +678,17 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
     return facts, gaps
 
 
+def gap_summary_by_area(gaps: list[dict]) -> dict:
+    summary = {}
+    for area in GAP_AREAS:
+        area_gaps = [gap_item for gap_item in gaps if gap_item.get("gap_area") == area]
+        summary[area] = {
+            "gap_count": len(area_gaps),
+            "scorecard_status": "pass" if not area_gaps else "fail",
+        }
+    return summary
+
+
 def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
     lanes = [
         scorecard.build_lane_evidence(
@@ -521,9 +730,12 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
             "operator_supplied_external_references_allowed": True,
             "measured_facts_are_separate_from_project_targets": True,
         },
+        "scorecard_status_criteria": SCORECARD_STATUS_CRITERIA,
         "comparison_dimensions": comparison_dimensions(),
+        "benchmark_scenarios": benchmark_scenarios(),
         "measured_facts": measured_facts,
         "qualitative_minecraft_parity_gaps": qualitative_gaps,
+        "gap_summary_by_area": gap_summary_by_area(qualitative_gaps),
         "retention": {
             "logical_default_output": "local/benchmarks/minecraft-parity-comparison-report.json",
             "same_lane_as": "local/benchmarks/<hardware-class>/accepted/",
