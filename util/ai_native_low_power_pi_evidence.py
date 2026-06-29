@@ -210,6 +210,7 @@ def backup_evidence(args) -> dict:
 def runtime_evidence(remote_manifest: dict) -> dict:
     clean = remote_manifest.get("clean_profile_evidence") or {}
     product = remote_manifest.get("product_profile_evidence") or {}
+    server_step_workload = clean.get("server_step_workload") or {}
     return {
         "remote_manifest_status": sanitize_text(remote_manifest.get("overall_status", "unknown")),
         "logical_run_dir": sanitize_text(remote_manifest.get("logical_run_dir", "")),
@@ -220,7 +221,9 @@ def runtime_evidence(remote_manifest: dict) -> dict:
         "player_load_probe_status": sanitize_text(clean.get("player_load_probe_status", "unknown")),
         "player_load_probe_kind": sanitize_text(clean.get("player_load_probe_kind", "unknown")),
         "server_step_workload_status": sanitize_text(
-            (clean.get("server_step_workload") or {}).get("status", "unknown")
+            clean.get("server_step_workload_status")
+            or server_step_workload.get("status")
+            or "unknown"
         ),
         "failure_count": len(remote_manifest.get("failure_reasons") or []),
     }
