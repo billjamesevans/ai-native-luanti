@@ -11,6 +11,7 @@
     "status",
     "approved_actions",
     "queued_tasks",
+    "running_tasks",
     "completed_tasks",
     "blocked_tasks",
     "mutation_cost_actual",
@@ -51,6 +52,12 @@
       }
     },
     "queued_tasks": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/task_ref"
+      }
+    },
+    "running_tasks": {
       "type": "array",
       "items": {
         "$ref": "#/$defs/task_ref"

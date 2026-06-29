@@ -182,6 +182,7 @@ Every apply run emits a summary with:
 - `status`
 - `approved_actions`
 - `queued_tasks`
+- `running_tasks`
 - `completed_tasks`
 - `blocked_tasks`
 - `mutation_cost_actual`
@@ -221,9 +222,10 @@ This command:
 - Validates approved `import_structure` actions against node-write, mapblock-churn, manual-review, wall-clock, and rollback budgets.
 - Requires staging plus `manifest_only` or `snapshot` rollback policy before a structure handoff can be defined.
 - Emits inert task definitions that preserve calibrated structure cost, redacted source provenance, required `import.assets`/world capabilities, and `mutation_enabled = false`.
+- Marks approved `import_structure` definitions with the staged runtime entrypoint `core.ai_import_ops.define_structure_apply_task`.
 - Emits an apply summary with `status = planned`.
 
-Structure apply remains a staging/no-op prototype in this slice. It does not queue runnable world-write steps or mutate a world.
+The command does not queue runnable world-write steps or mutate a world.
 - Leaves the dry-run report unchanged.
 - Copies no assets and performs no world mutation.
 
@@ -242,4 +244,24 @@ Each generated task definition includes:
 - Rollback policy and metadata requirements.
 - Source planned-action metadata for review.
 
-`import_structure` maps to `compat.structure.place`, has `mutation_class = world_mutating`, and sets `requires_safe_world_ops = true`. It remains a definition only until safe-world-op execution and rollback metadata are implemented in a later issue.
+`import_structure` maps to `compat.structure.place`, has `mutation_class = world_mutating`, and sets `requires_safe_world_ops = true`. Apply-plan output remains definition-only, but the runtime now exposes `core.ai_import_ops.define_structure_apply_task` for staged execution in disposable worlds.
+
+## Current Structure Runtime Executor
+
+`core.ai_import_ops.define_structure_apply_task(def)` creates a queueable staged structure apply task for synthetic or operator-reviewed structure placements. This is the first mutating compatibility path and is intentionally narrow.
+
+Required runtime gates:
+
+- The import agent must have `import.assets`, `world.place`, and `world.batch`.
+- `explicit_approval = true`.
+- The target world must be staging-only.
+- `allow_mutation = true`.
+- Rollback policy must be `manifest_only`, `manifest`, `chunked`, or `snapshot`.
+- Rollback metadata must persist before any node write.
+- `max_node_writes_per_step`, `max_mapblock_churn_total`, and the task queue wall-clock budget must be explicit and enforced.
+
+Execution calls `core.run_ai_world_mutation_with_rollback`, then places nodes through `core.ai_world_ops.batch_place`. Failed rollback persistence blocks before mutation. Budget failures block before rollback and before mutation. Protected-area or safe-world-op failures can persist rollback metadata first, then block with `changed = 0`.
+
+`core.ai_import_ops.build_apply_summary(options)` inspects queued runtime task ids and separates `queued_tasks`, `running_tasks`, `completed_tasks`, and `blocked_tasks`. It reports actual node writes, mapblock churn, rollback records, audit count, and keeps `assets_remain_operator_supplied = true` plus `dry_run_report_unchanged = true`.
+
+This executor is for disposable staging worlds and synthetic fixtures only. Showcase worlds, private family-server content, copied Minecraft assets, secrets, and local paths remain outside the fork.

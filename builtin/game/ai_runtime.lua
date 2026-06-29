@@ -890,6 +890,395 @@ local function actor_name(options)
 	return options and (options.owner or options.player_name or options.agent_id) or ""
 end
 
+local import_structure_required_capabilities = {
+	"import.assets",
+	"world.place",
+	"world.batch",
+}
+
+local function import_structure_result(options)
+	local result = make_action_result("ai_import.structure_apply", options)
+	result.metrics.planned_node_writes = 0
+	result.metrics.mapblock_churn = 0
+	result.metrics.rollback_records = 0
+	result.metrics.rollback_failures = 0
+	return result
+end
+
+local function finish_import_structure_result(result, status, reason, message)
+	core.record_ai_runtime_audit({
+		event_type = "import.structure_apply",
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		operation = result.operation,
+		status = status,
+		reason = reason,
+		message = message,
+		changed = result.changed,
+		examined = result.examined,
+		skipped = result.skipped,
+		rollback_record_id = result.rollback_record_id,
+		rollback_storage_ref = result.rollback_storage_ref,
+		mutation_class = "compat_import",
+	})
+	return finish_runtime_gate_result(result, status, reason, message)
+end
+
+local function blocked_import_structure_result(result, reason, message)
+	if result.examined > 0 and result.skipped == 0 then
+		result.skipped = result.examined
+	end
+	return finish_import_structure_result(result, "blocked", reason, message)
+end
+
+local function normalize_structure_rollback_policy(policy)
+	policy = policy or "snapshot"
+	if policy == "manifest_only" then
+		return "manifest"
+	end
+	if policy == "snapshot" or policy == "manifest" or policy == "chunked" then
+		return policy
+	end
+	return nil
+end
+
+local function normalize_structure_placements(placements)
+	assert(type(placements) == "table" and #placements > 0,
+		"Field 'placements' must be a non-empty table")
+	local normalized = {}
+	for index, placement in ipairs(placements) do
+		assert(type(placement) == "table", "Structure placements must be tables")
+		local node_name = placement.node_name or placement.name
+		check_string(node_name, "placements[" .. index .. "].node_name")
+		normalized[#normalized + 1] = {
+			pos = check_pos(placement.pos, "placements[" .. index .. "].pos"),
+			node_name = node_name,
+		}
+	end
+	return normalized
+end
+
+local function structure_positions(placements)
+	local positions = {}
+	for _, placement in ipairs(placements) do
+		positions[#positions + 1] = copy_pos(placement.pos)
+	end
+	return positions
+end
+
+local function mapblock_key(pos)
+	return math.floor(pos.x / 16) .. ":"
+		.. math.floor(pos.y / 16) .. ":"
+		.. math.floor(pos.z / 16)
+end
+
+local function structure_mapblock_churn(placements)
+	local seen = {}
+	local count = 0
+	for _, placement in ipairs(placements) do
+		local key = mapblock_key(placement.pos)
+		if not seen[key] then
+			seen[key] = true
+			count = count + 1
+		end
+	end
+	return count
+end
+
+local function structure_budget_value(options, field, fallback)
+	local value = options[field]
+	if value == nil then
+		value = fallback
+	end
+	assert(type(value) == "number" and value >= 0,
+		"Field '" .. field .. "' must be a non-negative number")
+	return math.floor(value)
+end
+
+local function copy_source_reference(source_reference)
+	if type(source_reference) ~= "table" then
+		return nil
+	end
+	return {
+		reference_type = source_reference.reference_type,
+		redacted_id = source_reference.redacted_id,
+		inventory_hash = source_reference.inventory_hash,
+	}
+end
+
+local function import_structure_capability_block(options, result)
+	for _, capability in ipairs(import_structure_required_capabilities) do
+		local capability_result = core.check_agent_capability(options.agent_id, capability)
+		if not capability_result.ok then
+			result.skipped = result.examined > 0 and result.examined or 1
+			core.record_ai_runtime_audit({
+				event_type = "import.structure_apply",
+				agent_id = result.agent_id,
+				task_id = result.task_id,
+				operation = result.operation,
+				status = "blocked",
+				reason = capability_result.reason,
+				message = capability_result.message,
+				skipped = result.skipped,
+			})
+			return finish_runtime_gate_result(result, "blocked",
+				capability_result.reason, capability_result.message)
+		end
+	end
+	return nil
+end
+
+function core.ai_import_ops.apply_structure(placements, options)
+	options = options or {}
+	runtime_gate_options(options, "ai_import.structure_apply")
+	local normalized = normalize_structure_placements(placements)
+	local result = import_structure_result(options)
+	result.examined = #normalized
+	result.metrics.planned_node_writes = #normalized
+	result.metrics.mapblock_churn = structure_mapblock_churn(normalized)
+
+	local capability_block = import_structure_capability_block(options, result)
+	if capability_block then
+		return capability_block
+	end
+	if import_handoff_has_payload({
+			placements = placements,
+			source_reference = options.source_reference,
+			provenance = options.provenance,
+			private_payload = options.private_payload,
+			asset_payload = options.asset_payload,
+			has_rejected_payload = options.has_rejected_payload and {
+				payload = true,
+			} or nil,
+		}) then
+		return blocked_import_structure_result(result, "payload_rejected",
+			"Structure apply cannot retain private payloads or asset bytes.")
+	end
+	if options.explicit_approval ~= true then
+		return blocked_import_structure_result(result, "approval_required",
+			"Structure apply requires explicit operator approval.")
+	end
+	local target_world = options.target_world or {}
+	if options.staging ~= true and target_world.staging ~= true then
+		return blocked_import_structure_result(result, "staging_target_required",
+			"Structure apply requires a staging target world.")
+	end
+	if options.allow_mutation ~= true then
+		return blocked_import_structure_result(result, "structure_mutation_not_enabled",
+			"Structure apply requires explicit allow_mutation.")
+	end
+	local rollback_policy = normalize_structure_rollback_policy(options.rollback_policy)
+	if not rollback_policy then
+		return blocked_import_structure_result(result, "rollback_policy_not_mutating",
+			"Structure apply requires manifest_only, manifest, chunked, or snapshot rollback.")
+	end
+	local max_writes = structure_budget_value(options, "max_node_writes_per_step", #normalized)
+	if #normalized > max_writes then
+		return blocked_import_structure_result(result, "node_write_budget_exceeded",
+			"Structure apply exceeds the per-step node-write budget.")
+	end
+	local max_mapblock_churn = structure_budget_value(options,
+		"max_mapblock_churn_total", result.metrics.mapblock_churn)
+	if result.metrics.mapblock_churn > max_mapblock_churn then
+		return blocked_import_structure_result(result, "mapblock_churn_budget_exceeded",
+			"Structure apply exceeds the mapblock-churn budget.")
+	end
+	if not options.world_id or options.world_id == "" then
+		return blocked_import_structure_result(result, "rollback_metadata_unavailable",
+			"Structure apply requires a target world id before mutation.")
+	end
+
+	local rollback_result = core.run_ai_world_mutation_with_rollback({
+		record_id = options.rollback_record_id,
+		policy = rollback_policy,
+		world_id = options.world_id,
+		task_id = options.task_id,
+		agent_id = options.agent_id,
+		owner_ref = options.owner or options.owner_ref,
+		operation_label = options.operation_label or "compat.structure.apply",
+		mutation_class = "compat_import",
+		bounds = options.bounds,
+		positions = structure_positions(normalized),
+		get_node = options.get_node,
+		persist_record = options.persist_record or options.persist_rollback_record,
+	}, function(ctx)
+		return core.ai_world_ops.batch_place(normalized, {
+			agent_id = ctx.agent_id,
+			task_id = ctx.task_id,
+			owner = options.owner or options.owner_ref,
+			get_node = options.get_node,
+			set_node = options.set_node,
+			bounds = options.bounds,
+			replace_existing = options.replace_existing == true,
+			allow_hazards = options.allow_hazards == true,
+			min_player_distance = options.min_player_distance,
+			max_changes = #normalized,
+			sample_limit = options.sample_limit,
+		})
+	end)
+
+	if not rollback_result.ok and rollback_result.reason == "rollback_metadata_unavailable" then
+		result.metrics.rollback_failures = 1
+		return blocked_import_structure_result(result, "rollback_metadata_unavailable",
+			rollback_result.message or "Rollback metadata is unavailable.")
+	end
+	if rollback_result.rollback_record_id then
+		rollback_result.metrics = rollback_result.metrics or {}
+		rollback_result.metrics.rollback_records = 1
+		rollback_result.metrics.mapblock_churn = result.metrics.mapblock_churn
+		rollback_result.metrics.planned_node_writes = result.metrics.planned_node_writes
+		rollback_result.source_reference = copy_source_reference(options.source_reference)
+	end
+	return rollback_result
+end
+
+function core.ai_import_ops.define_structure_apply_task(def)
+	assert(type(def) == "table", "Structure apply task definition must be a table")
+	check_string(def.task_id, "task_id")
+	check_string(def.agent_id, "agent_id")
+	check_string(def.owner, "owner")
+	local placements = normalize_structure_placements(def.placements)
+	local max_writes = structure_budget_value(def,
+		"max_node_writes_per_step", #placements)
+	local has_rejected_payload = import_handoff_has_payload(def)
+	local task_def = table.copy(def)
+	task_def.source_reference = copy_source_reference(def.source_reference)
+	task_def.placements = nil
+	task_def.provenance = nil
+	task_def.private_payload = nil
+	task_def.asset_payload = nil
+	task_def.payload = nil
+	task_def.has_rejected_payload = has_rejected_payload
+	return {
+		task_id = def.task_id,
+		agent_id = def.agent_id,
+		owner = def.owner,
+		label = def.label or "compat.structure.place",
+		required_capabilities = {
+			["import.assets"] = true,
+			["world.place"] = true,
+			["world.batch"] = true,
+		},
+		mutation_class = "compat_import",
+		metadata = {
+			report_id = def.report_id,
+			action_index = def.action_index,
+			placement_count = #placements,
+			staging = def.staging == true
+				or (def.target_world and def.target_world.staging == true) or false,
+			source_reference = task_def.source_reference,
+		},
+		budget = {
+			max_steps_per_step = 1,
+			max_node_writes_per_step = max_writes,
+			max_wall_time_ms = def.max_wall_time_ms or 0,
+		},
+		steps = {
+			function(ctx)
+				task_def.agent_id = ctx.agent_id
+				task_def.owner = ctx.owner
+				task_def.task_id = ctx.task_id
+				task_def.max_node_writes_per_step = max_writes
+				return core.ai_import_ops.apply_structure(placements, task_def)
+			end,
+		},
+	}
+end
+
+function core.ai_import_ops.queue_structure_apply_task(def)
+	return core.queue_ai_task(core.ai_import_ops.define_structure_apply_task(def))
+end
+
+local function task_summary_ref(task)
+	return {
+		task_id = task.task_id,
+		label = task.label,
+		status = task.status,
+	}
+end
+
+function core.ai_import_ops.build_apply_summary(options)
+	options = options or {}
+	local summary = {
+		summary_version = 1,
+		apply_id = options.apply_id or ("apply-runtime:" .. (options.report_id or "unknown")),
+		report_id = options.report_id,
+		status = "queued",
+		approved_actions = table.copy(options.approved_actions or {}),
+		queued_tasks = {},
+		running_tasks = {},
+		completed_tasks = {},
+		blocked_tasks = {},
+		mutation_cost_actual = {
+			node_writes = 0,
+			mapblock_churn = 0,
+			media_files = 0,
+			entity_definitions = 0,
+			manual_review_items = 0,
+		},
+		rollback_records = {},
+		audit_record_count = #core.get_ai_runtime_audit({}),
+		operator_next_actions = {},
+		safety = {
+			assets_remain_operator_supplied = true,
+			dry_run_report_unchanged = true,
+			world_mutation_executed = false,
+		},
+	}
+	local saw_active = false
+	local saw_blocked = false
+	local saw_completed = false
+	for _, task_id in ipairs(options.task_ids or {}) do
+		local task = core.get_ai_task(task_id)
+		if task then
+			local ref = task_summary_ref(task)
+			if task.status == "queued" or task.status == "paused" then
+				summary.queued_tasks[#summary.queued_tasks + 1] = ref
+				saw_active = true
+			elseif task.status == "running" then
+				summary.running_tasks[#summary.running_tasks + 1] = ref
+				saw_active = true
+			elseif task.status == "completed" then
+				summary.completed_tasks[#summary.completed_tasks + 1] = ref
+				saw_completed = true
+			elseif task.status == "blocked" or task.status == "unsafe"
+					or task.status == "failed" then
+				summary.blocked_tasks[#summary.blocked_tasks + 1] = ref
+				saw_blocked = true
+			end
+			local result = task.last_result or {}
+			local changed = tonumber(result.changed) or 0
+			summary.mutation_cost_actual.node_writes =
+				summary.mutation_cost_actual.node_writes + changed
+			if changed > 0 then
+				summary.safety.world_mutation_executed = true
+			end
+			if result.metrics and result.metrics.mapblock_churn then
+				summary.mutation_cost_actual.mapblock_churn = math.max(
+					summary.mutation_cost_actual.mapblock_churn,
+					result.metrics.mapblock_churn)
+			end
+			if result.rollback_record_id then
+				summary.rollback_records[#summary.rollback_records + 1] = {
+					record_id = result.rollback_record_id,
+					policy = options.rollback_policy or "snapshot",
+					world_mutating = true,
+				}
+			end
+		end
+	end
+	if saw_blocked then
+		summary.status = "blocked"
+	elseif saw_active then
+		summary.status = #summary.running_tasks > 0 and "running" or "queued"
+	elseif saw_completed then
+		summary.status = "completed"
+	else
+		summary.status = "planned"
+	end
+	return summary
+end
+
 local function world_get_node(pos, options)
 	if options and options.get_node then
 		return options.get_node(pos)
