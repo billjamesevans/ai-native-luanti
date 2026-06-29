@@ -4,7 +4,9 @@ local plugin = core.ai_agent_plugin
 local player_states = {}
 local player_task_ids = {}
 local player_entity_ids = {}
+local player_pending_approvals = {}
 local task_sequence = 0
+local approval_sequence = 0
 local model_adapter = nil
 local default_capabilities = {}
 local settings = {
@@ -49,6 +51,11 @@ local function next_task_id(name, action)
 	return "nova_agent:" .. name .. ":" .. action .. ":" .. task_sequence
 end
 
+local function next_approval_id(name, action)
+	approval_sequence = approval_sequence + 1
+	return "nova_agent:" .. name .. ":" .. action .. ":approval:" .. approval_sequence
+end
+
 local function configure_product_surfaces()
 	if core.build_agent then
 		core.build_agent.configure({
@@ -86,6 +93,7 @@ end
 local function public_reply(name, action, status, message, extra)
 	extra = extra or {}
 	extra.ok = status == "success" or status == "queued" or status == "partial"
+		or status == "pending_approval"
 	extra.status = status
 	extra.action = action
 	extra.agent_id = agent_id_for(name)
@@ -202,6 +210,50 @@ local function active_player_tasks(name)
 		end
 	end
 	return result
+end
+
+local function approval_context(context)
+	context = context or {}
+	return {
+		pos = copy_pos(context.pos),
+		player_name = context.player_name,
+		world_id = context.world_id,
+		get_node = context.get_node,
+		set_node = context.set_node,
+		persist_record = context.persist_record,
+		persist_rollback_record = context.persist_rollback_record,
+		rollback_policy = context.rollback_policy,
+		sample_limit = context.sample_limit,
+		max_node_writes_per_step = context.max_node_writes_per_step,
+		max_wall_time_ms = context.max_wall_time_ms,
+	}
+end
+
+local function compact_pending_approval(pending)
+	if not pending then
+		return nil
+	end
+	return {
+		approval_id = pending.approval_id,
+		pending_action = pending.action,
+		plan = pending.plan,
+		candidate_count = pending.candidate_count,
+		planned_node_writes = pending.planned_node_writes,
+	}
+end
+
+local function remember_pending_approval(name, action, plan, context, extra)
+	extra = extra or {}
+	local pending = {
+		approval_id = next_approval_id(name, action),
+		action = action,
+		plan = plan,
+		context = approval_context(context),
+		candidate_count = extra.candidate_count,
+		planned_node_writes = extra.planned_node_writes,
+	}
+	player_pending_approvals[name] = pending
+	return pending
 end
 
 local function agent_entity_id_for(name)
@@ -647,7 +699,7 @@ local function handle_follow(name, prompt, context)
 	return queue_plugin_task(name, "follow", "follow " .. name, steps, context)
 end
 
-local function handle_build(name, context)
+local function queue_build_task(name, context)
 	context = context or {}
 	configure_product_surfaces()
 	local pos = default_pos(context)
@@ -669,7 +721,7 @@ local function handle_build(name, context)
 		}))
 end
 
-local function handle_build_plan(name, context)
+local function build_plan_for(name, context)
 	context = context or {}
 	configure_product_surfaces()
 	local result = core.build_agent.plan({
@@ -692,10 +744,31 @@ local function handle_build_plan(name, context)
 	plan.skipped = result.skipped
 	plan.samples = result.samples or {}
 	plan.metrics = result.metrics or {}
+	return result, plan
+end
+
+local function handle_build_plan(name, context)
+	local result, plan = build_plan_for(name, context)
 	return public_reply(name, "build_plan", result.status, "Build plan returned without mutation.", {
 		plan = plan,
 		planned_node_writes = plan.metrics.planned_node_writes or 0,
 	})
+end
+
+local function handle_build(name, context)
+	context = context or {}
+	local result, plan = build_plan_for(name, context)
+	local pending = remember_pending_approval(name, "build", plan, context, {
+		planned_node_writes = plan.metrics.planned_node_writes or 0,
+	})
+	return public_reply(name, "build", "pending_approval",
+		"Build plan is pending approval before mutation.", {
+			approval_id = pending.approval_id,
+			pending_action = "build",
+			plan = plan,
+			planned_node_writes = plan.metrics.planned_node_writes or 0,
+			plan_status = result.status,
+		})
 end
 
 local function compact_repair_plan(plan)
@@ -737,12 +810,12 @@ local function handle_repair_plan(name, context)
 	})
 end
 
-local function handle_repair(name, context)
+local function queue_repair_task(name, context, plan)
 	context = context or {}
 	configure_product_surfaces()
 	local pos = default_pos(context)
 	local task_id = next_task_id(name, "repair")
-	local plan = core.repair_agent.plan_area(pos, {
+	plan = plan or core.repair_agent.plan_area(pos, {
 		agent_id = agent_id_for(name),
 		owner = name,
 		task_id = task_id .. ":plan",
@@ -772,6 +845,39 @@ local function handle_repair(name, context)
 		plan_status = plan.status,
 		candidate_count = #(plan.candidates or {}),
 	})
+end
+
+local function handle_repair(name, context)
+	context = context or {}
+	configure_product_surfaces()
+	local approval_id = next_approval_id(name, "repair")
+	local plan = core.repair_agent.plan_area(default_pos(context), {
+		agent_id = agent_id_for(name),
+		owner = name,
+		task_id = approval_id .. ":plan",
+		radius = 0,
+		repair_nodes = settings.repair_nodes,
+		get_node = context.get_node,
+		sample_limit = context.sample_limit or settings.max_lights,
+	})
+	local compact = compact_repair_plan(plan)
+	local pending = {
+		approval_id = approval_id,
+		action = "repair",
+		plan = compact,
+		raw_plan = plan,
+		context = approval_context(context),
+		candidate_count = compact.candidate_count,
+	}
+	player_pending_approvals[name] = pending
+	return public_reply(name, "repair", "pending_approval",
+		"Repair plan is pending approval before mutation.", {
+			approval_id = pending.approval_id,
+			pending_action = "repair",
+			plan = compact,
+			candidate_count = compact.candidate_count,
+			plan_status = plan.status,
+		})
 end
 
 local function default_import_plan(context)
@@ -846,6 +952,7 @@ local function handle_guide(name)
 			"status",
 			"tasks",
 			"cancel",
+			"approve",
 			"follow",
 			"light",
 			"build plan",
@@ -858,6 +965,7 @@ local function handle_guide(name)
 			"rollback",
 		},
 		tasks = active_player_tasks(name),
+		pending_approval = compact_pending_approval(player_pending_approvals[name]),
 	})
 end
 
@@ -917,7 +1025,46 @@ end
 local function handle_tasks(name)
 	return public_reply(name, "tasks", "success", "Task list returned.", {
 		tasks = active_player_tasks(name),
+		pending_approval = compact_pending_approval(player_pending_approvals[name]),
 	})
+end
+
+local function handle_approve(name, prompt)
+	local pending = player_pending_approvals[name]
+	if not pending then
+		return public_reply(name, "approve", "blocked", "No pending approval to apply.", {
+			reason = "no_pending_approval",
+		})
+	end
+	local requested_action = prompt:match("^approve%s+([%w_%-]+)$")
+	if requested_action and requested_action ~= pending.action then
+		return public_reply(name, "approve", "blocked",
+			"Pending approval action does not match request.", {
+				reason = "approval_action_mismatch",
+				approval_id = pending.approval_id,
+				pending_action = pending.action,
+				requested_action = requested_action,
+			})
+	end
+
+	player_pending_approvals[name] = nil
+	local queued
+	if pending.action == "build" then
+		queued = queue_build_task(name, pending.context)
+	elseif pending.action == "repair" then
+		queued = queue_repair_task(name, pending.context, pending.raw_plan)
+	else
+		return public_reply(name, "approve", "blocked", "Pending approval type is unsupported.", {
+			reason = "unsupported_pending_approval",
+			approval_id = pending.approval_id,
+			pending_action = pending.action,
+		})
+	end
+
+	queued.action = "approve"
+	queued.approved_action = pending.action
+	queued.approval_id = pending.approval_id
+	return queued
 end
 
 local function handle_model(name, prompt, context)
@@ -964,6 +1111,9 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt == "cancel" or prompt == "stop" then
 		return handle_cancel(name)
+	end
+	if prompt == "approve" or prompt:match("^approve%s+[%w_%-]+$") then
+		return handle_approve(name, prompt)
 	end
 	if prompt:find("follow me", 1, true) or prompt == "follow"
 			or prompt:match("^follow%s+%d+$") then
