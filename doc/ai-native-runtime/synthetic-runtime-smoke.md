@@ -31,7 +31,7 @@ The summary must not include absolute local paths, private server hosts, private
 
 ## Operator Command
 
-`/ai_runtime_smoke` is a `server`-privileged command for local operators. It runs the same synthetic scenario and returns a bounded JSON summary under 12k characters. The command always uses synthetic mode and does not accept player names, provider prompts, local paths, private assets, live-server targets, or model-network settings.
+`/ai_runtime_smoke` is a `server`-privileged command for local operators. Its module and command are disabled by default in the product profile and only load/register when `ai_runtime.enable_smoke_command = true` is set for an explicit dev/test lane. It runs the same synthetic scenario and returns a bounded JSON summary under 12k characters. The command always uses synthetic mode and does not accept player names, provider prompts, local paths, private assets, live-server targets, or model-network settings.
 
 Default successful run:
 
@@ -65,6 +65,7 @@ For branch work, run the focused smoke after the branch benchmark gate and `/ai_
 operator command checks:
 
 ```sh
+python3 util/ai_native_product_profile_verify.py
 python3 util/ai_native_benchmark_gate.py --hardware-class local-mac
 bin/luantiserver --run-unittests --test-module TestAIRuntime
 ```

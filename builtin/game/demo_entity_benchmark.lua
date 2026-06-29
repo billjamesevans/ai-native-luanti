@@ -9,8 +9,9 @@ local SCALE_ENTITY_COUNT = 16
 local DEFAULT_MOVEMENT_STEPS = 5
 local MAX_COMMAND_ENTITY_COUNT = 64
 local MAX_COMMAND_MOVEMENT_STEPS = 200
+local dev_command_enabled = core.settings:get_bool("ai_runtime.enable_demo_benchmark_command", false)
 
-if not core.registered_entities[ENTITY_NAME] then
+if dev_command_enabled and not core.registered_entities[ENTITY_NAME] then
 	core.register_entity(":" .. ENTITY_NAME, {
 		initial_properties = {
 			hp_max = 1,
@@ -450,16 +451,18 @@ local function parse_command_options(param)
 	}
 end
 
-core.register_chatcommand("ai_demo_entity_benchmark", {
-	params = "[count=N] [steps=N] [commit=LABEL] [hardware=local-mac|low-power-server]",
-	description = "Run the AI demo entity benchmark and return a JSON report.",
-	privs = { server = true },
-	func = function(_, param)
-		local options, err = parse_command_options(param)
-		if not options then
-			return false, err
-		end
-		local report = benchmark.run_report(options)
-		return true, benchmark.encode_report(report)
-	end,
-})
+if dev_command_enabled then
+	core.register_chatcommand("ai_demo_entity_benchmark", {
+		params = "[count=N] [steps=N] [commit=LABEL] [hardware=local-mac|low-power-server]",
+		description = "Run the AI demo entity benchmark and return a JSON report.",
+		privs = { server = true },
+		func = function(_, param)
+			local options, err = parse_command_options(param)
+			if not options then
+				return false, err
+			end
+			local report = benchmark.run_report(options)
+			return true, benchmark.encode_report(report)
+		end,
+	})
+end

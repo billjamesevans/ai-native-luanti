@@ -1,0 +1,173 @@
+#!/usr/bin/env python3
+"""Verify the AI Runtime product profile keeps fixtures behind explicit gates."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import pathlib
+import re
+import sys
+
+
+MANIFEST_PATH = pathlib.Path("games/ai_runtime/product_profile_manifest.json")
+PROFILE_DIR = pathlib.Path("games/ai_runtime")
+BUILTIN_INIT = pathlib.Path("builtin/game/init.lua")
+PRIVATE_PATTERNS = re.compile(
+    r"minecraftpi|192\.168|spacebase|themepark|showcase100|disneyland100|"
+    r"sk-[A-Za-z0-9_-]{20,}|OPENAI_API_KEY|private_prompt|asset_payload|/Users/",
+    re.I,
+)
+
+
+def _read_json(path):
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _profile_mods(root):
+    mods_dir = root / PROFILE_DIR / "mods"
+    if not mods_dir.is_dir():
+        return []
+    return sorted(
+        path.name
+        for path in mods_dir.iterdir()
+        if path.is_dir() and (path / "mod.conf").is_file()
+    )
+
+
+def _surface_status(root, surface):
+    source_file = root / surface["source_file"]
+    init_file = root / BUILTIN_INIT
+    body = source_file.read_text(encoding="utf-8") if source_file.is_file() else ""
+    init_body = init_file.read_text(encoding="utf-8") if init_file.is_file() else ""
+    setting_expr = f'core.settings:get_bool("{surface["setting"]}", false)'
+    command_expr = f'core.register_chatcommand("{surface["command"]}"'
+    load_expr = f'dofile(gamepath .. "{pathlib.Path(surface["source_file"]).name}")'
+    setting_index = body.find(setting_expr)
+    command_index = body.find(command_expr)
+    init_setting_index = init_body.find(setting_expr)
+    load_index = init_body.find(load_expr)
+    command_gated = setting_index >= 0 and command_index >= 0 and setting_index < command_index
+    module_load_gated = init_setting_index >= 0 and load_index >= 0 and init_setting_index < load_index
+    gated = command_gated and module_load_gated
+    return {
+        "name": surface["name"],
+        "setting": surface["setting"],
+        "source_file": surface["source_file"],
+        "command": surface["command"],
+        "default_enabled": surface.get("default_enabled") is True,
+        "status": "gated" if gated and surface.get("default_enabled") is not True else "violation",
+        "setting_gate_present": setting_index >= 0,
+        "command_present": command_index >= 0,
+        "module_load_gated": module_load_gated,
+    }
+
+
+def _profile_private_matches(root):
+    matches = []
+    for path in sorted((root / PROFILE_DIR).rglob("*")):
+        if not path.is_file():
+            continue
+        body = path.read_text(encoding="utf-8", errors="ignore")
+        if PRIVATE_PATTERNS.search(body):
+            matches.append(path.relative_to(root).as_posix())
+    return matches
+
+
+def build_report(root):
+    root = pathlib.Path(root)
+    manifest = _read_json(root / MANIFEST_PATH)
+    actual_mods = _profile_mods(root)
+    expected_mods = sorted(manifest["product_mods"])
+    surfaces = [_surface_status(root, surface) for surface in manifest["explicit_dev_surfaces"]]
+    startup_inventory = manifest["startup_inventory"]
+
+    violations = []
+    if actual_mods != expected_mods:
+        violations.append({
+            "kind": "product_mods_mismatch",
+            "expected": expected_mods,
+            "actual": actual_mods,
+        })
+    for surface in surfaces:
+        if surface["status"] != "gated":
+            violations.append({
+                "kind": "dev_surface_not_gated",
+                "surface": surface["name"],
+                "setting": surface["setting"],
+            })
+    private_matches = _profile_private_matches(root)
+    if private_matches:
+        violations.append({
+            "kind": "private_or_fixture_content_in_profile",
+            "paths": private_matches,
+        })
+    for entry in startup_inventory:
+        if entry["category"] in {"benchmark_fixture", "compatibility_fixture", "unit_test_helper"}:
+            if entry["loaded_by_default_product_profile"] is True:
+                violations.append({
+                    "kind": "fixture_loaded_by_default_product_profile",
+                    "name": entry["name"],
+                    "category": entry["category"],
+                })
+            if entry["requires_explicit_dev_or_test_lane"] is not True:
+                violations.append({
+                    "kind": "fixture_missing_explicit_dev_or_test_lane",
+                    "name": entry["name"],
+                    "category": entry["category"],
+                })
+
+    return {
+        "schema_version": 1,
+        "status": "pass" if not violations else "fail",
+        "profile": {
+            "gameid": manifest["gameid"],
+            "manifest_path": MANIFEST_PATH.as_posix(),
+            "product_mods": actual_mods,
+        },
+        "startup_inventory": startup_inventory,
+        "explicit_dev_surfaces": surfaces,
+        "test_only_files": manifest["test_only_files"],
+        "test_only_paths": manifest["test_only_paths"],
+        "violations": violations,
+        "safety": {
+            "no_private_content": not private_matches,
+            "dev_surfaces_disabled_by_default": all(
+                surface["status"] == "gated" and surface["default_enabled"] is False
+                for surface in surfaces
+            ),
+            "test_fixtures_explicit_only": all(
+                entry["loaded_by_default_product_profile"] is not True
+                and entry["requires_explicit_dev_or_test_lane"] is True
+                for entry in startup_inventory
+                if entry["category"] in {
+                    "benchmark_fixture",
+                    "compatibility_fixture",
+                    "unit_test_helper",
+                }
+            ),
+        },
+    }
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", default=".", help="Repository root to verify.")
+    parser.add_argument("--output", help="Write JSON report to this path.")
+    args = parser.parse_args(argv)
+
+    try:
+        report = build_report(pathlib.Path(args.root))
+        payload = json.dumps(report, indent=2, sort_keys=True) + "\n"
+        if args.output:
+            pathlib.Path(args.output).write_text(payload, encoding="utf-8")
+        else:
+            sys.stdout.write(payload)
+        return 0 if report["status"] == "pass" else 2
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

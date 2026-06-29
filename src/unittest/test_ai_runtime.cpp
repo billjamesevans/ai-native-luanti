@@ -4,6 +4,7 @@
 #include "test.h"
 
 #include "mock_server.h"
+#include "settings.h"
 
 class TestAIRuntime : public TestBase
 {
@@ -22,6 +23,8 @@ void TestAIRuntime::runTests(IGameDef *gamedef)
 {
 	MockServer server(getTestTempDirectory());
 
+	g_settings->setBool("ai_runtime.enable_smoke_command", true);
+	g_settings->setBool("ai_runtime.enable_demo_benchmark_command", true);
 	server.createScripting();
 	try {
 		std::string builtin = Server::getBuiltinLuaPath() + DIR_DELIM;
@@ -30,10 +33,14 @@ void TestAIRuntime::runTests(IGameDef *gamedef)
 		script->loadMod(builtin + "game" DIR_DELIM "tests" DIR_DELIM
 				"test_ai_runtime.lua", BUILTIN_MOD_NAME);
 	} catch (ModError &e) {
+		g_settings->setBool("ai_runtime.enable_smoke_command", false);
+		g_settings->setBool("ai_runtime.enable_demo_benchmark_command", false);
 		rawstream << e.what() << std::endl;
 		num_tests_failed = 1;
 		return;
 	}
+	g_settings->setBool("ai_runtime.enable_smoke_command", false);
+	g_settings->setBool("ai_runtime.enable_demo_benchmark_command", false);
 
 	TEST(testLuaContractsLoaded);
 }
