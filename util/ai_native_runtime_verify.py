@@ -816,6 +816,23 @@ def nonnegative_number(value) -> bool:
     return type(value) in (int, float) and value >= 0
 
 
+def warning_count(section: dict, field: str) -> int:
+    value = section.get(field)
+    if isinstance(value, bool):
+        return 0
+    if isinstance(value, int):
+        return max(0, value)
+    return 0
+
+
+def actionable_warning_count(section: dict) -> int:
+    if "actionable_server_log_warning_count" in section:
+        return warning_count(section, "actionable_server_log_warning_count")
+    total = warning_count(section, "server_log_warning_count")
+    expected = warning_count(section, "expected_server_log_warning_count")
+    return max(0, total - expected)
+
+
 def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
     path = clean_profile_summary_artifact_path(args)
     source_path = logical_path(args, CLEAN_PROFILE_SUMMARY_NAME)
@@ -846,6 +863,8 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
         "cpu_sample_count": None,
         "avg_process_cpu_percent": None,
         "max_interval_cpu_percent": None,
+        "actionable_warning_count": None,
+        "unsafe_operation_count": None,
     }
     reasons = []
     if not path.is_file():
@@ -899,6 +918,19 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
         if isinstance(payload.get("comparison_summary"), dict)
         else {}
     )
+    actionable_warnings = 0
+    for section_name in (
+        "steady_tick_behavior",
+        "server_step_workload",
+        "player_load_tick_probe",
+    ):
+        section = comparison_summary.get(section_name)
+        if isinstance(section, dict):
+            actionable_warnings += actionable_warning_count(section)
+    evidence["actionable_warning_count"] = actionable_warnings
+    if actionable_warnings > 0:
+        reasons.append("clean_profile_summary actionable server log warnings present")
+
     server_step = comparison_summary.get("server_step_workload")
     if not isinstance(server_step, dict):
         reasons.append("clean_profile_summary server_step_workload missing")
@@ -1002,6 +1034,28 @@ def clean_profile_workload_evidence(args) -> tuple[dict, list[str]]:
             reasons.append("clean_profile_summary map_chunk_workload warning_count must be 0")
         if (map_workload.get("error_count") or 0) != 0:
             reasons.append("clean_profile_summary map_chunk_workload error_count must be 0")
+
+    entity_runtime = comparison_summary.get("entity_runtime_operations")
+    if isinstance(entity_runtime, dict):
+        if (entity_runtime.get("warnings") or 0) != 0:
+            reasons.append("clean_profile_summary entity_runtime_operations warnings must be 0")
+        if (entity_runtime.get("errors") or 0) != 0:
+            reasons.append("clean_profile_summary entity_runtime_operations errors must be 0")
+    else:
+        reasons.append("clean_profile_summary entity_runtime_operations missing")
+
+    mutation_writes = comparison_summary.get("mutation_write_throughput")
+    if isinstance(mutation_writes, dict):
+        unsafe_operations = mutation_writes.get("unsafe_operations")
+        evidence["unsafe_operation_count"] = unsafe_operations
+        if (mutation_writes.get("warnings") or 0) != 0:
+            reasons.append("clean_profile_summary mutation_write_throughput warnings must be 0")
+        if (mutation_writes.get("errors") or 0) != 0:
+            reasons.append("clean_profile_summary mutation_write_throughput errors must be 0")
+        if unsafe_operations != 0:
+            reasons.append("clean_profile_summary unsafe operation leakage present")
+    else:
+        reasons.append("clean_profile_summary mutation_write_throughput missing")
 
     cpu = comparison_summary.get("cpu")
     if not isinstance(cpu, dict):

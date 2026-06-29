@@ -35,10 +35,18 @@ DEMO_ENTITY_EXAMPLE = (
 PROFILE_LOG_FAILURE_PATTERNS = re.compile(r"Mapgen alias .* invalid|testnodes:", re.I)
 KNOWN_PROFILE_WARNING_PATTERNS = (
     (
+        "run_in_place_builtin_sha_changed",
+        re.compile(
+            r"(SHA256 of builtin file .*builtin[\\/]game[\\/](init|ai_runtime)\.lua.*does not match"
+            r"|Expected:\s+[A-Fa-f0-9]{6,}|Found:\s+[A-Fa-f0-9]{6,})",
+            re.I,
+        ),
+    ),
+    (
         "run_in_place_builtin_sha_missing",
         re.compile(
             r"No SHA256 known for builtin file .*builtin[\\/]game[\\/]"
-            r"(demo_entity_benchmark|tests[\\/]test_ai_runtime)\.lua",
+            r"(demo_entity_benchmark|ai_operator_task_control|tests[\\/]test_ai_runtime)\.lua",
             re.I,
         ),
     ),
@@ -99,6 +107,20 @@ def sum_metric(report: dict, metric_name: str) -> float:
     total = 0.0
     for scenario in report.get("scenarios", []):
         value = (scenario.get("metrics") or {}).get(metric_name)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            total += value
+    return total
+
+
+def sum_nested_metric(report: dict, section_name: str, metric_name: str) -> float:
+    total = 0.0
+    for scenario in report.get("scenarios", []):
+        section = (scenario.get("metrics") or {}).get(section_name)
+        if not isinstance(section, dict):
+            continue
+        value = section.get(metric_name)
         if isinstance(value, bool):
             continue
         if isinstance(value, (int, float)):
@@ -756,6 +778,8 @@ def summarize_mutation_report(report: dict) -> dict:
         "total_rollback_records": sum_metric(report, "rollback_records"),
         "warnings": count_metric_items(report, "warnings"),
         "errors": count_metric_items(report, "errors"),
+        "unsafe_operations": sum_metric(report, "unsafe_operations")
+        + sum_nested_metric(report, "ai_runtime_counters", "unsafe_operations"),
     }
 
 
