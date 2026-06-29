@@ -184,6 +184,94 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertNotIn("minecraft", serialized.lower())
         self.assertNotIn("asset_payload", serialized.lower())
 
+    def test_public_safe_structure_adapter_dry_run_emits_open_format_handoff(self):
+        source = self.fixture_root / "public_structure" / "open_platform.ai-structure.json"
+
+        report = build_report(source)
+
+        self.assertEqual(report["source"]["source_class"], "structure")
+        self.assertEqual(report["source"]["path_policy"], "external_reference")
+        self.assertEqual(report["source"]["license_status"], "user_supplied")
+        metadata = report["source"]["metadata"]
+        self.assertEqual(metadata["adapter_kind"], "public_safe_structure_v1")
+        self.assertEqual(metadata["structure_format"], "ai_native_structure_v1")
+        self.assertEqual(metadata["dimensions"], {"x": 35, "y": 1, "z": 1})
+        self.assertEqual(metadata["placement_count"], 5)
+        self.assertEqual(metadata["palette_count"], 2)
+        self.assertEqual(report["summary"]["estimated_world_mutations"]["node_writes"], 5)
+        self.assertEqual(report["summary"]["estimated_world_mutations"]["mapblock_churn"], 3)
+        inventory = self.inventory_by_path(report)
+        self.assertEqual(inventory["open_platform.ai-structure.json"]["source_kind"], "structure")
+        self.assertEqual(inventory["open_platform.ai-structure.json"]["classification"], "blocked")
+        self.assertEqual(
+            inventory["open_platform.ai-structure.json"]["reason"],
+            "public_safe_structure_adapter_review_required",
+        )
+        features = {item["feature"]: item for item in report["unsupported_features"]}
+        self.assertEqual(features["structure.entities"]["reason"], "requires_manual_review")
+        import_action = next(
+            action for action in report["planned_actions"]
+            if action["action"] == "import_structure"
+        )
+        adapter = import_action["structure_adapter"]
+        self.assertFalse(adapter["synthetic"])
+        self.assertTrue(adapter["public_safe"])
+        self.assertEqual(adapter["adapter_kind"], "public_safe_structure_v1")
+        self.assertEqual(adapter["structure_format"], "ai_native_structure_v1")
+        self.assertEqual(adapter["dimensions"], {"x": 35, "y": 1, "z": 1})
+        self.assertEqual(adapter["placement_count"], 5)
+        self.assertEqual(adapter["mapblock_churn"], 3)
+        self.assertEqual(adapter["recommended_chunk_count"], 3)
+        self.assertEqual(adapter["placements"][1]["param1"], 3)
+        self.assertEqual(adapter["placements"][1]["param2"], 7)
+        self.assertNotIn(str(self.fixture_root), json.dumps(report))
+        self.assertNotIn("asset_payload", json.dumps(report).lower())
+        self.assertEqual(validate_report(report), [])
+
+    def test_public_safe_structure_adapter_flows_through_smoke_and_operator_review(self):
+        report = build_report(
+            self.fixture_root / "public_structure" / "open_platform.ai-structure.json"
+        )
+        request = self.build_adapter_smoke_request(report)
+
+        smoke = build_adapter_apply_smoke(report, request)
+        review = review_adapter_apply_smoke(smoke)
+
+        self.assertEqual(validate_adapter_apply_smoke(smoke), [])
+        self.assertEqual(smoke["status"], "ready")
+        self.assertEqual(smoke["mutation_cost_expected"]["node_writes"], 5)
+        self.assertEqual(smoke["operator_summary"]["expected_apply_chunks"], 3)
+        self.assertEqual(review["status"], "ready")
+        self.assertTrue(review["machine_gate"]["promotable"])
+        self.assertEqual(review["findings"], [])
+        self.assertEqual(review["summary"]["placement_count"], 5)
+        self.assertIn("rollback.execute", review["summary"]["required_capabilities"])
+
+    def test_public_safe_structure_adapter_reports_private_references_without_importing(self):
+        source = self.fixture_root / "public_structure" / "private_reference.ai-structure.json"
+
+        report = build_report(source)
+
+        features = {item["feature"]: item for item in report["unsupported_features"]}
+        self.assertIn("structure.private_reference", features)
+        self.assertEqual(
+            features["structure.private_reference"]["reason"],
+            "private_reference_not_imported",
+        )
+        import_action = next(
+            action for action in report["planned_actions"]
+            if action["action"] == "import_structure"
+        )
+        adapter = import_action["structure_adapter"]
+        self.assertEqual(adapter["private_reference_count"], 1)
+        self.assertNotIn("asset_payload", json.dumps(report).lower())
+        self.assertNotIn("local-only-texture.png", json.dumps(report))
+        self.assertIn(
+            "skip_feature",
+            {action["action"] for action in report["planned_actions"]},
+        )
+        self.assertEqual(validate_report(report), [])
+
     def test_cli_writes_json_report_and_summary(self):
         source = self.fixture_root / "bedrock_pack"
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -51,6 +51,9 @@ STRUCTURE_BYTES_PER_NODE_ESTIMATE = 64
 MAPBLOCK_NODE_VOLUME = 16 * 16 * 16
 SYNTHETIC_STRUCTURE_FIXTURE_KIND = "ai_native_synthetic_structure"
 SYNTHETIC_STRUCTURE_ADAPTER_KIND = "synthetic_structure_v1"
+PUBLIC_SAFE_STRUCTURE_FIXTURE_KIND = "ai_native_public_structure"
+PUBLIC_SAFE_STRUCTURE_FORMAT = "ai_native_structure_v1"
+PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND = "public_safe_structure_v1"
 SECTION_REQUIRED = ("name", "items_total", "status", "message")
 UNSUPPORTED_FEATURE_REQUIRED = (
     "feature",
@@ -295,22 +298,38 @@ def _normalize_structure_pos(value, field):
     }
 
 
-def _normalize_synthetic_structure_fixture(raw, source):
-    if raw.get("fixture_kind") != SYNTHETIC_STRUCTURE_FIXTURE_KIND:
-        return None
-    if raw.get("fixture_version") != 1:
-        raise ValueError("fixture_version must be 1")
-    placements = raw.get("placements")
-    if not isinstance(placements, list) or not placements:
-        raise ValueError("placements must be a non-empty array")
+def _normalize_structure_dimensions(value, field):
+    dimensions = _normalize_structure_pos(value, field)
+    for axis, size in dimensions.items():
+        if size <= 0:
+            raise ValueError(f"{field}.{axis} must be positive")
+    return dimensions
 
+
+def _normalize_structure_palette(raw):
     palette = raw.get("palette", {})
     if not isinstance(palette, dict):
         raise ValueError("palette must be an object")
-    normalized_palette = {
+    return {
         str(alias): str(node_name)
         for alias, node_name in palette.items()
     }
+
+
+def _pos_inside_dimensions(pos, dimensions):
+    if not dimensions:
+        return True
+    return (
+        0 <= pos["x"] < dimensions["x"]
+        and 0 <= pos["y"] < dimensions["y"]
+        and 0 <= pos["z"] < dimensions["z"]
+    )
+
+
+def _normalize_structure_placements(raw, normalized_palette, dimensions=None):
+    placements = raw.get("placements")
+    if not isinstance(placements, list) or not placements:
+        raise ValueError("placements must be a non-empty array")
 
     normalized_placements = []
     for index, placement in enumerate(placements):
@@ -324,8 +343,11 @@ def _normalize_synthetic_structure_fixture(raw, source):
             raise ValueError(
                 f"placements[{index}].node must resolve to a namespaced node or air"
             )
+        pos = _normalize_structure_pos(placement.get("pos"), f"placements[{index}].pos")
+        if not _pos_inside_dimensions(pos, dimensions):
+            raise ValueError(f"placements[{index}].pos must be inside dimensions")
         normalized = {
-            "pos": _normalize_structure_pos(placement.get("pos"), f"placements[{index}].pos"),
+            "pos": pos,
             "node_name": node_name,
         }
         if "param1" in placement:
@@ -333,7 +355,10 @@ def _normalize_synthetic_structure_fixture(raw, source):
         if "param2" in placement:
             normalized["param2"] = _check_int(placement["param2"], f"placements[{index}].param2")
         normalized_placements.append(normalized)
+    return normalized_placements
 
+
+def _normalize_structure_unsupported_fields(raw):
     unsupported_fields = raw.get("unsupported_fields", [])
     if not isinstance(unsupported_fields, list):
         raise ValueError("unsupported_fields must be an array")
@@ -351,21 +376,103 @@ def _normalize_synthetic_structure_fixture(raw, source):
             "recommendation": str(item.get("recommendation")
                 or "Keep the field out of staged apply until an adapter supports it."),
         })
+    return normalized_unsupported
 
+
+def _normalize_recommended_chunk_size(raw):
     chunk_size = raw.get("recommended_chunk_size", 2)
     chunk_size = _check_int(chunk_size, "recommended_chunk_size")
     if chunk_size <= 0:
         raise ValueError("recommended_chunk_size must be positive")
+    return chunk_size
+
+
+def _normalize_synthetic_structure_fixture(raw, source):
+    if raw.get("fixture_kind") != SYNTHETIC_STRUCTURE_FIXTURE_KIND:
+        return None
+    if raw.get("fixture_version") != 1:
+        raise ValueError("fixture_version must be 1")
+    normalized_palette = _normalize_structure_palette(raw)
+    normalized_placements = _normalize_structure_placements(raw, normalized_palette)
+    normalized_unsupported = _normalize_structure_unsupported_fields(raw)
+    chunk_size = _normalize_recommended_chunk_size(raw)
 
     return {
         "adapter_kind": SYNTHETIC_STRUCTURE_ADAPTER_KIND,
         "fixture_name": str(raw.get("name") or source.stem),
         "fixture_version": 1,
         "synthetic": True,
+        "public_safe": False,
+        "path_policy": "synthetic_fixture",
+        "license_status": "synthetic",
         "palette": normalized_palette,
         "placements": normalized_placements,
         "recommended_chunk_size": chunk_size,
         "unsupported_fields": normalized_unsupported,
+        "private_references": [],
+    }
+
+
+def _normalize_public_safe_structure_fixture(raw, source):
+    if raw.get("format_kind") != PUBLIC_SAFE_STRUCTURE_FIXTURE_KIND:
+        return None
+    if raw.get("format_version") != 1:
+        raise ValueError("format_version must be 1")
+    if raw.get("structure_format") != PUBLIC_SAFE_STRUCTURE_FORMAT:
+        raise ValueError(f"structure_format must be {PUBLIC_SAFE_STRUCTURE_FORMAT}")
+    license_info = raw.get("license")
+    if not isinstance(license_info, dict):
+        raise ValueError("license must be an object")
+    if license_info.get("status") != "user_supplied":
+        raise ValueError("license.status must be user_supplied")
+    if license_info.get("rights_confirmed") is not True:
+        raise ValueError("license.rights_confirmed must be true")
+    if "asset_payload" in raw:
+        raise ValueError("asset_payload is not supported by the public-safe structure adapter")
+
+    dimensions = _normalize_structure_dimensions(raw.get("dimensions"), "dimensions")
+    normalized_palette = _normalize_structure_palette(raw)
+    normalized_placements = _normalize_structure_placements(
+        raw,
+        normalized_palette,
+        dimensions=dimensions,
+    )
+    normalized_unsupported = _normalize_structure_unsupported_fields(raw)
+    chunk_size = _normalize_recommended_chunk_size(raw)
+
+    private_references = raw.get("private_references", [])
+    if not isinstance(private_references, list):
+        raise ValueError("private_references must be an array")
+    normalized_private_refs = []
+    for index, item in enumerate(private_references):
+        if not isinstance(item, dict):
+            raise ValueError(f"private_references[{index}] must be an object")
+        if "path" in item or "payload" in item:
+            raise ValueError("private_references must use redacted ids, not raw paths or payloads")
+        ref_id = item.get("id")
+        if not isinstance(ref_id, str) or not ref_id:
+            raise ValueError(f"private_references[{index}].id must be a non-empty string")
+        normalized_private_refs.append({
+            "id": ref_id,
+            "kind": str(item.get("kind") or "unknown"),
+            "redacted_id": str(item.get("redacted_id") or f"asset-ref:{index + 1}"),
+        })
+
+    return {
+        "adapter_kind": PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND,
+        "fixture_name": str(raw.get("name") or source.stem),
+        "fixture_version": 1,
+        "synthetic": False,
+        "public_safe": True,
+        "path_policy": "external_reference",
+        "license_status": "user_supplied",
+        "structure_format": PUBLIC_SAFE_STRUCTURE_FORMAT,
+        "dimensions": dimensions,
+        "palette": normalized_palette,
+        "placements": normalized_placements,
+        "recommended_chunk_size": chunk_size,
+        "unsupported_fields": normalized_unsupported,
+        "private_references": normalized_private_refs,
     }
 
 
@@ -381,6 +488,21 @@ def _load_synthetic_structure_fixture(source):
     return _normalize_synthetic_structure_fixture(raw, source)
 
 
+def _load_structure_adapter_fixture(source):
+    if not source.is_file() or source.suffix.lower() != ".json":
+        return None
+    try:
+        raw = _read_json(source)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(raw, dict):
+        return None
+    synthetic = _normalize_synthetic_structure_fixture(raw, source)
+    if synthetic:
+        return synthetic
+    return _normalize_public_safe_structure_fixture(raw, source)
+
+
 def _parse_luanti_mod_conf(text):
     metadata = {}
     for line in text.splitlines():
@@ -394,7 +516,7 @@ def _parse_luanti_mod_conf(text):
 
 def _metadata_for(source, entries, synthetic_structure=None):
     if synthetic_structure:
-        return "structure", {
+        metadata = {
             "adapter_kind": synthetic_structure["adapter_kind"],
             "fixture_name": synthetic_structure["fixture_name"],
             "fixture_version": synthetic_structure["fixture_version"],
@@ -402,6 +524,13 @@ def _metadata_for(source, entries, synthetic_structure=None):
             "palette_count": len(synthetic_structure["palette"]),
             "unsupported_field_count": len(synthetic_structure["unsupported_fields"]),
         }
+        if synthetic_structure.get("structure_format"):
+            metadata["structure_format"] = synthetic_structure["structure_format"]
+        if synthetic_structure.get("dimensions"):
+            metadata["dimensions"] = synthetic_structure["dimensions"]
+        if synthetic_structure.get("private_references"):
+            metadata["private_reference_count"] = len(synthetic_structure["private_references"])
+        return "structure", metadata
 
     names = {entry["path"] for entry in entries}
     if source.is_dir() and (source / "pack.mcmeta").is_file():
@@ -552,7 +681,11 @@ def _source_inventory(entries, source_class, synthetic_structure=None):
         classification, reason = _inventory_classification(source_kind, source_class)
         if synthetic_structure and source_kind == "structure":
             classification = "blocked"
-            reason = "synthetic_structure_adapter_review_required"
+            reason = (
+                "synthetic_structure_adapter_review_required"
+                if synthetic_structure.get("synthetic")
+                else "public_safe_structure_adapter_review_required"
+            )
         inventory.append({
             "entry_id": f"entry:{index + 1}",
             "source_path": entry["path"],
@@ -697,6 +830,16 @@ def _unsupported_features(entries, source_class, synthetic_structure=None):
                 "message": item["message"],
                 "recommendation": item["recommendation"],
             })
+        for item in synthetic_structure.get("private_references", []):
+            features.append({
+                "feature": "structure.private_reference",
+                "source_path": item["redacted_id"],
+                "status": "unsupported",
+                "reason": "private_reference_not_imported",
+                "severity": "warning",
+                "message": "Private or local-only structure asset references are reported but not imported.",
+                "recommendation": "Replace private references with reviewed user-owned assets before apply.",
+            })
     return features
 
 
@@ -719,17 +862,22 @@ def _structure_cost(entries, synthetic_structure=None):
         placements = synthetic_structure["placements"]
         node_writes = len(placements)
         mapblock_churn = _mapblock_churn_from_positions(placements)
+        strategy = (
+            "synthetic_structure_adapter"
+            if synthetic_structure.get("synthetic")
+            else "public_safe_structure_adapter"
+        )
         return {
             "structure_files": 1,
             "node_writes": node_writes,
             "mapblock_churn": mapblock_churn,
             "manual_review_items": 2,
             "calibration": {
-                "strategy": "synthetic_structure_adapter",
+                "strategy": strategy,
                 "adapter_kind": synthetic_structure["adapter_kind"],
                 "recommended_chunk_size": synthetic_structure["recommended_chunk_size"],
                 "notes": [
-                    "Synthetic fixture placements are parsed as metadata for review.",
+                    "Structure placements are parsed as metadata for review.",
                     "Dry-run does not queue tasks or mutate a world.",
                 ],
             },
@@ -777,17 +925,24 @@ def _structure_adapter_payload(synthetic_structure, structure_cost):
         return None
     placement_count = len(synthetic_structure["placements"])
     chunk_size = min(synthetic_structure["recommended_chunk_size"], placement_count)
-    return {
+    payload = {
         "adapter_kind": synthetic_structure["adapter_kind"],
         "fixture_name": synthetic_structure["fixture_name"],
-        "synthetic": True,
+        "synthetic": synthetic_structure["synthetic"],
+        "public_safe": synthetic_structure.get("public_safe") is True,
         "placement_count": placement_count,
         "mapblock_churn": structure_cost["mapblock_churn"],
         "recommended_chunk_size": chunk_size,
         "recommended_chunk_count": math.ceil(placement_count / chunk_size),
         "placements": synthetic_structure["placements"],
         "unsupported_field_count": len(synthetic_structure["unsupported_fields"]),
+        "private_reference_count": len(synthetic_structure.get("private_references", [])),
     }
+    if synthetic_structure.get("structure_format"):
+        payload["structure_format"] = synthetic_structure["structure_format"]
+    if synthetic_structure.get("dimensions"):
+        payload["dimensions"] = synthetic_structure["dimensions"]
+    return payload
 
 
 def _planned_actions(counts, unsupported_features, structure_cost, synthetic_structure=None):
@@ -872,8 +1027,10 @@ def _build_report(source, synthetic_structure=None):
         "source": {
             "source_id": source.name,
             "source_class": source_class,
-            "path_policy": "synthetic_fixture" if synthetic_structure else "external_reference",
-            "license_status": "synthetic" if synthetic_structure else "user_supplied",
+            "path_policy": synthetic_structure.get("path_policy", "external_reference")
+                if synthetic_structure else "external_reference",
+            "license_status": synthetic_structure.get("license_status", "user_supplied")
+                if synthetic_structure else "user_supplied",
             "metadata": metadata,
             "inventory": inventory,
             "content_hashes": [{
@@ -924,17 +1081,17 @@ def _build_report(source, synthetic_structure=None):
 
 
 def build_structure_adapter_report(source):
-    """Build a dry-run report for a public-safe synthetic structure fixture."""
+    """Build a dry-run report for a public-safe structure adapter fixture."""
     source = pathlib.Path(source)
-    synthetic_structure = _load_synthetic_structure_fixture(source)
+    synthetic_structure = _load_structure_adapter_fixture(source)
     if not synthetic_structure:
-        raise ValueError("source is not a supported synthetic structure fixture")
+        raise ValueError("source is not a supported structure adapter fixture")
     return _build_report(source, synthetic_structure)
 
 
 def build_report(source):
     source = pathlib.Path(source)
-    synthetic_structure = _load_synthetic_structure_fixture(source)
+    synthetic_structure = _load_structure_adapter_fixture(source)
     return _build_report(source, synthetic_structure)
 
 
@@ -978,10 +1135,18 @@ def _validate_structure_adapter(errors, value, path):
     _require_keys(errors, value, path, required)
     if not isinstance(value, dict):
         return
-    if value.get("adapter_kind") != SYNTHETIC_STRUCTURE_ADAPTER_KIND:
-        errors.append(f"{path}.adapter_kind must be {SYNTHETIC_STRUCTURE_ADAPTER_KIND}")
-    if value.get("synthetic") is not True:
-        errors.append(f"{path}.synthetic must be true")
+    if value.get("adapter_kind") not in {
+        SYNTHETIC_STRUCTURE_ADAPTER_KIND,
+        PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND,
+    }:
+        errors.append(
+            f"{path}.adapter_kind must be {SYNTHETIC_STRUCTURE_ADAPTER_KIND} "
+            f"or {PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND}"
+        )
+    if not (value.get("synthetic") is True or value.get("public_safe") is True):
+        errors.append(f"{path} must be synthetic or public_safe")
+    if value.get("adapter_kind") == PUBLIC_SAFE_STRUCTURE_ADAPTER_KIND:
+        _require_keys(errors, value, path, ("structure_format", "dimensions"))
     placements = value.get("placements")
     if _require_sequence(errors, placements, f"{path}.placements"):
         if len(placements) != value.get("placement_count"):
@@ -1676,8 +1841,8 @@ def _enforce_runtime_handoff_gates(report, request, approved_actions):
             raise ValueError("import_structure requires a structure or world dry-run source")
         adapter = planned.get("structure_adapter")
         if adapter:
-            if adapter.get("synthetic") is not True:
-                raise ValueError("structure_adapter.synthetic must be true")
+            if not (adapter.get("synthetic") is True or adapter.get("public_safe") is True):
+                raise ValueError("structure_adapter must be synthetic or public_safe")
             if adapter.get("placement_count") != cost["node_writes"]:
                 raise ValueError("structure_adapter placement_count must match node writes")
 
