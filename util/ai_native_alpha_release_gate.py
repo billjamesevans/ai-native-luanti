@@ -90,6 +90,7 @@ REQUIRED_DOCS = [
         "kind": "project_operating_loop",
         "phrases": [
             "ranked next-issue queue",
+            "release_candidate_checklist",
             "python3 util/ai_native_alpha_release_gate.py",
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
             "python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks",
@@ -187,6 +188,115 @@ PROJECT_OPERATING_LOOP = {
         "family_server_role": "private proving ground only",
         "fork_lane": "side-by-side ai_runtime alpha lane",
         "excluded_content": ["spacebase", "themepark", "disneyland100"],
+    },
+}
+
+RELEASE_CANDIDATE_CHECKLIST = {
+    "candidate_id_source": {
+        "command": ["git", "rev-parse", "--short", "HEAD"],
+        "purpose": "record the public fork commit being promoted",
+    },
+    "phases": [
+        {
+            "name": "clean_checkout_package",
+            "required_commands": [
+                ["git", "status", "--short", "--branch"],
+                ["python3", "util/ai_native_alpha_release_gate.py", "--root", "."],
+            ],
+            "done_when": [
+                "worktree contains only intended release-candidate changes",
+                "alpha release gate status is pass",
+                "clean ai_runtime profile package is fixture-free",
+            ],
+        },
+        {
+            "name": "local_runtime_evidence",
+            "required_commands": [
+                ONE_COMMAND_LOCAL_VERIFIER,
+                ["bin/luantiserver", "--run-unittests", "--test-module", "TestAIRuntime"],
+            ],
+            "retained_artifacts": [
+                "local/benchmarks/local-mac/<date>/<commit>/ai-runtime-verification-manifest.json",
+                "local/benchmarks/agent-product-loop-live.json",
+            ],
+            "done_when": [
+                "local clean-profile verifier passes",
+                "TestAIRuntime passes",
+                "agent product-loop evidence is public-safe and bounded",
+            ],
+        },
+        {
+            "name": "compatibility_and_parity_review",
+            "required_commands": [
+                [
+                    "python3",
+                    "util/ai_native_minecraft_parity_harness.py",
+                    "--output-root",
+                    "local/benchmarks",
+                ],
+            ],
+            "retained_artifacts": [
+                "local/benchmarks/minecraft-parity-comparison-report.json",
+                "local/benchmarks/compatibility-import-inventory-discovery-report.json",
+            ],
+            "done_when": [
+                "Minecraft-parity report privacy_scan.status is passed",
+                "ranked improvement targets are empty or have follow-up issues",
+                "compatibility/import reports remain metadata-only or disposable-staging-only",
+            ],
+        },
+        {
+            "name": "pi_side_by_side_promotion",
+            "required_commands": [
+                [
+                    "python3",
+                    "util/ai_native_low_power_pi_evidence.py",
+                    "--ssh-target",
+                    "<operator-supplied-target>",
+                    "--confirm-backup-first",
+                    "--soak-target",
+                    "quick",
+                ],
+            ],
+            "deploy_boundary": {
+                "family_service": "luanti-family.service",
+                "family_port": "30000/udp",
+                "fork_service": "ai-native-luanti-test.service",
+                "fork_port": "30001/udp",
+                "mode": "side_by_side_test_service_only",
+            },
+            "done_when": [
+                "backup label and sha256 are recorded before deploy",
+                "family service remains active on UDP 30000",
+                "fork service is active on UDP 30001",
+                "low-power evidence passes for the promoted commit",
+            ],
+        },
+        {
+            "name": "release_closeout",
+            "required_artifacts": [
+                "release notes using doc/ai-native-runtime/release-notes-template.md",
+                "issue comment or PR comment with verification commands",
+                "ranked next-issue queue from project_operating_loop",
+            ],
+            "done_when": [
+                "release notes separate engine/runtime, first-party plugins, compatibility/import, benchmarks, and family-server exclusions",
+                "next issue is selected from the ranked queue",
+                "no private family content or proprietary payloads are committed",
+            ],
+        },
+    ],
+    "public_boundary": {
+        "excluded_content": ["spacebase", "themepark", "disneyland100"],
+        "private_artifacts_not_committed": [
+            "family worlds",
+            "player-private data",
+            "provider prompts",
+            "credentials",
+            "copied proprietary assets",
+            "server jars",
+            "marketplace content",
+        ],
     },
 }
 
@@ -374,6 +484,7 @@ def build_report(root: pathlib.Path | str) -> dict:
             ],
         },
         "project_operating_loop": PROJECT_OPERATING_LOOP,
+        "release_candidate_checklist": RELEASE_CANDIDATE_CHECKLIST,
         "clean_profile_package": clean_profile_package,
         "docs": docs,
         "issue_templates": issue_templates,
