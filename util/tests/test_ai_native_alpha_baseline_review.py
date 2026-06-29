@@ -300,6 +300,53 @@ class AlphaBaselineReviewTests(unittest.TestCase):
             },
         )
 
+    def write_agent_tool_power_readiness_report(self, output_root):
+        tool_powers = [
+            {
+                "name": "summarize_runtime_capabilities",
+                "kind": "function_tool",
+                "direct_world_mutation": False,
+                "requires_openai_api_key": False,
+            },
+            {
+                "name": "classify_world_action",
+                "kind": "function_tool",
+                "direct_world_mutation": False,
+                "requires_openai_api_key": False,
+            },
+            {
+                "name": "WebSearchTool",
+                "kind": "hosted_tool",
+                "direct_world_mutation": False,
+                "requires_openai_api_key": True,
+            },
+        ]
+        self.write_json(
+            pathlib.Path(output_root) / "agents-sdk-sidecar-readiness.json",
+            {
+                "schema_version": 1,
+                "report_kind": "ai_native_agents_sdk_sidecar_readiness",
+                "status": "pass",
+                "mode": "managed-http",
+                "checks": {
+                    "tool_powers_declared": True,
+                    "no_direct_world_mutation_tools": True,
+                },
+                "health": {
+                    "status": "degraded",
+                    "agents_sdk_available": False,
+                    "openai_api_key_present": False,
+                    "world_mutation_authority": "luanti",
+                    "tool_powers": tool_powers,
+                },
+                "response": {
+                    "web_search_available": False,
+                    "world_mutation_authority": "luanti",
+                    "tool_powers": tool_powers,
+                },
+            },
+        )
+
     def write_low_power_evidence(self, output_root):
         self.write_json(
             pathlib.Path(output_root)
@@ -355,6 +402,7 @@ class AlphaBaselineReviewTests(unittest.TestCase):
         for hardware_class in ("local-mac", "low-power-server"):
             self.write_accepted_baseline(output_root, hardware_class)
         self.write_import_inventory_discovery_report(output_root)
+        self.write_agent_tool_power_readiness_report(output_root)
         self.write_low_power_evidence(output_root)
         completed = subprocess.run(
             [
