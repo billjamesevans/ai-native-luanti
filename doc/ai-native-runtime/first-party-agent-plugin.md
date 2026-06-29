@@ -101,7 +101,14 @@ Implemented deterministic commands:
   no assets, performs no world mutation, and is intended as the agent-facing
   handoff to the compatibility inventory work.
 - `audit`, `history`: returns recent sanitized audit events for the player-owned agent.
+- `audit <task_id>`, `history <task_id>`: returns sanitized audit events for
+  one remembered player-owned plugin task without exposing unrelated runtime
+  tasks.
 - `rollback`, `rollback review`: returns recent rollback audit summaries for the player-owned agent.
+- `rollback <task_id>`, `rollback review <task_id>`, `rollback <rollback_id>`:
+  returns rollback audit summaries for one remembered player-owned task or one
+  player-owned rollback record id. The command is review-only and never executes
+  rollback.
 
 The chat response includes the action status plus the concrete public-safe
 details a player needs to keep using the loop: product-surface readiness,
@@ -111,13 +118,15 @@ surface reasons. The structured Lua result remains available to tests and
 operator tooling, but the registered chat command must not hide those details
 behind a generic success string.
 
-Targeted task and approval commands are deliberately scoped to remembered
-player-owned plugin tasks and the current player's pending approval. They do not
-provide a general runtime task browser, do not bypass `core.cancel_ai_task`
-owner checks, and do not approve mutation without the same rollback-backed build
-or repair task path. Pending-plan review and discard are read-only/player-local:
-they expose only the current pending approval summary and can only clear that
-player's unqueued build or repair plan before mutation.
+Targeted task, audit, rollback-review, and approval commands are deliberately
+scoped to remembered player-owned plugin tasks, player-owned rollback audit
+records, and the current player's pending approval. They do not provide a
+general runtime task browser, do not expose unrelated operators or players, do
+not execute rollback, do not bypass `core.cancel_ai_task` owner checks, and do
+not approve mutation without the same rollback-backed build or repair task path.
+Pending-plan review and discard are read-only/player-local: they expose only the
+current pending approval summary and can only clear that player's unqueued build
+or repair plan before mutation.
 
 Unknown prompts go to the configured model adapter. The adapter boundary is explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
 
@@ -215,7 +224,9 @@ payloads, or raw asset payloads are blocked with `adapter_payload_rejected`.
   review or discard the current pending plan, and explicit approval queues the
   mutation. Platform width/depth and repair radius are player-editable within
   configured bounds; broader build-shape editing remains a later slice.
-- Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
+- Audit and rollback review return compact sanitized records, not full private
+  payloads or rollback contents. Targeted rollback review is still read-only:
+  rollback execution remains outside the first-party player command surface.
 - Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
 - Importer behavior is dry-run-only and depends on an operator-supplied plan;
   public-safe inventory discovery and richer compatibility reports remain the
