@@ -297,8 +297,80 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    def write_product_profile_artifact(self, path, *, payload=None):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        report = payload or {
+            "schema_version": 1,
+            "status": "pass",
+            "profile": {
+                "gameid": "ai_runtime",
+                "manifest_path": "games/ai_runtime/product_profile_manifest.json",
+                "product_mods": ["ai_runtime_base"],
+            },
+            "startup_inventory": [
+                {
+                    "name": "ai_runtime_game",
+                    "category": "product_runtime",
+                    "loaded_by_default_product_profile": True,
+                    "requires_explicit_dev_or_test_lane": False,
+                },
+                {
+                    "name": "ai_runtime_base",
+                    "category": "first_party_plugin",
+                    "loaded_by_default_product_profile": True,
+                    "requires_explicit_dev_or_test_lane": False,
+                },
+                {
+                    "name": "ai_operator_status",
+                    "category": "product_runtime",
+                    "loaded_by_default_product_profile": True,
+                    "requires_explicit_dev_or_test_lane": False,
+                },
+                {
+                    "name": "ai_runtime_smoke",
+                    "category": "unit_test_helper",
+                    "loaded_by_default_product_profile": False,
+                    "requires_explicit_dev_or_test_lane": True,
+                },
+                {
+                    "name": "ai_demo_entity_benchmark",
+                    "category": "benchmark_fixture",
+                    "loaded_by_default_product_profile": False,
+                    "requires_explicit_dev_or_test_lane": True,
+                },
+            ],
+            "explicit_dev_surfaces": [
+                {
+                    "name": "ai_runtime_smoke",
+                    "setting": "ai_runtime.enable_smoke_command",
+                    "default_enabled": False,
+                    "status": "gated",
+                },
+                {
+                    "name": "ai_demo_entity_benchmark",
+                    "setting": "ai_runtime.enable_demo_benchmark_command",
+                    "default_enabled": False,
+                    "status": "gated",
+                },
+            ],
+            "test_only_files": ["builtin/game/tests/test_ai_runtime.lua"],
+            "test_only_paths": ["util/tests/fixtures/compat", "util/tests"],
+            "violations": [],
+            "safety": {
+                "no_private_content": True,
+                "dev_surfaces_disabled_by_default": True,
+                "test_fixtures_explicit_only": True,
+            },
+        }
+        path.write_text(json.dumps(report, indent=2), encoding="utf-8")
+
     def runner_with_operator_artifact(self, runs):
         def run_step(step):
+            if step.id == "product_profile_hygiene":
+                output_path = pathlib.Path(
+                    step.actual_command[step.actual_command.index("--output") + 1]
+                )
+                self.write_product_profile_artifact(output_path)
             if step.id in {"operator_status_live_command", "operator_status_package"}:
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
@@ -340,6 +412,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             runs = iter(
                 [
                     harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
                     harness.CommandRun(
                         0,
                         0.20,
@@ -374,6 +447,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 [step["id"] for step in manifest["steps"]],
                 [
                     "utility_contract_tests",
+                    "product_profile_hygiene",
                     "branch_benchmark_gate",
                     "operator_status_live_command",
                     "operator_task_control_live_probe",
@@ -382,6 +456,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 ],
             )
             self.assertEqual(manifest["failure_reasons"], [])
+            self.assertEqual(
+                manifest["artifact_paths"]["product_profile_hygiene"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-product-profile-hygiene.json",
+            )
             self.assertEqual(
                 manifest["artifact_paths"]["benchmark_gate_manifest"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/benchmark-gate-manifest.json",
@@ -413,6 +491,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_command_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+            )
+            self.assertEqual(manifest["product_profile_evidence"]["status"], "pass")
+            self.assertEqual(manifest["product_profile_evidence"]["game_profile"], "ai_runtime")
+            self.assertEqual(
+                manifest["product_profile_evidence"]["product_mods"],
+                ["ai_runtime_base"],
+            )
+            self.assertTrue(
+                manifest["product_profile_evidence"]["dev_surfaces_disabled_by_default"]
+            )
+            self.assertTrue(
+                manifest["product_profile_evidence"]["test_fixtures_explicit_only"]
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["package_status"], "ready")
@@ -588,7 +678,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 ]
             )
             steps = harness.build_steps(args)
-            gate_step = steps[1]
+            self.assertEqual(steps[1].id, "product_profile_hygiene")
+            gate_step = steps[2]
             self.assertIn("--game-profile", gate_step.actual_command)
             self.assertIn("ai_runtime", gate_step.actual_command)
             self.assertIn("--server-bin", gate_step.actual_command)
@@ -597,6 +688,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             runs = iter(
                 [
                     harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
                     harness.CommandRun(
                         0,
                         0.20,
@@ -618,6 +710,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
 
             self.assertEqual(status, 0)
             self.assertEqual(manifest["game_profile"], "ai_runtime")
+            self.assertEqual(
+                manifest["artifact_paths"]["product_profile_hygiene"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-product-profile-hygiene.json",
+            )
             self.assertEqual(
                 manifest["artifact_paths"]["benchmark_gate_manifest"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/benchmark-gate-manifest.json",
@@ -653,6 +749,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_command_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+            )
+            self.assertEqual(manifest["product_profile_evidence"]["status"], "pass")
+            self.assertEqual(
+                manifest["product_profile_evidence"]["manifest_path"],
+                "games/ai_runtime/product_profile_manifest.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "live_command")
@@ -709,6 +810,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             runs = iter(
                 [
                     harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
                     harness.CommandRun(
                         0,
                         0.20,
@@ -733,12 +835,17 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 [step["id"] for step in manifest["steps"]],
                 [
                     "utility_contract_tests",
+                    "product_profile_hygiene",
                     "branch_benchmark_gate",
                     "operator_status_package",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
                     "ai_runtime_focused_tests",
                 ],
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["product_profile_hygiene"],
+                "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-product-profile-hygiene.json",
             )
             self.assertEqual(
                 manifest["artifact_paths"]["operator_status_package"],
@@ -808,7 +915,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 ]
             )
 
-            gate_step = harness.build_steps(args)[1]
+            gate_step = harness.build_steps(args)[2]
 
             self.assertIn("--headless-player-command", gate_step.actual_command)
             self.assertIn("--headless-player-count", gate_step.actual_command)
@@ -838,6 +945,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             runs = iter(
                 [
                     harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
                     harness.CommandRun(
                         1,
                         0.20,
@@ -860,9 +968,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(status, 1)
             self.assertTrue(manifest_path.is_file())
             self.assertEqual(manifest["overall_status"], "fail")
-            self.assertEqual(manifest["steps"][1]["id"], "branch_benchmark_gate")
-            self.assertEqual(manifest["steps"][1]["status"], "fail")
-            self.assertEqual(manifest["steps"][1]["returncode"], 1)
+            self.assertEqual(manifest["steps"][2]["id"], "branch_benchmark_gate")
+            self.assertEqual(manifest["steps"][2]["status"], "fail")
+            self.assertEqual(manifest["steps"][2]["returncode"], 1)
             self.assertTrue(
                 any(
                     "branch_benchmark_gate exited with status 1" in reason
@@ -896,6 +1004,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             runs = iter(
                 [
                     harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
                     harness.CommandRun(
                         0,
                         0.20,
@@ -910,6 +1019,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
 
             def run_step(step):
+                if step.id == "product_profile_hygiene":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_product_profile_artifact(output_path)
                 if step.id == "operator_status_live_command":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -975,12 +1089,123 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             serialized = json.dumps(manifest, sort_keys=True)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
+    def test_product_profile_hygiene_failure_fails_manifest_even_if_command_exits_zero(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-profile-failure",
+                    "--server-bin",
+                    "bin/luantiserver",
+                ]
+            )
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile wrote fail report", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-profile-failure/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            def run_step(step):
+                if step.id == "product_profile_hygiene":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_product_profile_artifact(
+                        output_path,
+                        payload={
+                            "schema_version": 1,
+                            "status": "fail",
+                            "profile": {
+                                "gameid": "ai_runtime",
+                                "manifest_path": "games/ai_runtime/product_profile_manifest.json",
+                                "product_mods": ["ai_runtime_base", "dev_fixture"],
+                            },
+                            "startup_inventory": [],
+                            "explicit_dev_surfaces": [],
+                            "violations": [
+                                {
+                                    "kind": "fixture_loaded_by_default_product_profile",
+                                    "name": "dev_fixture",
+                                }
+                            ],
+                            "safety": {
+                                "no_private_content": True,
+                                "dev_surfaces_disabled_by_default": False,
+                                "test_fixtures_explicit_only": False,
+                            },
+                        },
+                    )
+                if step.id in {"operator_status_live_command", "operator_status_package"}:
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_status_artifact(output_path)
+                if step.id == "operator_task_control_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_live_artifact(output_path)
+                if step.id == "operator_task_control_command_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_command_artifact(output_path)
+                return next(runs)
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=run_step,
+                now_fn=lambda: "2026-06-28T12:05:00Z",
+            )
+
+            self.assertEqual(status, 1)
+            self.assertEqual(manifest["overall_status"], "fail")
+            self.assertEqual(manifest["product_profile_evidence"]["status"], "fail")
+            self.assertEqual(
+                manifest["product_profile_evidence"]["violation_count"],
+                1,
+            )
+            self.assertIn(
+                "product_profile_hygiene status is not pass",
+                " ".join(manifest["failure_reasons"]),
+            )
+            self.assertIn(
+                "product_profile_hygiene dev surfaces are not disabled by default",
+                " ".join(manifest["failure_reasons"]),
+            )
+            self.assertIn(
+                "product_profile_hygiene test fixtures are not explicit-only",
+                " ".join(manifest["failure_reasons"]),
+            )
+            serialized = json.dumps(manifest, sort_keys=True)
+            self.assertNotRegex(serialized, PRIVATE_PATTERNS)
+
     def test_docs_place_one_command_harness_after_gate_and_smoke_workflow(self):
         body = DOC.read_text(encoding="utf-8")
         readme = README.read_text(encoding="utf-8")
         for phrase in (
             "util/ai_native_runtime_verify.py",
             "ai-runtime-verification-manifest.json",
+            "ai-runtime-product-profile-hygiene.json",
             "ai-runtime-operator-status-live.json",
             "ai-runtime-operator-control-report.json",
             "ai-runtime-operator-action-approval-plan.json",
@@ -996,6 +1221,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "util/ai_native_operator_task_control_executor.py",
             "util/ai_native_operator_task_control_live_probe.py",
             "util/ai_native_operator_task_control_command_probe.py",
+            "product-profile hygiene gate",
             "--operator-status-max-bytes",
             "--operator-action-approval-plan-max-bytes",
             "--operator-action-approval-receipt-max-bytes",
