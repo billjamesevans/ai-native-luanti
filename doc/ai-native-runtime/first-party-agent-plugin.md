@@ -62,7 +62,8 @@ The plugin registers three aliases:
 
 Implemented deterministic commands:
 
-- `status`: returns current state and runtime metrics.
+- `status`: returns current state, runtime metrics, product-surface readiness,
+  known player task summaries, and any pending approval id.
 - `guide`, `help`: returns the available builder, repair, guide, defender, and `importer` surfaces plus current task records.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `task <task_id>`, `task status <task_id>`: returns one remembered
@@ -118,9 +119,9 @@ Implemented deterministic commands:
 
 The chat response includes the action status plus the concrete public-safe
 details a player needs to keep using the loop: product-surface readiness,
-available commands, task ids, approval ids, pending actions, planned write or
-candidate counts, cancellation counts, audit counts, rollback counts, and gated
-surface reasons. The structured Lua result remains available to tests and
+available commands, task ids, approval ids, pending actions, known task counts,
+planned write or candidate counts, cancellation counts, audit counts, rollback
+counts, and gated surface reasons. The structured Lua result remains available to tests and
 operator tooling, but the registered chat command must not hide those details
 behind a generic success string.
 
