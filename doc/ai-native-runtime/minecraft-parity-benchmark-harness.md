@@ -87,7 +87,7 @@ The JSON report contains:
 - `benchmark_scenarios`: local/Pi-safe scenario metadata for reproducible runs.
 - `measured_facts`: hardware-lane facts sourced from accepted benchmark reports.
 - `qualitative_minecraft_parity_gaps`: missing or partial evidence that should drive the runtime backlog.
-- `actionable_scorecard`: ranked, deduplicated parity actions grouped across hardware lanes.
+- `actionable_scorecard`: ranked, deduplicated parity actions grouped across hardware lanes. A single dimension may produce multiple actions when the remaining work has separate owners, such as first-party agent-loop proof versus compatibility import inventory.
 - `gap_summary_by_area`: counts for engine/runtime, game-content, plugin, and operator-experience gaps.
 - `source_policy`: explicit separation between project targets and measured fork evidence.
 - `retention`: the local benchmark retention lane where the report belongs.
