@@ -1983,9 +1983,51 @@ local function run_model_import_gate_tests()
 	assert(allowed_model_task.last_result.message == "runtime model response")
 	assert(#model_requests == 1)
 	assert(model_requests[1].agent_id == "runtime_gate:http")
+	assert(model_requests[1].schema_version == 1)
+	assert(model_requests[1].request_kind == "ai_native_model_adapter_request")
+	assert(model_requests[1].adapter_contract == "provider_neutral_v1")
+	assert(model_requests[1].public_prompt == "runtime model request")
+	assert(model_requests[1].prompt == nil)
+	assert(model_requests[1].private_prompt == nil)
+	assert(model_requests[1].safety.public_safe_request == true)
+	assert(model_requests[1].safety.private_input_retained == false)
+	assert(model_requests[1].safety.no_provider_credentials == true)
+	assert(model_requests[1].bounds.max_response_bytes == 4000)
+	assert(model_requests[1].bounds.max_context_keys == 16)
 	local after_gate_model_metrics = core.get_ai_runtime_metrics()
 	assert(after_gate_model_metrics.model_adapter_requests
 		== before_gate_model_metrics.model_adapter_requests + 1)
+
+	core.queue_ai_task({
+		task_id = "runtime-gate:model-unsafe-payload",
+		agent_id = "runtime_gate:http",
+		owner = "runtime-owner",
+		label = "unsafe model adapter payload",
+		steps = {
+			function(ctx)
+				return core.ai_model_ops.request("unsafe model request", {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+					adapter = function()
+						return {
+							ok = true,
+							message = "unsafe adapter response",
+							adapter_name = "runtime-gate-unsafe",
+							raw_provider_response = {
+								choices = {},
+							},
+						}
+					end,
+				})
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local unsafe_model_task = core.get_ai_task("runtime-gate:model-unsafe-payload")
+	assert(unsafe_model_task.status == "blocked")
+	assert(unsafe_model_task.last_result.operation == "ai_model.request")
+	assert(unsafe_model_task.last_result.reason == "adapter_payload_rejected")
 
 	core.queue_ai_task({
 		task_id = "runtime-gate:import-denied",
@@ -4262,6 +4304,15 @@ assert(model_reply.action == "model")
 assert(model_reply.message == "mock adapter response")
 assert(#adapter_calls == 1)
 assert(adapter_calls[1].agent_id == plugin_agent.agent_id)
+assert(adapter_calls[1].schema_version == 1)
+assert(adapter_calls[1].request_kind == "ai_native_model_adapter_request")
+assert(adapter_calls[1].adapter_contract == "provider_neutral_v1")
+assert(adapter_calls[1].public_prompt == "what should we explore next?")
+assert(adapter_calls[1].prompt == nil)
+assert(adapter_calls[1].private_prompt == nil)
+assert(adapter_calls[1].safety.public_safe_request == true)
+assert(adapter_calls[1].safety.private_input_retained == false)
+assert(adapter_calls[1].bounds.max_response_bytes == 4000)
 
 local plugin_audit = core.get_ai_runtime_audit({ limit = 10 })
 local model_record = plugin_audit[#plugin_audit - 1]

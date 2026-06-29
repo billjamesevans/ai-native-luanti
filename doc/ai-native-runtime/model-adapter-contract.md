@@ -1,0 +1,97 @@
+# Model Adapter Contract
+
+Status: provider-neutral alpha contract for model-backed agent replies.
+
+## Purpose
+
+The fork does not ship a default network provider, API key flow, or hosted model
+client. The runtime does define the safe boundary that optional provider plugins
+must use. That boundary keeps model calls capability-gated, bounded,
+public-safe by default, and observable through existing model audit and metrics.
+
+Runtime entrypoint: `core.ai_model_ops.request`
+
+Agent plugin entrypoint: `core.ai_agent_plugin.set_model_adapter`
+
+## Request Envelope
+
+Adapters receive a table matching
+`schemas/model-adapter-request.schema.json`.
+
+Required fields:
+
+- `schema_version = 1`
+- `request_kind = "ai_native_model_adapter_request"`
+- `adapter_contract = "provider_neutral_v1"`
+- `agent_id`
+- `owner`
+- `public_prompt`
+- `context`
+- `safety`
+- `bounds`
+
+The legacy raw `prompt` field is intentionally not included. Adapters use
+`public_prompt`. The runtime may receive a private prompt for audit-policy
+decisions, but private prompt payloads are not retained or forwarded through the
+adapter request envelope.
+
+The request safety block must state:
+
+- `public_safe_request = true`
+- `private_input_retained = false`
+- `no_provider_credentials = true`
+- `no_raw_media_payloads = true`
+
+The default response bound is `bounds.max_response_bytes = 4000`. A caller may
+lower or raise it within the runtime clamp, but adapters should treat it as a
+hard public reply budget.
+
+## Response Envelope
+
+Adapters return a table matching
+`schemas/model-adapter-response.schema.json`.
+
+Required fields:
+
+- `schema_version = 1`
+- `response_kind = "ai_native_model_adapter_response"`
+- `ok`
+- `message`
+- `adapter_name`
+
+Optional fields:
+
+- `reason`
+- `elapsed_us`
+- `timeout`
+- `response`
+
+The runtime rejects unsafe/raw response fields with
+`adapter_payload_rejected`. Optional provider plugins should keep raw provider
+requests, provider responses, credentials, headers, and private payloads in
+their own private logs if needed; those fields do not cross into the fork
+runtime contract.
+
+## Safety Rules
+
+- Capability `http.llm` is required before an adapter is called.
+- Missing adapters return `model_adapter_unavailable`.
+- Adapter errors return `adapter_error`.
+- Unsafe adapter result payloads return `adapter_payload_rejected`.
+- The runtime records `model.request` before the adapter call.
+- The runtime records `model.adapter` with success, failure, or timeout.
+- Private payload retention remains disabled unless an explicit operator-only
+  audit policy changes it.
+
+## Example
+
+See:
+
+- `examples/model-adapter-request.example.json`
+- `examples/model-adapter-response.example.json`
+
+Verify the package with:
+
+```bash
+python3 util/ai_native_model_adapter_contract.py
+```
