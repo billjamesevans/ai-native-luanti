@@ -76,6 +76,8 @@
               "number",
               "integer",
               "boolean",
+              "object",
+              "array",
               "null"
             ]
           }
@@ -395,6 +397,7 @@
             "entity_ai_not_supported",
             "world_format_not_supported",
             "requires_manual_review",
+            "private_reference_not_imported",
             "too_large_for_budget"
           ]
         },
@@ -459,57 +462,152 @@
       }
     },
     "structure_adapter": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "adapter_kind",
-        "fixture_name",
-        "synthetic",
-        "placement_count",
-        "mapblock_churn",
-        "recommended_chunk_size",
-        "recommended_chunk_count",
-        "placements"
-      ],
-      "properties": {
-        "adapter_kind": {
-          "const": "synthetic_structure_v1"
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "adapter_kind",
+            "fixture_name",
+            "synthetic",
+            "placement_count",
+            "mapblock_churn",
+            "recommended_chunk_size",
+            "recommended_chunk_count",
+            "placements"
+          ],
+          "properties": {
+            "adapter_kind": {
+              "const": "synthetic_structure_v1"
+            },
+            "fixture_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "synthetic": {
+              "const": true
+            },
+            "public_safe": {
+              "const": false
+            },
+            "placement_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mapblock_churn": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "recommended_chunk_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "recommended_chunk_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "unsupported_field_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "private_reference_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "placements": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/structure_placement"
+              }
+            }
+          }
         },
-        "fixture_name": {
-          "type": "string",
-          "minLength": 1
-        },
-        "synthetic": {
-          "const": true
-        },
-        "placement_count": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "mapblock_churn": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "recommended_chunk_size": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "recommended_chunk_count": {
-          "type": "integer",
-          "minimum": 1
-        },
-        "unsupported_field_count": {
-          "type": "integer",
-          "minimum": 0
-        },
-        "placements": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "$ref": "#/$defs/structure_placement"
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "adapter_kind",
+            "fixture_name",
+            "synthetic",
+            "public_safe",
+            "structure_format",
+            "dimensions",
+            "placement_count",
+            "mapblock_churn",
+            "recommended_chunk_size",
+            "recommended_chunk_count",
+            "placements"
+          ],
+          "properties": {
+            "adapter_kind": {
+              "const": "public_safe_structure_v1"
+            },
+            "fixture_name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "synthetic": {
+              "const": false
+            },
+            "public_safe": {
+              "const": true
+            },
+            "structure_format": {
+              "enum": [
+                "ai_native_structure_v1",
+                "ai_native_schematic_preflight_v1"
+              ]
+            },
+            "source_adapter_kind": {
+              "const": "public_safe_schematic_preflight_v1"
+            },
+            "source_format": {
+              "const": "schematic"
+            },
+            "payload_policy": {
+              "const": "metadata_only"
+            },
+            "estimated_from_preflight": {
+              "type": "boolean"
+            },
+            "dimensions": {
+              "$ref": "#/$defs/vector3i"
+            },
+            "placement_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "mapblock_churn": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "recommended_chunk_size": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "recommended_chunk_count": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "unsupported_field_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "private_reference_count": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "placements": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/$defs/structure_placement"
+              }
+            }
           }
         }
-      }
+      ]
     },
     "structure_placement": {
       "type": "object",

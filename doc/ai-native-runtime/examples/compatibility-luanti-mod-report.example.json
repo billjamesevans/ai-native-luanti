@@ -1,0 +1,102 @@
+{
+  "generated_at": "2026-06-29T07:53:45Z",
+  "mode": "dry_run",
+  "planned_actions": [
+    {
+      "action": "skip_feature",
+      "description": "No importable content was detected.",
+      "mutation_cost": {
+        "entity_definitions": 0,
+        "manual_review_items": 0,
+        "mapblock_churn": 0,
+        "media_files": 0,
+        "node_writes": 0
+      },
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "status": "skipped"
+    }
+  ],
+  "report_version": 1,
+  "safety": {
+    "no_assets_copied": true,
+    "no_world_mutation": true,
+    "notes": [
+      "Dry run inventories metadata and paths only.",
+      "Apply-phase work must run through reviewed import tasks."
+    ],
+    "source_paths_redacted": true,
+    "user_rights_required": true
+  },
+  "sections": [
+    {
+      "counts": {
+        "items": 2
+      },
+      "items_total": 2,
+      "message": "Pack metadata can be parsed without copying source assets.",
+      "name": "metadata",
+      "status": "supported"
+    }
+  ],
+  "source": {
+    "content_hashes": [
+      {
+        "algorithm": "sha256",
+        "purpose": "inventory path and size hash",
+        "value": "c0cb0ce77f4641d049bad2ba55d1c4293b8da0c5413e0fe9b4ec2ab517210d79"
+      }
+    ],
+    "inventory": [
+      {
+        "classification": "mapped",
+        "entry_id": "entry:1",
+        "reason": "metadata_or_asset_reference",
+        "required_capabilities": [
+          "import.assets"
+        ],
+        "size_bytes": 8,
+        "source_kind": "mod_metadata",
+        "source_path": "depends.txt"
+      },
+      {
+        "classification": "mapped",
+        "entry_id": "entry:2",
+        "reason": "metadata_or_asset_reference",
+        "required_capabilities": [
+          "import.assets"
+        ],
+        "size_bytes": 106,
+        "source_kind": "mod_metadata",
+        "source_path": "mod.conf"
+      }
+    ],
+    "license_status": "user_supplied",
+    "metadata": {
+      "depends_declared": "true",
+      "description": "Synthetic Luanti mod metadata for compatibility inventory tests",
+      "mod_name": "synthetic_compat_mod"
+    },
+    "path_policy": "external_reference",
+    "source_class": "luanti_mod",
+    "source_id": "luanti_mod"
+  },
+  "summary": {
+    "estimated_world_mutations": {
+      "entity_definitions": 0,
+      "manual_review_items": 0,
+      "mapblock_churn": 0,
+      "media_files": 0,
+      "node_writes": 0
+    },
+    "items_total": 2,
+    "partial": 0,
+    "risk_level": "low",
+    "skipped": 0,
+    "supported": 1,
+    "unknown": 0,
+    "unsupported": 0
+  },
+  "unsupported_features": []
+}
