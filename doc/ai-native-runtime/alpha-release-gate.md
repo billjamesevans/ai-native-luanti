@@ -21,6 +21,10 @@ The release-package gate is:
 python3 util/ai_native_alpha_release_gate.py
 ```
 
+Use [the operator alpha release runbook](operator-alpha-release-runbook.md) for
+the backup-first side-by-side deploy, independent service checks, rollback
+command, evidence retention, and public-safe promotion decision.
+
 ## Required Gates
 
 1. Build the server from a clean checkout.
@@ -33,6 +37,7 @@ python3 util/ai_native_alpha_release_gate.py
    apply-phase review explicitly enables mutation.
 7. Publish release notes using the template that separates engine/runtime
    changes, optional plugin changes, and family-server content.
+8. Follow the operator runbook before promoting a Pi-backed alpha candidate.
 
 ## Public Boundary
 
