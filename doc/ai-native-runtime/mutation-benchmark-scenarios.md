@@ -6,7 +6,7 @@ Status: runnable report contract for issue #45
 
 AI-native mutation work needs a repeatable benchmark shape before more repair and build workloads are added. This slice defines public synthetic scenarios, a JSON report schema, and a small repo-local generator that can produce either a planned report or a deterministic sample report.
 
-The report contract covers average step, p95 step, max lag, total node writes (`node_writes`), node writes per step, skipped positions, rollback record count, AI runtime counters, warnings, and errors.
+The report contract covers average step, p95 step, max lag, total node writes (`node_writes`), node writes per step, mapblock churn (`mapblock_churn`), skipped positions, rollback record count, AI runtime counters, warnings, and errors.
 
 ## Entry Point
 
@@ -57,6 +57,12 @@ Entry point: `core.write_ai_rollback_record`
 
 Measures rollback record creation overhead without applying a world mutation. It isolates metadata capture and persistence overhead from node writes and reports `node_writes` as zero.
 
+### compat_structure_chunked_apply
+
+Entry point: `core.ai_import_ops.queue_chunked_structure_apply_task`
+
+Applies a reviewed synthetic structure fixture through chunked compatibility import tasks. It must report actual node writes, per-step node writes, mapblock churn, rollback record count, average step, p95 step, max lag, warnings, and errors. The fixture is synthetic and runs in a disposable staging world reference; it must not copy Minecraft assets or family showcase content into the fork.
+
 ## Report Files
 
 Schema:
@@ -78,6 +84,8 @@ A mutation branch must not merge when it introduces new safety warnings unless t
 A mutation branch must not merge when `max_lag_ms` is more than 10 percent above the accepted baseline for the same `hardware_class` without an explicit benchmark exception.
 
 A mutation branch must not merge when `node_writes_per_step` exceeds the scenario write budget.
+
+A mutation branch must not merge when structure or map/chunk mutation scenarios do not report `mapblock_churn`.
 
 A mutation branch must not merge when mutating scenarios do not record total node writes.
 

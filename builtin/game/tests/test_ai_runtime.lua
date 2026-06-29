@@ -1962,6 +1962,378 @@ local function run_compat_structure_apply_tests()
 	assert(apply_summary.safety.world_mutation_executed == true)
 	core.step_ai_tasks()
 	assert(core.get_ai_task("compat-structure:running").status == "completed")
+
+	local function many_structure_placements(origin, count)
+		local placements = {}
+		for index = 0, count - 1 do
+			placements[#placements + 1] = {
+				pos = vector.add(origin, { x = index * 17, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+			}
+		end
+		return placements
+	end
+
+	local chunk_origin = vector.add(apply_base, { x = 128, y = 0, z = 0 })
+	local chunk_placements = many_structure_placements(chunk_origin, 5)
+	for _, placement in ipairs(chunk_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local chunk_records = {}
+	local chunk_storage = {}
+	local writes_before_chunk_success = structure_writes
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:chunked-success",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		report_id = "synthetic-structure-report",
+		action_index = 1,
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = chunk_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 2,
+		max_node_writes_total = 5,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 5,
+		max_wall_time_ms = 5000,
+		persist_record = function(record)
+			assert(structure_writes == writes_before_chunk_success
+				+ record.chunk.first_position_index)
+			chunk_records[#chunk_records + 1] = record
+			local storage_ref = "rollback://compat-chunk/" .. record.record_id
+			chunk_storage[storage_ref] = record
+			return {
+				ok = true,
+				storage_ref = storage_ref,
+			}
+		end,
+	})
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:chunked-success").status == "running")
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:chunked-success").status == "running")
+	core.step_ai_tasks()
+	local chunked_success = core.get_ai_task("compat-structure:chunked-success")
+	assert(chunked_success.status == "completed")
+	assert(chunked_success.progress.current == 3)
+	assert(chunked_success.progress.total == 3)
+	assert(#chunk_records == 3)
+	assert(chunk_records[1].chunk.chunk_index == 0)
+	assert(chunk_records[1].chunk.chunk_count == 3)
+	assert(chunk_records[1].chunk.first_position_index == 0)
+	assert(chunk_records[1].chunk.position_count == 2)
+	assert(chunk_records[2].chunk.chunk_index == 1)
+	assert(chunk_records[2].chunk.first_position_index == 2)
+	assert(chunk_records[3].chunk.chunk_index == 2)
+	assert(chunk_records[3].chunk.first_position_index == 4)
+	assert(chunk_records[3].chunk.position_count == 1)
+	assert(structure_writes == writes_before_chunk_success + 5)
+
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		inspect_record = function(storage_ref)
+			return chunk_storage[storage_ref]
+		end,
+	})
+	local rollback_plan = core.ai_import_ops.plan_structure_rollback({
+		agent_id = "compat_import:runtime",
+		task_id = "compat-structure:chunked-success",
+		owner = "compat-operator",
+	})
+	assert(rollback_plan.ok == true)
+	assert(rollback_plan.status == "success")
+	assert(rollback_plan.operation == "ai_import.rollback_plan")
+	assert(rollback_plan.changed == 0)
+	assert(rollback_plan.rollback_plan.will_mutate == false)
+	assert(#rollback_plan.rollback_records == 3)
+	assert(#rollback_plan.rollback_plan.chunks == 3)
+	assert(rollback_plan.metrics.rollback_records == 3)
+	assert(rollback_plan.metrics.planned_node_writes == 5)
+	assert(rollback_plan.metrics.mapblock_churn >= 3)
+	assert(rollback_plan.rollback_records[1].storage_ref:find(
+		"rollback://compat-chunk/", 1, true))
+
+	local missing_readback = core.ai_import_ops.plan_structure_rollback({
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		rollback_refs = {
+			"rollback://compat-chunk/missing",
+			chunk_records[1].storage_ref,
+		},
+		rollback_records = {
+			chunk_records[2],
+		},
+	})
+	assert(missing_readback.ok == true)
+	assert(missing_readback.status == "partial")
+	assert(missing_readback.reason == "rollback_plan_with_missing_records")
+	assert(missing_readback.changed == 0)
+	assert(#missing_readback.rollback_records == 2)
+	assert(#missing_readback.rollback_plan.missing_records == 1)
+	core.ai_rollback_storage.configure(nil)
+
+	local chunk_over_budget_origin = vector.add(apply_base, { x = 256, y = 0, z = 0 })
+	local over_budget_chunk_placements = many_structure_placements(chunk_over_budget_origin, 3)
+	for _, placement in ipairs(over_budget_chunk_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_chunk_budget = structure_writes
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:chunk-over-budget",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = over_budget_chunk_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 3,
+		max_node_writes_total = 3,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 3,
+		persist_record = function()
+			error("rollback must not be written for over-budget chunk")
+		end,
+	})
+	core.step_ai_tasks()
+	local chunk_over_budget = core.get_ai_task("compat-structure:chunk-over-budget")
+	assert(chunk_over_budget.status == "blocked")
+	assert(chunk_over_budget.last_result.reason == "node_write_budget_exceeded")
+	assert(chunk_over_budget.last_result.changed == 0)
+	assert(structure_writes == writes_before_chunk_budget)
+
+	local total_over_budget_origin = vector.add(apply_base, { x = 320, y = 0, z = 0 })
+	local total_over_budget_placements = many_structure_placements(total_over_budget_origin, 3)
+	for _, placement in ipairs(total_over_budget_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:total-over-budget",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = total_over_budget_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 1,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 1,
+		max_mapblock_churn_total = 1,
+		persist_record = function()
+			error("rollback must not be written for total over-budget apply")
+		end,
+	})
+	core.step_ai_tasks()
+	local total_over_budget = core.get_ai_task("compat-structure:total-over-budget")
+	assert(total_over_budget.status == "blocked")
+	assert(total_over_budget.last_result.reason == "node_write_total_budget_exceeded")
+
+	local mapblock_over_budget_origin = vector.add(apply_base, { x = 352, y = 0, z = 0 })
+	local mapblock_over_budget_placements = many_structure_placements(
+		mapblock_over_budget_origin, 3)
+	for _, placement in ipairs(mapblock_over_budget_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_mapblock_budget = structure_writes
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:mapblock-over-budget",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = mapblock_over_budget_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 1,
+		max_node_writes_total = 3,
+		max_node_writes_per_step = 1,
+		max_mapblock_churn_total = 2,
+		persist_record = function()
+			error("rollback must not be written for mapblock over-budget apply")
+		end,
+	})
+	core.step_ai_tasks()
+	local mapblock_over_budget = core.get_ai_task(
+		"compat-structure:mapblock-over-budget")
+	assert(mapblock_over_budget.status == "blocked")
+	assert(mapblock_over_budget.last_result.reason == "mapblock_churn_budget_exceeded")
+	assert(structure_writes == writes_before_mapblock_budget)
+
+	local missing_chunk_rollback_origin = vector.add(apply_base, { x = 384, y = 0, z = 0 })
+	local missing_chunk_rollback_placements = many_structure_placements(
+		missing_chunk_rollback_origin, 3)
+	for _, placement in ipairs(missing_chunk_rollback_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_chunk_missing_rollback = structure_writes
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:chunk-missing-rollback",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = missing_chunk_rollback_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 2,
+		max_node_writes_total = 3,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 3,
+	})
+	core.step_ai_tasks()
+	local missing_chunk_rollback = core.get_ai_task(
+		"compat-structure:chunk-missing-rollback")
+	assert(missing_chunk_rollback.status == "blocked")
+	assert(missing_chunk_rollback.last_result.reason == "rollback_metadata_unavailable")
+	assert(structure_writes == writes_before_chunk_missing_rollback)
+
+	local protected_chunk_origin = vector.add(apply_base, { x = 448, y = 0, z = 0 })
+	local protected_chunk_placements = many_structure_placements(protected_chunk_origin, 3)
+	for _, placement in ipairs(protected_chunk_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local protected_chunk_records = {}
+	local old_chunk_protected = core.is_protected
+	core.is_protected = function(pos, name)
+		return name == "compat-operator"
+			and pos.x == protected_chunk_placements[3].pos.x
+	end
+	local writes_before_protected_chunk = structure_writes
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:chunk-protected",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = protected_chunk_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 2,
+		max_node_writes_total = 3,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 3,
+		persist_record = function(record)
+			protected_chunk_records[#protected_chunk_records + 1] = record
+			return "rollback://compat-protected/" .. record.record_id
+		end,
+	})
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:chunk-protected").status == "running")
+	assert(structure_writes == writes_before_protected_chunk + 2)
+	core.step_ai_tasks()
+	core.is_protected = old_chunk_protected
+	local protected_chunk_task = core.get_ai_task("compat-structure:chunk-protected")
+	assert(protected_chunk_task.status == "blocked")
+	assert(protected_chunk_task.last_result.operation == "ai_world.batch_place")
+	assert(protected_chunk_task.last_result.reason == "all_operations_skipped")
+	assert(protected_chunk_task.last_result.changed == 0)
+	assert(#protected_chunk_records == 2)
+	assert(protected_chunk_records[2].chunk.chunk_index == 1)
+	assert(structure_writes == writes_before_protected_chunk + 2)
+
+	local queued_chunk_origin = vector.add(apply_base, { x = 544, y = 0, z = 0 })
+	local queued_chunk_placements = many_structure_placements(queued_chunk_origin, 2)
+	for _, placement in ipairs(queued_chunk_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:chunk-queued",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = queued_chunk_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 1,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 1,
+		max_mapblock_churn_total = 2,
+		persist_record = function(record)
+			return "rollback://compat-queued/" .. record.record_id
+		end,
+	})
+
+	local running_chunk_origin = vector.add(apply_base, { x = 608, y = 0, z = 0 })
+	local running_chunk_placements = many_structure_placements(running_chunk_origin, 2)
+	for _, placement in ipairs(running_chunk_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-structure:chunk-running",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "staging-world",
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = running_chunk_placements,
+		get_node = get_test_node,
+		set_node = counting_structure_set_node,
+		chunk_size = 1,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 1,
+		max_mapblock_churn_total = 2,
+		persist_record = function(record)
+			return "rollback://compat-running/" .. record.record_id
+		end,
+	})
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:chunk-queued").status == "running")
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:chunk-queued").status == "completed")
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:chunk-running").status == "running")
+
+	local chunk_summary = core.ai_import_ops.build_apply_summary({
+		apply_id = "apply-runtime:chunked-final",
+		report_id = "synthetic-structure-report",
+		task_ids = {
+			"compat-structure:chunk-queued",
+			"compat-structure:chunk-running",
+			"compat-structure:chunk-protected",
+			"compat-structure:chunked-success",
+		},
+		approved_actions = {
+			{ action_index = 1, action = "import_structure" },
+		},
+		rollback_policy = "chunked",
+	})
+	assert(chunk_summary.status == "blocked")
+	assert(#chunk_summary.completed_tasks == 2)
+	assert(#chunk_summary.running_tasks == 1)
+	assert(#chunk_summary.blocked_tasks == 1)
+	assert(chunk_summary.mutation_cost_actual.node_writes >= 10)
+	assert(chunk_summary.mutation_cost_actual.mapblock_churn >= 10)
+	assert(chunk_summary.mutation_cost_actual.elapsed_us >= 0)
+	assert(#chunk_summary.rollback_records >= 8)
+	core.step_ai_tasks()
+	assert(core.get_ai_task("compat-structure:chunk-running").status == "completed")
 end
 
 run_compat_structure_apply_tests()
@@ -1977,7 +2349,7 @@ assert(command_message:find("model=", 1, true))
 assert(not command_message:find("do not retain this prompt", 1, true))
 assert(#command_message < 320)
 
-local audit = core.get_ai_runtime_audit({ limit = 100 })
+local audit = core.get_ai_runtime_audit({ limit = 300 })
 assert(type(audit) == "table")
 
 local function audit_has(event_type, task_id)
