@@ -98,7 +98,6 @@ REQUIRED_DOCS = [
             "#254",
             "#255",
             "#256",
-            "#257",
             "spacebase",
             "themepark",
             "disneyland100",
@@ -177,10 +176,12 @@ PROJECT_OPERATING_LOOP = {
             "when": "after accepted local and low-power lanes are refreshed",
             "gate": "public-safe parity harness with actionable scorecard",
         },
+    ],
+    "maintenance_invariants": [
         {
-            "issue": "#257",
-            "title": "Contributor release automation and project operating loop",
-            "when": "continuously after each milestone slice",
+            "name": "operating_loop_maintenance",
+            "status": "complete_but_enforced",
+            "when": "after each milestone slice",
             "gate": "alpha gate docs/templates/report remain complete",
         },
     ],
