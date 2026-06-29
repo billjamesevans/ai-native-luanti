@@ -76,6 +76,8 @@ class AIProductProfileVerifierTests(unittest.TestCase):
                 "ai_agent_plugin",
             },
         )
+        base_entry = next(entry for entry in inventory if entry["name"] == "ai_runtime_base")
+        self.assertIn("helper entity", base_entry["purpose"])
         for entry in inventory:
             if entry["category"] in {"benchmark_fixture", "compatibility_fixture", "unit_test_helper"}:
                 self.assertFalse(entry["loaded_by_default_product_profile"], entry)

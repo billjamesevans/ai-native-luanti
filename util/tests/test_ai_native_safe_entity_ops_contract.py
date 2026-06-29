@@ -33,7 +33,9 @@ class SafeEntityOpsContractTests(unittest.TestCase):
             "action result",
             "runtime metrics",
             "audit",
-            "generic demo helper",
+            "ai_runtime_base:helper",
+            "benchmark fixture",
+            "ai_demo_benchmark:helper",
         ):
             self.assertIn(phrase, body_lower)
 

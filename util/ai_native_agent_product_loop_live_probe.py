@@ -96,10 +96,15 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "  return { x = x, y = 12, z = 120 }",
             "end",
             "",
+            "local function copy_pos(target_pos)",
+            "  return { x = target_pos.x, y = target_pos.y, z = target_pos.z }",
+            "end",
+            "",
             "local build_pos = pos(0)",
             "local repair_pos = pos(2)",
             "local cancel_pos = pos(4)",
             "local retry_pos = pos(6)",
+            "local follow_pos = pos(8)",
             "",
             "local clean_capabilities = {",
             "  [\"world.read\"] = true,",
@@ -249,6 +254,29 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "  local retry_blocked_reason = last_reason(retry_approved.task_id)",
             "  local retry_result = core.retry_ai_task(retry_approved.task_id, \"RetryLive\")",
             "  local retry_final_status = step_until_final(retry_approved.task_id, 3)",
+            "",
+            "  local follow_player_pos = copy_pos(follow_pos)",
+            "  local follow_player = {",
+            "    get_pos = function() return copy_pos(follow_player_pos) end,",
+            "  }",
+            "  local follow_reply = handle(\"FollowLive\", \"follow 2\", {",
+            "    get_player_by_name = function(name)",
+            "      if name == \"FollowLive\" then return follow_player end",
+            "      return nil",
+            "    end,",
+            "    max_follow_steps = 2,",
+            "    max_follow_step_distance = 2,",
+            "    max_follow_total_distance = 6,",
+            "    max_follow_stop_distance = 0,",
+            "  })",
+            "  task_ids[#task_ids + 1] = follow_reply.task_id",
+            "  core.step_ai_tasks()",
+            "  follow_player_pos = { x = follow_pos.x + 2, y = follow_pos.y, z = follow_pos.z }",
+            "  local follow_status = step_until_final(follow_reply.task_id, 3)",
+            "  local follow_task = core.get_ai_task(follow_reply.task_id)",
+            "  local follow_result = follow_task and follow_task.last_result or {}",
+            "  local follow_entity = follow_result.entity or {}",
+            "  local follow_metrics = follow_result.metrics or {}",
             "",
             "  local guide_reply = handle(\"BuilderLive\", \"guide\", {})",
             "  local tasks_reply = handle(\"BuilderLive\", \"tasks\", {})",
@@ -455,6 +483,16 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "        retry_result_status = retry_result.status,",
             "        retry_final_status = retry_final_status,",
             "      },",
+            "      navigation = {",
+            "        follow_status = follow_reply.status,",
+            "        follow_task_id = follow_reply.task_id,",
+            "        follow_task_status = follow_status,",
+            "        follow_entity_name = follow_entity.entity_name,",
+            "        follow_distance_moved = follow_metrics.distance_moved or 0,",
+            "        follow_total_distance_moved = follow_metrics.total_distance_moved or 0,",
+            "        follow_node_writes = follow_metrics.node_writes or 0,",
+            "        follow_pathfinder_used = follow_metrics.pathfinder_used == true,",
+            "      },",
             "      targeted_reviews = {",
             "        audit_status = targeted_audit_reply.status,",
             "        audit_target_kind = targeted_audit_reply.target_kind,",
@@ -515,6 +553,11 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "          and targeted_rollback_record_reply.target_id == targeted_rollback_record_id",
             "          and targeted_rollback_record_reply.no_rollback_execution == true",
             "          and targeted_rollback_record_count > 0,",
+            "        follow_command_checked = follow_reply.status == \"queued\"",
+            "          and follow_status == \"completed\"",
+            "          and follow_entity.entity_name == \"ai_runtime_base:helper\"",
+            "          and (follow_metrics.distance_moved or 0) > 0",
+            "          and (follow_metrics.node_writes or 0) == 0,",
             "        defender_command_checked = defend_status == \"completed\" and defended == true,",
             "        import_preview_checked = import_status == \"completed\",",
             "        operator_status_checked = operator_status_snapshot.status == \"ready\"",
@@ -537,6 +580,7 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "      targeted_audit_review_count = targeted_audit_count > 0 and 1 or 0,",
             "      targeted_rollback_review_count = (targeted_rollback_count > 0 and 1 or 0)",
             "        + (targeted_rollback_record_count > 0 and 1 or 0),",
+            "      follow_command_count = follow_status == \"completed\" and 1 or 0,",
             "      node_writes_verified = 5,",
             "      transient_blocked_outcomes = retry_blocked_status == \"blocked\" and 1 or 0,",
             "      final_blocked_or_unsafe_outcomes = final_bad,",
@@ -642,6 +686,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         if isinstance(workflow.get("task_control"), dict)
         else {}
     )
+    navigation = (
+        workflow.get("navigation")
+        if isinstance(workflow.get("navigation"), dict)
+        else {}
+    )
     targeted_reviews = (
         workflow.get("targeted_reviews")
         if isinstance(workflow.get("targeted_reviews"), dict)
@@ -698,6 +747,19 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     if task_control.get("retry_final_status") != "completed":
         raise ValueError("agent product loop retry did not complete")
 
+    if navigation.get("follow_status") != "queued":
+        raise ValueError("agent product loop follow command did not queue")
+    if navigation.get("follow_task_status") != "completed":
+        raise ValueError("agent product loop follow task did not complete")
+    if navigation.get("follow_entity_name") != "ai_runtime_base:helper":
+        raise ValueError("agent product loop follow did not use clean helper entity")
+    if not isinstance(navigation.get("follow_distance_moved"), (int, float)) or navigation["follow_distance_moved"] <= 0:
+        raise ValueError("agent product loop follow movement evidence missing")
+    if not isinstance(navigation.get("follow_total_distance_moved"), (int, float)) or navigation["follow_total_distance_moved"] <= 0:
+        raise ValueError("agent product loop follow total movement evidence missing")
+    if navigation.get("follow_node_writes") != 0:
+        raise ValueError("agent product loop follow mutated nodes")
+
     if targeted_reviews.get("audit_status") != "success":
         raise ValueError("agent product loop targeted audit did not pass")
     if targeted_reviews.get("audit_target_kind") != "task":
@@ -746,6 +808,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "targeted_audit_review_checked",
         "targeted_rollback_review_checked",
         "targeted_rollback_record_review_checked",
+        "follow_command_checked",
         "defender_command_checked",
         "import_preview_checked",
         "operator_status_checked",
@@ -783,6 +846,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "rollback_record_count": 2,
         "targeted_audit_review_count": 1,
         "targeted_rollback_review_count": 2,
+        "follow_command_count": 1,
         "node_writes_verified": 5,
         "transient_blocked_outcomes": 1,
         "final_blocked_or_unsafe_outcomes": 0,
@@ -839,8 +903,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_product_loop_audit_events": summary["audit_event_count"],
         "agent_product_loop_targeted_audit_reviews": summary["targeted_audit_review_count"],
         "agent_product_loop_targeted_rollback_reviews": summary["targeted_rollback_review_count"],
+        "agent_product_loop_follow_commands": summary["follow_command_count"],
         "agent_product_loop_cancel_checked": True,
         "agent_product_loop_retry_checked": True,
+        "agent_product_loop_follow_checked": True,
+        "agent_product_loop_follow_helper_entity": navigation["follow_entity_name"],
         "agent_product_loop_operator_status_checked": True,
         "agent_product_loop_pending_plan_review_checked": True,
         "agent_product_loop_plan_edit_checked": True,

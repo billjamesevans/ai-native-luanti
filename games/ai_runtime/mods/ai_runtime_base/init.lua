@@ -1,9 +1,41 @@
 local texture = "blank.png"
+local helper_entity_name = "ai_runtime_base:helper"
+
+if not core.registered_entities[helper_entity_name] then
+	core.register_entity(":" .. helper_entity_name, {
+		initial_properties = {
+			hp_max = 1,
+			physical = true,
+			collide_with_objects = true,
+			collisionbox = {-0.25, -0.25, -0.25, 0.25, 0.25, 0.25},
+			selectionbox = {-0.25, -0.25, -0.25, 0.25, 0.25, 0.25},
+			visual = "cube",
+			visual_size = { x = 0.5, y = 0.5 },
+			textures = { "", "", "", "", "", "" },
+			is_visible = false,
+			pointable = false,
+			static_save = false,
+		},
+
+		owner_ref = "owner:ai-runtime",
+
+		on_activate = function(self, staticdata)
+			if staticdata and staticdata ~= "" then
+				self.owner_ref = staticdata
+			end
+		end,
+
+		get_staticdata = function(self)
+			return self.owner_ref or "owner:ai-runtime"
+		end,
+	})
+end
 
 core.ai_agent_plugin.configure({
 	capability_profile = "clean",
 	light_node = "ai_runtime_base:cobble",
 	marker_node = "ai_runtime_base:cobble",
+	agent_entity_name = helper_entity_name,
 	repair_nodes = {},
 	max_lights = 8,
 	max_entity_move_distance = 16,

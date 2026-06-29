@@ -19,7 +19,7 @@
       "path": "games/ai_runtime/mods/ai_runtime_base",
       "loaded_by_default_product_profile": true,
       "requires_explicit_dev_or_test_lane": false,
-      "purpose": "minimal first-party runtime profile and capability policy"
+      "purpose": "minimal first-party runtime profile, helper entity, and capability policy"
     },
     {
       "name": "ai_runtime_core",

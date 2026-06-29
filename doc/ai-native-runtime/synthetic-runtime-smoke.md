@@ -111,7 +111,8 @@ writes `ai-runtime-agent-product-loop-live-result.json`. That probe uses synthet
 queue build and repair previews, require explicit approval, execute rollback-backed build and repair
 tasks, review and edit pending plans before approval, cancel a queued task, retry a
 rollback-blocked task, and check guide/tasks/audit/rollback, targeted audit, targeted rollback
-review, defender, and importer-preview surfaces without private content. It also captures a compact
+review, normal follow movement through the clean `ai_runtime_base:helper` entity, defender, and
+importer-preview surfaces without private content. It also captures a compact
 same-world operator-status snapshot proving the live status surface sees the product-loop tasks,
 rollback records, and import review without retaining private payloads. Rollback review remains
 read-only in this probe, including targeted rollback-record lookup. It then runs
