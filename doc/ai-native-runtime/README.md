@@ -27,6 +27,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [MVP spec](mvp-spec.md)
 - [MVP gap checklist](mvp-gap-checklist.md)
 - [Post-MVP alpha roadmap](post-mvp-alpha-roadmap.md)
+- [v0.3 AI-native proving ground roadmap](v0.3-proving-ground-roadmap.md)
 - [Alpha release gate](alpha-release-gate.md)
 - [Clean ai_runtime install/run guide](clean-ai-runtime-install.md)
 - [Low-power Pi evidence lane](low-power-pi-evidence-lane.md)
