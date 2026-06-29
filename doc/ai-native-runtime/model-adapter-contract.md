@@ -82,6 +82,12 @@ Optional fields:
 - `timeout`
 - `response`
 
+The first-party Agents SDK sidecar places a public `tool_powers` manifest inside
+`response`. This manifest describes agent powers such as `function_tool` and
+`WebSearchTool`, but it is not a permission grant. Every listed power must state
+`direct_world_mutation = false`; Luanti remains the only world writer through
+capability, preview, approval, task, audit, and rollback APIs.
+
 The runtime rejects unsafe/raw response fields with
 `adapter_payload_rejected`. Optional provider plugins should keep raw provider
 requests, provider responses, credentials, headers, and private payloads in
