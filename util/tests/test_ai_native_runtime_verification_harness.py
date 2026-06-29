@@ -364,6 +364,96 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         }
         path.write_text(json.dumps(report, indent=2), encoding="utf-8")
 
+    def command_arg(self, command, flag):
+        return command[command.index(flag) + 1]
+
+    def clean_profile_summary_path_for_step(self, step):
+        output_root = pathlib.Path(self.command_arg(step.actual_command, "--output-root"))
+        return (
+            output_root
+            / self.command_arg(step.actual_command, "--hardware-class")
+            / self.command_arg(step.actual_command, "--date")
+            / self.command_arg(step.actual_command, "--luanti-commit")
+            / "clean-profile-benchmark-summary.json"
+        )
+
+    def write_clean_profile_summary_artifact(self, path, *, payload=None, headless=False):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        player_probe = {
+            "probe_status": "pass",
+            "probe_kind": "server_process_liveness",
+            "probe_duration_seconds": 3.0,
+            "requested_sample_seconds": 3.0,
+            "sample_count": 3,
+            "synthetic_player_count": 0,
+            "headless_player_supported": False,
+            "server_stayed_listening": True,
+            "server_log_warning_count": 0,
+            "expected_server_log_warning_count": 0,
+            "actionable_server_log_warning_count": 0,
+            "expected_warning_kinds": [],
+            "server_log_error_count": 0,
+            "latency_probe_kind": "not_measured",
+            "latency_proxy_supported": False,
+            "join_latency_proxy_ms": {"sample_count": 0},
+        }
+        if headless:
+            player_probe.update(
+                {
+                    "probe_kind": "headless_client_load",
+                    "synthetic_player_count": 2,
+                    "headless_player_supported": True,
+                    "latency_probe_kind": "headless_join_log_observation",
+                    "latency_proxy_supported": True,
+                    "join_latency_proxy_ms": {"sample_count": 2},
+                    "attempted_synthetic_player_count": 2,
+                    "connected_synthetic_player_count": 2,
+                    "completed_synthetic_player_count": 2,
+                    "client_launch_failure_count": 0,
+                }
+            )
+        summary = payload or {
+            "schema_version": 1,
+            "runner_version": "ai-native-clean-profile-benchmark:v1",
+            "overall_status": "pass",
+            "hardware_class": "local-mac",
+            "game_profile": {"gameid": "ai_runtime"},
+            "run_context": {
+                "mode": "clean-profile-local-server",
+                "requires_private_world": False,
+                "requires_private_assets": False,
+                "requires_live_pi": False,
+                "requires_model_network": False,
+            },
+            "failure_notes": [],
+            "comparison_summary": {
+                "server_step_workload": {
+                    "workload_status": "pass",
+                    "workload_kind": "server_step_liveness",
+                    "attempted_sample_count": 3,
+                    "completed_sample_count": 3,
+                    "failed_sample_count": 0,
+                    "server_stayed_listening": True,
+                    "server_log_error_count": 0,
+                },
+                "player_load_tick_probe": player_probe,
+                "map_chunk_workload": {
+                    "workload_status": "pass",
+                    "workload_kind": "synthetic_sqlite_mapblock_churn",
+                    "mapblock_rows_created": 4,
+                    "warning_count": 0,
+                    "error_count": 0,
+                },
+                "cpu": {
+                    "sample_status": "measured",
+                    "cpu_sample_count": 3,
+                    "avg_process_cpu_percent": 2.0,
+                    "max_interval_cpu_percent": 4.0,
+                },
+            },
+        }
+        path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
+
     def runner_with_operator_artifact(self, runs):
         def run_step(step):
             if step.id == "product_profile_hygiene":
@@ -371,6 +461,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     step.actual_command[step.actual_command.index("--output") + 1]
                 )
                 self.write_product_profile_artifact(output_path)
+            if step.id == "branch_benchmark_gate" and "--game-profile" in step.actual_command:
+                if self.command_arg(step.actual_command, "--game-profile") == "ai_runtime":
+                    self.write_clean_profile_summary_artifact(
+                        self.clean_profile_summary_path_for_step(step)
+                    )
             if step.id in {"operator_status_live_command", "operator_status_package"}:
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
@@ -722,6 +817,35 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["artifact_paths"]["clean_profile_summary"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/clean-profile-benchmark-summary.json",
             )
+            self.assertEqual(manifest["clean_profile_evidence"]["status"], "pass")
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["source_path"],
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/clean-profile-benchmark-summary.json",
+            )
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["server_step_workload_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["server_step_attempted_samples"],
+                3,
+            )
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["player_load_probe_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["player_load_probe_kind"],
+                "server_process_liveness",
+            )
+            self.assertFalse(manifest["clean_profile_evidence"]["headless_player_required"])
+            self.assertEqual(
+                manifest["clean_profile_evidence"]["map_chunk_workload_status"],
+                "pass",
+            )
+            self.assertEqual(manifest["clean_profile_evidence"]["mapblock_rows_created"], 4)
+            self.assertEqual(manifest["clean_profile_evidence"]["cpu_status"], "measured")
+            self.assertEqual(manifest["clean_profile_evidence"]["cpu_sample_count"], 3)
             self.assertEqual(
                 manifest["artifact_paths"]["operator_status_live_command"],
                 "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-status-live.json",
@@ -923,6 +1047,158 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertIn("--headless-player-command", gate_step.manifest_command)
             self.assertIn("<headless-player-command>", gate_step.manifest_command)
             self.assertNotIn("{host}", gate_step.manifest_command)
+
+    def test_clean_profile_summary_failure_fails_manifest_even_if_gate_exits_zero(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-clean-profile-failure",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--game-profile",
+                    "ai_runtime",
+                ]
+            )
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-clean-profile-failure/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            def run_step(step):
+                if step.id == "product_profile_hygiene":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_product_profile_artifact(output_path)
+                if step.id == "branch_benchmark_gate":
+                    self.write_clean_profile_summary_artifact(
+                        self.clean_profile_summary_path_for_step(step),
+                        payload={
+                            "schema_version": 1,
+                            "runner_version": "ai-native-clean-profile-benchmark:v1",
+                            "overall_status": "fail",
+                            "hardware_class": "local-mac",
+                            "game_profile": {"gameid": "ai_runtime"},
+                            "run_context": {
+                                "mode": "clean-profile-local-server",
+                                "requires_private_world": False,
+                                "requires_private_assets": False,
+                                "requires_live_pi": False,
+                                "requires_model_network": False,
+                            },
+                            "failure_notes": ["server_step_workload_failed"],
+                            "comparison_summary": {
+                                "player_load_tick_probe": {
+                                    "probe_status": "pass",
+                                    "probe_kind": "server_process_liveness",
+                                    "server_stayed_listening": True,
+                                }
+                            },
+                        },
+                    )
+                if step.id in {"operator_status_live_command", "operator_status_package"}:
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_status_artifact(output_path)
+                if step.id == "operator_task_control_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_live_artifact(output_path)
+                if step.id == "operator_task_control_command_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_operator_task_control_command_artifact(output_path)
+                return next(runs)
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=run_step,
+                now_fn=lambda: "2026-06-28T12:06:00Z",
+            )
+
+            self.assertEqual(status, 1)
+            self.assertEqual(manifest["overall_status"], "fail")
+            self.assertEqual(manifest["clean_profile_evidence"]["status"], "fail")
+            joined_reasons = " ".join(manifest["failure_reasons"])
+            self.assertIn("clean_profile_summary overall_status is not pass", joined_reasons)
+            self.assertIn("clean_profile_summary failure_notes present", joined_reasons)
+            self.assertIn("clean_profile_summary server_step_workload missing", joined_reasons)
+
+    def test_clean_profile_headless_requirement_rejects_liveness_fallback(self):
+        harness = load_harness_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            args = harness.parse_args(
+                [
+                    "--output-root",
+                    str(output_root),
+                    "--hardware-class",
+                    "local-mac",
+                    "--date",
+                    "2026-06-28",
+                    "--luanti-commit",
+                    "verify-headless-required",
+                    "--server-bin",
+                    "bin/luantiserver",
+                    "--game-profile",
+                    "ai_runtime",
+                    "--require-headless-player-probe",
+                ]
+            )
+            runs = iter(
+                [
+                    harness.CommandRun(0, 0.10, "utility tests ok", ""),
+                    harness.CommandRun(0, 0.12, "product profile pass", ""),
+                    harness.CommandRun(
+                        0,
+                        0.20,
+                        "local/benchmarks/local-mac/2026-06-28/verify-headless-required/benchmark-gate-manifest.json\n",
+                        "",
+                    ),
+                    harness.CommandRun(0, 0.25, "operator status live command ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control live probe ok", ""),
+                    harness.CommandRun(0, 0.25, "operator task control command probe ok", ""),
+                    harness.CommandRun(0, 0.30, "TestAIRuntime passed", ""),
+                ]
+            )
+
+            status, _, manifest = harness.run_harness(
+                args,
+                runner=self.runner_with_operator_artifact(runs),
+                now_fn=lambda: "2026-06-28T12:07:00Z",
+            )
+
+            self.assertEqual(status, 1)
+            self.assertEqual(manifest["clean_profile_evidence"]["status"], "fail")
+            self.assertTrue(manifest["clean_profile_evidence"]["headless_player_required"])
+            self.assertIn(
+                "clean_profile_summary headless player probe required but not measured",
+                " ".join(manifest["failure_reasons"]),
+            )
 
     def test_failed_command_writes_manifest_with_sanitized_failure_reason(self):
         harness = load_harness_module()
@@ -1245,7 +1521,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "task cancel/retry only",
             "after the branch benchmark gate and `/ai_runtime_smoke`",
             "--game-profile ai_runtime",
+            "--require-headless-player-probe",
             "clean-profile-benchmark-summary.json",
+            "clean_profile_evidence",
+            "server_step_workload",
+            "player_load_tick_probe",
+            "map_chunk_workload",
+            "cpu_sample_count",
             "local/benchmarks/<hardware-class>/<date>/<commit>/",
             "no family server",
             "no model-network",
