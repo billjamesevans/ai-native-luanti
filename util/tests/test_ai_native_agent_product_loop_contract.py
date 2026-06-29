@@ -74,6 +74,8 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "movement tasks only",
             "`ai_agent.follow_step`",
             "rollback-backed",
+            "surface_capability_not_granted",
+            "before any task is queued",
             "combat.defend",
             "import.assets",
         ):

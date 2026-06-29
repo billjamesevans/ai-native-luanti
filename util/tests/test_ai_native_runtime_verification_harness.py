@@ -323,6 +323,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "guide_surface_agent_checked": True,
                     "defender_clean_grant_absent": True,
                     "importer_clean_grant_absent": True,
+                    "defender_clean_command_gated": True,
+                    "importer_clean_command_gated": True,
                     "tasks_command_checked": True,
                     "audit_review_checked": True,
                     "rollback_review_checked": True,
@@ -364,6 +366,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "follow_command_count": 1,
                 "stay_command_count": 1,
                 "come_command_count": 1,
+                "clean_gated_command_count": 2,
                 "status_context_count": 1,
                 "node_writes_verified": 5,
                 "transient_blocked_outcomes": 1,
@@ -1288,6 +1291,22 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_clean_gated_commands"
+                ],
+                2,
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_defender_clean_command_gated"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_importer_clean_command_gated"
+                ]
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
                     "agent_product_loop_status_contexts"
                 ],
                 1,
@@ -1374,7 +1393,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 14000)
+            self.assertLess(len(serialized), 14500)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
