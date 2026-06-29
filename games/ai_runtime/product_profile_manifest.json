@@ -22,6 +22,14 @@
       "purpose": "minimal first-party runtime profile and capability policy"
     },
     {
+      "name": "ai_operator_status",
+      "category": "product_runtime",
+      "path": "builtin/game/ai_operator_status.lua",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "live read-only operator status package API and server command"
+    },
+    {
       "name": "ai_runtime_smoke",
       "category": "unit_test_helper",
       "path": "builtin/game/ai_runtime_smoke.lua",

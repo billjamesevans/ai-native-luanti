@@ -61,7 +61,7 @@ class AIProductProfileVerifierTests(unittest.TestCase):
             for entry in inventory
             if entry["loaded_by_default_product_profile"] is True
         }
-        self.assertEqual(default_loaded, {"ai_runtime_game", "ai_runtime_base"})
+        self.assertEqual(default_loaded, {"ai_runtime_game", "ai_runtime_base", "ai_operator_status"})
         for entry in inventory:
             if entry["category"] != "product_runtime" and entry["name"] != "ai_runtime_base":
                 self.assertFalse(entry["loaded_by_default_product_profile"], entry)
