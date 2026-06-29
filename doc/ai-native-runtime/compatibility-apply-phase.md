@@ -199,6 +199,22 @@ The first real structure-format slice is `ai_native_structure_v1`, carried by a 
 
 The adapter emits `public_safe_structure_v1` metadata into the dry-run report, then reuses the same approval, adapter-smoke, operator-review, chunked apply, rollback planning, and rollback execution gates. It does not parse proprietary Minecraft server behavior, ship Mojang assets, ship family-world assets, or mutate the live family world.
 
+## Public-Safe Staging Pilot
+
+The current end-to-end pilot is:
+
+```bash
+python3 util/ai_native_compat_import_staging_pilot.py \
+	--root . \
+	--server-bin bin/luantiserver \
+	--output local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json \
+	--generated-at 2026-06-29T00:00:00Z
+```
+
+The pilot runs the public-safe structure fixture through inventory discovery, dry-run reporting, apply-plan validation, adapter smoke, operator review, and promotion evidence construction before launching a disposable `ai_runtime` staging world. Inside that disposable world it queues the reviewed chunked apply task through `core.ai_import_ops`, verifies five node writes across three chunks, records mapblock churn, reads rollback records back, executes rollback, and verifies the nodes reverted.
+
+The same live artifact records refusal gates for missing approval, missing rollback policy, unsafe/private payloads, non-staging targets, and over-budget writes. The one-command verifier runs this pilot by default and retains the bounded artifact as `ai-runtime-compat-import-staging-pilot-result.json`.
+
 ## Public-Safe Schematic Preflight
 
 The next compatibility-format slice is `ai_native_schematic_preflight_v1`, carried by a JSON file with `format_kind = ai_native_public_schematic_preflight`. It is not a raw schematic parser. It is a public-safe preflight contract for operator-supplied metadata:
