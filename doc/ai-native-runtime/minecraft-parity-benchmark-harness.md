@@ -122,6 +122,8 @@ The JSON report contains:
 - `measured_facts`: hardware-lane facts sourced from accepted benchmark reports.
 - `qualitative_minecraft_parity_gaps`: missing or partial evidence that should drive the runtime backlog.
 - `actionable_scorecard`: ranked, deduplicated parity actions grouped across hardware lanes. A single dimension may produce multiple actions when the remaining work has separate owners, such as first-party agent scale-gate proof versus compatibility import inventory.
+- `issue_seeds`: public-safe follow-up issue seeds generated from the actionable scorecard, including labels, acceptance checks, evidence, and source-policy safety flags.
+- `issue_seed_summary`: counts for the generated follow-up issue seeds by status, gap area, and hardware lane.
 - `gap_summary_by_area`: counts for engine/runtime, game-content, plugin, and operator-experience gaps.
 - `source_policy`: explicit separation between project targets and measured fork evidence.
 - `retention`: the local benchmark retention lane where the report belongs.

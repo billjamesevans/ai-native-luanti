@@ -539,6 +539,37 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertIn("next_action", first_action)
             self.assertIn("suggested_issue_title", first_action)
             self.assertTrue(first_action["blocks_minecraft_parity"])
+            self.assertIn("issue_seeds", report)
+            self.assertEqual(len(report["issue_seeds"]), len(report["actionable_scorecard"]))
+            first_seed = report["issue_seeds"][0]
+            self.assertEqual(first_seed["issue_key"], first_action["action_id"])
+            self.assertEqual(first_seed["title"], first_action["suggested_issue_title"])
+            self.assertEqual(first_seed["rank"], first_action["rank"])
+            self.assertEqual(first_seed["dimension_ids"], first_action["dimension_ids"])
+            self.assertIn("minecraft-parity", first_seed["labels"])
+            self.assertIn("benchmark", first_seed["labels"])
+            self.assertIn("next_action", first_seed)
+            self.assertIn("acceptance", first_seed)
+            self.assertGreater(len(first_seed["acceptance"]), 0)
+            self.assertEqual(
+                first_seed["created_from"]["report"],
+                "local/benchmarks/minecraft-parity-comparison-report.json",
+            )
+            self.assertFalse(first_seed["public_safety"]["requires_private_world"])
+            self.assertFalse(first_seed["public_safety"]["requires_private_assets"])
+            self.assertFalse(
+                first_seed["public_safety"]["uses_proprietary_minecraft_assets"]
+            )
+            self.assertFalse(
+                first_seed["public_safety"]["uses_copied_server_jars_or_game_data"]
+            )
+            self.assertTrue(
+                first_seed["public_safety"]["dry_run_or_synthetic_evidence_only"]
+            )
+            self.assertEqual(
+                report["issue_seed_summary"]["issue_seed_count"],
+                len(report["issue_seeds"]),
+            )
             serialized = json.dumps(report, sort_keys=True)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
@@ -712,6 +743,9 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 "ready_for_import_preview",
             )
             self.assertEqual(report["actionable_scorecard"], [])
+            self.assertEqual(report["issue_seeds"], [])
+            self.assertEqual(report["issue_seed_summary"]["issue_seed_count"], 0)
+            self.assertEqual(report["issue_seed_summary"]["scorecard_status"], "pass")
             self.assertEqual(
                 report["gap_summary_by_area"]["first_party_plugin"]["scorecard_status"],
                 "pass",
@@ -768,6 +802,55 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             }
             self.assertIn("Fix failing synthetic player join evidence", gaps["player_join_liveness"]["title"])
             self.assertIn("Fix failing headless latency evidence", gaps["latency"]["title"])
+
+    def test_issue_seeds_group_same_gap_across_hardware_lanes(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            for hardware_class in ("local-mac", "low-power-server"):
+                self.write_accepted_baseline(
+                    output_root,
+                    hardware_class=hardware_class,
+                    headless_players=True,
+                    mapblock_rows=256,
+                    entity_count=16,
+                    total_node_writes=11,
+                    cpu_evidence=True,
+                )
+            report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
+
+            self.run_harness(
+                output_root,
+                "--hardware-class",
+                "local-mac",
+                "--hardware-class",
+                "low-power-server",
+                "--output",
+                str(report_path),
+            )
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            scale_gate_seeds = [
+                seed
+                for seed in report["issue_seeds"]
+                if seed["title"] == "Parity: Prove first-party agent scale gate in accepted lanes"
+            ]
+            self.assertEqual(len(scale_gate_seeds), 1)
+            seed = scale_gate_seeds[0]
+            self.assertEqual(seed["hardware_classes"], ["local-mac", "low-power-server"])
+            self.assertEqual(seed["dimension_ids"], ["mod_plugin_ergonomics"])
+            self.assertIn("gap-area:first-party-plugin", seed["labels"])
+            self.assertIn("dimension:mod-plugin-ergonomics", seed["labels"])
+            self.assertIn("status:fail", seed["labels"])
+            self.assertGreaterEqual(len(seed["acceptance"]), 5)
+            self.assertIn("mod_plugin_ergonomics", "\n".join(seed["acceptance"]))
+            self.assertEqual(
+                report["issue_seed_summary"]["by_hardware_class"]["local-mac"],
+                len(report["issue_seeds"]),
+            )
+            self.assertEqual(
+                report["issue_seed_summary"]["by_hardware_class"]["low-power-server"],
+                len(report["issue_seeds"]),
+            )
 
     def test_actionable_scorecard_groups_same_gap_across_hardware_lanes(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -838,6 +921,9 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             "safe to run locally and on the Pi side-by-side service",
             "measured facts",
             "qualitative Minecraft-parity gaps",
+            "issue_seeds",
+            "issue_seed_summary",
+            "follow-up issue seeds",
             "proprietary Minecraft code or assets",
             "operator-supplied external references",
             "local/benchmarks",
