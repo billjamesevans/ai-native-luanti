@@ -385,6 +385,53 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             },
         )
 
+    def write_agent_tool_power_readiness_report(self, output_root):
+        tool_powers = [
+            {
+                "name": "summarize_runtime_capabilities",
+                "kind": "function_tool",
+                "direct_world_mutation": False,
+                "requires_openai_api_key": False,
+            },
+            {
+                "name": "classify_world_action",
+                "kind": "function_tool",
+                "direct_world_mutation": False,
+                "requires_openai_api_key": False,
+            },
+            {
+                "name": "WebSearchTool",
+                "kind": "hosted_tool",
+                "direct_world_mutation": False,
+                "requires_openai_api_key": True,
+            },
+        ]
+        self.write_json(
+            pathlib.Path(output_root) / "agents-sdk-sidecar-readiness.json",
+            {
+                "schema_version": 1,
+                "report_kind": "ai_native_agents_sdk_sidecar_readiness",
+                "status": "pass",
+                "mode": "managed-http",
+                "checks": {
+                    "tool_powers_declared": True,
+                    "no_direct_world_mutation_tools": True,
+                },
+                "health": {
+                    "status": "degraded",
+                    "agents_sdk_available": False,
+                    "openai_api_key_present": False,
+                    "world_mutation_authority": "luanti",
+                    "tool_powers": tool_powers,
+                },
+                "response": {
+                    "web_search_available": False,
+                    "world_mutation_authority": "luanti",
+                    "tool_powers": tool_powers,
+                },
+            },
+        )
+
     def test_harness_writes_public_safe_comparison_report_with_required_dimensions(self):
         self.assertTrue(CLI.is_file(), f"missing {CLI}")
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -427,6 +474,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "world_edit_throughput",
                     "persistence",
                     "mod_plugin_ergonomics",
+                    "agent_tool_powers",
                     "operator_visibility",
                     "recovery",
                     "memory",
@@ -471,6 +519,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "synthetic_mapblock_churn",
                     "generic_entity_scale",
                     "rollback_backed_world_edit",
+                    "agents_sdk_tool_power_probe",
                     "operator_status_and_task_control",
                 ],
             )
@@ -502,6 +551,11 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertFalse(
                 results["mod_plugin_ergonomics"]["metrics"]["compatibility_import_plugin_ready"]
             )
+            self.assertEqual(results["agent_tool_powers"]["status"], "evidence_gap")
+            self.assertEqual(results["agent_tool_powers"]["scorecard_status"], "fail")
+            self.assertFalse(
+                results["agent_tool_powers"]["metrics"]["tool_powers_declared"]
+            )
             self.assertEqual(results["operator_visibility"]["status"], "measured")
             self.assertEqual(results["recovery"]["status"], "measured")
             self.assertEqual(results["memory"]["status"], "measured")
@@ -514,6 +568,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertIn("entity_load", gap_ids)
             self.assertIn("world_edit_throughput", gap_ids)
             self.assertIn("mod_plugin_ergonomics", gap_ids)
+            self.assertIn("agent_tool_powers", gap_ids)
             self.assertIn("cpu", gap_ids)
             self.assertIn("latency", gap_ids)
             self.assertEqual(
@@ -615,6 +670,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 total_node_writes=11,
                 cpu_evidence=True,
             )
+            self.write_agent_tool_power_readiness_report(output_root)
             report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
 
             self.run_harness(output_root, "--output", str(report_path))
@@ -671,6 +727,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 first_party_loop=True,
             )
             self.write_import_inventory_discovery_report(output_root)
+            self.write_agent_tool_power_readiness_report(output_root)
             clean_profile_path = (
                 output_root / "local-mac" / "accepted" / "clean-profile-benchmark-summary.json"
             )
@@ -724,6 +781,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 cpu_evidence=True,
                 first_party_loop=True,
             )
+            self.write_agent_tool_power_readiness_report(output_root)
             report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
             completed = self.run_harness(output_root, "--output", str(report_path))
             self.assertEqual(completed.returncode, 0, completed.stderr)
@@ -756,6 +814,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 first_party_loop=True,
             )
             self.write_import_inventory_discovery_report(output_root)
+            self.write_agent_tool_power_readiness_report(output_root)
             report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
 
             self.run_harness(output_root, "--output", str(report_path))
@@ -772,6 +831,8 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 plugin["metrics"]["compatibility_import_inventory"]["status"],
                 "ready_for_import_preview",
             )
+            self.assertEqual(results["agent_tool_powers"]["status"], "measured")
+            self.assertTrue(results["agent_tool_powers"]["metrics"]["target_band_passed"])
             self.assertEqual(report["actionable_scorecard"], [])
             self.assertEqual(report["ranked_improvement_targets"], [])
             self.assertEqual(report["improvement_target_summary"]["target_count"], 0)
@@ -849,6 +910,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     total_node_writes=11,
                     cpu_evidence=True,
                 )
+            self.write_agent_tool_power_readiness_report(output_root)
             report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
 
             self.run_harness(
@@ -898,6 +960,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     total_node_writes=11,
                     cpu_evidence=True,
                 )
+            self.write_agent_tool_power_readiness_report(output_root)
             report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
             completed = subprocess.run(
                 [
@@ -943,6 +1006,9 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             "world-edit throughput",
             "persistence",
             "mod/plugin ergonomics",
+            "agent tool powers",
+            "tool_powers",
+            "Agents SDK sidecar readiness report",
             "operator visibility",
             "recovery",
             "memory",
