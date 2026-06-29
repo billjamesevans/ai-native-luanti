@@ -37,6 +37,8 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "Defender Agent",
             "Importer Agent",
             "`guide`",
+            "`help`",
+            "`commands`",
             "`status`",
             "`importer`",
             "`audit`",

@@ -4897,6 +4897,20 @@ for _, command in ipairs(guide_reply.commands) do
 end
 assert(guide_has_approve == true)
 
+local commands_reply = core.ai_agent_plugin.handle_command("Wills", "commands", {})
+assert(commands_reply.ok == true)
+assert(commands_reply.action == "guide")
+assert(commands_reply.surface_id == "guide")
+assert(commands_reply.surfaces.builder == true)
+assert(#commands_reply.product_surfaces == 5)
+local commands_has_commands_alias = false
+for _, command in ipairs(commands_reply.commands) do
+	if command == "commands" then
+		commands_has_commands_alias = true
+	end
+end
+assert(commands_has_commands_alias == true)
+
 local audit_reply = core.ai_agent_plugin.handle_command("Wills", "audit", {})
 assert(audit_reply.ok == true)
 assert(audit_reply.action == "audit")
