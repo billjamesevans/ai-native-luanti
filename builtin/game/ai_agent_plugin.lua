@@ -86,6 +86,9 @@ local PRODUCT_SURFACES = {
 			"pending plan",
 			"edit plan",
 			"discard plan",
+			"cancel plan",
+			"cancel approval",
+			"no",
 			"cancel",
 			"cancel <task_id>",
 			"follow",
@@ -2348,6 +2351,9 @@ local function handle_guide(name)
 			"edit plan platform width N depth N",
 			"edit plan radius N",
 			"discard plan",
+			"cancel plan",
+			"cancel approval",
+			"no",
 			"cancel",
 			"cancel <task_id>",
 			"stay",
@@ -2757,6 +2763,8 @@ local function handle_discard_approval(name, raw_prompt)
 	local requested_action = raw_prompt:match("^[Dd][Ii][Ss][Cc][Aa][Rr][Dd]%s+(.+)$")
 		or raw_prompt:match("^[Rr][Ee][Jj][Ee][Cc][Tt]%s+(.+)$")
 		or raw_prompt:match("^[Dd][Ee][Nn][Yy]%s+(.+)$")
+		or raw_prompt:match("^[Cc][Aa][Nn][Cc][Ee][Ll]%s+(.+)$")
+		or raw_prompt:match("^[Nn][Oo]%s+(.+)$")
 	if requested_action then
 		requested_action = requested_action:trim()
 		if requested_action:lower():match("^plan%s+.+$") then
@@ -2901,6 +2909,13 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt == "stay" or prompt == "wait" then
 		return handle_stay(name)
+	end
+	if prompt == "cancel plan" or prompt == "cancel approval"
+			or prompt == "no" or prompt == "no plan"
+			or prompt:match("^cancel%s+plan%s+.+$")
+			or prompt:match("^cancel%s+approval%s+.+$")
+			or prompt:match("^no%s+.+$") then
+		return handle_discard_approval(name, raw_prompt)
 	end
 	local requested_cancel_task_id = raw_prompt:match("^[Cc][Aa][Nn][Cc][Ee][Ll]%s+(.+)$")
 		or raw_prompt:match("^[Ss][Tt][Oo][Pp]%s+(.+)$")

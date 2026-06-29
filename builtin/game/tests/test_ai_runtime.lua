@@ -4027,6 +4027,32 @@ pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(
 	"ChatUser", "build marker")
 assert(pending_chat_ok == true)
 assert(pending_chat_text:find("status=pending_approval action=build", 1, true))
+local cancel_plan_approval_id = pending_chat_text:match("approval_id=([^%s]+)")
+assert(cancel_plan_approval_id ~= nil)
+local cancel_plan_ok, cancel_plan_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "cancel plan")
+assert(cancel_plan_ok == true)
+assert(cancel_plan_text:find("status=success action=discard_approval", 1, true))
+assert(cancel_plan_text:find("approval_id=" .. cancel_plan_approval_id, 1, true))
+assert(cancel_plan_text:find("discarded_action=build", 1, true))
+
+pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "build marker")
+assert(pending_chat_ok == true)
+assert(pending_chat_text:find("status=pending_approval action=build", 1, true))
+local no_approval_id = pending_chat_text:match("approval_id=([^%s]+)")
+assert(no_approval_id ~= nil)
+local no_chat_ok, no_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "no")
+assert(no_chat_ok == true)
+assert(no_chat_text:find("status=success action=discard_approval", 1, true))
+assert(no_chat_text:find("approval_id=" .. no_approval_id, 1, true))
+assert(no_chat_text:find("discarded_action=build", 1, true))
+
+pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "build marker")
+assert(pending_chat_ok == true)
+assert(pending_chat_text:find("status=pending_approval action=build", 1, true))
 
 local tasks_chat_ok, tasks_chat_text = core.registered_chatcommands.nova.func(
 	"ChatUser", "tasks")
@@ -4890,12 +4916,24 @@ assert(guide_surface_by_id.importer.default_clean_profile_grant == "not_granted"
 assert(guide_surface_by_id.importer.required_capabilities_granted == false)
 assert(type(guide_reply.commands) == "table")
 local guide_has_approve = false
+local guide_has_cancel_plan = false
+local guide_has_cancel_approval = false
+local guide_has_no = false
 for _, command in ipairs(guide_reply.commands) do
 	if command == "approve" then
 		guide_has_approve = true
+	elseif command == "cancel plan" then
+		guide_has_cancel_plan = true
+	elseif command == "cancel approval" then
+		guide_has_cancel_approval = true
+	elseif command == "no" then
+		guide_has_no = true
 	end
 end
 assert(guide_has_approve == true)
+assert(guide_has_cancel_plan == true)
+assert(guide_has_cancel_approval == true)
+assert(guide_has_no == true)
 
 local commands_reply = core.ai_agent_plugin.handle_command("Wills", "commands", {})
 assert(commands_reply.ok == true)
