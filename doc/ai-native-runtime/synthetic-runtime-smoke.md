@@ -133,20 +133,25 @@ paths fail the run if the retained artifact is missing required sections, exceed
 `--operator-status-max-bytes`, or contains private paths, hosts, family-showcase names, provider
 keys, provider prompts, or raw asset payload fields.
 
-Use the default synthetic-only verifier for fast feature branches that do not touch server-profile
-startup, packaging, or benchmark capture behavior.
-
-Use clean-profile verification when the branch changes runtime startup, server profile behavior,
-benchmark capture, low-power evidence, or pre-compatibility performance gates:
+The default verifier uses the clean `ai_runtime` profile so every normal pre-PR run includes
+workload evidence. Use the synthetic-only verifier only for narrow utility branches that cannot
+launch a disposable server profile:
 
 ```sh
 python3 util/ai_native_runtime_verify.py \
   --hardware-class local-mac \
-  --game-profile ai_runtime
+  --game-profile sample-synthetic
+```
+
+The default clean-profile verification command is:
+
+```sh
+python3 util/ai_native_runtime_verify.py \
+  --hardware-class local-mac
 ```
 
 The clean-profile verifier keeps the normal product-profile gate, branch gate, and focused AI
-runtime unit smoke, and also routes `--game-profile ai_runtime` through benchmark capture. The run
+runtime unit smoke, and routes the default `ai_runtime` profile through benchmark capture. The run
 directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifest.json`,
 `ai-runtime-product-profile-hygiene.json`, and
 `clean-profile-benchmark-summary.json` together with `ai-runtime-operator-status-live.json` and
