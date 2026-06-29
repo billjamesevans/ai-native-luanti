@@ -3951,6 +3951,7 @@ assert(guide_chat_text:find("importer=gated", 1, true))
 assert(guide_chat_text:find("commands=status", 1, true))
 assert(guide_chat_text:find("build marker", 1, true))
 assert(guide_chat_text:find("import plan", 1, true))
+assert(guide_chat_text:find("stay", 1, true))
 
 local pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(
 	"ChatUser", "build marker")
@@ -4161,6 +4162,49 @@ local inspected_after_cancel = core.ai_entity_ops.inspect(follow_entity_id, {
 	owner = "Wills",
 })
 assert(inspected_after_cancel.entity.pos.x == plugin_base.x + 5)
+
+local stay_player_pos = vector.add(plugin_base, { x = 12, y = 0, z = 0 })
+local stay_player = {
+	get_pos = function()
+		return table.copy(stay_player_pos)
+	end,
+}
+local stay_follow = core.ai_agent_plugin.handle_command("StayChat", "follow me", {
+	get_player_by_name = function(name)
+		if name == "StayChat" then
+			return stay_player
+		end
+		return nil
+	end,
+	spawn_entity = spawn_test_entity,
+	max_follow_steps = 4,
+	max_follow_step_distance = 1,
+	max_follow_total_distance = 8,
+	max_follow_stop_distance = 0,
+})
+assert(stay_follow.ok == true)
+core.step_ai_tasks()
+stay_player_pos = vector.add(stay_player_pos, { x = 2, y = 0, z = 0 })
+core.step_ai_tasks()
+local stay_follow_task = core.get_ai_task(stay_follow.task_id)
+assert(stay_follow_task.status == "running")
+local stay_light = core.ai_agent_plugin.handle_command("StayChat", "place 1 light", {
+	pos = stay_player_pos,
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(stay_light.ok == true)
+local stay_chat_ok, stay_chat_text = core.registered_chatcommands.nova.func(
+	"StayChat", "stay")
+assert(stay_chat_ok == true)
+assert(stay_chat_text:find("status=success action=stay", 1, true))
+assert(stay_chat_text:find("mode=stay", 1, true))
+assert(stay_chat_text:find("cancelled=1", 1, true))
+assert(core.get_ai_task(stay_follow.task_id).status == "cancelled")
+assert(core.get_ai_task(stay_light.task_id).status == "queued")
+assert(core.ai_agent_plugin.get_player_state("StayChat").mode == "stay")
+assert(core.ai_agent_plugin.get_player_state("StayChat").entity_id ~= nil)
+assert(core.cancel_ai_task(stay_light.task_id, "StayChat").status == "cancelled")
 
 local limit_player_pos = test_pos(4245)
 local limit_player = {
