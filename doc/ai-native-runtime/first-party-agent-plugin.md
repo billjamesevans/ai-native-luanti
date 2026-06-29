@@ -187,7 +187,8 @@ The default node/entity settings are intentionally generic and may not match eve
 
 `max_follow_steps`, `max_follow_step_distance`, `max_follow_total_distance`, `max_follow_stop_distance`, and `max_follow_wall_time_ms` bound continuous follow. A follow task is still a normal player-owned AI task, so the player can cancel it with `cancel`/`stop`, and the task result exposes `ai_agent.follow_step` status, movement result, distance moved, skipped or blocked reasons, and path metrics.
 
-Players can also use `stay` or `wait` when they only want to stop helper
+Together, `follow`, `come`, and `stay` form the clean-profile helper-control set.
+Players can use `stay` or `wait` when they only want to stop helper
 movement. Unlike `cancel`/`stop`, `stay` targets movement tasks only; queued
 build, repair, defend, import, audit, and rollback-review work remains under
 the normal task controls.

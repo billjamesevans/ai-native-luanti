@@ -56,6 +56,7 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "`defend`",
             "`import plan`",
             "`follow N`",
+            "`come`",
             "`build plan`",
             "`build platform width N depth N`",
             "`repair plan`",
@@ -69,6 +70,7 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "dry-run-only",
             "continuous follow",
             "total-distance budgets",
+            "helper-control set",
             "movement tasks only",
             "`ai_agent.follow_step`",
             "rollback-backed",
@@ -105,6 +107,7 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "handle_stay",
             "is_movement_task",
             '"stay"',
+            '"come"',
         ):
             self.assertIn(phrase, source)
         for forbidden in (
