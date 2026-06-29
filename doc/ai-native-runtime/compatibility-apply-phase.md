@@ -1,6 +1,6 @@
 # Compatibility Apply Phase
 
-Status: phase-two design, no-mutation planning, staged structure apply, reviewed rollback, adapter smoke implementation, and operator smoke review
+Status: phase-two design, no-mutation planning, staged structure apply, reviewed rollback, adapter smoke implementation, operator smoke review, and promotion evidence packaging
 
 ## Purpose
 
@@ -199,6 +199,36 @@ The first real structure-format slice is `ai_native_structure_v1`, carried by a 
 
 The adapter emits `public_safe_structure_v1` metadata into the dry-run report, then reuses the same approval, adapter-smoke, operator-review, chunked apply, rollback planning, and rollback execution gates. It does not parse proprietary Minecraft server behavior, ship Mojang assets, ship family-world assets, or mutate the live family world.
 
+## Reviewed Structure Promotion Package
+
+Before adding broader schematic, world, or resource-pack compatibility formats, reviewed public-safe structure imports produce a durable promotion package. This package is an operator evidence artifact, not an importer. It binds together:
+
+- the immutable dry-run report id and redacted source inventory
+- license status and operator-confirmed rights status
+- explicit operator approval state, target world, rollback policy, and budgets
+- adapter apply smoke summary
+- operator review gate status and machine-promotable flag
+- apply task ids, entrypoints, placement count, chunk count, and required capabilities
+- rollback task ids, rollback policy, metadata-readback requirement, and required capabilities
+- unsupported-feature summary
+- public-safety flags that keep private paths, raw payloads, private prompts, secrets, family-world coordinates, and live-world mutation out of the artifact
+
+The CLI shape is:
+
+```bash
+python3 util/ai_native_compat_dry_run.py \
+	--promotion-package /path/to/dry-run-report.json \
+	--approval /path/to/apply-request.json \
+	--adapter-smoke /path/to/adapter-smoke.json \
+	--adapter-review /path/to/adapter-smoke-review.json \
+	--output /path/to/structure-promotion-package.json \
+	--summary
+```
+
+The command fails closed when approval is missing, the dry-run hash does not match the approval request, the smoke/review report ids differ from the approval report id, the target is not disposable staging, the target names a family or production world, rollback metadata readback is missing, the supplied review gate is blocked, or recomputing the review from the smoke artifact is blocked.
+
+This package is intentionally limited to the first public-safe `ai_native_structure_v1` adapter. Synthetic fixtures remain useful for tests and runtime smoke coverage, but they are not eligible for operator promotion packages.
+
 ## Audit Requirements
 
 Apply must audit:
@@ -273,6 +303,7 @@ This summary is separate from the dry-run report so the dry-run artifact remains
 6. Add reviewed adapter apply smoke for disposable staging worlds before broadening supported structure formats.
 7. Add operator review for adapter smoke manifests before broadening supported structure formats.
 8. Add the first public-safe structure format adapter behind operator review before broader schematic or world conversion support.
+9. Add a reviewed public-safe structure promotion package before broader schematic or world conversion support.
 
 This order keeps compatibility import aligned with the fork strategy: AI-native runtime first, compatibility automation second, world mutation last.
 
@@ -346,4 +377,4 @@ Chunked execution writes one rollback record per chunk before that chunk's node 
 
 `core.ai_import_ops.build_apply_summary(options)` inspects queued runtime task ids and separates `queued_tasks`, `running_tasks`, `completed_tasks`, and `blocked_tasks`. It reports actual node writes, mapblock churn, elapsed runtime, rollback records, audit count, and keeps `assets_remain_operator_supplied = true` plus `dry_run_report_unchanged = true`.
 
-This executor is for disposable staging worlds and synthetic fixtures only. Showcase worlds, private family-server content, copied Minecraft assets, secrets, and local paths remain outside the fork.
+This executor is for disposable staging worlds and reviewed synthetic or public-safe adapter payloads only. Showcase worlds, private family-server content, copied Minecraft assets, secrets, and local paths remain outside the fork.

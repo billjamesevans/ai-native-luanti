@@ -10,6 +10,8 @@ import unittest
 UTIL_DIR = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(UTIL_DIR))
 
+import ai_native_compat_dry_run as compat
+
 from ai_native_compat_dry_run import (
     build_adapter_apply_smoke,
     build_apply_plan,
@@ -272,6 +274,97 @@ class CompatibilityDryRunTests(unittest.TestCase):
         )
         self.assertEqual(validate_report(report), [])
 
+    def test_public_safe_structure_promotion_package_binds_review_chain(self):
+        report, request, smoke, review = self.build_public_safe_promotion_chain()
+        builder = getattr(compat, "build_structure_import_promotion_package", None)
+
+        self.assertTrue(callable(builder), "promotion package builder is missing")
+        package = builder(report, request, smoke, review)
+
+        self.assertEqual(package["mode"], "structure_import_promotion_package")
+        self.assertEqual(package["status"], "ready_for_operator_promotion")
+        self.assertEqual(package["report_id"], "synthetic-report")
+        self.assertEqual(package["dry_run"]["source_class"], "structure")
+        self.assertEqual(package["dry_run"]["license_status"], "user_supplied")
+        self.assertEqual(package["dry_run"]["rights_status"], "operator_confirmed")
+        self.assertEqual(package["dry_run"]["structure_format"], "ai_native_structure_v1")
+        self.assertEqual(package["operator_approval"]["approval_state"], "approved")
+        self.assertEqual(package["operator_approval"]["operator"], "server")
+        self.assertEqual(package["adapter_smoke_summary"]["status"], "ready_for_disposable_staging_smoke")
+        self.assertEqual(package["review_gate"]["status"], "ready")
+        self.assertTrue(package["review_gate"]["promotable"])
+        self.assertEqual(package["apply_task_summary"]["task_count"], 1)
+        self.assertEqual(package["apply_task_summary"]["placement_count"], 5)
+        self.assertEqual(package["rollback_task_summary"]["task_count"], 1)
+        self.assertTrue(package["rollback_task_summary"]["metadata_required"])
+        self.assertEqual(package["budget_gates"]["node_writes"]["status"], "within_reviewed_limit")
+        self.assertIn("import.assets", package["capability_gates"]["required_capabilities"])
+        self.assertIn("rollback.execute", package["capability_gates"]["required_capabilities"])
+        unsupported = package["unsupported_feature_summary"]
+        self.assertEqual(unsupported["count"], len(report["unsupported_features"]))
+        self.assertIn("structure.entities", {item["feature"] for item in unsupported["features"]})
+        self.assertTrue(package["safety"]["public_safe_source"])
+        self.assertTrue(package["safety"]["no_private_source_paths"])
+        self.assertFalse(package["safety"]["world_mutation_executed"])
+        serialized = json.dumps(package)
+        self.assertNotIn(str(self.fixture_root), serialized)
+        self.assertNotIn("asset_payload", serialized.lower())
+        self.assertNotIn("server_secret_value", serialized)
+
+    def test_structure_promotion_package_rejects_blocked_or_unsafe_artifacts(self):
+        report, request, smoke, review = self.build_public_safe_promotion_chain()
+        builder = getattr(compat, "build_structure_import_promotion_package", None)
+        self.assertTrue(callable(builder), "promotion package builder is missing")
+
+        cases = {
+            "approved_actions must contain": lambda args: args[1].update({
+                "approved_actions": [],
+            }),
+            "target_world.staging": lambda args: args[2]["target_world"].update({
+                "staging": False,
+            }),
+            "live family": lambda args: args[2]["target_world"].update({
+                "world_id": "family_voxelibre",
+            }),
+            "rollback metadata": lambda args: args[2]["rollback_plan"].update({
+                "readback_required": False,
+            }),
+            "review gate": lambda args: args[3].update({
+                "status": "blocked",
+                "machine_gate": {
+                    "promotable": False,
+                    "world_mutation_executed": False,
+                    "reviewed_for": "disposable_staging_adapter_smoke",
+                },
+            }),
+        }
+
+        for expected_message, mutate in cases.items():
+            with self.subTest(expected_message=expected_message):
+                args = [
+                    json.loads(json.dumps(report)),
+                    json.loads(json.dumps(request)),
+                    json.loads(json.dumps(smoke)),
+                    json.loads(json.dumps(review)),
+                ]
+                mutate(args)
+
+                with self.assertRaisesRegex(ValueError, expected_message):
+                    builder(*args)
+
+    def test_structure_promotion_package_rejects_synthetic_structure_adapter(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        request = self.build_adapter_smoke_request(report)
+        smoke = build_adapter_apply_smoke(report, request)
+        review = review_adapter_apply_smoke(smoke)
+        builder = getattr(compat, "build_structure_import_promotion_package", None)
+
+        self.assertTrue(callable(builder), "promotion package builder is missing")
+        with self.assertRaisesRegex(ValueError, "public-safe structure adapter"):
+            builder(report, request, smoke, review)
+
     def test_cli_writes_json_report_and_summary(self):
         source = self.fixture_root / "bedrock_pack"
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -402,6 +495,15 @@ class CompatibilityDryRunTests(unittest.TestCase):
         })
         request["rollback_policy"]["policy"] = "chunked"
         return request
+
+    def build_public_safe_promotion_chain(self):
+        report = build_report(
+            self.fixture_root / "public_structure" / "open_platform.ai-structure.json"
+        )
+        request = self.build_adapter_smoke_request(report)
+        smoke = build_adapter_apply_smoke(report, request)
+        review = review_adapter_apply_smoke(smoke)
+        return report, request, smoke, review
 
     def synthetic_planned_action(self, action, status="partial"):
         return {
@@ -819,6 +921,40 @@ class CompatibilityDryRunTests(unittest.TestCase):
             self.assertTrue(review["machine_gate"]["promotable"])
             self.assertIn("review=ready", stdout.getvalue())
             self.assertIn("placements=5", stdout.getvalue())
+
+    def test_structure_promotion_package_cli_writes_machine_readable_artifact(self):
+        report, request, smoke, review = self.build_public_safe_promotion_chain()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = pathlib.Path(tmpdir)
+            report_path = tmpdir / "dry-run.json"
+            request_path = tmpdir / "apply-request.json"
+            smoke_path = tmpdir / "adapter-smoke.json"
+            review_path = tmpdir / "adapter-review.json"
+            package_path = tmpdir / "promotion-package.json"
+            report_path.write_text(json.dumps(report, indent=2, sort_keys=True), encoding="utf-8")
+            request_path.write_text(json.dumps(request, indent=2, sort_keys=True), encoding="utf-8")
+            smoke_path.write_text(json.dumps(smoke, indent=2, sort_keys=True), encoding="utf-8")
+            review_path.write_text(json.dumps(review, indent=2, sort_keys=True), encoding="utf-8")
+            stdout = io.StringIO()
+
+            with contextlib.redirect_stdout(stdout):
+                try:
+                    exit_code = main([
+                        "--promotion-package", str(report_path),
+                        "--approval", str(request_path),
+                        "--adapter-smoke", str(smoke_path),
+                        "--adapter-review", str(review_path),
+                        "--output", str(package_path),
+                        "--summary",
+                    ])
+                except SystemExit as exc:
+                    exit_code = exc.code
+
+            self.assertEqual(exit_code, 0)
+            package = json.loads(package_path.read_text(encoding="utf-8"))
+            self.assertEqual(package["status"], "ready_for_operator_promotion")
+            self.assertIn("promotion=ready_for_operator_promotion", stdout.getvalue())
+            self.assertIn("rollback_tasks=1", stdout.getvalue())
 
     def test_structure_apply_rejects_over_budget_request(self):
         report = build_report(self.fixture_root / "structure" / "example.mcstructure")
