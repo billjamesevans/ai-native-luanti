@@ -23,7 +23,7 @@ PRIVATE_REDACTIONS = (
     (re.compile(r"\bminecraftpi(?:\.home)?\b", re.I), "<redacted-private-host>"),
     (re.compile(r"\b192\.168(?:\.\d{1,3}){2}\b"), "<redacted-private-ip>"),
     (re.compile(r"\bspacebase|themepark|showcase100|disneyland100\b", re.I), "<redacted-private-demo>"),
-    (re.compile(r"sk-[A-Za-z0-9_-]{20,}"), "<redacted-secret>"),
+    (re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}"), "<redacted-secret>"),
     (re.compile(r"\bOPENAI_API_KEY\b"), "<redacted-secret-env>"),
     (re.compile(r"\bprivate_prompt\b"), "<redacted-private-prompt>"),
     (re.compile(r"\basset_payload\b"), "<redacted-asset-payload>"),

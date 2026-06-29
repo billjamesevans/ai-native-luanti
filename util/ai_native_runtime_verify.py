@@ -17,6 +17,7 @@ import ai_native_benchmark_capture
 import ai_native_operator_action_approval_plan
 import ai_native_operator_action_approval_receipt
 import ai_native_operator_task_control_executor
+import ai_native_operator_task_control_live_probe
 import ai_native_operator_control_report
 
 
@@ -29,6 +30,7 @@ OPERATOR_CONTROL_REPORT_NAME = "ai-runtime-operator-control-report.json"
 OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.json"
 OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-receipt.json"
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
+OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -79,7 +81,7 @@ PRIVATE_REDACTIONS = (
     (re.compile(r"\bminecraftpi(?:\.home)?\b", re.I), "<private-host>"),
     (re.compile(r"\b192\.168(?:\.\d{1,3}){2}\b"), "<private-ip>"),
     (re.compile(r"\bspacebase|themepark|showcase100|disneyland100\b", re.I), "<private-demo>"),
-    (re.compile(r"sk-[A-Za-z0-9_-]{20,}"), "<secret>"),
+    (re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}"), "<secret>"),
     (re.compile(r"\bOPENAI_API_KEY\b"), "<secret-env>"),
     (re.compile(r"\bprivate_prompt\b"), "<private-prompt>"),
     (re.compile(r"\basset_payload\b"), "<asset-payload>"),
@@ -154,6 +156,10 @@ def operator_action_approval_receipt_artifact_path(args) -> Path:
 
 def operator_action_execution_result_artifact_path(args) -> Path:
     return physical_run_dir(args) / OPERATOR_ACTION_EXECUTION_RESULT_NAME
+
+
+def operator_task_control_live_result_artifact_path(args) -> Path:
+    return physical_run_dir(args) / OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME
 
 
 def operator_status_artifact_name(args) -> str:
@@ -289,6 +295,7 @@ def build_steps(args) -> list[CommandStep]:
             + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
         ),
         build_operator_status_step(args),
+        build_operator_task_control_live_step(args),
         CommandStep(
             "ai_runtime_focused_tests",
             "Focused AI runtime unit smoke",
@@ -382,6 +389,44 @@ def build_operator_status_step(args) -> CommandStep:
             operator_status_generated_at(args),
             "--max-bytes",
             str(args.operator_status_max_bytes),
+        ),
+    )
+
+
+def build_operator_task_control_live_step(args) -> CommandStep:
+    return CommandStep(
+        "operator_task_control_live_probe",
+        "Receipt-gated task control probe in disposable ai_runtime queue",
+        [
+            args.python,
+            "util/ai_native_operator_task_control_live_probe.py",
+            "--root",
+            ".",
+            "--server-bin",
+            args.server_bin,
+            "--output",
+            str(operator_task_control_live_result_artifact_path(args)),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.operator_task_control_live_result_max_bytes),
+            "--timeout",
+            str(args.operator_task_control_live_timeout),
+        ],
+        python_manifest_command(
+            "util/ai_native_operator_task_control_live_probe.py",
+            "--root",
+            ".",
+            "--server-bin",
+            server_manifest_bin(args.server_bin),
+            "--output",
+            logical_path(args, OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.operator_task_control_live_result_max_bytes),
+            "--timeout",
+            str(args.operator_task_control_live_timeout),
         ),
     )
 
@@ -621,6 +666,35 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def operator_task_control_live_evidence(args) -> tuple[dict, list[str]]:
+    path = operator_task_control_live_result_artifact_path(args)
+    source_path = logical_path(args, OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME)
+    evidence = {
+        "operator_task_control_live_status": "fail",
+        "operator_task_control_live_path": source_path,
+        "source_kind": "disposable_live_ai_runtime_queue_probe",
+        "direct_command_execution": True,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("operator_task_control_live_probe artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        evidence.update(
+            ai_native_operator_task_control_live_probe.validate_live_result(
+                payload,
+                max_bytes=args.operator_task_control_live_result_max_bytes,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"operator_task_control_live_probe artifact invalid: {type(exc).__name__}")
+    evidence["operator_task_control_live_status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def build_step_manifest(step: CommandStep, result: CommandRun, max_output_chars: int) -> dict:
     status = "pass" if result.returncode == 0 else "fail"
     payload = {
@@ -675,11 +749,21 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 OPERATOR_ACTION_EXECUTION_RESULT_NAME,
             )
+        if step.id == "operator_task_control_live_probe":
+            artifact_paths["operator_task_control_live_result"] = logical_path(
+                args,
+                OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME,
+            )
 
     operator_evidence = None
     if operator_status_step_ran:
         operator_evidence, operator_failures = operator_status_evidence(args)
         failure_reasons.extend(operator_failures)
+
+    operator_task_control_live = None
+    if any(step.id == "operator_task_control_live_probe" for step, _ in command_results):
+        operator_task_control_live, live_failures = operator_task_control_live_evidence(args)
+        failure_reasons.extend(live_failures)
 
     manifest = {
         "schema_version": 1,
@@ -717,6 +801,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     }
     if operator_evidence is not None:
         manifest["operator_status_evidence"] = operator_evidence
+    if operator_task_control_live is not None:
+        manifest["operator_task_control_live_evidence"] = operator_task_control_live
     return manifest
 
 
@@ -877,6 +963,18 @@ def parse_args(argv=None):
         type=int,
         default=20000,
         help="Maximum byte budget for the derived operator action execution result artifact.",
+    )
+    parser.add_argument(
+        "--operator-taREDACTED_KEY_FIXTURE",
+        type=int,
+        default=22000,
+        help="Maximum byte budget for the operator task-control live probe artifact.",
+    )
+    parser.add_argument(
+        "--operator-taREDACTED_KEY_FIXTURE",
+        type=float,
+        default=20.0,
+        help="Seconds to wait for the disposable operator task-control live probe.",
     )
     return parser.parse_args(argv)
 

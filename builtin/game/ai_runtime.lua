@@ -99,6 +99,7 @@ local function public_task(task)
 		progress = table.copy(task.progress),
 		last_result = table.copy(task.last_result),
 		duration_us = task.duration_us,
+		retry_count = task.retry_count or 0,
 	}
 end
 
@@ -3700,6 +3701,7 @@ function core.queue_ai_task(def)
 			current = 0,
 			total = #steps,
 		},
+		retry_count = 0,
 		steps = steps,
 		last_result = {},
 	}
@@ -3744,6 +3746,49 @@ function core.cancel_ai_task(task_id, actor)
 		status = "cancelled",
 		reason = "task_cancelled",
 		message = "Task was cancelled.",
+	})
+	return table.copy(task.last_result)
+end
+
+function core.retry_ai_task(task_id, actor)
+	local task = core.registered_ai_tasks[task_id]
+	if not task then
+		return make_task_result(task_id, false, "not_found", "unknown_task",
+			"Task is not registered.")
+	end
+	if task.status == "completed" then
+		return make_task_result(task_id, false, "completed", "task_completed",
+			"Task is already completed.")
+	end
+	if task.status == "cancelled" then
+		return make_task_result(task_id, false, "cancelled", "task_cancelled",
+			"Task is already cancelled.")
+	end
+	if task.status ~= "blocked" and task.status ~= "failed" and task.status ~= "unsafe" then
+		return make_task_result(task_id, false, task.status or "unknown",
+			"task_not_retryable", "Only blocked, failed, or unsafe tasks can be retried.")
+	end
+	if actor ~= task.owner and actor ~= "admin"
+			and not core.agent_has_capability(actor, "admin.override") then
+		return make_task_result(task_id, false, "permission_denied",
+			"retry_denied", "Only the task owner or an admin can retry this task.")
+	end
+
+	task.status = "queued"
+	task.progress.current = 0
+	task.started_at = nil
+	task.duration_us = nil
+	task.duration_recorded = nil
+	task.retry_count = (task.retry_count or 0) + 1
+	task.updated_at = core.get_us_time and core.get_us_time() or task.updated_at
+	task.last_result = make_task_result(task_id, true, "queued",
+		"task_retried", "Task was returned to the queue.")
+	task.last_result.retry_count = task.retry_count
+	increment_metric("tasks_retried")
+	record_task_audit("task.retried", task, {
+		status = "queued",
+		reason = "task_retried",
+		message = "Task was returned to the queue.",
 	})
 	return table.copy(task.last_result)
 end
