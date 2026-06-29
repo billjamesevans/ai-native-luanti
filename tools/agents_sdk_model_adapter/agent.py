@@ -40,6 +40,37 @@ FORBIDDEN_RESPONSE_KEYS = {
 }
 
 
+TOOL_POWER_MANIFEST = (
+    {
+        "name": "summarize_runtime_capabilities",
+        "kind": "function_tool",
+        "runtime_power": "capability_summary",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_capability_checks",
+    },
+    {
+        "name": "classify_world_action",
+        "kind": "function_tool",
+        "runtime_power": "world_action_policy_classification",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_task_preview_approval_rollback",
+    },
+    {
+        "name": "WebSearchTool",
+        "kind": "hosted_tool",
+        "runtime_power": "public_web_lookup",
+        "read_only": True,
+        "available_without_provider_credentials": False,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_model_adapter_response_only",
+    },
+)
+
+
 def _bounded_text(value: Any, max_bytes: int) -> str:
     text = str(value or "")
     encoded = text.encode("utf-8")
@@ -68,6 +99,24 @@ def _sdk_available() -> bool:
 
 def _sdk_ready() -> bool:
     return _sdk_available() and bool(os.getenv("OPENAI_API_KEY"))
+
+
+def tool_power_manifest() -> list[dict[str, Any]]:
+    powers: list[dict[str, Any]] = []
+    for entry in TOOL_POWER_MANIFEST:
+        power = dict(entry)
+        if power["name"] == "WebSearchTool":
+            power["available"] = WebSearchTool is not None
+            power["requires_openai_api_key"] = True
+        else:
+            power["available"] = True
+            power["requires_openai_api_key"] = False
+        powers.append(power)
+    return powers
+
+
+def tool_power_names() -> list[str]:
+    return [power["name"] for power in tool_power_manifest()]
 
 
 @function_tool
@@ -135,6 +184,8 @@ def adapter_health() -> dict[str, Any]:
         "agents_sdk_available": _sdk_available(),
         "openai_api_key_present": bool(os.getenv("OPENAI_API_KEY")),
         "web_search_tool_available": WebSearchTool is not None,
+        "tool_powers": tool_power_manifest(),
+        "world_mutation_authority": "luanti",
         "adapter_name": ADAPTER_NAME,
         "contract": "provider_neutral_v1",
     }
@@ -182,11 +233,9 @@ def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
         "response": {
             "agentic_execution": False,
             "web_search_used": False,
-            "tools_enabled": [
-                "summarize_runtime_capabilities",
-                "classify_world_action",
-                "WebSearchTool",
-            ],
+            "tools_enabled": tool_power_names(),
+            "tool_powers": tool_power_manifest(),
+            "world_mutation_authority": "luanti",
             "guidance": (
                 "The sidecar is configured for Agents SDK execution. Set "
                 "OPENAI_API_KEY and install openai-agents to enable live agent "
@@ -254,11 +303,9 @@ def run_model_adapter_request(
         "response": {
             "agentic_execution": True,
             "web_search_available": WebSearchTool is not None,
-            "tools_enabled": [
-                "summarize_runtime_capabilities",
-                "classify_world_action",
-                "WebSearchTool",
-            ],
+            "tools_enabled": tool_power_names(),
+            "tool_powers": tool_power_manifest(),
+            "world_mutation_authority": "luanti",
         },
     })
 

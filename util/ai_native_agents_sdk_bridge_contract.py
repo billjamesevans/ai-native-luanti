@@ -72,6 +72,11 @@ def validate_contract() -> dict:
         "Agent(",
         "Runner.run",
         "WebSearchTool()",
+        "TOOL_POWER_MANIFEST",
+        "def tool_power_manifest",
+        '"tool_powers": tool_power_manifest()',
+        '"direct_world_mutation": False',
+        '"world_mutation_authority": "luanti"',
         "core.ai_model_ops.request",
         "ai_native_model_adapter_response",
         "FORBIDDEN_RESPONSE_KEYS",
@@ -98,6 +103,8 @@ def validate_contract() -> dict:
         "endpoint_not_loopback",
         "no_provider_credentials_required",
         "no_forbidden_payload_keys",
+        "tool_powers_declared",
+        "no_direct_world_mutation_tools",
     ):
         _require(phrase in readiness_source, "readiness_source_missing_phrase", phrase, violations)
 
@@ -164,6 +171,13 @@ def validate_contract() -> dict:
             "offline_response_should_not_claim_live_agent", str(response), violations)
         _require("WebSearchTool" in nested.get("tools_enabled", []),
             "offline_response_missing_web_search_tool", str(response), violations)
+        tool_powers = nested.get("tool_powers") if isinstance(nested.get("tool_powers"), list) else []
+        _require(any(power.get("name") == "WebSearchTool" for power in tool_powers if isinstance(power, dict)),
+            "offline_response_missing_web_search_power", str(response), violations)
+        _require(all(power.get("direct_world_mutation") is False for power in tool_powers if isinstance(power, dict)),
+            "offline_response_tool_can_mutate_world", str(response), violations)
+        _require(nested.get("world_mutation_authority") == "luanti",
+            "offline_response_mutation_authority_invalid", str(response), violations)
         _require(not any(key in response for key in (
             "raw_provider_request",
             "raw_provider_response",
@@ -182,6 +196,7 @@ def validate_contract() -> dict:
             "http_adapter_endpoint": True,
             "lua_sidecar_adapter": True,
             "sidecar_readiness_probe": True,
+            "tool_power_manifest": True,
             "offline_smoke": True,
             "public_safe_docs": True,
         },
