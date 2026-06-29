@@ -8,4 +8,6 @@ The base mod also declares `capability_profile = "clean"` for the first-party ag
 
 Default rollback storage is enabled for this profile so rollback-backed build and repair commands can persist local rollback metadata before mutating a disposable world.
 
+The clean profile expects the core operator status and receipt-gated task-control commands to be present as product runtime surfaces. They are server-privileged, bounded, public-safe, and separate from synthetic smoke or benchmark commands.
+
 Runtime unit tests, synthetic smoke scenarios, and benchmark fixtures stay outside this profile. Use this profile for disposable local worlds and future low-power proving-ground checks after the one-command verification harness passes.

@@ -327,6 +327,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "requires_explicit_dev_or_test_lane": False,
                 },
                 {
+                    "name": "ai_operator_task_control",
+                    "category": "product_runtime",
+                    "loaded_by_default_product_profile": True,
+                    "requires_explicit_dev_or_test_lane": False,
+                },
+                {
                     "name": "ai_runtime_smoke",
                     "category": "unit_test_helper",
                     "loaded_by_default_product_profile": False,
@@ -353,6 +359,26 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "status": "gated",
                 },
             ],
+            "required_runtime_surfaces": [
+                {
+                    "name": "ai_operator_status",
+                    "command": "ai_runtime_operator_status",
+                    "status": "present",
+                    "loaded_by_default_product_profile": True,
+                    "command_registered": True,
+                    "server_privilege_required": True,
+                    "public_safe_output_required": True,
+                },
+                {
+                    "name": "ai_operator_task_control",
+                    "command": "ai_runtime_operator_task_control",
+                    "status": "present",
+                    "loaded_by_default_product_profile": True,
+                    "command_registered": True,
+                    "server_privilege_required": True,
+                    "public_safe_output_required": True,
+                },
+            ],
             "test_only_files": ["builtin/game/tests/test_ai_runtime.lua"],
             "test_only_paths": ["util/tests/fixtures/compat", "util/tests"],
             "violations": [],
@@ -360,6 +386,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "no_private_content": True,
                 "dev_surfaces_disabled_by_default": True,
                 "test_fixtures_explicit_only": True,
+                "runtime_surfaces_available": True,
             },
         }
         path.write_text(json.dumps(report, indent=2), encoding="utf-8")
@@ -615,6 +642,20 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertTrue(
                 manifest["product_profile_evidence"]["test_fixtures_explicit_only"]
+            )
+            self.assertTrue(
+                manifest["product_profile_evidence"]["runtime_surfaces_available"]
+            )
+            self.assertEqual(
+                manifest["product_profile_evidence"]["runtime_surface_count"],
+                2,
+            )
+            self.assertEqual(
+                manifest["product_profile_evidence"]["runtime_surface_commands"],
+                [
+                    "ai_runtime_operator_status",
+                    "ai_runtime_operator_task_control",
+                ],
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
             self.assertEqual(manifest["operator_status_evidence"]["package_status"], "ready")
@@ -1682,6 +1723,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                                 "no_private_content": True,
                                 "dev_surfaces_disabled_by_default": False,
                                 "test_fixtures_explicit_only": False,
+                                "runtime_surfaces_available": False,
                             },
                         },
                     )
@@ -1725,6 +1767,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertIn(
                 "product_profile_hygiene test fixtures are not explicit-only",
+                " ".join(manifest["failure_reasons"]),
+            )
+            self.assertIn(
+                "product_profile_hygiene runtime surfaces are not available",
                 " ".join(manifest["failure_reasons"]),
             )
             serialized = json.dumps(manifest, sort_keys=True)

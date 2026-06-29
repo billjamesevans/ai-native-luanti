@@ -757,6 +757,9 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
         "no_private_content": False,
         "dev_surfaces_disabled_by_default": False,
         "test_fixtures_explicit_only": False,
+        "runtime_surfaces_available": False,
+        "runtime_surface_count": 0,
+        "runtime_surface_commands": [],
     }
     reasons = []
     if not path.is_file():
@@ -779,6 +782,16 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
     safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
     violations = payload.get("violations") if isinstance(payload.get("violations"), list) else []
     product_mods = profile.get("product_mods") if isinstance(profile.get("product_mods"), list) else []
+    runtime_surfaces = (
+        payload.get("required_runtime_surfaces")
+        if isinstance(payload.get("required_runtime_surfaces"), list)
+        else []
+    )
+    runtime_surface_commands = [
+        sanitize_text(str(surface.get("command", "")))
+        for surface in runtime_surfaces
+        if isinstance(surface, dict)
+    ]
     evidence.update({
         "status": "fail",
         "game_profile": sanitize_text(str(profile.get("gameid", ""))),
@@ -788,6 +801,9 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
         "no_private_content": safety.get("no_private_content") is True,
         "dev_surfaces_disabled_by_default": safety.get("dev_surfaces_disabled_by_default") is True,
         "test_fixtures_explicit_only": safety.get("test_fixtures_explicit_only") is True,
+        "runtime_surfaces_available": safety.get("runtime_surfaces_available") is True,
+        "runtime_surface_count": len(runtime_surfaces),
+        "runtime_surface_commands": runtime_surface_commands,
     })
 
     if payload.get("status") != "pass":
@@ -802,6 +818,22 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
         reasons.append("product_profile_hygiene dev surfaces are not disabled by default")
     if safety.get("test_fixtures_explicit_only") is not True:
         reasons.append("product_profile_hygiene test fixtures are not explicit-only")
+    if safety.get("runtime_surfaces_available") is not True:
+        reasons.append("product_profile_hygiene runtime surfaces are not available")
+    for surface in runtime_surfaces:
+        if not isinstance(surface, dict):
+            reasons.append("product_profile_hygiene runtime surface entry is invalid")
+            continue
+        if surface.get("status") != "present":
+            reasons.append("product_profile_hygiene runtime surface is not present")
+        if surface.get("loaded_by_default_product_profile") is not True:
+            reasons.append("product_profile_hygiene runtime surface is not loaded by default")
+        if surface.get("command_registered") is not True:
+            reasons.append("product_profile_hygiene runtime surface command is not registered")
+        if surface.get("server_privilege_required") is not True:
+            reasons.append("product_profile_hygiene runtime surface server privilege is missing")
+        if surface.get("public_safe_output_required") is not True:
+            reasons.append("product_profile_hygiene runtime surface public-safe output is not required")
 
     evidence["status"] = "fail" if reasons else "pass"
     evidence["failure_count"] = len(reasons)
