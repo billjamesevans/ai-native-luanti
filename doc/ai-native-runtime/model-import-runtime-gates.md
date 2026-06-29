@@ -13,7 +13,7 @@ These gates are intentionally narrow. They prove capability enforcement, queued-
 
 ## Model Requests
 
-`core.ai_model_ops.request(prompt, options)` calls an injected model adapter only after the agent passes the `http.llm` capability check.
+`core.ai_model_ops.request(prompt, options)` calls an injected model adapter only after the agent passes the `http.llm` capability check. The adapter receives the provider-neutral request envelope documented in [Model adapter contract](model-adapter-contract.md).
 
 Required options:
 
@@ -28,9 +28,11 @@ Optional options:
 - `private_prompt`
 - `adapter_name`
 
-The operation records a `model.request` audit event before the adapter call and records adapter outcome through the existing `model.adapter` metric/audit path. Private prompt payloads are not retained unless runtime audit options explicitly enable private payload retention.
+The operation records a `model.request` audit event before the adapter call and records adapter outcome through the existing `model.adapter` metric/audit path. Private prompt payloads are not forwarded to the adapter request envelope and are not retained unless runtime audit options explicitly enable private payload retention.
 
 When the agent lacks `http.llm`, the operation returns a structured blocked result with `reason = "missing_capability"`. When no adapter is configured, it returns `model_adapter_unavailable`.
+
+Adapter result tables that include raw provider requests, raw provider responses, credentials, headers, private payloads, or raw asset payloads are rejected with `adapter_payload_rejected` before they become player-facing replies.
 
 ## Import Planning
 

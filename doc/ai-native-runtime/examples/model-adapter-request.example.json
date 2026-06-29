@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "request_kind": "ai_native_model_adapter_request",
+  "adapter_contract": "provider_neutral_v1",
+  "agent_id": "nova_agent:Example",
+  "owner": "Example",
+  "task_id": "task:example-model",
+  "public_prompt": "Suggest the next safe building task.",
+  "context": {
+    "player_name": "Example",
+    "world_id": "public-alpha",
+    "intent": "guide"
+  },
+  "safety": {
+    "public_safe_request": true,
+    "private_input_retained": false,
+    "no_provider_credentials": true,
+    "no_raw_media_payloads": true
+  },
+  "bounds": {
+    "max_response_bytes": 4000,
+    "max_context_keys": 16
+  }
+}

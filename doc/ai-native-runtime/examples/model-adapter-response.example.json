@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "response_kind": "ai_native_model_adapter_response",
+  "ok": true,
+  "message": "Start with a small rollback-backed marker build near the player.",
+  "adapter_name": "example-provider-neutral",
+  "reason": "model_response",
+  "elapsed_us": 50000,
+  "response": {
+    "suggested_action": "build_marker",
+    "requires_approval": true
+  }
+}
