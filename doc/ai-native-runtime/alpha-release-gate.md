@@ -66,17 +66,44 @@ python3 util/ai_native_low_power_pi_evidence.py \
   --confirm-backup-first \
   --backup-artifact-label "<backup-archive-name>" \
   --backup-sha256 "<backup-sha256>" \
-  --soak-iterations 3 \
-  --soak-interval-seconds 30
+  --soak-target quick
 ```
 
 The generated manifest must stay public-safe: it records the low-power verifier
 summary, strict headless-client player-load evidence, attempted/connected
 synthetic player counts, join-log latency proxy evidence, bounded CPU and memory
-samples, actionable warning/error counts, fork-service restart evidence, repeated
-soak iteration results, and the UDP `30000`/`30001` service split. It must not
-write the private SSH target, private host/IP, remote checkout path,
-family-world content, prompts, copied assets, or raw service paths.
+samples, actionable warning/error counts, compatibility import staging-pilot
+evidence, fork-service restart evidence, ranked follow-up issue seeds, repeated
+soak iteration results, named soak target duration evidence, and the UDP
+`30000`/`30001` service split. It must not write the private SSH target, private
+host/IP, remote checkout path, family-world content, prompts, copied assets, or
+raw service paths.
+
+The promoted v0.3 target is a one-hour soak after the quick post-deploy proof:
+
+```bash
+python3 util/ai_native_low_power_pi_evidence.py \
+  --ssh-target "<operator-supplied-target>" \
+  --confirm-backup-first \
+  --backup-artifact-label "<backup-archive-name>" \
+  --backup-sha256 "<backup-sha256>" \
+  --soak-target one-hour \
+  --soak-iterations 13 \
+  --soak-interval-seconds 300
+```
+
+The overnight path uses the same gate after the one-hour target is clean:
+
+```bash
+python3 util/ai_native_low_power_pi_evidence.py \
+  --ssh-target "<operator-supplied-target>" \
+  --confirm-backup-first \
+  --backup-artifact-label "<backup-archive-name>" \
+  --backup-sha256 "<backup-sha256>" \
+  --soak-target overnight \
+  --soak-iterations 17 \
+  --soak-interval-seconds 1800
+```
 
 Default low-power budgets are explicit and can be tightened per run:
 
