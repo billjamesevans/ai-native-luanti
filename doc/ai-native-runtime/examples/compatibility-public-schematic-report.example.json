@@ -1,0 +1,207 @@
+{
+  "generated_at": "2026-06-29T07:53:45Z",
+  "mode": "dry_run",
+  "planned_actions": [
+    {
+      "action": "import_structure",
+      "description": "Estimate structure placement for a later apply phase.",
+      "mutation_cost": {
+        "entity_definitions": 0,
+        "manual_review_items": 2,
+        "mapblock_churn": 3,
+        "media_files": 0,
+        "node_writes": 5
+      },
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "status": "partial",
+      "structure_adapter": {
+        "adapter_kind": "public_safe_structure_v1",
+        "dimensions": {
+          "x": 35,
+          "y": 2,
+          "z": 1
+        },
+        "estimated_from_preflight": true,
+        "fixture_name": "open_platform_schematic_preflight",
+        "mapblock_churn": 3,
+        "payload_policy": "metadata_only",
+        "placement_count": 5,
+        "placements": [
+          {
+            "node_name": "default:stone",
+            "pos": {
+              "x": 0,
+              "y": 0,
+              "z": 0
+            }
+          },
+          {
+            "node_name": "default:stone",
+            "param1": 1,
+            "param2": 2,
+            "pos": {
+              "x": 1,
+              "y": 0,
+              "z": 0
+            }
+          },
+          {
+            "node_name": "default:glass",
+            "pos": {
+              "x": 16,
+              "y": 0,
+              "z": 0
+            }
+          },
+          {
+            "node_name": "default:glass",
+            "pos": {
+              "x": 17,
+              "y": 0,
+              "z": 0
+            }
+          },
+          {
+            "node_name": "air",
+            "pos": {
+              "x": 34,
+              "y": 1,
+              "z": 0
+            }
+          }
+        ],
+        "private_reference_count": 0,
+        "public_safe": true,
+        "recommended_chunk_count": 3,
+        "recommended_chunk_size": 2,
+        "source_adapter_kind": "public_safe_schematic_preflight_v1",
+        "source_format": "schematic",
+        "structure_format": "ai_native_schematic_preflight_v1",
+        "synthetic": false,
+        "unsupported_field_count": 2
+      }
+    },
+    {
+      "action": "skip_feature",
+      "description": "Record unsupported features without importing them.",
+      "mutation_cost": {
+        "entity_definitions": 0,
+        "manual_review_items": 2,
+        "mapblock_churn": 0,
+        "media_files": 0,
+        "node_writes": 0
+      },
+      "required_capabilities": [
+        "import.assets"
+      ],
+      "status": "skipped"
+    }
+  ],
+  "report_version": 1,
+  "safety": {
+    "no_assets_copied": true,
+    "no_world_mutation": true,
+    "notes": [
+      "Dry run inventories metadata and paths only.",
+      "Apply-phase work must run through reviewed import tasks."
+    ],
+    "source_paths_redacted": true,
+    "user_rights_required": true
+  },
+  "sections": [
+    {
+      "counts": {
+        "estimated_mapblock_churn": 3,
+        "estimated_node_writes": 5,
+        "items": 1,
+        "manual_review_items": 2
+      },
+      "items_total": 1,
+      "message": "Structure files require an apply-phase placement review.",
+      "name": "structures",
+      "status": "partial"
+    }
+  ],
+  "source": {
+    "content_hashes": [
+      {
+        "algorithm": "sha256",
+        "purpose": "inventory path and size hash",
+        "value": "ce0ceddfded082d0da3de382736d95ae365704a30593611dc6c42b2b627be3ac"
+      }
+    ],
+    "inventory": [
+      {
+        "classification": "blocked",
+        "entry_id": "entry:1",
+        "reason": "public_safe_schematic_preflight_review_required",
+        "required_capabilities": [
+          "import.assets"
+        ],
+        "size_bytes": 1773,
+        "source_kind": "structure",
+        "source_path": "open_platform.ai-schematic-preflight.json"
+      }
+    ],
+    "license_status": "user_supplied",
+    "metadata": {
+      "adapter_kind": "public_safe_structure_v1",
+      "dimensions": {
+        "x": 35,
+        "y": 2,
+        "z": 1
+      },
+      "estimated_from_preflight": true,
+      "fixture_name": "open_platform_schematic_preflight",
+      "fixture_version": 1,
+      "palette_count": 3,
+      "payload_policy": "metadata_only",
+      "placement_count": 5,
+      "source_adapter_kind": "public_safe_schematic_preflight_v1",
+      "source_format": "schematic",
+      "structure_format": "ai_native_schematic_preflight_v1",
+      "unsupported_field_count": 2
+    },
+    "path_policy": "external_reference",
+    "source_class": "structure",
+    "source_id": "open_platform.ai-schematic-preflight.json"
+  },
+  "summary": {
+    "estimated_world_mutations": {
+      "entity_definitions": 0,
+      "manual_review_items": 4,
+      "mapblock_churn": 3,
+      "media_files": 0,
+      "node_writes": 5
+    },
+    "items_total": 1,
+    "partial": 1,
+    "risk_level": "high",
+    "skipped": 1,
+    "supported": 0,
+    "unknown": 0,
+    "unsupported": 2
+  },
+  "unsupported_features": [
+    {
+      "feature": "structure.block_entities",
+      "message": "Schematic block entities are reported for manual review and not imported.",
+      "reason": "requires_manual_review",
+      "recommendation": "Map block entities manually after a public-safe adapter supports them.",
+      "severity": "warning",
+      "source_path": "open_platform_schematic_preflight#block_entities",
+      "status": "unsupported"
+    },
+    {
+      "feature": "structure.biomes",
+      "message": "Biome metadata is reported for manual review and not imported.",
+      "reason": "requires_manual_review",
+      "recommendation": "Keep biome data out of staged apply until a compatible mapping exists.",
+      "severity": "warning",
+      "source_path": "open_platform_schematic_preflight#biomes",
+      "status": "unsupported"
+    }
+  ]
+}

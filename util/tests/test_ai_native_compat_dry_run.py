@@ -274,6 +274,63 @@ class CompatibilityDryRunTests(unittest.TestCase):
         )
         self.assertEqual(validate_report(report), [])
 
+    def test_published_schema_covers_public_safe_structure_reports(self):
+        schema_path = (
+            UTIL_DIR.parent / "doc" / "ai-native-runtime" / "schemas"
+            / "compatibility-dry-run-report.schema.json"
+        )
+        schema = json.loads(schema_path.read_text(encoding="utf-8"))
+        public_structure = build_report(
+            self.fixture_root / "public_structure" / "open_platform.ai-structure.json"
+        )
+        public_schematic = build_report(
+            self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json"
+        )
+        private_reference = build_report(
+            self.fixture_root / "public_structure" / "private_reference.ai-structure.json"
+        )
+
+        metadata_types = schema["properties"]["source"]["properties"]["metadata"][
+            "additionalProperties"
+        ]["type"]
+        self.assertIn("object", metadata_types)
+        self.assertIn(
+            "private_reference_not_imported",
+            schema["$defs"]["unsupported_feature"]["properties"]["reason"]["enum"],
+        )
+
+        adapter_schema = schema["$defs"]["structure_adapter"]
+        branches = adapter_schema["oneOf"]
+        adapter_kinds = {
+            branch["properties"]["adapter_kind"]["const"]
+            for branch in branches
+        }
+        self.assertEqual(
+            adapter_kinds,
+            {"synthetic_structure_v1", "public_safe_structure_v1"},
+        )
+
+        public_branch = next(
+            branch for branch in branches
+            if branch["properties"]["adapter_kind"]["const"] == "public_safe_structure_v1"
+        )
+        public_props = public_branch["properties"]
+        for report in (public_structure, public_schematic, private_reference):
+            adapter = next(
+                action["structure_adapter"]
+                for action in report["planned_actions"]
+                if action["action"] == "import_structure"
+            )
+            with self.subTest(source_id=report["source"]["source_id"]):
+                self.assertTrue(set(adapter).issubset(public_props))
+                self.assertEqual(adapter["adapter_kind"], "public_safe_structure_v1")
+                self.assertTrue(adapter["public_safe"])
+                self.assertFalse(adapter["synthetic"])
+                self.assertIn(adapter["structure_format"], {
+                    "ai_native_structure_v1",
+                    "ai_native_schematic_preflight_v1",
+                })
+
     def test_public_safe_schematic_preflight_emits_structure_handoff(self):
         source = self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json"
 
@@ -488,6 +545,28 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 report = build_report(self.fixture_root / fixture_name)
 
                 self.assertEqual(validate_report(report), [])
+
+    def test_public_example_reports_cover_structure_and_luanti_mod_metadata(self):
+        examples_dir = UTIL_DIR.parent / "doc" / "ai-native-runtime" / "examples"
+        examples = {
+            "compatibility-public-schematic-report.example.json": "structure",
+            "compatibility-luanti-mod-report.example.json": "luanti_mod",
+        }
+
+        for filename, source_class in examples.items():
+            with self.subTest(example=filename):
+                path = examples_dir / filename
+                self.assertTrue(path.is_file(), f"{filename} is missing")
+                report = json.loads(path.read_text(encoding="utf-8"))
+
+                self.assertEqual(report["mode"], "dry_run")
+                self.assertEqual(report["source"]["source_class"], source_class)
+                self.assertEqual(validate_report(report), [])
+                serialized = json.dumps(report)
+                self.assertNotIn(str(self.fixture_root), serialized)
+                self.assertNotIn("minecraftpi", serialized.lower())
+                self.assertNotIn("family_voxelibre", serialized)
+                self.assertNotIn("asset_payload", serialized.lower())
 
     def test_validator_rejects_missing_required_fields(self):
         report = build_report(self.fixture_root / "java_pack")
