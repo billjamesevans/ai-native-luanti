@@ -974,6 +974,39 @@ assert(operator_status_package.tasks.counts.queued >= 1)
 assert(operator_status_package.rollback.records_available >= 1)
 assert(operator_status_package.imports.reviews_total >= 1)
 assert(operator_status_package.benchmarks.status_counts.pass == 1)
+assert(operator_status_package.operator_control.surface_kind == "read_only_task_rollback_control")
+assert(operator_status_package.operator_control.action_mode == "dry_run_only")
+assert(operator_status_package.operator_control.mutation_performed == false)
+assert(operator_status_package.operator_control.recommendations_total >= 3)
+assert(operator_status_package.operator_control.truncated == false)
+local task_control_found = false
+local rollback_control_found = false
+local import_control_found = false
+for _, recommendation in ipairs(operator_status_package.operator_control.summaries) do
+	assert(recommendation.dry_run_only == true)
+	assert(recommendation.will_mutate == false)
+	assert(type(recommendation.target_id) == "string")
+	assert(type(recommendation.safe_next_action) == "string")
+	if recommendation.target_kind == "task"
+			and recommendation.target_id == "operator-status:queued" then
+		task_control_found = true
+		assert(recommendation.status == "queued")
+		assert(recommendation.safe_next_action == "inspect_task_before_action")
+	elseif recommendation.target_kind == "rollback"
+			and recommendation.target_id == "rollback:operator-status" then
+		rollback_control_found = true
+		assert(recommendation.status == "success")
+		assert(recommendation.safe_next_action == "review_rollback_record_before_execution")
+	elseif recommendation.target_kind == "import_review"
+			and recommendation.target_id == "operator-status:queued" then
+		import_control_found = true
+		assert(recommendation.status == "blocked")
+		assert(recommendation.safe_next_action == "review_import_blocker")
+	end
+end
+assert(task_control_found)
+assert(rollback_control_found)
+assert(import_control_found)
 assert(operator_status_package.safety.redactions_applied > 0)
 assert(operator_status_package.safety.truncations_applied > 0)
 assert(operator_status_package.bounds.output_bytes <= operator_status_package.bounds.max_bytes)
@@ -1007,6 +1040,8 @@ assert(operator_command_message:find("\"tasks\"", 1, true))
 assert(operator_command_message:find("\"rollback\"", 1, true))
 assert(operator_command_message:find("\"imports\"", 1, true))
 assert(operator_command_message:find("\"benchmarks\"", 1, true))
+assert(operator_command_message:find("\"operator_control\"", 1, true))
+assert(operator_command_message:find("\"dry_run_only\"", 1, true))
 assert(#operator_command_message <= 24000)
 assert(not operator_command_message:find("/Users/", 1, true))
 assert(not operator_command_message:find("minecraftpi", 1, true))
