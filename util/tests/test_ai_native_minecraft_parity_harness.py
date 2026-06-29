@@ -33,6 +33,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
         mapblock_rows=0,
         entity_count=4,
         total_node_writes=0,
+        cpu_evidence=False,
     ):
         accepted = pathlib.Path(output_root) / hardware_class / "accepted"
         self.write_json(
@@ -231,6 +232,18 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                         "max_rss_kb": 28000,
                         "rss_sample_count": 30,
                     },
+                    **({
+                        "cpu": {
+                            "sample_status": "measured",
+                            "cpu_sample_count": 30,
+                            "process_cpu_time_delta_seconds": 0.12,
+                            "observed_wall_time_seconds": 3.0,
+                            "avg_process_cpu_percent": 4.0,
+                            "max_interval_cpu_percent": 9.5,
+                            "sample_methods": ["ps_time"],
+                            "limitations": [],
+                        },
+                    } if cpu_evidence else {}),
                     "failure_notes": [],
                 },
                 "failure_notes": [],
@@ -326,6 +339,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 mapblock_rows=256,
                 entity_count=16,
                 total_node_writes=11,
+                cpu_evidence=True,
             )
             report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
 
@@ -340,6 +354,8 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertEqual(results["mapblock_chunk_churn"]["status"], "measured")
             self.assertEqual(results["entity_load"]["status"], "measured")
             self.assertEqual(results["world_edit_throughput"]["status"], "measured")
+            self.assertEqual(results["cpu"]["status"], "measured")
+            self.assertEqual(results["cpu"]["metrics"]["avg_process_cpu_percent"], 4.0)
             self.assertEqual(results["latency"]["status"], "measured")
             self.assertEqual(
                 results["latency"]["metrics"]["latency_probe_kind"],
@@ -354,7 +370,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertNotIn("mapblock_chunk_churn", gap_ids)
             self.assertNotIn("entity_load", gap_ids)
             self.assertNotIn("world_edit_throughput", gap_ids)
-            self.assertIn("cpu", gap_ids)
+            self.assertNotIn("cpu", gap_ids)
             self.assertNotIn("latency", gap_ids)
 
     def test_harness_marks_partial_headless_evidence_as_measured_failure(self):
@@ -366,6 +382,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 mapblock_rows=256,
                 entity_count=16,
                 total_node_writes=11,
+                cpu_evidence=True,
             )
             clean_profile_path = (
                 output_root / "local-mac" / "accepted" / "clean-profile-benchmark-summary.json"
