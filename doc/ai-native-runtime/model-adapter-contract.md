@@ -17,6 +17,12 @@ Optional scaffold: [`model-adapter-plugin-scaffold.md`](model-adapter-plugin-sca
 documents the disabled-by-default mock probe used to verify this contract
 without provider credentials or network calls.
 
+First-party provider path:
+[`agents-sdk-model-adapter.md`](agents-sdk-model-adapter.md) defines the
+reference OpenAI Agents SDK sidecar under `tools/agents_sdk_model_adapter`.
+That bridge uses `Agent`, `Runner`, `WebSearchTool`, and `function_tool` while
+keeping this runtime contract provider-neutral.
+
 ## Request Envelope
 
 Adapters receive a table matching
@@ -98,4 +104,5 @@ Verify the package with:
 
 ```bash
 python3 util/ai_native_model_adapter_contract.py
+python3 util/ai_native_agents_sdk_bridge_contract.py
 ```

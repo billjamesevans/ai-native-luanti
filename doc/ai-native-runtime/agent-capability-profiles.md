@@ -47,7 +47,7 @@ Excluded by default:
 - `combat.defend`
 - family-plugin grants
 
-Clean profile agents may call a configured model adapter through `http.llm`, but runtime audit records must not retain private prompts or response payloads unless an operator-only profile explicitly changes audit policy.
+Clean profile agents may call a configured model adapter through `http.llm`, but runtime audit records must not retain private prompts or response payloads unless an operator-only profile explicitly changes audit policy. The first-party provider adapter is the Agents SDK sidecar; its web search and function tools are sidecar-owned powers that still return through the same provider-neutral response envelope. They do not grant direct world mutation, import promotion, rollback execution, shell access, or file access inside the Luanti process.
 
 ## Operator Profile
 

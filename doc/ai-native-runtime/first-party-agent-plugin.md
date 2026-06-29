@@ -144,7 +144,13 @@ it re-runs the appropriate planner, replaces the pending preview under the same
 approval id, and still requires explicit approval before any rollback-backed
 build or repair task is queued.
 
-Unknown prompts go to the configured model adapter. The adapter boundary is explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
+Unknown prompts go to the configured model adapter. The adapter boundary is
+explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
+The first-party provider path should be the Agents SDK bridge documented in
+[`agents-sdk-model-adapter.md`](agents-sdk-model-adapter.md), so unknown
+prompts can become real agent runs with hosted web search and deterministic
+tools while Luanti remains the task, capability, audit, rollback, and mutation
+authority.
 
 ## Configuration
 
