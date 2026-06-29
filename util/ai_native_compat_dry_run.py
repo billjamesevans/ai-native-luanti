@@ -106,6 +106,7 @@ APPLY_SUMMARY_REQUIRED = (
     "status",
     "approved_actions",
     "queued_tasks",
+    "running_tasks",
     "completed_tasks",
     "blocked_tasks",
     "mutation_cost_actual",
@@ -832,7 +833,7 @@ def validate_apply_summary(summary):
     if summary.get("status") != "planned":
         errors.append("summary.status must be planned")
 
-    for field in ("approved_actions", "queued_tasks", "completed_tasks", "blocked_tasks",
+    for field in ("approved_actions", "queued_tasks", "running_tasks", "completed_tasks", "blocked_tasks",
             "rollback_records", "operator_next_actions"):
         _require_sequence(errors, summary.get(field), field)
 
@@ -852,6 +853,8 @@ def validate_apply_summary(summary):
         errors.append("mutation_cost_actual.node_writes must be 0 for apply_plan")
     if summary.get("queued_tasks") != []:
         errors.append("queued_tasks must be empty for apply_plan")
+    if summary.get("running_tasks") != []:
+        errors.append("running_tasks must be empty for apply_plan")
     return errors
 
 
@@ -1015,10 +1018,13 @@ def build_apply_task_definitions(report, request):
                 "world_mutating": mapping["requires_safe_world_ops"],
             },
             "runtime_handoff": {
-                "status": "staging_noop",
+                "status": "staged_executor_available"
+                    if planned["action"] == "import_structure" else "staging_noop",
                 "operation": mapping["label"],
                 "mutation_enabled": False,
                 "requires_capabilities": required_capabilities,
+                "runtime_entrypoint": "core.ai_import_ops.define_structure_apply_task"
+                    if planned["action"] == "import_structure" else None,
             },
             "calibrated_cost": _calibrated_action_cost(planned),
             "provenance": {
@@ -1060,6 +1066,7 @@ def build_apply_plan(report, request):
         "status": "planned",
         "approved_actions": approved_actions,
         "queued_tasks": [],
+        "running_tasks": [],
         "completed_tasks": [],
         "blocked_tasks": [],
         "mutation_cost_actual": {

@@ -313,7 +313,17 @@ class CompatibilityDryRunTests(unittest.TestCase):
                 self.assertEqual(definition["rollback"]["world_mutating"], requires_safe_world_ops)
                 self.assertTrue(definition["inert"])
                 self.assertEqual(definition["queue_state"], "not_queued")
-                self.assertEqual(definition["runtime_handoff"]["status"], "staging_noop")
+                if action == "import_structure":
+                    self.assertEqual(
+                        definition["runtime_handoff"]["status"],
+                        "staged_executor_available",
+                    )
+                    self.assertEqual(
+                        definition["runtime_handoff"]["runtime_entrypoint"],
+                        "core.ai_import_ops.define_structure_apply_task",
+                    )
+                else:
+                    self.assertEqual(definition["runtime_handoff"]["status"], "staging_noop")
                 self.assertFalse(definition["runtime_handoff"]["mutation_enabled"])
                 self.assertEqual(definition["calibrated_cost"]["node_writes"], 0)
                 self.assertIn("estimated_wall_time_ms", definition["calibrated_cost"])
@@ -349,8 +359,12 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertTrue(definition["requires_safe_world_ops"])
         self.assertTrue(definition["inert"])
         self.assertEqual(definition["queue_state"], "not_queued")
-        self.assertEqual(definition["runtime_handoff"]["status"], "staging_noop")
+        self.assertEqual(definition["runtime_handoff"]["status"], "staged_executor_available")
         self.assertFalse(definition["runtime_handoff"]["mutation_enabled"])
+        self.assertEqual(
+            definition["runtime_handoff"]["runtime_entrypoint"],
+            "core.ai_import_ops.define_structure_apply_task",
+        )
         self.assertIn("import.assets", definition["required_capabilities"])
         self.assertIn("world.place", definition["required_capabilities"])
         self.assertIn("world.batch", definition["required_capabilities"])
@@ -367,6 +381,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
         )
         self.assertEqual(summary["status"], "planned")
         self.assertEqual(summary["queued_tasks"], [])
+        self.assertEqual(summary["running_tasks"], [])
         self.assertFalse(summary["safety"]["world_mutation_executed"])
         self.assertEqual(summary["mutation_cost_actual"]["node_writes"], 0)
         self.assertEqual(validate_apply_summary(summary), [])
@@ -410,6 +425,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(summary["report_id"], "synthetic-report")
         self.assertEqual(validate_apply_summary(summary), [])
         self.assertEqual(summary["queued_tasks"], [])
+        self.assertEqual(summary["running_tasks"], [])
         self.assertEqual(summary["completed_tasks"], [])
         self.assertEqual(summary["blocked_tasks"], [])
         self.assertEqual(summary["mutation_cost_actual"]["node_writes"], 0)
