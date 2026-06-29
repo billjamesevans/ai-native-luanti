@@ -588,11 +588,14 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertIn("readiness", schema["required"])
         self.assertIn("promotion_queue", schema["required"])
         self.assertIn("promotion_queue_summary", schema["required"])
+        self.assertIn("ranked_promotion_plan", schema["required"])
+        self.assertIn("promotion_plan_summary", schema["required"])
         self.assertIn(
             "ready_for_import_preview",
             schema["properties"]["status"]["enum"],
         )
         self.assertIn("promotion_queue_row", schema["$defs"])
+        self.assertIn("ranked_promotion_plan_row", schema["$defs"])
 
         report = json.loads(example_path.read_text(encoding="utf-8"))
         self.assertEqual(report["mode"], "import_inventory_discovery")
@@ -1039,6 +1042,20 @@ class CompatibilityDryRunTests(unittest.TestCase):
             report["promotion_queue_summary"]["disposable_staging_candidate_count"],
             1,
         )
+        self.assertEqual(report["promotion_plan_summary"]["plan_items_total"], 5)
+        self.assertEqual(
+            report["promotion_plan_summary"]["disposable_staging_items_total"],
+            1,
+        )
+        self.assertTrue(report["promotion_plan_summary"]["world_conversion_deferred"])
+        self.assertEqual(
+            report["promotion_plan_summary"]["by_owner_lane"]["metadata_review"],
+            1,
+        )
+        self.assertEqual(
+            report["promotion_plan_summary"]["by_owner_lane"]["asset_reference_review"],
+            2,
+        )
         self.assertTrue(report["safety"]["dry_run_only"])
         self.assertTrue(report["safety"]["no_assets_copied"])
         self.assertTrue(report["safety"]["no_world_mutation"])
@@ -1092,6 +1109,19 @@ class CompatibilityDryRunTests(unittest.TestCase):
             promotion_by_class["world"]["staged_apply_can_mutate_disposable_world"]
         )
         self.assertIn("future_world_conversion_design", promotion_by_class["world"]["required_artifacts"])
+        ranked_plan = report["ranked_promotion_plan"]
+        self.assertEqual([item["rank"] for item in ranked_plan], [1, 2, 3, 4, 5])
+        self.assertEqual(ranked_plan[0]["owner_lane"], "metadata_review")
+        self.assertEqual(ranked_plan[0]["risk_label"], "metadata_only_review")
+        self.assertEqual(ranked_plan[1]["owner_lane"], "asset_reference_review")
+        self.assertEqual(ranked_plan[2]["owner_lane"], "asset_reference_review")
+        self.assertEqual(ranked_plan[3]["owner_lane"], "disposable_structure_staging")
+        self.assertEqual(ranked_plan[3]["risk_label"], "disposable_staging_with_rollback")
+        self.assertTrue(ranked_plan[3]["requires_rollback_metadata"])
+        self.assertTrue(ranked_plan[3]["staged_apply_can_mutate_disposable_world"])
+        self.assertEqual(ranked_plan[4]["owner_lane"], "world_conversion_design")
+        self.assertEqual(ranked_plan[4]["risk_label"], "deferred_world_conversion")
+        self.assertFalse(ranked_plan[4]["staged_apply_can_mutate_disposable_world"])
         for item in report["sources"]:
             self.assertIn("provenance", item)
             self.assertIn("content_hash", item["provenance"])
@@ -1141,6 +1171,12 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(promotion["status"], "blocked")
         self.assertIsNone(promotion["report_path"])
         self.assertFalse(promotion["safety"]["promotion_package_executes_world_mutation"])
+        ranked_plan = report["ranked_promotion_plan"]
+        self.assertEqual(len(ranked_plan), 1)
+        self.assertEqual(ranked_plan[0]["rank"], 1)
+        self.assertEqual(ranked_plan[0]["owner_lane"], "source_reclassification")
+        self.assertEqual(ranked_plan[0]["risk_label"], "blocked_source")
+        self.assertEqual(ranked_plan[0]["promotion_id"], promotion["promotion_id"])
         self.assertNotIn("minecraftpi", json.dumps(report).lower())
 
     def test_inventory_discovery_cli_writes_report_and_source_reports(self):

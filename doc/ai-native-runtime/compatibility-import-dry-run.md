@@ -279,6 +279,14 @@ each source into one explicit next step:
 - `blocked_source`: classification or privacy blockers must be resolved before
   promotion.
 
+The report also emits `ranked_promotion_plan`, which is the operator-facing
+order of work derived from the queue. The ranking keeps metadata-only review
+first, no-world-mutation asset-reference packages next, disposable
+structure/schematic staging after smoke and rollback evidence, and whole-world
+conversion design last. Each row carries an owner lane, risk label, required
+artifacts, required capabilities, rollback requirement, staging mutation flag,
+and next action.
+
 The promotion queue remains metadata-and-reference-only: private-looking source
 names are redacted and blocked, asset bytes are never embedded, promotion
 packages do not execute world mutation, and whole-world imports stay blocked
