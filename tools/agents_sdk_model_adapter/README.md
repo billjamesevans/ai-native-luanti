@@ -15,6 +15,7 @@ The sidecar owns:
 - Agents SDK orchestration through `Agent` and `Runner`;
 - hosted web search through `WebSearchTool`;
 - deterministic function tools through `function_tool`;
+- a structured `tool_powers` manifest for readiness and release evidence;
 - conversion back to the provider-neutral
   `ai_native_model_adapter_response` envelope.
 
@@ -43,6 +44,10 @@ python3 util/ai_native_agents_sdk_sidecar_readiness.py \
   --port 8766 \
   --output local/benchmarks/agents-sdk-sidecar-readiness.json
 ```
+
+The readiness report verifies that `tool_powers` includes function tools and
+`WebSearchTool`, and that every declared power has
+`direct_world_mutation = false`.
 
 Adapter endpoint:
 

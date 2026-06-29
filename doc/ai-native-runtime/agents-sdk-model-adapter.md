@@ -95,8 +95,9 @@ python3 util/ai_native_agents_sdk_sidecar_readiness.py \
 The readiness probe starts the sidecar on loopback, removes `OPENAI_API_KEY`
 from the child process, checks `GET /health`, posts a sample
 `ai_native_model_adapter_request` to `POST /v1/model-adapter`, and emits a
-bounded JSON report. It is intended for local and Pi release evidence before
-enabling live provider credentials.
+bounded JSON report. The report verifies `tool_powers` and confirms every
+declared tool has `direct_world_mutation = false`. It is intended for local and
+Pi release evidence before enabling live provider credentials.
 
 ## Luanti Adapter
 
@@ -136,6 +137,24 @@ Initial tools are deliberately read-only:
 - `WebSearchTool`: lets the agent look up current public information when the
   prompt genuinely needs it.
 
+The sidecar publishes these as a structured `tool_powers` manifest from
+`GET /health` and in adapter responses:
+
+```json
+{
+  "name": "WebSearchTool",
+  "kind": "hosted_tool",
+  "runtime_power": "public_web_lookup",
+  "read_only": true,
+  "direct_world_mutation": false,
+  "engine_authority": "luanti_model_adapter_response_only"
+}
+```
+
+`tool_powers` is an evidence surface, not a permission grant. The engine still
+checks capabilities, records audit, and converts any proposed world action into
+preview, approval, rollback, or refusal.
+
 Future powers must follow the same pattern:
 
 - define a capability name first;
@@ -157,5 +176,6 @@ bin/luantiserver --run-unittests --test-module TestAIRuntime
 The contract verifier checks that the reference sidecar imports and wires the
 Agents SDK primitives, exposes the model-adapter HTTP endpoint, keeps the
 runtime as the mutation authority, gates the Lua bridge behind
-`ai_runtime.enable_agents_sdk_adapter`, and produces a safe offline response
-envelope without credentials or network access.
+`ai_runtime.enable_agents_sdk_adapter`, publishes a safe `tool_powers` manifest,
+and produces a safe offline response envelope without credentials or network
+access.
