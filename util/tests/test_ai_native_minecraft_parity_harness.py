@@ -34,6 +34,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
         entity_count=4,
         total_node_writes=0,
         cpu_evidence=False,
+        first_party_loop=False,
     ):
         accepted = pathlib.Path(output_root) / hardware_class / "accepted"
         self.write_json(
@@ -228,6 +229,22 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                         "warnings": 0,
                         "errors": 0,
                     },
+                    **({
+                        "first_party_agent_product_loop": {
+                            "product_loop_status": "pass",
+                            "scenario_id": "first_party_agent_product_loop_approval",
+                            "approval_plan_count": 2,
+                            "approved_task_count": 2,
+                            "guide_command_checked": 1,
+                            "tasks_command_checked": 1,
+                            "cancel_command_checked": 1,
+                            "audit_review_checked": 1,
+                            "rollback_review_checked": 1,
+                            "defender_command_checked": 1,
+                            "import_preview_checked": 1,
+                            "blocked_or_unsafe_outcomes": 0,
+                        },
+                    } if first_party_loop else {}),
                     "memory": {
                         "max_rss_kb": 28000,
                         "rss_sample_count": 30,
@@ -464,6 +481,37 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                     "Build compatibility import inventory discovery",
                     "Prove first-party agent product loop in accepted lanes",
                 ],
+            )
+
+    def test_harness_clears_first_party_loop_gap_when_accepted_baseline_has_product_loop_evidence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            self.write_accepted_baseline(
+                output_root,
+                headless_players=True,
+                mapblock_rows=256,
+                entity_count=16,
+                total_node_writes=11,
+                cpu_evidence=True,
+                first_party_loop=True,
+            )
+            report_path = pathlib.Path(tmpdir) / "minecraft-parity.json"
+            completed = self.run_harness(output_root, "--output", str(report_path))
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+            lane = report["measured_facts"][0]
+            results = {item["dimension_id"]: item for item in lane["dimension_results"]}
+            self.assertTrue(
+                results["mod_plugin_ergonomics"]["metrics"]["first_party_agent_loop_ready"]
+            )
+            self.assertFalse(
+                results["mod_plugin_ergonomics"]["metrics"]["compatibility_import_plugin_ready"]
+            )
+            self.assertEqual(len(report["actionable_scorecard"]), 1)
+            self.assertEqual(
+                report["actionable_scorecard"][0]["title"],
+                "Build compatibility import inventory discovery",
             )
 
     def test_harness_marks_partial_headless_evidence_as_measured_failure(self):

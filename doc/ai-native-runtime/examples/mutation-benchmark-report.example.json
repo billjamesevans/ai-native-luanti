@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "generated_at": "2026-06-29T00:57:41Z",
+  "generated_at": "2026-06-29T08:43:21Z",
   "luanti_commit": "example-commit",
   "hardware_class": "local-mac",
   "run_context": {
@@ -150,6 +150,52 @@
           "rollback_write_attempts": 1,
           "rollback_write_failures": 0
         },
+        "warnings": [],
+        "errors": []
+      }
+    },
+    {
+      "scenario_id": "first_party_agent_product_loop_approval",
+      "category": "first_party_agent_loop",
+      "description": "Exercise first-party build and repair approval flow plus guide, task, audit, rollback, defender, and import-preview surfaces.",
+      "entry_point": {
+        "command": "bin/luantiserver --run-unittests --test-module TestAIRuntime",
+        "runtime_path": "builtin/game/ai_agent_plugin.lua",
+        "server_action": "core.ai_agent_plugin.handle_command -> approve"
+      },
+      "fixture": {
+        "synthetic": true,
+        "requires_live_world": false,
+        "requires_private_assets": false,
+        "node_count": 2,
+        "world_ref": "world:synthetic-agent-product-loop"
+      },
+      "metrics": {
+        "avg_step_ms": 2.3,
+        "p95_step_ms": 3.0,
+        "max_lag_ms": 3.6,
+        "node_writes": 2,
+        "node_writes_per_step": 1,
+        "mapblock_churn": 1,
+        "skipped_positions": 0,
+        "rollback_records": 2,
+        "ai_runtime_counters": {
+          "queued_tasks": 2,
+          "completed_tasks": 2,
+          "blocked_tasks": 0,
+          "rollback_write_attempts": 2,
+          "rollback_write_failures": 0
+        },
+        "approval_plan_count": 2,
+        "approved_task_count": 2,
+        "guide_command_checked": 1,
+        "tasks_command_checked": 1,
+        "cancel_command_checked": 1,
+        "audit_review_checked": 1,
+        "rollback_review_checked": 1,
+        "defender_command_checked": 1,
+        "import_preview_checked": 1,
+        "blocked_or_unsafe_outcomes": 0,
         "warnings": [],
         "errors": []
       }

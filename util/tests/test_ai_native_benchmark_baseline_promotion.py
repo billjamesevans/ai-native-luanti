@@ -100,6 +100,22 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
                 "mapblock_rows": 4,
                 "mapblock_rows_created": 4,
             },
+            "first_party_agent_product_loop": {
+                "product_loop_status": "pass",
+                "scenario_id": "first_party_agent_product_loop_approval",
+                "approval_plan_count": 2,
+                "approved_task_count": 2,
+                "guide_command_checked": 1,
+                "tasks_command_checked": 1,
+                "cancel_command_checked": 1,
+                "audit_review_checked": 1,
+                "rollback_review_checked": 1,
+                "defender_command_checked": 1,
+                "import_preview_checked": 1,
+                "blocked_or_unsafe_outcomes": 0,
+                "warning_count": 0,
+                "error_count": 0,
+            },
             "cpu": {
                 "sample_status": "measured",
                 "cpu_sample_count": 3,
@@ -330,6 +346,49 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
             self.assertIn("cpu sample_status must be measured", completed.stderr)
             self.assertIn("cpu_sample_count must be at least 2", completed.stderr)
 
+    def test_refuses_clean_profile_without_first_party_product_loop_evidence(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
+            capture_dir = self.capture(output_root)
+            clean_profile = self.clean_profile_payload()
+            del clean_profile["comparison_summary"]["first_party_agent_product_loop"]
+            self.add_clean_profile_capture(capture_dir, clean_profile)
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("first_party_agent_product_loop missing", completed.stderr)
+
+            clean_profile = self.clean_profile_payload(
+                comparison_summary={
+                    "first_party_agent_product_loop": {
+                        "product_loop_status": "evidence_gap",
+                        "scenario_id": "first_party_agent_product_loop_approval",
+                        "approval_plan_count": 1,
+                        "approved_task_count": 1,
+                        "guide_command_checked": 1,
+                        "tasks_command_checked": 1,
+                        "cancel_command_checked": 1,
+                        "audit_review_checked": 1,
+                        "rollback_review_checked": 1,
+                        "defender_command_checked": 1,
+                        "import_preview_checked": 1,
+                        "blocked_or_unsafe_outcomes": 1,
+                        "warning_count": 0,
+                        "error_count": 0,
+                    },
+                }
+            )
+            self.add_clean_profile_capture(capture_dir, clean_profile)
+
+            completed = self.promote(capture_dir, output_root, check=False)
+
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("first_party_agent_product_loop status must be pass", completed.stderr)
+            self.assertIn("approval_plan_count must be at least 2", completed.stderr)
+            self.assertIn("approved_task_count must be at least 2", completed.stderr)
+            self.assertIn("blocked_or_unsafe_outcomes must be 0", completed.stderr)
+
     def test_refuses_private_or_warning_reports(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             output_root = pathlib.Path(tmpdir) / "local" / "benchmarks"
@@ -361,6 +420,7 @@ class BenchmarkBaselinePromotionTests(unittest.TestCase):
             "requires_private_world",
             "requires_live_pi",
             "clean-profile-benchmark-summary.json",
+            "first_party_agent_product_loop",
             "backup-first",
         ):
             self.assertIn(phrase, body)

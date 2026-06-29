@@ -47,6 +47,17 @@ PRIVATE_PATTERNS = re.compile(
     r"/Users/|/opt/|bill@",
     re.I,
 )
+FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS = {
+    "approval_plan_count": 2,
+    "approved_task_count": 2,
+    "guide_command_checked": 1,
+    "tasks_command_checked": 1,
+    "cancel_command_checked": 1,
+    "audit_review_checked": 1,
+    "rollback_review_checked": 1,
+    "defender_command_checked": 1,
+    "import_preview_checked": 1,
+}
 
 
 class HarnessError(RuntimeError):
@@ -251,6 +262,27 @@ def metric_status(value) -> bool:
     return value is not None and value is not False
 
 
+def numeric_metric(value) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
+
+
+def has_first_party_agent_product_loop_evidence(product_loop: dict) -> bool:
+    return (
+        product_loop.get("product_loop_status") == "pass"
+        and all(
+            numeric_metric(product_loop.get(metric)) >= threshold
+            for metric, threshold in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS.items()
+        )
+        and numeric_metric(product_loop.get("blocked_or_unsafe_outcomes")) == 0
+        and numeric_metric(product_loop.get("warning_count")) == 0
+        and numeric_metric(product_loop.get("error_count")) == 0
+    )
+
+
 def result(dimension_id: str, status: str, metrics: dict, evidence: str) -> dict:
     return {
         "dimension_id": dimension_id,
@@ -286,6 +318,7 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
     map_chunk = measurements["map_chunk_workload"]
     entity = measurements["demo_entity_runtime_cost"]
     mutation = measurements["mutation_write_throughput"]
+    first_party_product_loop = measurements.get("first_party_agent_product_loop") or {}
     memory = measurements["memory"]
     cpu = measurements["cpu"]
 
@@ -506,30 +539,55 @@ def dimension_results(hardware_class: str, measurements: dict) -> tuple[list[dic
             )
         )
 
+    first_party_agent_loop_ready = has_first_party_agent_product_loop_evidence(
+        first_party_product_loop
+    )
+    compatibility_import_plugin_ready = False
     facts.append(
         result(
             "mod_plugin_ergonomics",
             "partial",
             {
                 "clean_profile_capability_policy": True,
-                "first_party_agent_loop_ready": False,
-                "compatibility_import_plugin_ready": False,
+                "first_party_agent_loop_ready": first_party_agent_loop_ready,
+                "compatibility_import_plugin_ready": compatibility_import_plugin_ready,
+                "first_party_agent_product_loop": {
+                    "product_loop_status": first_party_product_loop.get("product_loop_status"),
+                    "approval_plan_count": first_party_product_loop.get("approval_plan_count"),
+                    "approved_task_count": first_party_product_loop.get("approved_task_count"),
+                    "guide_command_checked": first_party_product_loop.get("guide_command_checked"),
+                    "tasks_command_checked": first_party_product_loop.get("tasks_command_checked"),
+                    "cancel_command_checked": first_party_product_loop.get("cancel_command_checked"),
+                    "audit_review_checked": first_party_product_loop.get("audit_review_checked"),
+                    "rollback_review_checked": first_party_product_loop.get("rollback_review_checked"),
+                    "defender_command_checked": first_party_product_loop.get("defender_command_checked"),
+                    "import_preview_checked": first_party_product_loop.get("import_preview_checked"),
+                    "blocked_or_unsafe_outcomes": first_party_product_loop.get(
+                        "blocked_or_unsafe_outcomes"
+                    ),
+                },
             },
-            "clean runtime profile exists; first-party agent and import inventory proof remain open",
-        )
-    )
-    gaps.append(
-        gap(
-            hardware_class,
-            "mod_plugin_ergonomics",
-            "Prove first-party agent product loop in accepted lanes",
             (
-                "first-party commands exist but accepted benchmark lanes do not yet exercise "
-                "build/repair approval, guide, tasks, audit, rollback, defender, and importer preview"
+                "accepted benchmark lane proves the first-party agent product loop; "
+                "import inventory proof remains open"
+                if first_party_agent_loop_ready
+                else "clean runtime profile exists; first-party agent and import inventory proof remain open"
             ),
-            "Add local and low-power-server benchmark captures for the first-party agent loop.",
         )
     )
+    if not first_party_agent_loop_ready:
+        gaps.append(
+            gap(
+                hardware_class,
+                "mod_plugin_ergonomics",
+                "Prove first-party agent product loop in accepted lanes",
+                (
+                    "first-party commands exist but accepted benchmark lanes do not yet exercise "
+                    "build/repair approval, guide, tasks, audit, rollback, defender, and importer preview"
+                ),
+                "Add local and low-power-server benchmark captures for the first-party agent loop.",
+            )
+        )
     gaps.append(
         gap(
             hardware_class,

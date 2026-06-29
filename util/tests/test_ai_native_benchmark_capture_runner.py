@@ -190,6 +190,7 @@ sys.exit(0)
                 "map_chunk_workload",
                 "entity_runtime_operations",
                 "mutation_write_throughput",
+                "first_party_agent_product_loop",
                 "memory",
                 "cpu",
                 "failure_notes",
@@ -234,6 +235,18 @@ sys.exit(0)
             self.assertIn("avg_process_cpu_percent", cpu)
             self.assertIn("max_interval_cpu_percent", cpu)
             self.assertIn("sample_methods", cpu)
+            product_loop = summary["comparison_summary"]["first_party_agent_product_loop"]
+            self.assertEqual(product_loop["product_loop_status"], "pass")
+            self.assertEqual(
+                product_loop["scenario_id"],
+                "first_party_agent_product_loop_approval",
+            )
+            self.assertEqual(product_loop["approval_plan_count"], 2)
+            self.assertEqual(product_loop["approved_task_count"], 2)
+            self.assertEqual(product_loop["guide_command_checked"], 1)
+            self.assertEqual(product_loop["audit_review_checked"], 1)
+            self.assertEqual(product_loop["rollback_review_checked"], 1)
+            self.assertEqual(product_loop["blocked_or_unsafe_outcomes"], 0)
 
             serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)
