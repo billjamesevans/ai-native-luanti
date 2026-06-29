@@ -318,7 +318,10 @@ def build_manifest(args, remote_manifest: dict, service_values: dict, *, now_fn=
 
 
 def read_remote_manifest(args, remote_path: str, runner) -> tuple[CommandRun, dict | None]:
-    cat_command = f"cat {shlex.quote(remote_path)}"
+    if remote_path.startswith("/"):
+        cat_command = f"cat {shlex.quote(remote_path)}"
+    else:
+        cat_command = f"cd {shlex.quote(args.remote_repo)} && cat {shlex.quote(remote_path)}"
     result = runner(ssh_command(args, cat_command), timeout=args.ssh_timeout)
     if result.returncode != 0:
         return result, None
