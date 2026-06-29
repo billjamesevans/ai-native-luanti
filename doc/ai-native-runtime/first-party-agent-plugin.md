@@ -84,7 +84,8 @@ Implemented deterministic commands:
   and setting the player-visible helper mode to `stay`. This is guide-owned
   task control, not a broad task cancel, rollback command, import apply path,
   or direct world mutation.
-- `discard`, `discard plan`, `reject`, `deny`, `discard <approval_id>`:
+- `discard`, `discard plan`, `cancel plan`, `cancel approval`, `reject`,
+  `deny`, `no`, `discard <approval_id>`:
   clears the current pending approval before mutation. Targeted discard tokens
   must match the pending action or approval id.
 - `approve`, `approve build`, `approve repair`, `approve <approval_id>`:
