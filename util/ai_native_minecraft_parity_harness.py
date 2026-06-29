@@ -1249,6 +1249,71 @@ def issue_seed_summary(issue_seeds: list[dict]) -> dict:
     }
 
 
+def owner_lane_for_gap_area(gap_area: str) -> str:
+    return {
+        "engine_runtime": "engine_runtime_hardening",
+        "first_party_plugin": "agent_plugin_and_import_productization",
+        "operator_experience": "operator_control_plane",
+        "game_content": "game_content_parity",
+    }.get(gap_area, "engine_runtime_hardening")
+
+
+def improvement_priority(action: dict) -> str:
+    if action.get("scorecard_status") == "fail":
+        if action.get("gap_area") in {"engine_runtime", "first_party_plugin"}:
+            return "critical"
+        return "high"
+    if action.get("scorecard_status") == "warn":
+        return "medium"
+    return "low"
+
+
+def ranked_improvement_targets(actions: list[dict]) -> list[dict]:
+    targets = []
+    for action in actions:
+        dimension_ids = list(action.get("dimension_ids", []))
+        targets.append(
+            {
+                "rank": action["rank"],
+                "target_id": action["action_id"],
+                "priority": improvement_priority(action),
+                "owner_lane": owner_lane_for_gap_area(
+                    action.get("gap_area", "engine_runtime")
+                ),
+                "scorecard_status": action["scorecard_status"],
+                "gap_area": action["gap_area"],
+                "title": action["title"],
+                "hardware_classes": list(action.get("hardware_classes", [])),
+                "dimension_ids": dimension_ids,
+                "current_evidence": list(action.get("evidence", [])),
+                "target_bands": {
+                    dimension_id: dict(target_band(dimension_id))
+                    for dimension_id in dimension_ids
+                },
+                "next_action": action["next_action"],
+                "done_when": issue_seed_acceptance(action),
+                "blocks_minecraft_parity": action["blocks_minecraft_parity"],
+                "blocks_compatibility_import": action["blocks_compatibility_import"],
+            }
+        )
+    return targets
+
+
+def improvement_target_summary(targets: list[dict]) -> dict:
+    by_priority = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    by_owner_lane = {}
+    for target in targets:
+        by_priority[target["priority"]] = by_priority.get(target["priority"], 0) + 1
+        owner_lane = target["owner_lane"]
+        by_owner_lane[owner_lane] = by_owner_lane.get(owner_lane, 0) + 1
+    return {
+        "target_count": len(targets),
+        "scorecard_status": "pass" if not targets else "fail",
+        "by_priority": by_priority,
+        "by_owner_lane": by_owner_lane,
+    }
+
+
 def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
     compatibility_import_inventory = load_compatibility_import_inventory(output_root)
     lanes = [
@@ -1277,6 +1342,7 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
         qualitative_gaps.extend(gaps)
     actions = actionable_scorecard(qualitative_gaps)
     issue_seeds = issue_seeds_from_scorecard(actions)
+    improvement_targets = ranked_improvement_targets(actions)
 
     report = {
         "schema_version": 1,
@@ -1313,6 +1379,8 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
         "measured_facts": measured_facts,
         "qualitative_minecraft_parity_gaps": qualitative_gaps,
         "actionable_scorecard": actions,
+        "ranked_improvement_targets": improvement_targets,
+        "improvement_target_summary": improvement_target_summary(improvement_targets),
         "issue_seeds": issue_seeds,
         "issue_seed_summary": issue_seed_summary(issue_seeds),
         "gap_summary_by_area": gap_summary_by_area(qualitative_gaps),
