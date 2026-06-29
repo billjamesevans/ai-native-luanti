@@ -122,6 +122,18 @@ class AIProductProfileVerifierTests(unittest.TestCase):
             self.assertEqual(report["status"], "pass")
             self.assertEqual(report["profile"]["gameid"], "ai_runtime")
 
+    def test_cli_creates_nested_output_parent_directories(self):
+        verifier = load_verifier_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output = pathlib.Path(tmpdir) / "nested" / "run" / "product-profile-report.json"
+
+            exit_code = verifier.main(["--root", str(ROOT), "--output", str(output)])
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(output.is_file())
+            report = json.loads(output.read_text(encoding="utf-8"))
+            self.assertEqual(report["status"], "pass")
+
 
 if __name__ == "__main__":
     unittest.main()
