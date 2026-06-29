@@ -14,6 +14,7 @@ from ai_native_compat_dry_run import (
     build_apply_plan,
     build_apply_task_definitions,
     build_report,
+    build_structure_adapter_report,
     main,
     validate_apply_summary,
     validate_report,
@@ -135,6 +136,50 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(mod_inventory["depends.txt"]["classification"], "mapped")
         self.assertNotIn(str(self.fixture_root), json.dumps(luanti_mod))
         self.assertEqual(validate_report(luanti_mod), [])
+
+    def test_synthetic_structure_adapter_dry_run_emits_reviewable_import_action(self):
+        source = self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+
+        report = build_structure_adapter_report(source)
+
+        self.assertEqual(report["source"]["source_class"], "structure")
+        self.assertEqual(report["source"]["path_policy"], "synthetic_fixture")
+        self.assertEqual(report["source"]["license_status"], "synthetic")
+        self.assertEqual(report["source"]["metadata"]["adapter_kind"], "synthetic_structure_v1")
+        self.assertEqual(report["source"]["metadata"]["placement_count"], 5)
+        self.assertEqual(report["summary"]["estimated_world_mutations"]["node_writes"], 5)
+        self.assertEqual(report["summary"]["estimated_world_mutations"]["mapblock_churn"], 3)
+        self.assert_safety_flags(report)
+        inventory = self.inventory_by_path(report)
+        self.assertEqual(inventory["synthetic_structure.fixture.json"]["source_kind"], "structure")
+        self.assertEqual(inventory["synthetic_structure.fixture.json"]["classification"], "blocked")
+        self.assertEqual(
+            inventory["synthetic_structure.fixture.json"]["reason"],
+            "synthetic_structure_adapter_review_required",
+        )
+        features = {item["feature"]: item for item in report["unsupported_features"]}
+        self.assertEqual(features["structure.entities"]["reason"], "requires_manual_review")
+        import_action = next(
+            action for action in report["planned_actions"]
+            if action["action"] == "import_structure"
+        )
+        adapter = import_action["structure_adapter"]
+        self.assertTrue(adapter["synthetic"])
+        self.assertEqual(adapter["adapter_kind"], "synthetic_structure_v1")
+        self.assertEqual(adapter["placement_count"], 5)
+        self.assertEqual(adapter["mapblock_churn"], 3)
+        self.assertEqual(adapter["recommended_chunk_size"], 2)
+        self.assertEqual(adapter["recommended_chunk_count"], 3)
+        self.assertEqual(len(adapter["placements"]), 5)
+        self.assertEqual(adapter["placements"][1]["param1"], 3)
+        self.assertEqual(adapter["placements"][1]["param2"], 7)
+        self.assertEqual(import_action["mutation_cost"]["node_writes"], 5)
+        self.assertEqual(import_action["mutation_cost"]["mapblock_churn"], 3)
+        self.assertEqual(validate_report(report), [])
+        serialized = json.dumps(report)
+        self.assertNotIn(str(self.fixture_root), serialized)
+        self.assertNotIn("minecraft", serialized.lower())
+        self.assertNotIn("asset_payload", serialized.lower())
 
     def test_cli_writes_json_report_and_summary(self):
         source = self.fixture_root / "bedrock_pack"
@@ -386,6 +431,69 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(summary["mutation_cost_actual"]["node_writes"], 0)
         self.assertEqual(validate_apply_summary(summary), [])
 
+    def test_structure_adapter_apply_handoff_uses_chunked_runtime_and_rollback_entrypoints(self):
+        report = build_structure_adapter_report(
+            self.fixture_root / "structure_adapter" / "synthetic_structure.fixture.json"
+        )
+        action_index = next(
+            index for index, action in enumerate(report["planned_actions"])
+            if action["action"] == "import_structure"
+        )
+        request = self.build_apply_request(report, action_indexes=(action_index,))
+        request["budget"].update({
+            "max_node_writes_total": 5,
+            "max_node_writes_per_step": 2,
+            "max_mapblock_churn_total": 3,
+            "max_manual_review_items": 3,
+            "max_wall_time_ms": 5000,
+        })
+        request["rollback_policy"]["policy"] = "chunked"
+
+        task_definitions = build_apply_task_definitions(report, request)
+        summary = build_apply_plan(report, request)
+
+        self.assertEqual(len(task_definitions), 1)
+        definition = task_definitions[0]
+        self.assertEqual(definition["label"], "compat.structure.place")
+        self.assertTrue(definition["inert"])
+        self.assertEqual(definition["queue_state"], "not_queued")
+        self.assertEqual(definition["rollback"]["policy"], "chunked")
+        self.assertEqual(definition["calibrated_cost"]["node_writes"], 5)
+        self.assertEqual(definition["calibrated_cost"]["mapblock_churn"], 3)
+        self.assertEqual(
+            definition["runtime_handoff"]["runtime_entrypoint"],
+            "core.ai_import_ops.define_chunked_structure_apply_task",
+        )
+        self.assertEqual(
+            definition["runtime_handoff"]["rollback_plan_entrypoint"],
+            "core.ai_import_ops.plan_structure_rollback",
+        )
+        self.assertEqual(
+            definition["runtime_handoff"]["rollback_execute_entrypoint"],
+            "core.ai_import_ops.queue_chunked_structure_rollback_task",
+        )
+        staged_apply = definition["staged_apply"]
+        self.assertEqual(staged_apply["task_constructor"],
+            "core.ai_import_ops.define_chunked_structure_apply_task")
+        self.assertEqual(staged_apply["rollback_plan_entrypoint"],
+            "core.ai_import_ops.plan_structure_rollback")
+        self.assertEqual(staged_apply["rollback_execute_entrypoint"],
+            "core.ai_import_ops.queue_chunked_structure_rollback_task")
+        self.assertEqual(staged_apply["placement_count"], 5)
+        self.assertEqual(staged_apply["chunk_size"], 2)
+        self.assertEqual(staged_apply["chunk_count"], 3)
+        self.assertEqual(len(staged_apply["placements"]), 5)
+        self.assertEqual(staged_apply["target_world"]["world_id"], "staging-world")
+        self.assertTrue(staged_apply["target_world"]["staging"])
+        self.assertTrue(staged_apply["requires_explicit_approval"])
+        self.assertFalse(staged_apply["allow_mutation"])
+        self.assertEqual(summary["status"], "planned")
+        self.assertEqual(summary["queued_tasks"], [])
+        self.assertFalse(summary["safety"]["world_mutation_executed"])
+        serialized = json.dumps(task_definitions)
+        self.assertNotIn("payload", serialized.lower())
+        self.assertNotIn(str(self.fixture_root), serialized)
+
     def test_structure_apply_rejects_over_budget_request(self):
         report = build_report(self.fixture_root / "structure" / "example.mcstructure")
         action_index = next(
@@ -412,7 +520,7 @@ class CompatibilityDryRunTests(unittest.TestCase):
             "max_manual_review_items": 2,
         })
 
-        with self.assertRaisesRegex(ValueError, "manifest_only or snapshot"):
+        with self.assertRaisesRegex(ValueError, "manifest_only, snapshot, or chunked"):
             build_apply_task_definitions(report, request)
 
     def test_apply_plan_builds_no_mutation_summary(self):

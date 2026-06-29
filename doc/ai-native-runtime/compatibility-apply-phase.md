@@ -240,6 +240,7 @@ This command:
 - Verifies the approved action list against the dry-run report.
 - Validates approved `import_structure` actions against node-write, mapblock-churn, manual-review, wall-clock, and rollback budgets.
 - Requires staging plus `manifest_only` or `snapshot` rollback policy before a structure handoff can be defined.
+- Allows `chunked` rollback policy for reviewed structure actions that need bounded multi-step apply and rollback execution.
 - Emits inert task definitions that preserve calibrated structure cost, redacted source provenance, required `import.assets`/world capabilities, and `mutation_enabled = false`.
 - Marks approved `import_structure` definitions with staged runtime entrypoints such as `core.ai_import_ops.define_structure_apply_task` and `core.ai_import_ops.define_chunked_structure_apply_task`.
 - Emits an apply summary with `status = planned`.
@@ -262,6 +263,7 @@ Each generated task definition includes:
 - `mutation_class` and `requires_safe_world_ops`.
 - Rollback policy and metadata requirements.
 - Source planned-action metadata for review.
+- For synthetic structure-adapter actions, a `staged_apply` block with reviewed placements, chunk size/count, staging target, `core.ai_import_ops.define_chunked_structure_apply_task` when chunking is required, `core.ai_import_ops.plan_structure_rollback`, and `core.ai_import_ops.queue_chunked_structure_rollback_task`.
 
 `import_structure` maps to `compat.structure.place`, has `mutation_class = world_mutating`, and sets `requires_safe_world_ops = true`. Apply-plan output remains definition-only, but the runtime now exposes `core.ai_import_ops.define_structure_apply_task` and `core.ai_import_ops.define_chunked_structure_apply_task` for staged execution in disposable worlds.
 
@@ -283,7 +285,9 @@ Execution calls `core.run_ai_world_mutation_with_rollback`, then places nodes th
 
 Chunked execution writes one rollback record per chunk before that chunk's node writes. Each chunk record carries `chunk_index`, `chunk_count`, `first_position_index`, and `position_count`. If a later chunk blocks, prior successful chunks and rollback records remain available for operator review.
 
-`core.ai_import_ops.plan_structure_rollback(options)` reads persisted rollback chunk references through `core.ai_rollback_storage.inspect` and returns a no-mutation rollback plan. It reports inspected records, missing records, chunk metadata, planned node-write count, and mapblock churn, but it never reverts nodes. Revert execution remains a later reviewed milestone.
+`core.ai_import_ops.plan_structure_rollback(options)` reads persisted rollback chunk references through `core.ai_rollback_storage.inspect` and returns a no-mutation rollback plan. It reports inspected records, missing records, chunk metadata, planned node-write count, and mapblock churn.
+
+`core.ai_import_ops.queue_chunked_structure_rollback_task(def)` turns reviewed rollback records into bounded rollback execution. It requires `rollback.execute`, `admin.override`, explicit approval, staging, `allow_mutation = true`, rollback policy, write/churn budgets, and rollback-of-rollback metadata before it mutates the world.
 
 `core.ai_import_ops.build_apply_summary(options)` inspects queued runtime task ids and separates `queued_tasks`, `running_tasks`, `completed_tasks`, and `blocked_tasks`. It reports actual node writes, mapblock churn, elapsed runtime, rollback records, audit count, and keeps `assets_remain_operator_supplied = true` plus `dry_run_report_unchanged = true`.
 

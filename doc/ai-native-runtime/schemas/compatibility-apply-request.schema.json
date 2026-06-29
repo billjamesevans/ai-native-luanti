@@ -192,6 +192,7 @@
           "enum": [
             "snapshot",
             "manifest_only",
+            "chunked",
             "no_world_mutation"
           ]
         },

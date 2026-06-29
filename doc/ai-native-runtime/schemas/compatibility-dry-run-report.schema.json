@@ -452,6 +452,107 @@
         },
         "mutation_cost": {
           "$ref": "#/$defs/mutation_cost"
+        },
+        "structure_adapter": {
+          "$ref": "#/$defs/structure_adapter"
+        }
+      }
+    },
+    "structure_adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "adapter_kind",
+        "fixture_name",
+        "synthetic",
+        "placement_count",
+        "mapblock_churn",
+        "recommended_chunk_size",
+        "recommended_chunk_count",
+        "placements"
+      ],
+      "properties": {
+        "adapter_kind": {
+          "const": "synthetic_structure_v1"
+        },
+        "fixture_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "synthetic": {
+          "const": true
+        },
+        "placement_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mapblock_churn": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "recommended_chunk_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "recommended_chunk_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "unsupported_field_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "placements": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/structure_placement"
+          }
+        }
+      }
+    },
+    "structure_placement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "pos",
+        "node_name"
+      ],
+      "properties": {
+        "pos": {
+          "$ref": "#/$defs/vector3i"
+        },
+        "node_name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "param1": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "param2": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "vector3i": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "x",
+        "y",
+        "z"
+      ],
+      "properties": {
+        "x": {
+          "type": "integer"
+        },
+        "y": {
+          "type": "integer"
+        },
+        "z": {
+          "type": "integer"
         }
       }
     }
