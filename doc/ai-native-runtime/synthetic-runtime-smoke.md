@@ -158,6 +158,23 @@ directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifes
 `ai-runtime-operator-task-control-command-result.json`. It still requires no family server, no private
 world, no private assets, no provider prompts, and no model-network calls.
 
+The verifier validates `clean-profile-benchmark-summary.json` before the overall manifest can pass.
+The derived `clean_profile_evidence` section requires `overall_status = pass`,
+`game_profile.gameid = ai_runtime`, no `failure_notes`, no private/live context flags, passing
+`server_step_workload`, passing `player_load_tick_probe`, passing `map_chunk_workload`, and measured
+CPU samples with `cpu_sample_count >= 2`. By default the player-load evidence may be either a
+bounded `server_process_liveness` fallback or a measured `headless_client_load` probe. Promotion and
+release-candidate lanes should use the strict headless-player gate:
+
+```sh
+python3 util/ai_native_runtime_verify.py \
+  --hardware-class local-mac \
+  --game-profile ai_runtime \
+  --headless-player-command "bin/luanti --config $tmpconf --go --address {host} --port {port} --name {name}" \
+  --headless-player-count 1 \
+  --require-headless-player-probe
+```
+
 The smoke scenario itself remains synthetic: no live server, no private world, and no model
 network. The verifier's live operator-status probe uses only a disposable local world and does not
 touch the family proving-ground server. Any future low-power or family-server proving-ground run
