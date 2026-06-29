@@ -50,6 +50,14 @@ class AIOperatorStatusPackageTests(unittest.TestCase):
         self.assertEqual(package["rollback"]["records_available"], 0)
         self.assertEqual(package["imports"]["reviews_total"], 0)
         self.assertEqual(package["benchmarks"]["gates"], [])
+        self.assertEqual(
+            package["operator_control"]["surface_kind"],
+            "read_only_task_rollback_control",
+        )
+        self.assertEqual(package["operator_control"]["action_mode"], "dry_run_only")
+        self.assertFalse(package["operator_control"]["mutation_performed"])
+        self.assertEqual(package["operator_control"]["recommendations_total"], 0)
+        self.assertEqual(package["operator_control"]["summaries"], [])
         self.assertEqual(package["server_profile_hygiene"]["status"], "pass")
         self.assertTrue(package["server_profile_hygiene"]["dev_surfaces_disabled_by_default"])
         self.assert_public_safe(package)
@@ -146,6 +154,28 @@ class AIOperatorStatusPackageTests(unittest.TestCase):
         self.assertEqual(package["imports"]["status_counts"], {"approved": 1, "blocked": 1})
         self.assertEqual(package["imports"]["promotion_status_counts"], {"ready": 1})
         self.assertEqual(package["benchmarks"]["status_counts"], {"pass": 1})
+        self.assertEqual(package["operator_control"]["action_mode"], "dry_run_only")
+        self.assertFalse(package["operator_control"]["mutation_performed"])
+        self.assertGreaterEqual(package["operator_control"]["recommendations_total"], 4)
+        recommendations = {
+            (item["target_kind"], item["target_id"]): item
+            for item in package["operator_control"]["summaries"]
+        }
+        self.assertEqual(
+            recommendations[("task", "task:build:1")]["safe_next_action"],
+            "inspect_task_before_action",
+        )
+        self.assertEqual(
+            recommendations[("rollback", "rollback:1")]["safe_next_action"],
+            "review_rollback_record_before_execution",
+        )
+        self.assertEqual(
+            recommendations[("import_review", "review:asset:1")]["safe_next_action"],
+            "review_import_blocker",
+        )
+        for recommendation in package["operator_control"]["summaries"]:
+            self.assertTrue(recommendation["dry_run_only"])
+            self.assertFalse(recommendation["will_mutate"])
         self.assertGreater(package["safety"]["redactions_applied"], 0)
         self.assert_public_safe(package)
 
@@ -210,6 +240,11 @@ class AIOperatorStatusPackageTests(unittest.TestCase):
             package = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(package["package_kind"], "ai_native_operator_status_package")
             self.assertEqual(package["tasks"]["counts"]["completed"], 1)
+            self.assertEqual(package["operator_control"]["recommendations_total"], 1)
+            self.assertEqual(
+                package["operator_control"]["summaries"][0]["safe_next_action"],
+                "inspect_completed_task_summary",
+            )
             self.assert_public_safe(package)
 
     def test_docs_describe_operator_status_package_boundary(self):
@@ -225,6 +260,9 @@ class AIOperatorStatusPackageTests(unittest.TestCase):
         self.assertIn("family-server content", doc)
         self.assertIn("/ai_runtime_operator_status", doc)
         self.assertIn("requires `server` privilege", doc)
+        self.assertIn("operator_control", doc)
+        self.assertIn("dry-run-only", doc)
+        self.assertIn("safe next actions", doc)
 
 
 if __name__ == "__main__":

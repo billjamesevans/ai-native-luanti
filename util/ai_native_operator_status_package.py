@@ -196,6 +196,135 @@ def _summarize_benchmarks(gates, redactor: Redactor) -> dict:
     }
 
 
+def _task_safe_next_action(status: str) -> str:
+    if status in {"blocked", "unsafe", "failed"}:
+        return "review_blocked_task_before_retry"
+    if status in {"completed", "cancelled"}:
+        return "inspect_completed_task_summary"
+    return "inspect_task_before_action"
+
+
+def _task_is_actionable(status: str) -> bool:
+    return status not in {"completed", "cancelled"}
+
+
+def _rollback_safe_next_action(status: str) -> str:
+    if status in {"available", "success", "recorded"}:
+        return "review_rollback_record_before_execution"
+    return "inspect_rollback_record_status"
+
+
+def _import_review_safe_next_action(status: str) -> str:
+    if status == "blocked":
+        return "review_import_blocker"
+    if status in {"approved", "ready", "success"}:
+        return "review_import_review_before_promotion"
+    return "inspect_import_review_status"
+
+
+def _promotion_safe_next_action(status: str) -> str:
+    if status == "ready":
+        return "review_promotion_package_before_apply"
+    if status in {"blocked", "fail"}:
+        return "review_promotion_blocker"
+    return "inspect_promotion_status"
+
+
+def _benchmark_safe_next_action(status: str) -> str:
+    if status == "fail":
+        return "review_benchmark_failure"
+    return "inspect_benchmark_gate_summary"
+
+
+def _operator_recommendation(
+    redactor: Redactor,
+    *,
+    target_kind: str,
+    target_id,
+    status,
+    safe_next_action: str,
+) -> dict:
+    return {
+        "target_kind": redactor.text(target_kind),
+        "target_id": redactor.text(target_id or "unknown"),
+        "status": redactor.text(status or "unknown"),
+        "safe_next_action": redactor.text(safe_next_action),
+        "dry_run_only": True,
+        "will_mutate": False,
+    }
+
+
+def _summarize_operator_control(
+    tasks,
+    rollback_records,
+    import_reviews,
+    promotions,
+    gates,
+    redactor: Redactor,
+) -> dict:
+    recommendations = []
+    control_tasks = [
+        task for task in tasks
+        if _task_is_actionable(task.get("status", "unknown"))
+    ]
+    if not control_tasks:
+        control_tasks = tasks
+    for task in control_tasks:
+        status = task.get("status", "unknown")
+        recommendations.append(_operator_recommendation(
+            redactor,
+            target_kind="task",
+            target_id=task.get("task_id", "unknown"),
+            status=status,
+            safe_next_action=_task_safe_next_action(status),
+        ))
+    for record in rollback_records:
+        status = record.get("status", "available")
+        recommendations.append(_operator_recommendation(
+            redactor,
+            target_kind="rollback",
+            target_id=record.get("record_id") or record.get("task_id") or "unknown",
+            status=status,
+            safe_next_action=_rollback_safe_next_action(status),
+        ))
+    for review in import_reviews:
+        status = review.get("status", "unknown")
+        recommendations.append(_operator_recommendation(
+            redactor,
+            target_kind="import_review",
+            target_id=review.get("review_id", "unknown"),
+            status=status,
+            safe_next_action=_import_review_safe_next_action(status),
+        ))
+    for package in promotions:
+        status = package.get("status", "unknown")
+        recommendations.append(_operator_recommendation(
+            redactor,
+            target_kind="import_promotion",
+            target_id=package.get("package_id", "unknown"),
+            status=status,
+            safe_next_action=_promotion_safe_next_action(status),
+        ))
+    for gate in gates:
+        status = gate.get("status", "unknown")
+        if status == "fail":
+            recommendations.append(_operator_recommendation(
+                redactor,
+                target_kind="benchmark_gate",
+                target_id=gate.get("gate_id", "unknown"),
+                status=status,
+                safe_next_action=_benchmark_safe_next_action(status),
+            ))
+    return {
+        "surface_kind": "read_only_task_rollback_control",
+        "action_mode": "dry_run_only",
+        "mutation_performed": False,
+        "recommendations_total": len(recommendations),
+        "summaries": recommendations[:SUMMARY_LIMIT],
+        "truncated": len(recommendations) > SUMMARY_LIMIT,
+    }
+
+
 def _server_profile_hygiene(root: pathlib.Path) -> dict:
     report = ai_native_product_profile_verify.build_report(root)
     return {
@@ -227,7 +356,7 @@ def _with_bounds(package, max_bytes: int) -> dict:
         return package["bounds"]["output_bytes"]
 
     def trim_lists(limit: int) -> None:
-        for section in ("agents", "tasks", "rollback", "imports", "benchmarks"):
+        for section in ("agents", "tasks", "rollback", "imports", "benchmarks", "operator_control"):
             if "summaries" in package[section]:
                 package[section]["summaries"] = package[section]["summaries"][:limit]
                 package[section]["truncated"] = True
@@ -258,7 +387,7 @@ def _with_bounds(package, max_bytes: int) -> dict:
         "output_bytes": 0,
         "truncated": any(
             package[section].get("truncated")
-            for section in ("agents", "tasks", "rollback", "imports", "benchmarks")
+            for section in ("agents", "tasks", "rollback", "imports", "benchmarks", "operator_control")
         ),
     }
     if refresh_size() > max_bytes:
@@ -283,6 +412,11 @@ def build_package(
     root = pathlib.Path(root)
     state = source_state or {}
     redactor = Redactor()
+    tasks = state.get("tasks", [])
+    rollback_records = state.get("rollback_records", [])
+    import_reviews = state.get("import_reviews", [])
+    promotion_packages = state.get("promotion_packages", [])
+    benchmark_gates = state.get("benchmark_gates", [])
 
     package = {
         "schema_version": 1,
@@ -295,14 +429,22 @@ def build_package(
         },
         "server_profile_hygiene": _server_profile_hygiene(root),
         "agents": _summarize_agents(state.get("agents", []), redactor),
-        "tasks": _summarize_tasks(state.get("tasks", []), redactor),
-        "rollback": _summarize_rollback(state.get("rollback_records", []), redactor),
+        "tasks": _summarize_tasks(tasks, redactor),
+        "rollback": _summarize_rollback(rollback_records, redactor),
         "imports": _summarize_imports(
-            state.get("import_reviews", []),
-            state.get("promotion_packages", []),
+            import_reviews,
+            promotion_packages,
             redactor,
         ),
-        "benchmarks": _summarize_benchmarks(state.get("benchmark_gates", []), redactor),
+        "benchmarks": _summarize_benchmarks(benchmark_gates, redactor),
+        "operator_control": _summarize_operator_control(
+            tasks,
+            rollback_records,
+            import_reviews,
+            promotion_packages,
+            benchmark_gates,
+            redactor,
+        ),
     }
     package["safety"] = {
         "public_safe_output": True,
