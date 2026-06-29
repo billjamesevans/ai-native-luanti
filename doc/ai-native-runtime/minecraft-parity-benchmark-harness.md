@@ -1,6 +1,6 @@
 # Minecraft-Parity Benchmark Harness
 
-Status: public-safe comparison harness for issue #124
+Status: public-safe comparison harness for issue #186
 
 ## Purpose
 
@@ -38,11 +38,21 @@ The harness defines these comparison dimensions:
 - mapblock/chunk churn
 - entity load
 - world-edit throughput
+- persistence
+- mod/plugin ergonomics
+- operator visibility
+- recovery
 - memory
 - CPU
 - latency
 
-Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, headless join-log latency proxies when a synthetic client command is supplied, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, memory sampling, and bounded process CPU sampling.
+Each dimension carries pass/warn/fail criteria. A pass means measured evidence meets the current project target, a warn means evidence is partial or proxy-only but safe and useful, and a fail means evidence is missing, failing, private, unsafe, or not reproducible.
+
+Dimensions also carry a gap area so engine/runtime gaps stay separate from game-content or plugin gaps and operator-experience gaps. This prevents a missing content feature from looking like an engine regression, and keeps plugin ergonomics work visible without polluting core runtime evidence.
+
+Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, headless join-log latency proxies when a synthetic client command is supplied, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, persistence and rollback metadata, operator status/task-control probes, memory sampling, and bounded process CPU sampling.
+
+The scenarios are safe to run locally and on the Pi side-by-side service. They use disposable `ai_runtime` worlds, public-safe synthetic clients and fixtures, rollback-backed mutation reports, and operator command probes. They do not require a private world or proprietary Minecraft assets.
 
 The first mapblock/chunk churn probe is `synthetic_sqlite_mapblock_churn`. It runs only in the disposable clean-profile benchmark world and records mapblock rows before/after, rows created, SQLite byte growth, workload duration, and warning/error counts.
 
@@ -73,8 +83,11 @@ Not allowed:
 The JSON report contains:
 
 - `comparison_dimensions`: the dimensions and metric paths the harness understands.
+- `scorecard_status_criteria`: the pass/warn/fail meaning used by every dimension.
+- `benchmark_scenarios`: local/Pi-safe scenario metadata for reproducible runs.
 - `measured_facts`: hardware-lane facts sourced from accepted benchmark reports.
 - `qualitative_minecraft_parity_gaps`: missing or partial evidence that should drive the runtime backlog.
+- `gap_summary_by_area`: counts for engine/runtime, game-content, plugin, and operator-experience gaps.
 - `source_policy`: explicit separation between project targets and measured fork evidence.
 - `retention`: the local benchmark retention lane where the report belongs.
 - `privacy_scan`: a focused report-payload privacy scan.
