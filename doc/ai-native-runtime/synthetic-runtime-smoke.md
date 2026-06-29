@@ -109,10 +109,12 @@ execution contract against synthetic task state. It then runs
 `util/ai_native_agent_product_loop_live_probe.py` against a disposable live `ai_runtime` world and
 writes `ai-runtime-agent-product-loop-live-result.json`. That probe uses synthetic public nodes to
 queue build and repair previews, require explicit approval, execute rollback-backed build and repair
-tasks, cancel a queued task, retry a rollback-blocked task, and check guide/tasks/audit/rollback,
-defender, and importer-preview surfaces without private content. It also captures a compact
+tasks, review and edit pending plans before approval, cancel a queued task, retry a
+rollback-blocked task, and check guide/tasks/audit/rollback, targeted audit, targeted rollback
+review, defender, and importer-preview surfaces without private content. It also captures a compact
 same-world operator-status snapshot proving the live status surface sees the product-loop tasks,
-rollback records, and import review without retaining private payloads. It then runs
+rollback records, and import review without retaining private payloads. Rollback review remains
+read-only in this probe, including targeted rollback-record lookup. It then runs
 `util/ai_native_compat_import_staging_pilot.py` against a disposable live `ai_runtime` staging world
 and writes `ai-runtime-compat-import-staging-pilot-result.json`. That pilot runs public-safe
 inventory discovery, dry-run report generation, reviewed adapter smoke, operator review, chunked
