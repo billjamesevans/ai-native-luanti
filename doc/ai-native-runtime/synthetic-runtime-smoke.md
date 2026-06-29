@@ -76,19 +76,24 @@ For pre-PR work, prefer the one-command local harness:
 python3 util/ai_native_runtime_verify.py --hardware-class local-mac
 ```
 
-The harness runs the AI-native utility contracts, the branch benchmark gate, the operator status
-artifact check, and the focused `TestAIRuntime` smoke in a repeatable order. It writes
+The harness runs the AI-native utility contracts, the branch benchmark gate, the live operator
+status command probe, and the focused `TestAIRuntime` smoke in a repeatable order. It writes
 `ai-runtime-verification-manifest.json` under
 `local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
-failure reasons, and local artifact paths. The harness is synthetic-only: no live server, no
-private world, no private assets, no provider prompts, and no model-network calls.
+failure reasons, and local artifact paths. The default operator-status step launches a
+disposable `ai_runtime` world with a temporary probe worldmod, executes the registered
+`/ai_runtime_operator_status` command function, writes `ai-runtime-operator-status-live.json`, and
+records source_kind = `live_command` with direct command execution evidence. The probe uses a
+temporary local world only: no family server, no private world, no private assets, no provider
+prompts, and no model-network calls.
 
-Direct chat/RCON execution is not part of the verifier yet. Until that exists, the harness records
-a documented `/ai_runtime_operator_status` command surrogate by writing
-`ai-runtime-operator-status.json` with `util/ai_native_operator_status_package.py`, then failing
-the run if the artifact is missing required sections, exceeds `--operator-status-max-bytes`, or
-contains private paths, hosts, family-showcase names, provider keys, provider prompts, or raw asset
-payload fields.
+If the live command path is unavailable in a narrow utility-only lane, use
+`--operator-status-source surrogate` to write `ai-runtime-operator-status.json` with
+`util/ai_native_operator_status_package.py`. The manifest records
+source_kind = `command_surrogate` and `direct_command_execution = false` for that fallback. Both
+paths fail the run if the retained artifact is missing required sections, exceeds
+`--operator-status-max-bytes`, or contains private paths, hosts, family-showcase names, provider
+keys, provider prompts, or raw asset payload fields.
 
 Use the default synthetic-only verifier for fast feature branches that do not touch server-profile
 startup, packaging, or benchmark capture behavior.
@@ -105,8 +110,11 @@ python3 util/ai_native_runtime_verify.py \
 The clean-profile verifier keeps the normal branch gate and focused AI runtime unit smoke, and also
 routes `--game-profile ai_runtime` through benchmark capture. The run directory keeps
 `benchmark-gate-manifest.json`, `ai-runtime-verification-manifest.json`, and
-`clean-profile-benchmark-summary.json` together with `ai-runtime-operator-status.json`. It still
-uses a disposable local world and requires no live server, no private world, no private assets, no
-provider prompts, and no model-network calls.
+`clean-profile-benchmark-summary.json` together with `ai-runtime-operator-status-live.json`. It
+still requires no family server, no private world, no private assets, no provider prompts, and no
+model-network calls.
 
-The smoke path requires no live server and does not touch the family proving-ground server. Any future low-power or family-server proving-ground run remains backup-first and must be explicitly requested.
+The smoke scenario itself remains synthetic: no live server, no private world, and no model
+network. The verifier's live operator-status probe uses only a disposable local world and does not
+touch the family proving-ground server. Any future low-power or family-server proving-ground run
+remains backup-first and must be explicitly requested.

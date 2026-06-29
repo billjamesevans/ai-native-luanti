@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT_ROOT = ROOT / "local" / "benchmarks"
 MANIFEST_NAME = "ai-runtime-verification-manifest.json"
 OPERATOR_STATUS_NAME = "ai-runtime-operator-status.json"
-OPERATOR_STATUS_SOURCE_KIND = "command_surrogate"
+OPERATOR_STATUS_LIVE_NAME = "ai-runtime-operator-status-live.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
     "schema_version",
     "package_kind",
@@ -128,7 +128,31 @@ def logical_path(args, filename: str) -> str:
 
 
 def operator_status_artifact_path(args) -> Path:
-    return physical_run_dir(args) / OPERATOR_STATUS_NAME
+    return physical_run_dir(args) / operator_status_artifact_name(args)
+
+
+def operator_status_artifact_name(args) -> str:
+    if args.operator_status_source == "live":
+        return OPERATOR_STATUS_LIVE_NAME
+    return OPERATOR_STATUS_NAME
+
+
+def operator_status_step_id(args) -> str:
+    if args.operator_status_source == "live":
+        return "operator_status_live_command"
+    return "operator_status_package"
+
+
+def operator_status_source_kind(args) -> str:
+    if args.operator_status_source == "live":
+        return "live_command"
+    return "command_surrogate"
+
+
+def operator_status_execution_path(args) -> str:
+    if args.operator_status_source == "live":
+        return "disposable_worldmod_registered_chatcommand"
+    return "python_package_surrogate"
 
 
 def operator_status_generated_at(args) -> str:
@@ -239,33 +263,7 @@ def build_steps(args) -> list[CommandStep]:
             + manifest_profile_args
             + (["--confirm-low-power-backup"] if args.confirm_low_power_backup else []),
         ),
-        CommandStep(
-            "operator_status_package",
-            "Operator status package command surrogate",
-            [
-                args.python,
-                "util/ai_native_operator_status_package.py",
-                "--root",
-                ".",
-                "--output",
-                str(operator_status_artifact_path(args)),
-                "--generated-at",
-                operator_status_generated_at(args),
-                "--max-bytes",
-                str(args.operator_status_max_bytes),
-            ],
-            python_manifest_command(
-                "util/ai_native_operator_status_package.py",
-                "--root",
-                ".",
-                "--output",
-                logical_path(args, OPERATOR_STATUS_NAME),
-                "--generated-at",
-                operator_status_generated_at(args),
-                "--max-bytes",
-                str(args.operator_status_max_bytes),
-            ),
-        ),
+        build_operator_status_step(args),
         CommandStep(
             "ai_runtime_focused_tests",
             "Focused AI runtime unit smoke",
@@ -295,6 +293,72 @@ def build_steps(args) -> list[CommandStep]:
         )
 
     return steps
+
+
+def build_operator_status_step(args) -> CommandStep:
+    if args.operator_status_source == "live":
+        return CommandStep(
+            "operator_status_live_command",
+            "Live operator status command probe in disposable ai_runtime world",
+            [
+                args.python,
+                "util/ai_native_operator_status_live_command.py",
+                "--root",
+                ".",
+                "--server-bin",
+                args.server_bin,
+                "--output",
+                str(operator_status_artifact_path(args)),
+                "--generated-at",
+                operator_status_generated_at(args),
+                "--max-bytes",
+                str(args.operator_status_max_bytes),
+                "--timeout",
+                str(args.operator_status_live_timeout),
+            ],
+            python_manifest_command(
+                "util/ai_native_operator_status_live_command.py",
+                "--root",
+                ".",
+                "--server-bin",
+                server_manifest_bin(args.server_bin),
+                "--output",
+                logical_path(args, OPERATOR_STATUS_LIVE_NAME),
+                "--generated-at",
+                operator_status_generated_at(args),
+                "--max-bytes",
+                str(args.operator_status_max_bytes),
+                "--timeout",
+                str(args.operator_status_live_timeout),
+            ),
+        )
+    return CommandStep(
+        "operator_status_package",
+        "Operator status package command surrogate",
+        [
+            args.python,
+            "util/ai_native_operator_status_package.py",
+            "--root",
+            ".",
+            "--output",
+            str(operator_status_artifact_path(args)),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.operator_status_max_bytes),
+        ],
+        python_manifest_command(
+            "util/ai_native_operator_status_package.py",
+            "--root",
+            ".",
+            "--output",
+            logical_path(args, OPERATOR_STATUS_NAME),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.operator_status_max_bytes),
+        ),
+    )
 
 
 def run_subprocess(step: CommandStep) -> CommandRun:
@@ -333,17 +397,19 @@ def artifact_has_private_content(raw_payload: str) -> bool:
 
 def operator_status_evidence(args) -> tuple[dict, list[str]]:
     path = operator_status_artifact_path(args)
-    source_path = logical_path(args, OPERATOR_STATUS_NAME)
+    source_path = logical_path(args, operator_status_artifact_name(args))
+    step_id = operator_status_step_id(args)
     evidence = {
         "status": "fail",
-        "source_kind": OPERATOR_STATUS_SOURCE_KIND,
+        "source_kind": operator_status_source_kind(args),
         "source_path": source_path,
         "live_command": "/ai_runtime_operator_status",
-        "direct_command_execution": False,
+        "direct_command_execution": args.operator_status_source == "live",
+        "execution_path": operator_status_execution_path(args),
     }
     reasons = []
     if not path.is_file():
-        reasons.append("operator_status_package artifact missing")
+        reasons.append(f"{step_id} artifact missing")
         evidence["failure_count"] = len(reasons)
         return evidence, reasons
 
@@ -351,37 +417,37 @@ def operator_status_evidence(args) -> tuple[dict, list[str]]:
         raw_payload = path.read_text(encoding="utf-8")
         payload = json.loads(raw_payload)
     except (OSError, json.JSONDecodeError) as exc:
-        reasons.append(f"operator_status_package artifact unreadable: {type(exc).__name__}")
+        reasons.append(f"{step_id} artifact unreadable: {type(exc).__name__}")
         evidence["failure_count"] = len(reasons)
         return evidence, reasons
 
     missing_sections = sorted(OPERATOR_STATUS_REQUIRED_SECTIONS - set(payload))
     if missing_sections:
         reasons.append(
-            "operator_status_package missing required sections: "
+            f"{step_id} missing required sections: "
             + ",".join(missing_sections)
         )
     if payload.get("package_kind") != "ai_native_operator_status_package":
-        reasons.append("operator_status_package has unexpected package_kind")
+        reasons.append(f"{step_id} has unexpected package_kind")
     if artifact_has_private_content(raw_payload):
-        reasons.append("operator_status_package contains private patterns")
+        reasons.append(f"{step_id} contains private patterns")
 
     bounds = payload.get("bounds") if isinstance(payload.get("bounds"), dict) else {}
     output_bytes = bounds.get("output_bytes")
     max_bytes = bounds.get("max_bytes", args.operator_status_max_bytes)
     if not isinstance(output_bytes, int):
-        reasons.append("operator_status_package missing numeric output_bytes")
+        reasons.append(f"{step_id} missing numeric output_bytes")
     if not isinstance(max_bytes, int):
-        reasons.append("operator_status_package missing numeric max_bytes")
+        reasons.append(f"{step_id} missing numeric max_bytes")
     if isinstance(output_bytes, int) and isinstance(max_bytes, int):
         if output_bytes > max_bytes:
-            reasons.append("operator_status_package output_bytes exceeds max_bytes")
+            reasons.append(f"{step_id} output_bytes exceeds max_bytes")
         if output_bytes > args.operator_status_max_bytes:
-            reasons.append("operator_status_package output_bytes exceeds harness byte budget")
+            reasons.append(f"{step_id} output_bytes exceeds harness byte budget")
 
     safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
     if safety.get("public_safe_output") is not True:
-        reasons.append("operator_status_package public_safe_output is not true")
+        reasons.append(f"{step_id} public_safe_output is not true")
 
     evidence.update({
         "status": "fail" if reasons else "pass",
@@ -434,9 +500,9 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                     args,
                     "clean-profile-benchmark-summary.json",
                 )
-        if step.id == "operator_status_package":
+        if step.id in {"operator_status_live_command", "operator_status_package"}:
             operator_status_step_ran = True
-            artifact_paths["operator_status_package"] = logical_path(args, OPERATOR_STATUS_NAME)
+            artifact_paths[step.id] = logical_path(args, operator_status_artifact_name(args))
 
     operator_evidence = None
     if operator_status_step_ran:
@@ -467,6 +533,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "Runs local utility contracts, the branch benchmark gate, and focused AI runtime unit smoke.",
             "Generated artifacts remain local-only and ignored by Git under local/benchmarks.",
             "Use the low-power lane only after backup-first readiness is confirmed.",
+            "Operator status uses a disposable ai_runtime live command probe by default.",
         ]
         + (
             [
@@ -599,6 +666,21 @@ def parse_args(argv=None):
         type=int,
         default=24000,
         help="Maximum byte budget for the retained operator status artifact.",
+    )
+    parser.add_argument(
+        "--operator-status-source",
+        choices=("live", "surrogate"),
+        default="live",
+        help=(
+            "Capture operator status from a disposable live ai_runtime server by default. "
+            "Use surrogate to call the Python package generator explicitly."
+        ),
+    )
+    parser.add_argument(
+        "--operator-status-live-timeout",
+        type=float,
+        default=20.0,
+        help="Seconds to wait for the disposable live operator-status probe.",
     )
     return parser.parse_args(argv)
 
