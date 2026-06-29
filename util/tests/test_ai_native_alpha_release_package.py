@@ -27,6 +27,7 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             "doc/ai-native-runtime/clean-ai-runtime-install.md",
             "doc/ai-native-runtime/public-safe-sample-data-policy.md",
             "doc/ai-native-runtime/release-notes-template.md",
+            "doc/ai-native-runtime/project-operating-loop.md",
             ".github/ISSUE_TEMPLATE/ai_runtime.yml",
             ".github/ISSUE_TEMPLATE/agent_plugin.yml",
             ".github/ISSUE_TEMPLATE/benchmark.yml",
@@ -59,6 +60,24 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         self.assertTrue(report["safety"]["pi_side_by_side_only"])
         self.assertTrue(report["safety"]["release_notes_separate_engine_plugins_family_content"])
         self.assertTrue(report["safety"]["clean_profile_package_verified"])
+        operating_loop = report["project_operating_loop"]
+        self.assertEqual(
+            [item["issue"] for item in operating_loop["ranked_next_issue_queue"]],
+            ["#253", "#254", "#255", "#256", "#257"],
+        )
+        self.assertEqual(
+            operating_loop["public_boundary"]["excluded_content"],
+            ["spacebase", "themepark", "disneyland100"],
+        )
+        self.assertEqual(
+            operating_loop["public_boundary"]["fork_lane"],
+            "side-by-side ai_runtime alpha lane",
+        )
+        cadence_names = [entry["name"] for entry in operating_loop["cadence"]]
+        self.assertEqual(
+            cadence_names,
+            ["pre_pr_local_gate", "benchmark_review", "pi_promotion"],
+        )
         self.assertEqual(report["clean_profile_package"]["status"], "pass")
         self.assertEqual(report["clean_profile_package"]["profile"]["gameid"], "ai_runtime")
         self.assertTrue(
@@ -104,6 +123,7 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             "clean-ai-runtime-install.md",
             "public-safe-sample-data-policy.md",
             "release-notes-template.md",
+            "project-operating-loop.md",
         ]:
             self.assertIn(link, readme)
 
