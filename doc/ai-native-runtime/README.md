@@ -68,6 +68,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Operator task-control command probe: `python3 util/ai_native_operator_task_control_command_probe.py --output local/ai-runtime-operator-task-control-command-result.json --generated-at 2026-06-29T00:00:00Z`
 - Command task-control boundary: receipt-gated task-control command probe, task cancel/retry only, no rollback execution, no import promotion execution, and no world mutation.
 - Live task-control boundary: disposable live `ai_runtime` queue probe, task cancel/retry only, no rollback execution, no import promotion execution, and no world mutation.
+- First-party agent product-loop live probe: `python3 util/ai_native_agent_product_loop_live_probe.py --root . --server-bin bin/luantiserver --output local/benchmarks/agent-product-loop-live.json --generated-at 2026-06-29T00:00:00Z`
 - Live operator status command: `/ai_runtime_operator_status`
 - Live operator task-control command: `/ai_runtime_operator_task_control`
 - Alpha release package gate: `python3 util/ai_native_alpha_release_gate.py`
