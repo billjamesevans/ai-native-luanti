@@ -266,6 +266,178 @@ local function public_reply(name, action, status, message, extra)
 	return extra
 end
 
+local function append(list, value)
+	list[#list + 1] = value
+end
+
+local function task_summary(task)
+	if type(task) ~= "table" then
+		return nil
+	end
+	local summary = tostring(task.task_id or "unknown") .. "="
+		.. tostring(task.status or "unknown")
+	if task.label then
+		summary = summary .. " (" .. tostring(task.label) .. ")"
+	end
+	return summary
+end
+
+local function surface_summary(surface)
+	if type(surface) ~= "table" then
+		return nil
+	end
+	local grant = surface.required_capabilities_granted and "ready" or "gated"
+	return tostring(surface.surface_id or "unknown") .. "=" .. grant
+end
+
+local function pending_approval_summary(pending)
+	if type(pending) ~= "table" then
+		return nil
+	end
+	local parts = {
+		"pending=" .. tostring(pending.pending_action or "unknown"),
+		"approval_id=" .. tostring(pending.approval_id or "unknown"),
+	}
+	if pending.candidate_count then
+		append(parts, "candidates=" .. tostring(pending.candidate_count))
+	end
+	if pending.planned_node_writes then
+		append(parts, "planned_writes=" .. tostring(pending.planned_node_writes))
+	end
+	return table.concat(parts, " ")
+end
+
+local function join_limited(values, limit)
+	local parts = {}
+	limit = limit or #values
+	for index, value in ipairs(values or {}) do
+		if index > limit then
+			append(parts, "...")
+			break
+		end
+		append(parts, tostring(value))
+	end
+	return table.concat(parts, ", ")
+end
+
+local function append_task_details(lines, result)
+	if result.task_id then
+		append(lines, "task_id=" .. tostring(result.task_id))
+	end
+	if result.surface_id then
+		append(lines, "surface=" .. tostring(result.surface_id))
+	end
+	if result.approval_id then
+		append(lines, "approval_id=" .. tostring(result.approval_id))
+	end
+	if result.approved_action then
+		append(lines, "approved_action=" .. tostring(result.approved_action))
+	end
+	if result.reason then
+		append(lines, "reason=" .. tostring(result.reason))
+	end
+end
+
+local function format_command_reply(result)
+	result = result or {}
+	local lines = {
+		tostring(result.message or "AI agent command completed."),
+		"status=" .. tostring(result.status or "unknown")
+			.. " action=" .. tostring(result.action or "unknown"),
+	}
+	if result.action == "guide" then
+		local surfaces = {}
+		for _, surface in ipairs(result.product_surfaces or {}) do
+			local summary = surface_summary(surface)
+			if summary then
+				append(surfaces, summary)
+			end
+		end
+		if #surfaces > 0 then
+			append(lines, "surfaces=" .. join_limited(surfaces, 8))
+		end
+		if type(result.commands) == "table" then
+			append(lines, "commands=" .. join_limited(result.commands, 18))
+		end
+		local pending = pending_approval_summary(result.pending_approval)
+		if pending then
+			append(lines, pending)
+		end
+	elseif result.action == "tasks" then
+		local tasks = {}
+		for _, task in ipairs(result.tasks or {}) do
+			local summary = task_summary(task)
+			if summary then
+				append(tasks, summary)
+			end
+		end
+		append(lines, "tasks=" .. (#tasks > 0 and join_limited(tasks, 8) or "none"))
+		local pending = pending_approval_summary(result.pending_approval)
+		if pending then
+			append(lines, pending)
+		end
+	elseif result.action == "status" then
+		local state = result.state or {}
+		append(lines, "mode=" .. tostring(state.mode or "unknown"))
+		local metrics = result.metrics or {}
+		append(lines, "queue=" .. tostring(metrics.active_tasks or 0)
+			.. " queued=" .. tostring(metrics.tasks_queued or 0)
+			.. " completed=" .. tostring(metrics.tasks_completed or 0)
+			.. " cancelled=" .. tostring(metrics.tasks_cancelled or 0))
+	elseif result.action == "build_plan" or result.action == "repair_plan" then
+		append(lines, "surface=" .. tostring(result.surface_id or "unknown"))
+		if result.planned_node_writes then
+			append(lines, "planned_writes=" .. tostring(result.planned_node_writes))
+		end
+		if result.candidate_count then
+			append(lines, "candidates=" .. tostring(result.candidate_count))
+		end
+	elseif result.status == "pending_approval" then
+		append_task_details(lines, result)
+		if result.pending_action then
+			append(lines, "pending_action=" .. tostring(result.pending_action))
+		end
+		if result.planned_node_writes then
+			append(lines, "planned_writes=" .. tostring(result.planned_node_writes))
+		end
+		if result.candidate_count then
+			append(lines, "candidates=" .. tostring(result.candidate_count))
+		end
+	elseif result.action == "audit" then
+		append(lines, "audit_events=" .. tostring(#(result.audit_events or {})))
+		local summaries = {}
+		for _, record in ipairs(result.audit_events or {}) do
+			append(summaries, tostring(record.event_type or "event") .. ":"
+				.. tostring(record.status or "unknown"))
+		end
+		if #summaries > 0 then
+			append(lines, "recent=" .. join_limited(summaries, 5))
+		end
+	elseif result.action == "rollback" then
+		append(lines, "rollback_records=" .. tostring(#(result.rollback_records or {})))
+		local summaries = {}
+		for _, record in ipairs(result.rollback_records or {}) do
+			append(summaries, tostring(record.rollback_record_id or "rollback"))
+		end
+		if #summaries > 0 then
+			append(lines, "recent=" .. join_limited(summaries, 5))
+		end
+	elseif result.action == "cancel" then
+		append(lines, "cancelled=" .. tostring(result.cancelled or 0))
+	else
+		append_task_details(lines, result)
+		if result.candidate_count then
+			append(lines, "candidates=" .. tostring(result.candidate_count))
+		end
+	end
+	if result.agent_id then
+		append(lines, "agent_id=" .. tostring(result.agent_id))
+	end
+	return table.concat(lines, "\n")
+end
+
+plugin.format_reply = format_command_reply
+
 function plugin.configure(options)
 	options = options or {}
 	if options.capability_profile then
@@ -1936,7 +2108,7 @@ local function register_command(name)
 		privs = { interact = true },
 		func = function(player_name, param)
 			local result = plugin.handle_command(player_name, param or "")
-			return result.ok, result.message
+			return result.ok, plugin.format_reply(result)
 		end,
 	})
 end

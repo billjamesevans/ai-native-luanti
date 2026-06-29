@@ -3940,6 +3940,37 @@ assert(core.registered_chatcommands.bot ~= nil)
 assert(core.registered_chatcommands.nova ~= nil)
 assert(core.registered_chatcommands.aibot ~= nil)
 
+function test_ai_agent_plugin_registered_chat_command_player_output()
+local guide_chat_ok, guide_chat_text = core.registered_chatcommands.nova.func("Wills", "guide")
+assert(guide_chat_ok == true)
+assert(guide_chat_text:find("status=success action=guide", 1, true))
+assert(guide_chat_text:find("surfaces=builder=ready", 1, true))
+assert(guide_chat_text:find("defender=gated", 1, true))
+assert(guide_chat_text:find("importer=gated", 1, true))
+assert(guide_chat_text:find("commands=status", 1, true))
+assert(guide_chat_text:find("build marker", 1, true))
+assert(guide_chat_text:find("import plan", 1, true))
+
+local pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "build marker")
+assert(pending_chat_ok == true)
+assert(pending_chat_text:find("status=pending_approval action=build", 1, true))
+assert(pending_chat_text:find("approval_id=", 1, true))
+assert(pending_chat_text:find("pending_action=build", 1, true))
+assert(pending_chat_text:find("surface=builder", 1, true))
+
+local tasks_chat_ok, tasks_chat_text = core.registered_chatcommands.nova.func(
+	"ChatUser", "tasks")
+assert(tasks_chat_ok == true)
+assert(tasks_chat_text:find("status=success action=tasks", 1, true))
+assert(tasks_chat_text:find("tasks=none", 1, true))
+assert(tasks_chat_text:find("pending=build", 1, true))
+assert(tasks_chat_text:find("approval_id=", 1, true))
+end
+
+test_ai_agent_plugin_registered_chat_command_player_output()
+test_ai_agent_plugin_registered_chat_command_player_output = nil
+
 product_loop_records = {}
 core.ai_rollback_storage.configure({
 	enabled = true,

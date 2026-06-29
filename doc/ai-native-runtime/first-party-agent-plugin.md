@@ -86,6 +86,14 @@ Implemented deterministic commands:
 - `audit`, `history`: returns recent sanitized audit events for the player-owned agent.
 - `rollback`, `rollback review`: returns recent rollback audit summaries for the player-owned agent.
 
+The chat response includes the action status plus the concrete public-safe
+details a player needs to keep using the loop: product-surface readiness,
+available commands, task ids, approval ids, pending actions, planned write or
+candidate counts, cancellation counts, audit counts, rollback counts, and gated
+surface reasons. The structured Lua result remains available to tests and
+operator tooling, but the registered chat command must not hide those details
+behind a generic success string.
+
 Unknown prompts go to the configured model adapter. The adapter boundary is explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
 
 ## Configuration
