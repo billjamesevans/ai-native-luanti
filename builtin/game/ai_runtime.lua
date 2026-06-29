@@ -897,6 +897,7 @@ local import_structure_required_capabilities = {
 }
 
 local ai_import_structure_runs = {}
+local ai_import_rollback_runs = {}
 
 local function import_structure_result(options)
 	local result = make_action_result("ai_import.structure_apply", options)
@@ -967,6 +968,50 @@ local function record_structure_chunk_result(result)
 		skipped = result.skipped or 0,
 		rollback_record_id = result.rollback_record_id,
 		rollback_storage_ref = result.rollback_storage_ref,
+		chunk = table.copy(chunk),
+		metrics = {
+			node_writes = result.metrics and result.metrics.node_writes or 0,
+			mapblock_churn = result.metrics and result.metrics.mapblock_churn or 0,
+			planned_node_writes = result.metrics and result.metrics.planned_node_writes or 0,
+			elapsed_us = result.metrics and result.metrics.elapsed_us or 0,
+			rollback_records = result.metrics and result.metrics.rollback_records or 0,
+			rollback_failures = result.metrics and result.metrics.rollback_failures or 0,
+		},
+	}
+end
+
+local function record_rollback_chunk_result(result)
+	if not result or not result.task_id then
+		return
+	end
+	local chunk = result.chunk or {
+		chunk_index = result.metrics and result.metrics.chunk_index or 0,
+		chunk_count = result.metrics and result.metrics.chunk_count or 1,
+		first_position_index = result.metrics and result.metrics.first_position_index or 0,
+		position_count = result.metrics and result.metrics.position_count
+			or result.examined or 0,
+	}
+	local run = ai_import_rollback_runs[result.task_id]
+	if not run then
+		run = {
+			task_id = result.task_id,
+			chunk_count = chunk.chunk_count or 1,
+			chunks = {},
+			started_at = result.metrics and result.metrics.started_at or nil,
+		}
+		ai_import_rollback_runs[result.task_id] = run
+	end
+	run.chunk_count = math.max(run.chunk_count or 1, chunk.chunk_count or 1)
+	local index = (chunk.chunk_index or 0) + 1
+	run.chunks[index] = {
+		status = result.status,
+		reason = result.reason,
+		changed = result.changed or 0,
+		examined = result.examined or 0,
+		skipped = result.skipped or 0,
+		rollback_record_id = result.rollback_record_id,
+		rollback_storage_ref = result.rollback_storage_ref,
+		source_rollback_record_id = result.source_rollback_record_id,
 		chunk = table.copy(chunk),
 		metrics = {
 			node_writes = result.metrics and result.metrics.node_writes or 0,
@@ -1571,6 +1616,7 @@ local function rollback_plan_record_ref(record, storage_ref)
 		world_mutating = true,
 		chunk = table.copy(record.chunk or {}),
 		position_count = #positions,
+		record = table.copy(record),
 	}
 end
 
@@ -1646,6 +1692,541 @@ function core.ai_import_ops.plan_structure_rollback(options)
 	end
 	return finish_runtime_gate_result(result, "success", "rollback_plan_created",
 		"Rollback plan was created without mutation.")
+end
+
+local import_rollback_required_capabilities = {
+	"rollback.execute",
+	"world.place",
+	"world.batch",
+}
+
+local function import_rollback_result(options)
+	local result = make_action_result("ai_import.rollback_execute", options)
+	result.metrics.planned_node_writes = 0
+	result.metrics.mapblock_churn = 0
+	result.metrics.rollback_records = 0
+	result.metrics.rollback_failures = 0
+	return result
+end
+
+local function finish_import_rollback_result(result, status, reason, message)
+	record_rollback_chunk_result(result)
+	core.record_ai_runtime_audit({
+		event_type = "import.rollback_execute",
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		operation = result.operation,
+		status = status,
+		reason = reason,
+		message = message,
+		changed = result.changed,
+		examined = result.examined,
+		skipped = result.skipped,
+		rollback_record_id = result.rollback_record_id,
+		rollback_storage_ref = result.rollback_storage_ref,
+		source_rollback_record_id = result.source_rollback_record_id,
+		mutation_class = "compat_import",
+	})
+	return finish_runtime_gate_result(result, status, reason, message)
+end
+
+local function finalize_import_rollback_mutation_result(result, status, reason, message)
+	result.operation = "ai_import.rollback_execute"
+	record_rollback_chunk_result(result)
+	core.record_ai_runtime_audit({
+		event_type = "import.rollback_execute",
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		operation = result.operation,
+		status = status or result.status,
+		reason = reason or result.reason,
+		message = message or result.message,
+		changed = result.changed,
+		examined = result.examined,
+		skipped = result.skipped,
+		rollback_record_id = result.rollback_record_id,
+		rollback_storage_ref = result.rollback_storage_ref,
+		source_rollback_record_id = result.source_rollback_record_id,
+		mutation_class = "compat_import",
+	})
+	return result
+end
+
+local function blocked_import_rollback_result(result, reason, message)
+	if result.examined > 0 and result.skipped == 0 then
+		result.skipped = result.examined
+	end
+	return finish_import_rollback_result(result, "blocked", reason, message)
+end
+
+local function import_rollback_capability_block(options, result)
+	for _, capability in ipairs(import_rollback_required_capabilities) do
+		local capability_result = core.check_agent_capability(options.agent_id, capability)
+		if not capability_result.ok then
+			result.skipped = result.examined > 0 and result.examined or 1
+			return blocked_import_rollback_result(result, capability_result.reason,
+				capability_result.message)
+		end
+	end
+	local admin_result = core.check_agent_capability(options.agent_id, "admin.override")
+	if not admin_result.ok then
+		result.skipped = result.examined > 0 and result.examined or 1
+		return blocked_import_rollback_result(result, "admin_override_required",
+			"Compatibility rollback execution requires admin override.")
+	end
+	return nil
+end
+
+local function rollback_execution_record_id(base_record_id, task_id, chunk)
+	local base = base_record_id or ("rollback:" .. task_id .. ":compat.structure.rollback")
+	return base .. ":chunk:" .. tostring(chunk.chunk_index)
+end
+
+local function rollback_record_positions(record)
+	local positions = {}
+	for _, previous in ipairs(record.previous_nodes or {}) do
+		positions[#positions + 1] = check_pos(previous.pos, "previous_nodes.pos")
+	end
+	return positions
+end
+
+local function rollback_record_placements(record)
+	assert(type(record) == "table", "Rollback execution record must be a table")
+	local previous_nodes = record.previous_nodes or {}
+	assert(type(previous_nodes) == "table" and #previous_nodes > 0,
+		"Rollback execution requires previous node records")
+	local placements = {}
+	for index, previous in ipairs(previous_nodes) do
+		assert(type(previous) == "table",
+			"Rollback previous node " .. index .. " must be a table")
+		local node = previous.node or {}
+		check_string(node.name, "previous_nodes[" .. index .. "].node.name")
+		placements[#placements + 1] = {
+			pos = check_pos(previous.pos, "previous_nodes[" .. index .. "].pos"),
+			node_name = node.name,
+			param1 = node.param1 or 0,
+			param2 = node.param2 or 0,
+		}
+	end
+	return placements
+end
+
+local function rollback_record_chunk(record, fallback_count)
+	return normalize_structure_chunk({
+		chunk = record.chunk or {},
+	}, fallback_count)
+end
+
+local function rollback_plan_records(plan)
+	local records = {}
+	for _, record_ref in ipairs(plan.rollback_records or {}) do
+		local record = record_ref.record
+		if type(record) == "table" then
+			records[#records + 1] = table.copy(record)
+		end
+	end
+	return records
+end
+
+local function ordered_rollback_records(records, reverse_order)
+	local ordered = table.copy(records)
+	table.sort(ordered, function(a, b)
+		local a_chunk = a.chunk or {}
+		local b_chunk = b.chunk or {}
+		local a_index = tonumber(a_chunk.chunk_index) or 0
+		local b_index = tonumber(b_chunk.chunk_index) or 0
+		if a_index == b_index then
+			return tostring(a.record_id or "") < tostring(b.record_id or "")
+		end
+		if reverse_order == false then
+			return a_index < b_index
+		end
+		return a_index > b_index
+	end)
+	return ordered
+end
+
+local function resolve_rollback_execution_records(def)
+	if type(def.rollback_records) == "table" and #def.rollback_records > 0 then
+		local records = {}
+		for _, record in ipairs(def.rollback_records) do
+			if type(record.record) == "table" then
+				records[#records + 1] = table.copy(record.record)
+			else
+				records[#records + 1] = table.copy(record)
+			end
+		end
+		return {
+			ok = true,
+			status = "success",
+			records = records,
+			missing_records = {},
+		}
+	end
+
+	local plan = def.rollback_plan
+	if type(plan) ~= "table" then
+		local plan_options = table.copy(def)
+		if def.source_task_id then
+			plan_options.task_id = def.source_task_id
+		elseif def.apply_task_id then
+			plan_options.task_id = def.apply_task_id
+		end
+		plan = core.ai_import_ops.plan_structure_rollback(plan_options)
+	end
+	local records = rollback_plan_records(plan)
+	local rollback_plan = plan.rollback_plan or {}
+	return {
+		ok = plan.ok == true and #records > 0 and #(rollback_plan.missing_records or {}) == 0,
+		status = plan.status,
+		reason = plan.reason,
+		message = plan.message,
+		records = records,
+		missing_records = table.copy(rollback_plan.missing_records or {}),
+	}
+end
+
+local function rollback_execution_totals(records)
+	local totals = {
+		node_writes = 0,
+		mapblock_churn = 0,
+	}
+	for _, record in ipairs(records or {}) do
+		local placements = rollback_record_placements(record)
+		totals.node_writes = totals.node_writes + #placements
+		totals.mapblock_churn = totals.mapblock_churn
+			+ structure_mapblock_churn(placements)
+	end
+	return totals
+end
+
+function core.ai_import_ops.execute_structure_rollback(record, options)
+	options = options or {}
+	runtime_gate_options(options, "ai_import.rollback_execute")
+	local placements = rollback_record_placements(record)
+	local result = import_rollback_result(options)
+	result.examined = #placements
+	result.metrics.planned_node_writes = #placements
+	result.metrics.mapblock_churn = structure_mapblock_churn(placements)
+	result.source_rollback_record_id = record.record_id
+	local chunk = rollback_record_chunk(record, #placements)
+	annotate_structure_result(result, chunk)
+
+	local capability_block = import_rollback_capability_block(options, result)
+	if capability_block then
+		return capability_block
+	end
+	if options.explicit_approval ~= true then
+		return blocked_import_rollback_result(result, "approval_required",
+			"Compatibility rollback execution requires explicit operator approval.")
+	end
+	local target_world = options.target_world or {}
+	if options.staging ~= true and target_world.staging ~= true then
+		return blocked_import_rollback_result(result, "staging_target_required",
+			"Compatibility rollback execution requires a staging target world.")
+	end
+	if options.allow_mutation ~= true then
+		return blocked_import_rollback_result(result, "rollback_mutation_not_enabled",
+			"Compatibility rollback execution requires explicit allow_mutation.")
+	end
+	if not options.world_id or options.world_id == "" then
+		return blocked_import_rollback_result(result, "rollback_metadata_unavailable",
+			"Compatibility rollback execution requires a target world id before mutation.")
+	end
+	local rollback_policy = normalize_structure_rollback_policy(options.rollback_policy)
+	if not rollback_policy then
+		return blocked_import_rollback_result(result, "rollback_policy_not_mutating",
+			"Compatibility rollback execution requires manifest, chunked, or snapshot rollback.")
+	end
+	local max_writes = structure_budget_value(options, "max_node_writes_per_step", #placements)
+	if #placements > max_writes then
+		return blocked_import_rollback_result(result, "node_write_budget_exceeded",
+			"Compatibility rollback execution exceeds the per-step node-write budget.")
+	end
+	local max_mapblock_churn = structure_budget_value(options,
+		"max_mapblock_churn_total", result.metrics.mapblock_churn)
+	if result.metrics.mapblock_churn > max_mapblock_churn then
+		return blocked_import_rollback_result(result, "mapblock_churn_budget_exceeded",
+			"Compatibility rollback execution exceeds the mapblock-churn budget.")
+	end
+
+	local rollback_result = core.run_ai_world_mutation_with_rollback({
+		record_id = options.rollback_record_id,
+		policy = rollback_policy,
+		world_id = options.world_id,
+		task_id = options.task_id,
+		agent_id = options.agent_id,
+		owner_ref = options.owner or options.owner_ref,
+		operation_label = options.operation_label or "compat.structure.rollback",
+		mutation_class = "compat_import",
+		bounds = options.bounds,
+		positions = rollback_record_positions(record),
+		chunk = chunk,
+		get_node = options.get_node,
+		persist_record = options.persist_record or options.persist_rollback_record,
+	}, function(ctx)
+		return core.ai_world_ops.batch_place(placements, {
+			agent_id = ctx.agent_id,
+			task_id = ctx.task_id,
+			owner = options.owner or options.owner_ref,
+			get_node = options.get_node,
+			set_node = options.set_node,
+			bounds = options.bounds,
+			replace_existing = true,
+			allow_hazards = options.allow_hazards == true,
+			min_player_distance = options.min_player_distance,
+			max_changes = #placements,
+			sample_limit = options.sample_limit,
+		})
+	end)
+
+	if not rollback_result.ok and rollback_result.reason == "rollback_metadata_unavailable" then
+		result.metrics.rollback_failures = 1
+		return blocked_import_rollback_result(result, "rollback_metadata_unavailable",
+			rollback_result.message or "Rollback metadata is unavailable.")
+	end
+	annotate_structure_result(rollback_result, chunk)
+	rollback_result.operation = "ai_import.rollback_execute"
+	rollback_result.source_rollback_record_id = record.record_id
+	if rollback_result.rollback_record_id then
+		rollback_result.metrics = rollback_result.metrics or {}
+		rollback_result.metrics.rollback_records = 1
+		rollback_result.metrics.mapblock_churn = result.metrics.mapblock_churn
+		rollback_result.metrics.planned_node_writes = result.metrics.planned_node_writes
+	end
+	return finalize_import_rollback_mutation_result(rollback_result,
+		rollback_result.status, rollback_result.reason, rollback_result.message)
+end
+
+local function blocked_rollback_task_step(ctx, task_def, records, reason, message)
+	local result = import_rollback_result({
+		agent_id = ctx.agent_id,
+		task_id = ctx.task_id,
+	})
+	local totals = rollback_execution_totals(records or {})
+	result.examined = totals.node_writes
+	result.metrics.planned_node_writes = totals.node_writes
+	result.metrics.mapblock_churn = totals.mapblock_churn
+	annotate_structure_result(result, normalize_structure_chunk(task_def,
+		math.max(totals.node_writes, 1)))
+	return blocked_import_rollback_result(result, reason, message)
+end
+
+function core.ai_import_ops.define_chunked_structure_rollback_task(def)
+	assert(type(def) == "table", "Chunked structure rollback task definition must be a table")
+	check_string(def.task_id, "task_id")
+	check_string(def.agent_id, "agent_id")
+	check_string(def.owner, "owner")
+	local resolved = resolve_rollback_execution_records(def)
+	local records = ordered_rollback_records(resolved.records or {},
+		def.reverse_order ~= false)
+	local totals = rollback_execution_totals(records)
+	local total_writes = structure_budget_value(def,
+		"max_node_writes_total", totals.node_writes)
+	local max_mapblock_churn_total = structure_budget_value(def,
+		"max_mapblock_churn_total", totals.mapblock_churn)
+	local max_writes = structure_budget_value(def,
+		"max_node_writes_per_step", totals.node_writes)
+	local task_def = table.copy(def)
+	task_def.rollback_policy = def.rollback_policy or "chunked"
+	task_def.rollback_plan = nil
+	task_def.rollback_records = nil
+	task_def.rollback_refs = nil
+	task_def.private_payload = nil
+	task_def.asset_payload = nil
+	task_def.payload = nil
+	local steps = {}
+
+	if not resolved.ok then
+		steps[1] = function(ctx)
+			task_def.agent_id = ctx.agent_id
+			task_def.owner = ctx.owner
+			task_def.task_id = ctx.task_id
+			task_def.chunk = {
+				chunk_index = 0,
+				chunk_count = math.max(#records, 1),
+				first_position_index = 0,
+				position_count = math.max(totals.node_writes, 1),
+			}
+			return blocked_rollback_task_step(ctx, task_def, records,
+				"rollback_records_unavailable",
+				"Rollback execution requires complete inspected rollback records.")
+		end
+	elseif totals.node_writes > total_writes then
+		steps[1] = function(ctx)
+			task_def.agent_id = ctx.agent_id
+			task_def.owner = ctx.owner
+			task_def.task_id = ctx.task_id
+			task_def.chunk = {
+				chunk_index = 0,
+				chunk_count = math.max(#records, 1),
+				first_position_index = 0,
+				position_count = math.max(totals.node_writes, 1),
+			}
+			return blocked_rollback_task_step(ctx, task_def, records,
+				"node_write_total_budget_exceeded",
+				"Compatibility rollback execution exceeds the total node-write budget.")
+		end
+	elseif totals.mapblock_churn > max_mapblock_churn_total then
+		steps[1] = function(ctx)
+			task_def.agent_id = ctx.agent_id
+			task_def.owner = ctx.owner
+			task_def.task_id = ctx.task_id
+			task_def.chunk = {
+				chunk_index = 0,
+				chunk_count = math.max(#records, 1),
+				first_position_index = 0,
+				position_count = math.max(totals.node_writes, 1),
+			}
+			return blocked_rollback_task_step(ctx, task_def, records,
+				"mapblock_churn_budget_exceeded",
+				"Compatibility rollback execution exceeds the total mapblock-churn budget.")
+		end
+	else
+		for index, record in ipairs(records) do
+			steps[index] = function(ctx)
+				local chunk = rollback_record_chunk(record,
+					#(record.previous_nodes or {}))
+				task_def.agent_id = ctx.agent_id
+				task_def.owner = ctx.owner
+				task_def.task_id = ctx.task_id
+				task_def.max_node_writes_per_step = max_writes
+				task_def.max_mapblock_churn_total = max_mapblock_churn_total
+				task_def.chunk = chunk
+				task_def.chunk_index = chunk.chunk_index
+				task_def.chunk_count = chunk.chunk_count
+				task_def.first_position_index = chunk.first_position_index
+				task_def.rollback_record_id = rollback_execution_record_id(
+					def.rollback_record_id, ctx.task_id, chunk)
+				task_def.operation_label = def.operation_label
+					or "compat.structure.rollback.chunk"
+				return core.ai_import_ops.execute_structure_rollback(record, task_def)
+			end
+		end
+	end
+
+	return {
+		task_id = def.task_id,
+		agent_id = def.agent_id,
+		owner = def.owner,
+		label = def.label or "compat.structure.rollback",
+		required_capabilities = {
+			["rollback.execute"] = true,
+			["admin.override"] = true,
+			["world.place"] = true,
+			["world.batch"] = true,
+		},
+		mutation_class = "compat_import",
+		metadata = {
+			source_task_id = def.source_task_id or def.apply_task_id,
+			source_rollback_record_count = #records,
+			placement_count = totals.node_writes,
+			mapblock_churn = totals.mapblock_churn,
+			reverse_order = def.reverse_order ~= false,
+			staging = def.staging == true
+				or (def.target_world and def.target_world.staging == true) or false,
+		},
+		budget = {
+			max_steps_per_step = 1,
+			max_node_writes_per_step = max_writes,
+			max_wall_time_ms = def.max_wall_time_ms or 0,
+		},
+		steps = steps,
+	}
+end
+
+function core.ai_import_ops.queue_chunked_structure_rollback_task(def)
+	return core.queue_ai_task(core.ai_import_ops.define_chunked_structure_rollback_task(def))
+end
+
+function core.ai_import_ops.build_rollback_summary(options)
+	options = options or {}
+	local summary = {
+		summary_version = 1,
+		rollback_id = options.rollback_id or ("rollback-runtime:" .. (options.apply_id or "unknown")),
+		status = "queued",
+		queued_tasks = {},
+		running_tasks = {},
+		completed_tasks = {},
+		blocked_tasks = {},
+		mutation_cost_actual = {
+			node_writes = 0,
+			mapblock_churn = 0,
+			elapsed_us = 0,
+		},
+		rollback_records = {},
+		source_rollback_records = {},
+		audit_record_count = #core.get_ai_runtime_audit({}),
+		safety = {
+			rollback_of_rollback_required = true,
+			world_mutation_executed = false,
+		},
+	}
+	local saw_active = false
+	local saw_blocked = false
+	local saw_completed = false
+	for _, task_id in ipairs(options.task_ids or {}) do
+		local task = core.get_ai_task(task_id)
+		if task then
+			local ref = task_summary_ref(task)
+			local totals = structure_run_totals(ai_import_rollback_runs[task_id])
+			if task.status == "queued" or task.status == "paused" then
+				summary.queued_tasks[#summary.queued_tasks + 1] = ref
+				saw_active = true
+			elseif task.status == "running" then
+				summary.running_tasks[#summary.running_tasks + 1] = ref
+				saw_active = true
+			elseif task.status == "completed" then
+				summary.completed_tasks[#summary.completed_tasks + 1] = ref
+				saw_completed = true
+			elseif task.status == "blocked" or task.status == "unsafe"
+					or task.status == "failed" then
+				summary.blocked_tasks[#summary.blocked_tasks + 1] = ref
+				saw_blocked = true
+			end
+			local result = task.last_result or {}
+			local changed = totals.node_writes > 0 and totals.node_writes
+				or tonumber(result.changed) or 0
+			summary.mutation_cost_actual.node_writes =
+				summary.mutation_cost_actual.node_writes + changed
+			if changed > 0 then
+				summary.safety.world_mutation_executed = true
+			end
+			if totals.mapblock_churn > 0 then
+				summary.mutation_cost_actual.mapblock_churn =
+					summary.mutation_cost_actual.mapblock_churn + totals.mapblock_churn
+			elseif result.metrics and result.metrics.mapblock_churn then
+				summary.mutation_cost_actual.mapblock_churn = math.max(
+					summary.mutation_cost_actual.mapblock_churn,
+					result.metrics.mapblock_churn)
+			end
+			for _, record in ipairs(totals.records) do
+				summary.rollback_records[#summary.rollback_records + 1] = record
+			end
+			for _, chunk in pairs((ai_import_rollback_runs[task_id] or {}).chunks or {}) do
+				if chunk.source_rollback_record_id then
+					summary.source_rollback_records[#summary.source_rollback_records + 1] = {
+						record_id = chunk.source_rollback_record_id,
+						chunk = table.copy(chunk.chunk),
+					}
+				end
+			end
+			if totals.elapsed_us > 0 then
+				summary.mutation_cost_actual.elapsed_us =
+					summary.mutation_cost_actual.elapsed_us + totals.elapsed_us
+			end
+		end
+	end
+	if saw_blocked then
+		summary.status = "blocked"
+	elseif saw_active then
+		summary.status = #summary.running_tasks > 0 and "running" or "queued"
+	elseif saw_completed then
+		summary.status = "completed"
+	else
+		summary.status = "planned"
+	end
+	return summary
 end
 
 local function world_get_node(pos, options)
@@ -2973,7 +3554,8 @@ function core.ai_world_ops.batch_place(placements, options)
 
 	for _, placement in ipairs(placements) do
 		local pos = check_pos(placement.pos, "placement.pos")
-		local node_name = placement.node_name or placement.name
+		local node = placement.node or {}
+		local node_name = placement.node_name or placement.name or node.name
 		result.examined = result.examined + 1
 		local ok, status, reason, message, current =
 			validate_place_target(pos, node_name, options)
@@ -2985,7 +3567,11 @@ function core.ai_world_ops.batch_place(placements, options)
 			add_action_sample(result, options, pos, current, "max_changes_reached",
 				"Batch change budget was reached.")
 		else
-			world_set_node(pos, { name = node_name, param1 = 0, param2 = 0 }, options)
+			world_set_node(pos, {
+				name = node_name,
+				param1 = placement.param1 or node.param1 or 0,
+				param2 = placement.param2 or node.param2 or 0,
+			}, options)
 			result.changed = result.changed + 1
 			result.metrics.node_writes = result.metrics.node_writes + 1
 		end

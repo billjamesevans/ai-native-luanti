@@ -69,13 +69,14 @@ Operator-only capabilities include:
 - `admin.override`
 - `player.teleport.other`
 - `import.assets`
+- `rollback.execute`
 
 Rules:
 
 - `admin.override` must require explicit opt-in.
 - `admin.override` checks must return `audit_required = true`.
 - The runtime must record a `capability.admin_override` audit event for successful override checks.
-- Operator imports still need public-safe inventory, explicit approval, rollback policy, and write budgets.
+- Operator imports and rollback execution still need public-safe inventory, explicit approval, rollback policy, and write budgets.
 - Operator profiles must not become the default clean profile.
 
 ## Family-Plugin Profile

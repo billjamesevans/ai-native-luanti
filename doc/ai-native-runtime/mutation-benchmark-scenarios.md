@@ -63,6 +63,12 @@ Entry point: `core.ai_import_ops.queue_chunked_structure_apply_task`
 
 Applies a reviewed synthetic structure fixture through chunked compatibility import tasks. It must report actual node writes, per-step node writes, mapblock churn, rollback record count, average step, p95 step, max lag, warnings, and errors. The fixture is synthetic and runs in a disposable staging world reference; it must not copy Minecraft assets or family showcase content into the fork.
 
+### compat_structure_rollback_execute
+
+Entry point: `core.ai_import_ops.queue_chunked_structure_rollback_task`
+
+Executes reviewed rollback chunks for a synthetic staged structure import. It must report rollback execution node writes, per-step node writes, mapblock churn, rollback-of-rollback record count, average step, p95 step, max lag, warnings, and errors. The fixture remains synthetic and disposable; rollback execution requires explicit approval, staging, `rollback.execute`, `admin.override`, and bounded write/churn budgets before mutation.
+
 ## Report Files
 
 Schema:
