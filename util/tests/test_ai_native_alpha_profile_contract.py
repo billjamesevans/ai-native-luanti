@@ -58,6 +58,10 @@ class AlphaProfileContractTests(unittest.TestCase):
             '["http.llm"] = true',
         ):
             self.assertIn(expected, source)
+        self.assertIn('core.register_entity(":" .. helper_entity_name', source)
+        self.assertIn('local helper_entity_name = "ai_runtime_base:helper"', source)
+        self.assertIn("agent_entity_name = helper_entity_name", source)
+        self.assertNotIn("ai_demo_benchmark:helper", source)
         for forbidden in (
             "admin.override",
             "import.assets",

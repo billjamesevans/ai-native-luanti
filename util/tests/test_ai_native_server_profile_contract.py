@@ -53,6 +53,10 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
             'core.register_alias("mapgen_cobble"',
         ):
             self.assertIn(alias, base_mod)
+        self.assertIn('local helper_entity_name = "ai_runtime_base:helper"', base_mod)
+        self.assertIn('core.register_entity(":" .. helper_entity_name', base_mod)
+        self.assertIn("agent_entity_name = helper_entity_name", base_mod)
+        self.assertNotIn("ai_demo_benchmark:helper", base_mod)
         self.assertNotIn("first_mod", game_conf)
         self.assertNotIn("last_mod", game_conf)
         self.assertNotRegex(profile_text, r"\bdevtest\b|testnodes:", re.I)
@@ -101,6 +105,7 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
 
         self.assertIn("core.ai_agent_plugin.configure", base_mod)
         self.assertIn('capability_profile = "clean"', base_mod)
+        self.assertIn("agent_entity_name = helper_entity_name", base_mod)
         self.assertIn("capabilities = {", base_mod)
         for capability in (
             "world.read",
