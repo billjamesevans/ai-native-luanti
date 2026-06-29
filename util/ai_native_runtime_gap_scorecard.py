@@ -228,6 +228,22 @@ def server_step_workload_measurement(summary: dict) -> dict:
     }
 
 
+def cpu_measurement(summary: dict) -> dict:
+    cpu = summary.get("cpu")
+    if cpu:
+        return dict(cpu)
+    return {
+        "sample_status": "missing",
+        "cpu_sample_count": 0,
+        "process_cpu_time_delta_seconds": None,
+        "observed_wall_time_seconds": None,
+        "avg_process_cpu_percent": None,
+        "max_interval_cpu_percent": None,
+        "sample_methods": [],
+        "limitations": ["clean-profile summary has no CPU sampling evidence"],
+    }
+
+
 def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
     manifest = accepted["manifest"]
     clean_profile = accepted["clean_profile"]
@@ -272,6 +288,7 @@ def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
         "demo_entity_runtime_cost": demo_summary,
         "map_chunk_workload": summary["map_chunk_workload"],
         "memory": summary["memory"],
+        "cpu": cpu_measurement(summary),
         "failure_notes": failure_notes,
     }
     lane = {
@@ -345,6 +362,16 @@ def target_bands() -> list[dict]:
             },
             "source": "project-target",
             "rationale": "Low base memory keeps room for agents, mods, and imported content.",
+        },
+        {
+            "id": "cpu",
+            "metric": "cpu.avg_process_cpu_percent",
+            "target_by_hardware_class": {
+                "local-mac": "measured",
+                "low-power-server": "measured",
+            },
+            "source": "project-target",
+            "rationale": "Agent runtime work should expose process CPU cost before compatibility/import expands.",
         },
     ]
 
@@ -550,6 +577,27 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         )
 
     if any(
+        lane["measurements"]["cpu"].get("sample_status") != "measured"
+        for lane in lanes
+    ):
+        gaps.append(
+            build_gap(
+                "clean_profile_cpu_sampling",
+                6,
+                "Add clean-profile CPU sampling evidence",
+                [
+                    f"{lane['hardware_class']}: sample_status="
+                    f"{lane['measurements']['cpu'].get('sample_status')}, "
+                    f"cpu_sample_count="
+                    f"{lane['measurements']['cpu'].get('cpu_sample_count')}"
+                    for lane in lanes
+                    if lane["measurements"]["cpu"].get("sample_status") != "measured"
+                ],
+                "Refresh accepted clean-profile captures with bounded process CPU sampling.",
+            )
+        )
+
+    if any(
         (
             lane["measurements"]["clean_profile_server_health"].get(
                 "actionable_server_log_warning_count"
@@ -562,7 +610,7 @@ def build_ranked_gaps(lanes: list[dict]) -> list[dict]:
         gaps.append(
             build_gap(
                 "server_log_warning_cleanup",
-                6,
+                7,
                 "Classify or eliminate clean-profile warnings",
                 [
                     f"{lane['hardware_class']}: actionable_warning_count="

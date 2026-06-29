@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shlex
 import socket
@@ -510,6 +511,118 @@ def sample_rss_kb(pid: int) -> int | None:
         return None
 
 
+def parse_ps_cpu_time_seconds(value: str) -> float | None:
+    value = value.strip()
+    if not value:
+        return None
+    days = 0
+    if "-" in value:
+        day_part, value = value.split("-", 1)
+        try:
+            days = int(day_part)
+        except ValueError:
+            return None
+    parts = value.split(":")
+    try:
+        if len(parts) == 2:
+            hours = 0
+            minutes, seconds = parts
+        elif len(parts) == 3:
+            hours, minutes, seconds = parts
+        else:
+            return None
+        return (
+            days * 86400
+            + int(hours) * 3600
+            + int(minutes) * 60
+            + float(seconds)
+        )
+    except ValueError:
+        return None
+
+
+def sample_process_cpu_seconds(pid: int) -> tuple[float | None, str | None]:
+    stat_path = Path("/proc") / str(pid) / "stat"
+    try:
+        raw_stat = stat_path.read_text(encoding="utf-8")
+        parts = raw_stat.rsplit(") ", 1)[1].split()
+        clock_ticks = os.sysconf(os.sysconf_names["SC_CLK_TCK"])
+        return (int(parts[11]) + int(parts[12])) / clock_ticks, "proc_stat"
+    except (IndexError, KeyError, OSError, ValueError):
+        pass
+
+    try:
+        completed = subprocess.run(
+            ["ps", "-o", "time=", "-p", str(pid)],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+    except OSError:
+        return None, None
+    if completed.returncode != 0:
+        return None, None
+    seconds = parse_ps_cpu_time_seconds(completed.stdout.strip())
+    if seconds is None:
+        return None, None
+    return seconds, "ps_time"
+
+
+def cpu_sample_summary(cpu_samples: list[dict]) -> dict:
+    samples = [
+        sample
+        for sample in cpu_samples
+        if sample.get("cpu_seconds") is not None and sample.get("sampled_at") is not None
+    ]
+    methods = sorted({sample["method"] for sample in samples if sample.get("method")})
+    if len(samples) < 2:
+        return {
+            "sample_status": "not_measured",
+            "cpu_sample_count": len(samples),
+            "process_cpu_time_delta_seconds": None,
+            "observed_wall_time_seconds": None,
+            "avg_process_cpu_percent": None,
+            "max_interval_cpu_percent": None,
+            "sample_methods": methods,
+            "limitations": ["process_cpu_time_unavailable"],
+        }
+
+    first = samples[0]
+    last = samples[-1]
+    wall_delta = max(0.0, last["sampled_at"] - first["sampled_at"])
+    cpu_delta = max(0.0, last["cpu_seconds"] - first["cpu_seconds"])
+    interval_percents = []
+    for index in range(1, len(samples)):
+        previous = samples[index - 1]
+        current = samples[index]
+        wall = current["sampled_at"] - previous["sampled_at"]
+        if wall <= 0:
+            continue
+        cpu = max(0.0, current["cpu_seconds"] - previous["cpu_seconds"])
+        interval_percents.append((cpu / wall) * 100)
+    if wall_delta <= 0 or not interval_percents:
+        return {
+            "sample_status": "not_measured",
+            "cpu_sample_count": len(samples),
+            "process_cpu_time_delta_seconds": None,
+            "observed_wall_time_seconds": None,
+            "avg_process_cpu_percent": None,
+            "max_interval_cpu_percent": None,
+            "sample_methods": methods,
+            "limitations": ["process_cpu_time_unavailable"],
+        }
+    return {
+        "sample_status": "measured",
+        "cpu_sample_count": len(samples),
+        "process_cpu_time_delta_seconds": round(cpu_delta, 6),
+        "observed_wall_time_seconds": round(wall_delta, 3),
+        "avg_process_cpu_percent": round((cpu_delta / wall_delta) * 100, 3),
+        "max_interval_cpu_percent": round(max(interval_percents), 3),
+        "sample_methods": methods,
+        "limitations": [],
+    }
+
+
 def inspect_map_workload(world_dir: Path) -> dict:
     map_db = world_dir / "map.sqlite"
     result = {
@@ -695,6 +808,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
     profile_start = time.monotonic()
     failure_notes = []
     rss_samples = []
+    cpu_samples = []
     port = args.profile_port or free_udp_port()
     listen_phrase = 'Server for gameid="ai_runtime" listening'
     listening = False
@@ -744,9 +858,19 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         if proc is not None:
             deadline = time.monotonic() + args.profile_startup_timeout
             while time.monotonic() < deadline:
+                sample_time = time.monotonic()
                 rss = sample_rss_kb(proc.pid)
                 if rss is not None:
                     rss_samples.append(rss)
+                cpu_seconds, cpu_method = sample_process_cpu_seconds(proc.pid)
+                if cpu_seconds is not None:
+                    cpu_samples.append(
+                        {
+                            "sampled_at": sample_time,
+                            "cpu_seconds": cpu_seconds,
+                            "method": cpu_method,
+                        }
+                    )
                 log_text = read_text_if_exists(log_path)
                 if listen_phrase in log_text:
                     listening = True
@@ -779,6 +903,15 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
                 rss = sample_rss_kb(proc.pid)
                 if rss is not None:
                     rss_samples.append(rss)
+                cpu_seconds, cpu_method = sample_process_cpu_seconds(proc.pid)
+                if cpu_seconds is not None:
+                    cpu_samples.append(
+                        {
+                            "sampled_at": sample_time,
+                            "cpu_seconds": cpu_seconds,
+                            "method": cpu_method,
+                        }
+                    )
                 time.sleep(0.1)
 
             log_text = read_text_if_exists(log_path)
@@ -867,6 +1000,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         "max_rss_kb": max(rss_samples) if rss_samples else None,
         "rss_sample_count": len(rss_samples),
     }
+    cpu = cpu_sample_summary(cpu_samples)
     entity_runtime = summarize_entity_report(demo_entity_report)
     mutation_writes = summarize_mutation_report(mutation_report)
 
@@ -879,6 +1013,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         "entity_runtime_operations": entity_runtime,
         "mutation_write_throughput": mutation_writes,
         "memory": memory,
+        "cpu": cpu,
         "failure_notes": failure_notes,
     }
 
