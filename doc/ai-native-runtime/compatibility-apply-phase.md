@@ -128,6 +128,25 @@ For large structure imports, rollback data may be chunked by task step. A failed
 
 Media and definition staging should be reversible by manifest entry, not by deleting unknown files from the operator's source path.
 
+## Rollback Execution
+
+Reviewed structure rollbacks use `core.ai_import_ops.queue_chunked_structure_rollback_task`. The task consumes inspected records from `core.ai_import_ops.plan_structure_rollback`, direct rollback records, or explicit rollback refs, then executes chunks in reverse chunk order by default.
+
+Rollback execution is not a default player action. It requires:
+
+- `rollback.execute`
+- `admin.override`
+- `world.place`
+- `world.batch`
+- explicit operator approval
+- a staging target and `world_id`
+- `allow_mutation = true`
+- manifest, snapshot, or chunked rollback policy
+- total and per-step node-write budgets
+- mapblock-churn and wall-clock budgets
+
+Each rollback execution chunk writes rollback-of-rollback metadata before it mutates the world. If that safety metadata cannot be persisted, the task blocks before node writes. Protected areas and safe-world failures remain visible as structured action results, including changed and skipped counts.
+
 ## Audit Requirements
 
 Apply must audit:
