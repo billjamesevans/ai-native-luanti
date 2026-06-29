@@ -368,14 +368,17 @@ sys.exit(0)
                 '2026-06-29 00:00:00: WARNING[Main]: SHA256 of builtin file "/tmp/profile/builtin/game/ai_runtime.lua" does not match.',
                 "2026-06-29 00:00:00: WARNING[Main]: Expected: abc123",
                 "2026-06-29 00:00:00: WARNING[Main]: Found:    def456",
+                '2026-06-29 00:00:00: WARNING[Main]: SHA256 of builtin file "/tmp/profile/builtin/game/ai_agent_plugin.lua" does not match.',
+                "2026-06-29 00:00:00: WARNING[Main]: Expected: 2c1cfd9a215fdbddbc7623f6e2fe66f64c25981008898e27517c460e8545520f",
+                "2026-06-29 00:00:00: WARNING[Main]: Found:    230ac1afe3db3743f363341b73e87c5cc3ad585a8d2fd5e2d05e0781f941003e",
                 '2026-06-29 00:00:00: WARNING[Main]: No SHA256 known for builtin file "/tmp/profile/builtin/game/ai_operator_task_control.lua"',
             ]
         )
 
         summary = benchmark_capture.classify_profile_log_warnings(log_text)
 
-        self.assertEqual(summary["server_log_warning_count"], 7)
-        self.assertEqual(summary["expected_server_log_warning_count"], 7)
+        self.assertEqual(summary["server_log_warning_count"], 10)
+        self.assertEqual(summary["expected_server_log_warning_count"], 10)
         self.assertEqual(summary["actionable_server_log_warning_count"], 0)
         self.assertEqual(
             summary["expected_warning_kinds"],
