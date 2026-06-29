@@ -33,7 +33,7 @@ Operator command:
 /ai_demo_entity_benchmark count=16 steps=5 commit=local-build hardware=local-mac
 ```
 
-The command returns a compact machine-readable JSON report. The report includes `hardware_class`, `luanti_commit`, `run_context`, `runtime_counters`, and the five scenario results.
+The module and command are disabled by default in the product profile and only load/register when `ai_runtime.enable_demo_benchmark_command = true` is set for an explicit dev/test lane. It returns a compact machine-readable JSON report. The report includes `hardware_class`, `luanti_commit`, `run_context`, `runtime_counters`, and the five scenario results.
 
 Use `hardware=local-mac` for local workstation checks. Use `hardware=low-power-server` only after the benchmark is safe locally and the target server is backed up.
 

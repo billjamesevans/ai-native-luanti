@@ -29,10 +29,14 @@ dofile(gamepath .. "ai_runtime.lua")
 dofile(gamepath .. "auth.lua")
 dofile(commonpath .. "chatcommands.lua")
 dofile(gamepath .. "ai_runtime_commands.lua")
-dofile(gamepath .. "demo_entity_benchmark.lua")
+if core.settings:get_bool("ai_runtime.enable_demo_benchmark_command", false) then
+	dofile(gamepath .. "demo_entity_benchmark.lua")
+end
 dofile(gamepath .. "repair_agent.lua")
 dofile(gamepath .. "build_agent.lua")
-dofile(gamepath .. "ai_runtime_smoke.lua")
+if core.settings:get_bool("ai_runtime.enable_smoke_command", false) then
+	dofile(gamepath .. "ai_runtime_smoke.lua")
+end
 dofile(gamepath .. "ai_agent_plugin.lua")
 dofile(gamepath .. "chat.lua")
 dofile(commonpath .. "information_formspecs.lua")
