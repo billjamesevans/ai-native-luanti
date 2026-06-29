@@ -1,6 +1,6 @@
 # Compatibility Apply Phase
 
-Status: phase-two design, no-mutation planning, staged structure apply, reviewed rollback, and adapter smoke implementation
+Status: phase-two design, no-mutation planning, staged structure apply, reviewed rollback, adapter smoke implementation, and operator smoke review
 
 ## Purpose
 
@@ -176,6 +176,17 @@ python3 util/ai_native_compat_dry_run.py \
 
 The generated manifest reports expected node writes, mapblock churn, apply chunk count, rollback chunk count, target world, required capabilities, and the runtime entrypoints. Creating the manifest does not mutate a world; the server-side smoke is verified by `TestAIRuntime`, which applies the reviewed handoff in a disposable in-memory staging world, reads rollback records back, executes rollback in reverse chunk order, and covers approval denial, non-staging denial, and protected partial behavior.
 
+Before running the apply task, operators can gate the manifest with:
+
+```bash
+python3 util/ai_native_compat_dry_run.py \
+	--review-adapter-smoke /path/to/adapter-smoke.json \
+	--output /path/to/adapter-smoke-review.json \
+	--summary
+```
+
+The review output is machine-readable and never mutates a world. It reports `ready` only when the manifest still targets a disposable staging world, uses the expected apply/rollback entrypoints, carries explicit approval, includes rollback tasks, keeps runtime hooks available for node read/write and rollback persistence/readback, and stays within the reviewed mutation budgets. Missing approval, missing rollback, missing hooks, forbidden family/prod world ids, non-staging targets, non-disposable targets, and inflated write/churn budgets produce `blocked` findings before any runtime apply task is considered promotable.
+
 ## Audit Requirements
 
 Apply must audit:
@@ -248,6 +259,7 @@ This summary is separate from the dry-run report so the dry-run artifact remains
 4. Add media/entity staging tasks with no mapblock writes.
 5. Add structure placement only after rollback metadata and safe world operations are covered by tests.
 6. Add reviewed adapter apply smoke for disposable staging worlds before broadening supported structure formats.
+7. Add operator review for adapter smoke manifests before broadening supported structure formats.
 
 This order keeps compatibility import aligned with the fork strategy: AI-native runtime first, compatibility automation second, world mutation last.
 

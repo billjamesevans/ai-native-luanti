@@ -17,6 +17,7 @@ REPORT_VERSION = 1
 APPLY_REQUEST_VERSION = 1
 APPLY_SUMMARY_VERSION = 1
 ADAPTER_APPLY_SMOKE_VERSION = 1
+ADAPTER_APPLY_SMOKE_REVIEW_VERSION = 1
 TOP_LEVEL_REQUIRED = (
     "report_version",
     "mode",
@@ -154,6 +155,17 @@ ADAPTER_APPLY_FORBIDDEN_WORLD_IDS = {
     "live-family",
     "production",
 }
+ADAPTER_APPLY_REVIEW_REQUIRED_APPLY_HOOKS = (
+    "get_node",
+    "set_node",
+    "persist_record",
+)
+ADAPTER_APPLY_REVIEW_REQUIRED_ROLLBACK_HOOKS = (
+    "get_node",
+    "set_node",
+    "persist_record",
+    "inspect_record",
+)
 PLANNED_ACTION_TASK_MAPPINGS = {
     "copy_asset_reference": {
         "label": "compat.asset.reference",
@@ -1179,6 +1191,398 @@ def validate_adapter_apply_smoke(smoke):
     return errors
 
 
+def _review_finding(code, message, field=None, severity="blocked"):
+    finding = {
+        "severity": severity,
+        "code": code,
+        "message": message,
+    }
+    if field:
+        finding["field"] = field
+    return finding
+
+
+def _append_unique_finding(findings, seen, code, message, field=None, severity="blocked"):
+    key = (code, field)
+    if key in seen:
+        return
+    seen.add(key)
+    findings.append(_review_finding(code, message, field=field, severity=severity))
+
+
+def _task_world(task):
+    target_world = task.get("target_world")
+    if isinstance(target_world, dict):
+        return target_world
+    return {
+        "world_id": task.get("world_id"),
+        "staging": task.get("staging"),
+        "disposable": task.get("disposable"),
+    }
+
+
+def _review_target_world(findings, seen, target_world, field_prefix):
+    if not isinstance(target_world, dict):
+        _append_unique_finding(
+            findings,
+            seen,
+            "target_world_missing",
+            "Target world must be present for adapter smoke review.",
+            field_prefix,
+        )
+        return None
+    world_id = str(target_world.get("world_id") or "")
+    if not world_id:
+        _append_unique_finding(
+            findings,
+            seen,
+            "target_world_missing",
+            "Target world id is required.",
+            field_prefix + ".world_id",
+        )
+    if target_world.get("staging") is not True:
+        _append_unique_finding(
+            findings,
+            seen,
+            "target_world_not_staging",
+            "Adapter smoke review requires a staging target world.",
+            field_prefix + ".staging",
+        )
+    if target_world.get("disposable") is not True:
+        _append_unique_finding(
+            findings,
+            seen,
+            "target_world_not_disposable",
+            "Adapter smoke review requires a disposable target world.",
+            field_prefix + ".disposable",
+        )
+    if world_id in ADAPTER_APPLY_FORBIDDEN_WORLD_IDS:
+        _append_unique_finding(
+            findings,
+            seen,
+            "forbidden_target_world",
+            "Adapter smoke review cannot target the live family or production world.",
+            field_prefix + ".world_id",
+        )
+    return world_id
+
+
+def _review_required_hooks(findings, seen, task, required_hooks, field_prefix):
+    hooks = task.get("operator_supplied_runtime_hooks")
+    if not isinstance(hooks, list):
+        hooks = []
+    missing_hooks = [hook for hook in required_hooks if hook not in hooks]
+    for hook in missing_hooks:
+        _append_unique_finding(
+            findings,
+            seen,
+            "missing_runtime_hook",
+            f"Runtime hook {hook} is required before operator promotion.",
+            field_prefix + ".operator_supplied_runtime_hooks",
+        )
+
+
+def _review_task_budget(findings, seen, task, expected, budget_limit, field_prefix):
+    max_node_writes = task.get("max_node_writes_total")
+    if isinstance(max_node_writes, int) and max_node_writes > expected["node_writes"]:
+        _append_unique_finding(
+            findings,
+            seen,
+            "excessive_node_write_budget",
+            "Task node-write budget exceeds the reviewed smoke mutation estimate.",
+            field_prefix + ".max_node_writes_total",
+        )
+    max_mapblock_churn = task.get("max_mapblock_churn_total")
+    if isinstance(max_mapblock_churn, int) and max_mapblock_churn > budget_limit:
+        _append_unique_finding(
+            findings,
+            seen,
+            "excessive_mapblock_budget",
+            "Task mapblock-churn budget exceeds the reviewed smoke mutation estimate.",
+            field_prefix + ".max_mapblock_churn_total",
+        )
+
+
+def review_adapter_apply_smoke(smoke):
+    """Build an operator-facing review gate for an adapter apply smoke manifest."""
+    findings = []
+    seen = set()
+    if not isinstance(smoke, dict):
+        return {
+            "review_version": ADAPTER_APPLY_SMOKE_REVIEW_VERSION,
+            "mode": "adapter_apply_smoke_review",
+            "generated_at": _utc_now(),
+            "report_id": None,
+            "status": "blocked",
+            "target_world": {},
+            "summary": {
+                "apply_task_count": 0,
+                "rollback_task_count": 0,
+                "placement_count": 0,
+                "chunk_count": 0,
+                "expected_node_writes": 0,
+                "expected_mapblock_churn": 0,
+                "runtime_entrypoints": [],
+                "required_capabilities": [],
+                "runtime_hooks": [],
+                "approval_state": "blocked",
+            },
+            "findings": [
+                _review_finding(
+                    "manifest_not_object",
+                    "Adapter smoke review requires a JSON object manifest.",
+                    "smoke",
+                ),
+            ],
+            "machine_gate": {
+                "promotable": False,
+                "world_mutation_executed": False,
+                "reviewed_for": "disposable_staging_adapter_smoke",
+            },
+            "operator_next_actions": [
+                "Generate an adapter smoke manifest before operator review.",
+            ],
+        }
+
+    for error in validate_adapter_apply_smoke(smoke):
+        _append_unique_finding(
+            findings,
+            seen,
+            "validation_error",
+            error,
+            "smoke",
+        )
+
+    target_world = smoke.get("target_world")
+    _review_target_world(findings, seen, target_world, "target_world")
+
+    apply_tasks = smoke.get("apply_tasks") if isinstance(smoke.get("apply_tasks"), list) else []
+    rollback_tasks = smoke.get("rollback_tasks") if isinstance(smoke.get("rollback_tasks"), list) else []
+    if not apply_tasks:
+        _append_unique_finding(
+            findings,
+            seen,
+            "apply_task_missing",
+            "Adapter smoke review requires at least one apply task.",
+            "apply_tasks",
+        )
+    if not rollback_tasks:
+        _append_unique_finding(
+            findings,
+            seen,
+            "rollback_task_missing",
+            "Adapter smoke review requires at least one rollback task.",
+            "rollback_tasks",
+        )
+
+    expected = smoke.get("mutation_cost_expected") if isinstance(smoke.get("mutation_cost_expected"), dict) else {}
+    expected_node_writes = expected.get("node_writes", 0) if isinstance(expected.get("node_writes", 0), int) else 0
+    expected_mapblock_churn = (
+        expected.get("mapblock_churn", 0)
+        if isinstance(expected.get("mapblock_churn", 0), int) else 0
+    )
+    expected_cost = {
+        "node_writes": expected_node_writes,
+        "mapblock_churn": expected_mapblock_churn,
+    }
+    mapblock_budget_limit = max(expected_node_writes, expected_mapblock_churn)
+
+    entrypoints = set()
+    capabilities = set()
+    hooks = set()
+    placement_count = 0
+    chunk_count = 0
+    approvals_ok = True
+
+    rollback_plan = smoke.get("rollback_plan")
+    if isinstance(rollback_plan, dict) and rollback_plan.get("entrypoint"):
+        entrypoints.add(rollback_plan["entrypoint"])
+
+    for index, task in enumerate(apply_tasks):
+        field_prefix = f"apply_tasks[{index}]"
+        if not isinstance(task, dict):
+            _append_unique_finding(
+                findings,
+                seen,
+                "apply_task_malformed",
+                "Apply task must be an object.",
+                field_prefix,
+            )
+            continue
+        entrypoint = task.get("entrypoint")
+        if entrypoint:
+            entrypoints.add(entrypoint)
+        if entrypoint != "core.ai_import_ops.define_chunked_structure_apply_task":
+            _append_unique_finding(
+                findings,
+                seen,
+                "unexpected_apply_entrypoint",
+                "Adapter smoke apply must use chunked structure apply.",
+                field_prefix + ".entrypoint",
+            )
+        if task.get("explicit_approval") is not True:
+            approvals_ok = False
+            _append_unique_finding(
+                findings,
+                seen,
+                "missing_explicit_approval",
+                "Apply task must carry explicit operator approval.",
+                field_prefix + ".explicit_approval",
+            )
+        if task.get("allow_mutation") is not True:
+            _append_unique_finding(
+                findings,
+                seen,
+                "mutation_not_enabled_for_smoke",
+                "Apply task must explicitly enable mutation for the staging smoke.",
+                field_prefix + ".allow_mutation",
+            )
+        if task.get("rollback_policy") != "chunked":
+            _append_unique_finding(
+                findings,
+                seen,
+                "rollback_policy_not_chunked",
+                "Apply task must use chunked rollback policy.",
+                field_prefix + ".rollback_policy",
+            )
+        _review_target_world(findings, seen, _task_world(task), field_prefix + ".target_world")
+        _review_required_hooks(
+            findings,
+            seen,
+            task,
+            ADAPTER_APPLY_REVIEW_REQUIRED_APPLY_HOOKS,
+            field_prefix,
+        )
+        _review_task_budget(
+            findings,
+            seen,
+            task,
+            expected_cost,
+            expected_mapblock_churn,
+            field_prefix,
+        )
+        for capability in task.get("required_capabilities") or []:
+            capabilities.add(capability)
+        for hook in task.get("operator_supplied_runtime_hooks") or []:
+            hooks.add(hook)
+        placement_count += task.get("placement_count", 0) if isinstance(task.get("placement_count"), int) else 0
+        chunk_count += task.get("chunk_count", 0) if isinstance(task.get("chunk_count"), int) else 0
+
+    for index, task in enumerate(rollback_tasks):
+        field_prefix = f"rollback_tasks[{index}]"
+        if not isinstance(task, dict):
+            _append_unique_finding(
+                findings,
+                seen,
+                "rollback_task_malformed",
+                "Rollback task must be an object.",
+                field_prefix,
+            )
+            continue
+        entrypoint = task.get("entrypoint")
+        if entrypoint:
+            entrypoints.add(entrypoint)
+        if entrypoint != "core.ai_import_ops.queue_chunked_structure_rollback_task":
+            _append_unique_finding(
+                findings,
+                seen,
+                "unexpected_rollback_entrypoint",
+                "Adapter smoke rollback must use chunked rollback execution.",
+                field_prefix + ".entrypoint",
+            )
+        if task.get("explicit_approval") is not True:
+            approvals_ok = False
+            _append_unique_finding(
+                findings,
+                seen,
+                "missing_explicit_approval",
+                "Rollback task must carry explicit operator approval.",
+                field_prefix + ".explicit_approval",
+            )
+        if task.get("allow_mutation") is not True:
+            _append_unique_finding(
+                findings,
+                seen,
+                "mutation_not_enabled_for_smoke",
+                "Rollback task must explicitly enable mutation for the staging smoke.",
+                field_prefix + ".allow_mutation",
+            )
+        if task.get("rollback_policy") != "chunked":
+            _append_unique_finding(
+                findings,
+                seen,
+                "rollback_policy_not_chunked",
+                "Rollback task must use chunked rollback policy.",
+                field_prefix + ".rollback_policy",
+            )
+        _review_target_world(findings, seen, _task_world(task), field_prefix + ".target_world")
+        _review_required_hooks(
+            findings,
+            seen,
+            task,
+            ADAPTER_APPLY_REVIEW_REQUIRED_ROLLBACK_HOOKS,
+            field_prefix,
+        )
+        _review_task_budget(
+            findings,
+            seen,
+            task,
+            expected_cost,
+            mapblock_budget_limit,
+            field_prefix,
+        )
+        for capability in task.get("required_capabilities") or []:
+            capabilities.add(capability)
+        for hook in task.get("operator_supplied_runtime_hooks") or []:
+            hooks.add(hook)
+
+    safety = smoke.get("safety") if isinstance(smoke.get("safety"), dict) else {}
+    world_mutation_executed = safety.get("world_mutation_executed") is True
+    if world_mutation_executed:
+        _append_unique_finding(
+            findings,
+            seen,
+            "world_mutation_already_executed",
+            "Review manifests must be generated before world mutation executes.",
+            "safety.world_mutation_executed",
+        )
+
+    status = "ready" if not findings else "blocked"
+    return {
+        "review_version": ADAPTER_APPLY_SMOKE_REVIEW_VERSION,
+        "mode": "adapter_apply_smoke_review",
+        "generated_at": _utc_now(),
+        "report_id": smoke.get("report_id"),
+        "status": status,
+        "target_world": target_world if isinstance(target_world, dict) else {},
+        "summary": {
+            "apply_task_count": len(apply_tasks),
+            "rollback_task_count": len(rollback_tasks),
+            "placement_count": placement_count,
+            "chunk_count": chunk_count,
+            "expected_node_writes": expected_node_writes,
+            "expected_mapblock_churn": expected_mapblock_churn,
+            "runtime_entrypoints": sorted(entrypoints),
+            "required_capabilities": sorted(capabilities),
+            "runtime_hooks": sorted(hooks),
+            "approval_state": "approved" if approvals_ok else "blocked",
+        },
+        "findings": findings,
+        "machine_gate": {
+            "promotable": status == "ready",
+            "world_mutation_executed": world_mutation_executed,
+            "reviewed_for": "disposable_staging_adapter_smoke",
+        },
+        "operator_next_actions": [
+            "Run the smoke apply only in the declared disposable staging world.",
+            "Review rollback records with core.ai_import_ops.plan_structure_rollback.",
+            "Run the smoke rollback before discarding or promoting any import workflow.",
+        ] if status == "ready" else [
+            "Resolve blocked findings before running any adapter smoke apply task.",
+        ],
+    }
+
+
 def _report_inventory_hash(report):
     hashes = report.get("source", {}).get("content_hashes", [])
     if not hashes:
@@ -1689,20 +2093,48 @@ def _print_adapter_apply_smoke_summary(smoke):
     )
 
 
+def _print_adapter_smoke_review_summary(review):
+    summary = review["summary"]
+    print(
+        "review={status} report={report} target={target} placements={placements} "
+        "chunks={chunks} findings={findings} rollback_tasks={rollback_tasks}".format(
+            status=review["status"],
+            report=review.get("report_id"),
+            target=review.get("target_world", {}).get("world_id"),
+            placements=summary["placement_count"],
+            chunks=summary["chunk_count"],
+            findings=len(review["findings"]),
+            rollback_tasks=summary["rollback_task_count"],
+        )
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="User-owned pack, structure, or world source to inspect.")
     parser.add_argument("--apply-plan", help="Dry-run report JSON to plan for apply without mutation.")
     parser.add_argument("--adapter-apply-smoke", help="Dry-run report JSON to turn into a reviewed adapter apply smoke.")
+    parser.add_argument("--review-adapter-smoke", help="Adapter apply smoke JSON to review for operator gating.")
     parser.add_argument("--approval", help="Apply request JSON containing explicit operator approvals.")
     parser.add_argument("--output", help="Write machine-readable JSON report to this path.")
     parser.add_argument("--summary", action="store_true", help="Print a concise human-readable summary.")
     args = parser.parse_args(argv)
 
     try:
-        if args.apply_plan and args.adapter_apply_smoke:
-            raise ValueError("--apply-plan and --adapter-apply-smoke cannot be used together")
-        if args.adapter_apply_smoke:
+        selected_modes = [
+            bool(args.apply_plan),
+            bool(args.adapter_apply_smoke),
+            bool(args.review_adapter_smoke),
+        ]
+        if sum(selected_modes) > 1:
+            raise ValueError(
+                "--apply-plan, --adapter-apply-smoke, and --review-adapter-smoke "
+                "cannot be used together"
+            )
+        if args.review_adapter_smoke:
+            smoke = _read_json(pathlib.Path(args.review_adapter_smoke))
+            payload_obj = review_adapter_apply_smoke(smoke)
+        elif args.adapter_apply_smoke:
             if not args.approval:
                 raise ValueError("--approval is required with --adapter-apply-smoke")
             report = _read_json(pathlib.Path(args.adapter_apply_smoke))
@@ -1723,7 +2155,9 @@ def main(argv=None):
             pathlib.Path(args.output).write_text(payload, encoding="utf-8")
         else:
             sys.stdout.write(payload)
-        if args.summary and args.adapter_apply_smoke:
+        if args.summary and args.review_adapter_smoke:
+            _print_adapter_smoke_review_summary(payload_obj)
+        elif args.summary and args.adapter_apply_smoke:
             _print_adapter_apply_smoke_summary(payload_obj)
         elif args.summary and not args.apply_plan:
             _print_summary(payload_obj)
