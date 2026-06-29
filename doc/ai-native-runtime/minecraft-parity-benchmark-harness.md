@@ -42,13 +42,13 @@ The harness defines these comparison dimensions:
 - CPU
 - latency
 
-Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, headless join-log latency proxies when a synthetic client command is supplied, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, and memory sampling.
+Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, headless join-log latency proxies when a synthetic client command is supplied, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, memory sampling, and bounded process CPU sampling.
 
 The first mapblock/chunk churn probe is `synthetic_sqlite_mapblock_churn`. It runs only in the disposable clean-profile benchmark world and records mapblock rows before/after, rows created, SQLite byte growth, workload duration, and warning/error counts.
 
 The first latency probe is `headless_join_log_observation`. It runs only with public-safe headless synthetic players and records the elapsed time from launching each synthetic client process to the first observed server-log join line. It is classified as measured join-latency proxy evidence, while true network RTT remains future work.
 
-CPU is tracked as a qualitative Minecraft-parity gap until a public-safe probe exists.
+CPU uses clean-profile process CPU samples for the disposable server process. The harness records sample count, average process CPU percent, max interval CPU percent, process CPU time delta, and sample method ids. Missing or failed CPU sampling remains a qualitative Minecraft-parity gap until refreshed accepted lanes contain measured CPU evidence.
 
 ## Public-Safe Source Policy
 

@@ -187,6 +187,7 @@ sys.exit(0)
                 "entity_runtime_operations",
                 "mutation_write_throughput",
                 "memory",
+                "cpu",
                 "failure_notes",
             ):
                 self.assertIn(key, summary["comparison_summary"])
@@ -222,6 +223,13 @@ sys.exit(0)
             self.assertGreaterEqual(map_workload["workload_duration_ms"], 0)
             self.assertEqual(map_workload["warning_count"], 0)
             self.assertEqual(map_workload["error_count"], 0)
+            cpu = summary["comparison_summary"]["cpu"]
+            self.assertIn(cpu["sample_status"], ("measured", "not_measured"))
+            self.assertIn("cpu_sample_count", cpu)
+            self.assertIn("process_cpu_time_delta_seconds", cpu)
+            self.assertIn("avg_process_cpu_percent", cpu)
+            self.assertIn("max_interval_cpu_percent", cpu)
+            self.assertIn("sample_methods", cpu)
 
             serialized = json.dumps({"manifest": manifest, "summary": summary}, sort_keys=True)
             self.assertNotIn(str(output), serialized)
