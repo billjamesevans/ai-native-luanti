@@ -17,6 +17,8 @@ The plugin uses:
 - `core.cancel_ai_task` for player-owned cancellation.
 - `core.build_agent.plan` and `core.build_agent.define_task` for read-only build previews and rollback-backed light/marker build tasks.
 - `core.repair_agent.queue_apply_task` for rollback-backed repair apply tasks.
+- `core.ai_import_ops.plan` for dry-run-only Importer planning tasks that
+  require `import.assets` and never copy assets or mutate worlds.
 - `core.ai_player_ops.defend` for bounded defensive actions when a profile grants `combat.defend`.
 - `core.ai_world_ops` indirectly through build and repair task surfaces.
 - `core.ai_entity_ops` for spawning and moving the player's bounded helper entity during one-shot and continuous follow tasks.
@@ -36,7 +38,7 @@ The plugin registers three aliases:
 Implemented deterministic commands:
 
 - `status`: returns current state and runtime metrics.
-- `guide`, `help`: returns the available builder, repair, guide, and defender surfaces plus current task records.
+- `guide`, `help`: returns the available builder, repair, guide, defender, and `importer` surfaces plus current task records.
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `cancel`, `stop`: cancels queued/running/paused player-owned plugin tasks.
 - `follow`, `follow me`, `follow N`: queues bounded continuous follow steps for the player's helper entity. Each task runs a finite number of server-step slices, recalculates the player's current position per slice, and moves through `core.ai_entity_ops.move` with per-step and total-distance budgets.
@@ -47,6 +49,11 @@ Implemented deterministic commands:
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair`, `fix`: queues a rollback-backed `repair_agent` apply task for configured repair nodes.
 - `defend`: queues a bounded defensive player task through `core.ai_player_ops.defend`.
+- `import plan`, `import preview`, `import inventory`: queues a dry-run-only
+  Importer task through `core.ai_import_ops.plan`. The task records an
+  operator-supplied compatibility plan behind the `import.assets` gate, copies
+  no assets, performs no world mutation, and is intended as the agent-facing
+  handoff to the compatibility inventory work.
 - `audit`, `history`: returns recent sanitized audit events for the player-owned agent.
 - `rollback`, `rollback review`: returns recent rollback audit summaries for the player-owned agent.
 
@@ -99,6 +106,12 @@ The default node/entity settings are intentionally generic and may not match eve
 
 `combat.defend` is intentionally absent from the clean `ai_runtime` profile. A server profile or plugin must opt into it before the `defend` command can complete successfully.
 
+`import.assets` is also absent from the clean `ai_runtime` profile. Operator
+profiles can opt into it for dry-run-only Importer planning. Importer execution
+is still plan-only in this first-party loop; structure apply, import promotion,
+asset copying, and world mutation remain outside this command and belong to the
+compatibility/import pipeline.
+
 ## Model Adapter
 
 The model adapter receives a small request table:
@@ -123,6 +136,9 @@ Request fields include `agent_id`, `owner`, `prompt`, and `context`. The plugin 
 - Build and repair previews explain bounded plans, but approval workflow and richer plan editing remain later slices.
 - Audit and rollback review return compact sanitized records, not full private payloads or rollback contents.
 - Defender behavior needs a profile grant and a hostile discovery/attack path from the hosting game or plugin.
+- Importer behavior is dry-run-only and depends on an operator-supplied plan;
+  public-safe inventory discovery and richer compatibility reports remain the
+  next compatibility slice.
 - The model adapter is a boundary only; no default network client is bundled.
 
 Those limits are intentional. The first milestone is proving clean runtime usage before expanding behavior.
