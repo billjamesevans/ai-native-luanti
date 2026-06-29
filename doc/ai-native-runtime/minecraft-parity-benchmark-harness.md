@@ -50,6 +50,34 @@ Each dimension carries pass/warn/fail criteria. A pass means measured evidence m
 
 Dimensions also carry a gap area so engine/runtime gaps stay separate from game-content or plugin gaps and operator-experience gaps. This prevents a missing content feature from looking like an engine regression, and keeps plugin ergonomics work visible without polluting core runtime evidence.
 
+## Target Bands
+
+The harness publishes `target_bands` in every report and repeats the relevant
+band on each dimension result. These bands are project targets for this fork,
+not measured Minecraft internals:
+
+| Dimension | Current target band |
+| --- | --- |
+| startup | server listens and `time_to_listen_ms <= 15000` |
+| player join/liveness | public-safe headless client supported, at least 1 synthetic player attempted and connected, server remains listening |
+| server-step stability | at least 10 completed samples, 0 failed samples, `p95_sample_interval_ms <= 250`, `max_sample_interval_ms <= 1000` |
+| mapblock/chunk churn | SQLite/map inspection is `ok` and at least 1 mapblock row is present |
+| entity load | at least 16 generic helper entities, 0 remaining entities, 0 warnings, 0 errors |
+| world-edit throughput | at least 1 rollback-backed node write, at least 1 rollback record, max 16 writes per step, 0 warnings, 0 errors |
+| persistence | map SQLite bytes are nonzero and at least 1 rollback record exists |
+| mod/plugin ergonomics | first-party agent loop passes and compatibility inventory discovery is ready with at least 1 source and 1 planned action |
+| operator visibility | operator status, task control, and receipt-gated task control are present |
+| recovery | at least 1 rollback record and task-control actions do not mutate the world |
+| memory | at least 2 RSS samples and `max_rss_kb <= 262144` |
+| CPU | at least 2 CPU samples, `avg_process_cpu_percent <= 150`, `max_interval_cpu_percent <= 250` |
+| latency | headless join-log latency proxy present, at least 1 sample, `p95 <= 2000ms`, `max <= 5000ms` |
+
+Changing a target band requires a normal reviewed PR that updates the harness,
+this document, and tests. The PR body should explain whether the change raises
+the alpha bar, relaxes an unrealistic threshold, or adds a new measurement path.
+Target changes must not cite proprietary Minecraft code, server jars,
+marketplace assets, private worlds, or private benchmark captures.
+
 Current measured facts come from accepted clean-profile benchmark artifacts: startup listening time, player-load or liveness probes, headless join-log latency proxies when a synthetic client command is supplied, server-step workload samples, synthetic mapblock/chunk churn, generic demo entity benchmarks, mutation/write benchmarks, persistence and rollback metadata, operator status/task-control probes, memory sampling, and bounded process CPU sampling.
 
 The scenarios are safe to run locally and on the Pi side-by-side service. They use disposable `ai_runtime` worlds, public-safe synthetic clients and fixtures, rollback-backed mutation reports, and operator command probes. They do not require a private world or proprietary Minecraft assets.
@@ -88,6 +116,8 @@ The JSON report contains:
 
 - `comparison_dimensions`: the dimensions and metric paths the harness understands.
 - `scorecard_status_criteria`: the pass/warn/fail meaning used by every dimension.
+- `target_bands`: project target bands applied to measured fork evidence.
+- `accepted_baseline_policy`: proof that same-hardware accepted lanes are required before comparison.
 - `benchmark_scenarios`: local/Pi-safe scenario metadata for reproducible runs.
 - `measured_facts`: hardware-lane facts sourced from accepted benchmark reports.
 - `qualitative_minecraft_parity_gaps`: missing or partial evidence that should drive the runtime backlog.

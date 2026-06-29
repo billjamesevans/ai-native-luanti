@@ -59,6 +59,76 @@ FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS = {
     "defender_command_checked": 1,
     "import_preview_checked": 1,
 }
+TARGET_BANDS = {
+    "startup": {
+        "listening_required": True,
+        "time_to_listen_ms_max": 15000,
+    },
+    "player_join_liveness": {
+        "headless_player_required": True,
+        "synthetic_player_count_min": 1,
+        "connected_synthetic_player_count_min": 1,
+        "server_stayed_listening_required": True,
+    },
+    "server_step_stability": {
+        "completed_sample_count_min": 10,
+        "failed_sample_count_max": 0,
+        "p95_sample_interval_ms_max": 250,
+        "max_sample_interval_ms_max": 1000,
+    },
+    "mapblock_chunk_churn": {
+        "mapblock_rows_min": 1,
+        "inspection_status": "ok",
+    },
+    "entity_load": {
+        "max_entity_count_min": 16,
+        "max_remaining_entities_max": 0,
+        "warnings_max": 0,
+        "errors_max": 0,
+    },
+    "world_edit_throughput": {
+        "total_node_writes_min": 1,
+        "max_node_writes_per_step_max": 16,
+        "total_rollback_records_min": 1,
+        "warnings_max": 0,
+        "errors_max": 0,
+    },
+    "persistence": {
+        "map_sqlite_bytes_min": 1,
+        "total_rollback_records_min": 1,
+    },
+    "mod_plugin_ergonomics": {
+        "first_party_agent_product_loop_required": True,
+        "compatibility_import_inventory_required": True,
+        "compatibility_import_sources_min": 1,
+        "compatibility_import_planned_actions_min": 1,
+        "blocked_or_unsafe_outcomes_max": 0,
+    },
+    "operator_visibility": {
+        "operator_status_command_required": True,
+        "operator_task_control_command_required": True,
+        "receipt_gated_task_control_required": True,
+    },
+    "recovery": {
+        "total_rollback_records_min": 1,
+        "task_control_world_mutation_allowed": False,
+    },
+    "memory": {
+        "max_rss_kb_max": 262144,
+        "rss_sample_count_min": 2,
+    },
+    "cpu": {
+        "cpu_sample_count_min": 2,
+        "avg_process_cpu_percent_max": 150.0,
+        "max_interval_cpu_percent_max": 250.0,
+    },
+    "latency": {
+        "latency_proxy_required": True,
+        "join_latency_proxy_sample_count_min": 1,
+        "join_latency_proxy_p95_ms_max": 2000.0,
+        "join_latency_proxy_max_ms_max": 5000.0,
+    },
+}
 
 
 class HarnessError(RuntimeError):
@@ -88,6 +158,7 @@ def comparison_dimension(
         "scorecard_criteria": SCORECARD_STATUS_CRITERIA,
         "measured_metric_paths": measured_metric_paths,
         "target_kind": "project_target",
+        "target_band": dict(TARGET_BANDS[dimension_id]),
         "public_safe_source": public_safe_source,
     }
 
@@ -321,6 +392,18 @@ def numeric_metric(value) -> int:
     return 0
 
 
+def target_band(dimension_id: str) -> dict:
+    return TARGET_BANDS[dimension_id]
+
+
+def status_from_band(evidence_ready: bool, target_ready: bool) -> str:
+    if evidence_ready and target_ready:
+        return "measured"
+    if evidence_ready:
+        return "partial"
+    return "evidence_gap"
+
+
 def has_first_party_agent_product_loop_evidence(product_loop: dict) -> bool:
     return (
         product_loop.get("product_loop_status") == "pass"
@@ -340,6 +423,7 @@ def result(dimension_id: str, status: str, metrics: dict, evidence: str) -> dict
         "status": status,
         "scorecard_status": STATUS_TO_SCORECARD.get(status, "fail"),
         "gap_area": dimension_gap_area(dimension_id),
+        "target_band": dict(target_band(dimension_id)),
         "metrics": metrics,
         "evidence": evidence,
         "measured_facts_are_project_fork_only": True,
@@ -377,30 +461,37 @@ def dimension_results(
     memory = measurements["memory"]
     cpu = measurements["cpu"]
 
+    startup_band = target_band("startup")
     startup_ready = startup.get("listening") is True and metric_status(startup.get("time_to_listen_ms"))
+    startup_target_ready = (
+        startup_ready
+        and startup.get("time_to_listen_ms") <= startup_band["time_to_listen_ms_max"]
+    )
     facts.append(
         result(
             "startup",
-            "measured" if startup_ready else "evidence_gap",
+            status_from_band(startup_ready, startup_target_ready),
             {
                 "listening": startup.get("listening"),
                 "time_to_listen_ms": startup.get("time_to_listen_ms"),
                 "startup_timeout_seconds": startup.get("startup_timeout_seconds"),
+                "target_band_passed": startup_target_ready,
             },
             "clean-profile startup capture",
         )
     )
-    if not startup_ready:
+    if not startup_target_ready:
         gaps.append(
             gap(
                 hardware_class,
                 "startup",
-                "Startup listening evidence is incomplete",
+                "Startup target band is not met",
                 f"listening={startup.get('listening')} time_to_listen_ms={startup.get('time_to_listen_ms')}",
                 "Refresh accepted clean-profile capture and keep startup evidence in the local baseline lane.",
             )
         )
 
+    player_band = target_band("player_join_liveness")
     synthetic_count = player_probe.get("synthetic_player_count") or 0
     connected = player_probe.get("connected_synthetic_player_count")
     if connected is None:
@@ -409,8 +500,9 @@ def dimension_results(
     true_player_load = (
         player_probe.get("probe_status") == "pass"
         and headless_supported
-        and synthetic_count > 0
-        and connected >= synthetic_count
+        and synthetic_count >= player_band["synthetic_player_count_min"]
+        and connected >= max(synthetic_count, player_band["connected_synthetic_player_count_min"])
+        and player_probe.get("server_stayed_listening") is True
     )
     if true_player_load:
         probe_status = "measured"
@@ -429,6 +521,7 @@ def dimension_results(
                 "connected_synthetic_player_count": connected,
                 "headless_player_supported": player_probe.get("headless_player_supported"),
                 "server_stayed_listening": player_probe.get("server_stayed_listening"),
+                "target_band_passed": true_player_load,
             },
             "headless client load when available; otherwise server-process liveness proxy",
         )
@@ -456,51 +549,73 @@ def dimension_results(
             )
         )
 
-    workload_ready = (
+    workload_band = target_band("server_step_stability")
+    workload_evidence_ready = (
         workload.get("workload_status") == "pass"
         and (workload.get("completed_sample_count") or 0) > 0
-        and (workload.get("failed_sample_count") or 0) == 0
+    )
+    workload_target_ready = (
+        workload_evidence_ready
+        and (workload.get("completed_sample_count") or 0) >= workload_band["completed_sample_count_min"]
+        and (workload.get("failed_sample_count") or 0) <= workload_band["failed_sample_count_max"]
+        and metric_status(workload.get("p95_sample_interval_ms"))
+        and workload.get("p95_sample_interval_ms") <= workload_band["p95_sample_interval_ms_max"]
+        and metric_status(workload.get("max_sample_interval_ms"))
+        and workload.get("max_sample_interval_ms") <= workload_band["max_sample_interval_ms_max"]
     )
     facts.append(
         result(
             "server_step_stability",
-            "measured" if workload_ready else "evidence_gap",
+            status_from_band(workload_evidence_ready, workload_target_ready),
             {
                 "workload_status": workload.get("workload_status"),
                 "completed_sample_count": workload.get("completed_sample_count"),
                 "failed_sample_count": workload.get("failed_sample_count"),
                 "p95_sample_interval_ms": workload.get("p95_sample_interval_ms"),
                 "max_sample_interval_ms": workload.get("max_sample_interval_ms"),
+                "target_band_passed": workload_target_ready,
             },
             "bounded clean-profile server-step workload",
         )
     )
-    if not workload_ready:
+    if not workload_target_ready:
         gaps.append(
             gap(
                 hardware_class,
                 "server_step_stability",
-                "Server-step workload evidence is missing or failing",
-                f"workload_status={workload.get('workload_status')}",
+                "Server-step target band is not met",
+                (
+                    f"workload_status={workload.get('workload_status')} "
+                    f"completed={workload.get('completed_sample_count')} "
+                    f"failed={workload.get('failed_sample_count')} "
+                    f"p95={workload.get('p95_sample_interval_ms')}"
+                ),
                 "Refresh clean-profile capture with passing server-step workload samples.",
             )
         )
 
+    map_band = target_band("mapblock_chunk_churn")
     map_ready = (map_chunk.get("mapblock_rows") or 0) > 0
+    map_target_ready = (
+        map_ready
+        and (map_chunk.get("mapblock_rows") or 0) >= map_band["mapblock_rows_min"]
+        and map_chunk.get("inspection_status") == map_band["inspection_status"]
+    )
     facts.append(
         result(
             "mapblock_chunk_churn",
-            "measured" if map_ready else "evidence_gap",
+            status_from_band(map_ready, map_target_ready),
             {
                 "world_backend": map_chunk.get("world_backend"),
                 "map_sqlite_bytes": map_chunk.get("map_sqlite_bytes"),
                 "mapblock_rows": map_chunk.get("mapblock_rows"),
                 "inspection_status": map_chunk.get("inspection_status"),
+                "target_band_passed": map_target_ready,
             },
             "disposable clean-profile map/chunk inspection",
         )
     )
-    if not map_ready:
+    if not map_target_ready:
         gaps.append(
             gap(
                 hardware_class,
@@ -511,19 +626,26 @@ def dimension_results(
             )
         )
 
-    entity_ready = (entity.get("max_entity_count") or 0) >= 16 and (
-        entity.get("max_remaining_entities") or 0
-    ) == 0
+    entity_band = target_band("entity_load")
+    entity_evidence_ready = metric_status(entity.get("max_entity_count"))
+    entity_ready = (
+        entity_evidence_ready
+        and (entity.get("max_entity_count") or 0) >= entity_band["max_entity_count_min"]
+        and (entity.get("max_remaining_entities") or 0) <= entity_band["max_remaining_entities_max"]
+        and (entity.get("warnings") or 0) <= entity_band["warnings_max"]
+        and (entity.get("errors") or 0) <= entity_band["errors_max"]
+    )
     facts.append(
         result(
             "entity_load",
-            "measured" if entity_ready else "partial",
+            status_from_band(entity_evidence_ready, entity_ready),
             {
                 "max_entity_count": entity.get("max_entity_count"),
                 "max_active_peak": entity.get("max_active_peak"),
                 "max_remaining_entities": entity.get("max_remaining_entities"),
                 "warnings": entity.get("warnings"),
                 "errors": entity.get("errors"),
+                "target_band_passed": entity_ready,
             },
             "generic demo helper entity benchmark",
         )
@@ -539,17 +661,27 @@ def dimension_results(
             )
         )
 
-    mutation_ready = (mutation.get("total_node_writes") or 0) > 0
+    mutation_band = target_band("world_edit_throughput")
+    mutation_evidence_ready = (mutation.get("total_node_writes") or 0) > 0
+    mutation_ready = (
+        mutation_evidence_ready
+        and (mutation.get("total_node_writes") or 0) >= mutation_band["total_node_writes_min"]
+        and (mutation.get("max_node_writes_per_step") or 0) <= mutation_band["max_node_writes_per_step_max"]
+        and (mutation.get("total_rollback_records") or 0) >= mutation_band["total_rollback_records_min"]
+        and (mutation.get("warnings") or 0) <= mutation_band["warnings_max"]
+        and (mutation.get("errors") or 0) <= mutation_band["errors_max"]
+    )
     facts.append(
         result(
             "world_edit_throughput",
-            "measured" if mutation_ready else "evidence_gap",
+            status_from_band(mutation_evidence_ready, mutation_ready),
             {
                 "total_node_writes": mutation.get("total_node_writes"),
                 "max_node_writes_per_step": mutation.get("max_node_writes_per_step"),
                 "total_rollback_records": mutation.get("total_rollback_records"),
                 "warnings": mutation.get("warnings"),
                 "errors": mutation.get("errors"),
+                "target_band_passed": mutation_ready,
             },
             "synthetic rollback-backed mutation benchmark",
         )
@@ -565,17 +697,21 @@ def dimension_results(
             )
         )
 
+    persistence_band = target_band("persistence")
+    persistence_evidence_ready = metric_status(map_chunk.get("map_sqlite_bytes"))
     persistence_ready = (
-        metric_status(map_chunk.get("map_sqlite_bytes"))
-        and (mutation.get("total_rollback_records") or 0) > 0
+        persistence_evidence_ready
+        and (map_chunk.get("map_sqlite_bytes") or 0) >= persistence_band["map_sqlite_bytes_min"]
+        and (mutation.get("total_rollback_records") or 0) >= persistence_band["total_rollback_records_min"]
     )
     facts.append(
         result(
             "persistence",
-            "measured" if persistence_ready else "evidence_gap",
+            status_from_band(persistence_evidence_ready, persistence_ready),
             {
                 "map_sqlite_bytes": map_chunk.get("map_sqlite_bytes"),
                 "total_rollback_records": mutation.get("total_rollback_records"),
+                "target_band_passed": persistence_ready,
             },
             "disposable map persistence plus rollback metadata",
         )
@@ -602,8 +738,10 @@ def dimension_results(
     )
     compatibility_import_plugin_ready = (
         compatibility_import_inventory.get("compatibility_import_inventory_ready") is True
-        and (compatibility_import_inventory.get("sources_total") or 0) > 0
-        and (compatibility_import_inventory.get("planned_actions_total") or 0) > 0
+        and (compatibility_import_inventory.get("sources_total") or 0)
+            >= target_band("mod_plugin_ergonomics")["compatibility_import_sources_min"]
+        and (compatibility_import_inventory.get("planned_actions_total") or 0)
+            >= target_band("mod_plugin_ergonomics")["compatibility_import_planned_actions_min"]
     )
     if compatibility_import_plugin_ready:
         plugin_evidence = (
@@ -629,6 +767,9 @@ def dimension_results(
                 "clean_profile_capability_policy": True,
                 "first_party_agent_loop_ready": first_party_agent_loop_ready,
                 "compatibility_import_plugin_ready": compatibility_import_plugin_ready,
+                "target_band_passed": (
+                    first_party_agent_loop_ready and compatibility_import_plugin_ready
+                ),
                 "compatibility_import_inventory": {
                     "status": compatibility_import_inventory.get("status"),
                     "sources_total": compatibility_import_inventory.get("sources_total"),
@@ -698,12 +839,16 @@ def dimension_results(
                 "operator_status_command": "ai_runtime_operator_status",
                 "operator_task_control_command": "ai_runtime_operator_task_control",
                 "receipt_gated_task_control": True,
+                "target_band_passed": operator_visibility_ready,
             },
             "clean runtime exposes bounded operator status and receipt-gated task control",
         )
     )
 
-    recovery_ready = (mutation.get("total_rollback_records") or 0) > 0
+    recovery_band = target_band("recovery")
+    recovery_ready = (
+        (mutation.get("total_rollback_records") or 0) >= recovery_band["total_rollback_records_min"]
+    )
     facts.append(
         result(
             "recovery",
@@ -712,6 +857,7 @@ def dimension_results(
                 "total_rollback_records": mutation.get("total_rollback_records"),
                 "receipt_gated_task_control": True,
                 "world_mutation_from_task_control": False,
+                "target_band_passed": recovery_ready,
             },
             "rollback metadata plus no-world-mutation task-control boundary",
         )
@@ -727,14 +873,21 @@ def dimension_results(
             )
         )
 
-    memory_ready = metric_status(memory.get("max_rss_kb"))
+    memory_band = target_band("memory")
+    memory_evidence_ready = metric_status(memory.get("max_rss_kb"))
+    memory_ready = (
+        memory_evidence_ready
+        and (memory.get("max_rss_kb") or 0) <= memory_band["max_rss_kb_max"]
+        and (memory.get("rss_sample_count") or 0) >= memory_band["rss_sample_count_min"]
+    )
     facts.append(
         result(
             "memory",
-            "measured" if memory_ready else "evidence_gap",
+            status_from_band(memory_evidence_ready, memory_ready),
             {
                 "max_rss_kb": memory.get("max_rss_kb"),
                 "rss_sample_count": memory.get("rss_sample_count"),
+                "target_band_passed": memory_ready,
             },
             "clean-profile process memory sampling",
         )
@@ -750,16 +903,22 @@ def dimension_results(
             )
         )
 
-    cpu_ready = (
+    cpu_band = target_band("cpu")
+    cpu_evidence_ready = (
         cpu.get("sample_status") == "measured"
-        and (cpu.get("cpu_sample_count") or 0) >= 2
         and metric_status(cpu.get("avg_process_cpu_percent"))
         and metric_status(cpu.get("max_interval_cpu_percent"))
+    )
+    cpu_ready = (
+        cpu_evidence_ready
+        and (cpu.get("cpu_sample_count") or 0) >= cpu_band["cpu_sample_count_min"]
+        and cpu.get("avg_process_cpu_percent") <= cpu_band["avg_process_cpu_percent_max"]
+        and cpu.get("max_interval_cpu_percent") <= cpu_band["max_interval_cpu_percent_max"]
     )
     facts.append(
         result(
             "cpu",
-            "measured" if cpu_ready else "evidence_gap",
+            status_from_band(cpu_evidence_ready, cpu_ready),
             {
                 "sample_status": cpu.get("sample_status"),
                 "cpu_sample_count": cpu.get("cpu_sample_count"),
@@ -767,6 +926,7 @@ def dimension_results(
                 "max_interval_cpu_percent": cpu.get("max_interval_cpu_percent"),
                 "process_cpu_time_delta_seconds": cpu.get("process_cpu_time_delta_seconds"),
                 "sample_methods": cpu.get("sample_methods"),
+                "target_band_passed": cpu_ready,
             },
             "clean-profile process CPU sampling",
         )
@@ -783,14 +943,24 @@ def dimension_results(
         )
 
     join_latency = player_probe.get("join_latency_proxy_ms") or {}
-    latency_ready = (
+    latency_band = target_band("latency")
+    latency_evidence_ready = (
         player_probe.get("probe_status") == "pass"
         and player_probe.get("latency_proxy_supported") is True
         and (join_latency.get("sample_count") or 0) > 0
         and metric_status(join_latency.get("p95"))
     )
+    latency_ready = (
+        latency_evidence_ready
+        and (join_latency.get("sample_count") or 0) >= latency_band["join_latency_proxy_sample_count_min"]
+        and join_latency.get("p95") <= latency_band["join_latency_proxy_p95_ms_max"]
+        and metric_status(join_latency.get("max"))
+        and join_latency.get("max") <= latency_band["join_latency_proxy_max_ms_max"]
+    )
     if latency_ready:
         latency_status = "measured"
+    elif latency_evidence_ready:
+        latency_status = "partial"
     elif headless_supported and player_probe.get("probe_status") != "pass":
         latency_status = "measured_failure"
     else:
@@ -809,6 +979,7 @@ def dimension_results(
         "server_step_max_sample_interval_ms": workload.get("max_sample_interval_ms"),
         "player_probe_p95_sample_interval_ms": player_probe.get("p95_sample_interval_ms"),
         "network_rtt_ms": None,
+        "target_band_passed": latency_ready,
     }
     facts.append(
         result(
@@ -993,7 +1164,17 @@ def build_report(output_root: Path, hardware_classes: list[str]) -> dict:
             "operator_supplied_external_references_allowed": True,
             "measured_facts_are_separate_from_project_targets": True,
         },
+        "accepted_baseline_policy": {
+            "same_hardware_required": True,
+            "accepted_lanes_required": [
+                f"local/benchmarks/{hardware_class}/accepted/"
+                for hardware_class in hardware_classes
+            ],
+            "enforced_by": "ai_native_runtime_gap_scorecard.load_accepted_lane",
+            "missing_or_mismatched_baselines_fail_report": True,
+        },
         "scorecard_status_criteria": SCORECARD_STATUS_CRITERIA,
+        "target_bands": {key: dict(value) for key, value in TARGET_BANDS.items()},
         "comparison_dimensions": comparison_dimensions(),
         "benchmark_scenarios": benchmark_scenarios(),
         "measured_facts": measured_facts,
