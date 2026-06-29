@@ -100,10 +100,12 @@ class FakeRunner:
         if "ai_native_runtime_verify.py" in command_text:
             return self.module.CommandRun(
                 returncode=self.verify_returncode,
-                stdout="/opt/ai-native-luanti/src/local/benchmarks/low-power-server/run/"
+                stdout="local/benchmarks/low-power-server/run/"
                 "ai-runtime-verification-manifest.json\n",
             )
         if "cat " in command_text:
+            if "cd /opt/ai-native-luanti/src" not in command_text:
+                return self.module.CommandRun(returncode=1, stderr="missing remote repo cwd")
             return self.module.CommandRun(
                 returncode=0,
                 stdout=json.dumps(self.remote_manifest),
@@ -257,6 +259,36 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertIn("ai_native_low_power_pi_evidence.py", readme)
         self.assertIn("ai_native_low_power_pi_evidence.py", alpha_gate)
         self.assertIn("--confirm-backup-first", alpha_gate)
+
+    def test_reads_relative_remote_manifest_path_from_remote_repo(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                ]
+            )
+            fake_runner = FakeRunner(module)
+
+            exit_code, _, manifest = module.run(args, runner=fake_runner, now_fn=lambda: "2026-06-29T10:00:00Z")
+
+        cat_commands = [
+            " ".join(command)
+            for command in fake_runner.calls
+            if "cat local/benchmarks/low-power-server/run/ai-runtime-verification-manifest.json" in " ".join(command)
+        ]
+        self.assertTrue(cat_commands)
+        self.assertIn("cd /opt/ai-native-luanti/src", cat_commands[0])
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(manifest["overall_status"], "pass")
 
 
 if __name__ == "__main__":
