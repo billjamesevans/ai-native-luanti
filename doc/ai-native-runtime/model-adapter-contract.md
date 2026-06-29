@@ -23,6 +23,12 @@ reference OpenAI Agents SDK sidecar under `tools/agents_sdk_model_adapter`.
 That bridge uses `Agent`, `Runner`, `WebSearchTool`, and `function_tool` while
 keeping this runtime contract provider-neutral.
 
+Luanti-side opt-in:
+`builtin/game/ai_agents_sdk_adapter_plugin.lua` is loaded only when
+`ai_runtime.enable_agents_sdk_adapter = true`. It posts this request envelope to
+the loopback sidecar endpoint and installs the resulting adapter through
+`core.ai_agent_plugin.set_model_adapter`.
+
 ## Request Envelope
 
 Adapters receive a table matching

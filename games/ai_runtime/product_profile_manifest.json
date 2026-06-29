@@ -102,6 +102,14 @@
       "purpose": "provider-neutral model adapter scaffold and mock probe command"
     },
     {
+      "name": "ai_agents_sdk_adapter",
+      "category": "unit_test_helper",
+      "path": "builtin/game/ai_agents_sdk_adapter_plugin.lua",
+      "loaded_by_default_product_profile": false,
+      "requires_explicit_dev_or_test_lane": true,
+      "purpose": "disabled-by-default Agents SDK sidecar adapter probe and operator-configured model adapter bridge"
+    },
+    {
       "name": "compatibility_fixture_samples",
       "category": "compatibility_fixture",
       "path": "util/tests/fixtures/compat",
@@ -142,6 +150,14 @@
       "command": "ai_model_adapter_probe",
       "default_enabled": false,
       "purpose": "provider-neutral model adapter mock probe command"
+    },
+    {
+      "name": "ai_agents_sdk_adapter",
+      "setting": "ai_runtime.enable_agents_sdk_adapter",
+      "source_file": "builtin/game/ai_agents_sdk_adapter_plugin.lua",
+      "command": "ai_agents_sdk_adapter_probe",
+      "default_enabled": false,
+      "purpose": "Agents SDK sidecar model adapter probe and bridge"
     }
   ],
   "required_runtime_surfaces": [

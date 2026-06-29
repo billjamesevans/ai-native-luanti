@@ -151,6 +151,8 @@ The first-party provider path should be the Agents SDK bridge documented in
 prompts can become real agent runs with hosted web search and deterministic
 tools while Luanti remains the task, capability, audit, rollback, and mutation
 authority.
+The Lua bridge is explicit opt-in through `ai_runtime.enable_agents_sdk_adapter`
+and uses `/ai_agents_sdk_adapter_probe` for public-safe verification.
 
 ## Configuration
 
