@@ -32,6 +32,18 @@ DEMO_ENTITY_EXAMPLE = (
     / "examples"
     / "generic-demo-entity-benchmark-report.example.json"
 )
+FIRST_PARTY_AGENT_PRODUCT_LOOP_SCENARIO = "first_party_agent_product_loop_approval"
+FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS = {
+    "approval_plan_count": 2,
+    "approved_task_count": 2,
+    "guide_command_checked": 1,
+    "tasks_command_checked": 1,
+    "cancel_command_checked": 1,
+    "audit_review_checked": 1,
+    "rollback_review_checked": 1,
+    "defender_command_checked": 1,
+    "import_preview_checked": 1,
+}
 PROFILE_LOG_FAILURE_PATTERNS = re.compile(r"Mapgen alias .* invalid|testnodes:", re.I)
 KNOWN_PROFILE_WARNING_PATTERNS = (
     (
@@ -90,6 +102,15 @@ def count_items(value) -> int:
     if isinstance(value, list):
         return len(value)
     return 1
+
+
+def int_metric(metrics: dict, name: str) -> int:
+    value = metrics.get(name)
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, (int, float)):
+        return int(value)
+    return 0
 
 
 def max_metric(report: dict, metric_name: str):
@@ -783,6 +804,55 @@ def summarize_mutation_report(report: dict) -> dict:
     }
 
 
+def summarize_first_party_agent_product_loop(report: dict) -> dict:
+    scenario = next(
+        (
+            item for item in report.get("scenarios", [])
+            if item.get("scenario_id") == FIRST_PARTY_AGENT_PRODUCT_LOOP_SCENARIO
+        ),
+        None,
+    )
+    if scenario is None:
+        return {
+            "product_loop_status": "missing",
+            "scenario_id": FIRST_PARTY_AGENT_PRODUCT_LOOP_SCENARIO,
+            **{name: 0 for name in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS},
+            "blocked_or_unsafe_outcomes": None,
+            "warning_count": 0,
+            "error_count": 0,
+            "evidence_gap": "mutation report has no first-party agent product-loop scenario",
+        }
+
+    metrics = scenario.get("metrics") or {}
+    counters = metrics.get("ai_runtime_counters") or {}
+    summary = {
+        "scenario_id": FIRST_PARTY_AGENT_PRODUCT_LOOP_SCENARIO,
+        **{
+            name: int_metric(metrics, name)
+            for name in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS
+        },
+        "blocked_or_unsafe_outcomes": (
+            int_metric(metrics, "blocked_or_unsafe_outcomes")
+            + int_metric(counters, "blocked_tasks")
+            + int_metric(metrics, "unsafe_operations")
+            + int_metric(counters, "unsafe_operations")
+        ),
+        "warning_count": count_items(metrics.get("warnings")),
+        "error_count": count_items(metrics.get("errors")),
+    }
+    ready = (
+        all(
+            summary[name] >= threshold
+            for name, threshold in FIRST_PARTY_AGENT_PRODUCT_LOOP_THRESHOLDS.items()
+        )
+        and summary["blocked_or_unsafe_outcomes"] == 0
+        and summary["warning_count"] == 0
+        and summary["error_count"] == 0
+    )
+    summary["product_loop_status"] = "pass" if ready else "evidence_gap"
+    return summary
+
+
 def write_profile_world(world_dir: Path) -> None:
     world_dir.mkdir(parents=True, exist_ok=True)
     (world_dir / "world.mt").write_text(
@@ -1027,6 +1097,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
     cpu = cpu_sample_summary(cpu_samples)
     entity_runtime = summarize_entity_report(demo_entity_report)
     mutation_writes = summarize_mutation_report(mutation_report)
+    first_party_agent_product_loop = summarize_first_party_agent_product_loop(mutation_report)
 
     comparison_summary = {
         "startup": startup,
@@ -1036,6 +1107,7 @@ def capture_clean_profile_summary(args, mutation_report: dict, demo_entity_repor
         "map_chunk_workload": map_workload,
         "entity_runtime_operations": entity_runtime,
         "mutation_write_throughput": mutation_writes,
+        "first_party_agent_product_loop": first_party_agent_product_loop,
         "memory": memory,
         "cpu": cpu,
         "failure_notes": failure_notes,

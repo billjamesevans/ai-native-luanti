@@ -244,6 +244,29 @@ def cpu_measurement(summary: dict) -> dict:
     }
 
 
+def first_party_agent_product_loop_measurement(summary: dict) -> dict:
+    product_loop = summary.get("first_party_agent_product_loop")
+    if product_loop:
+        return dict(product_loop)
+    return {
+        "product_loop_status": "missing",
+        "scenario_id": "first_party_agent_product_loop_approval",
+        "approval_plan_count": 0,
+        "approved_task_count": 0,
+        "guide_command_checked": 0,
+        "tasks_command_checked": 0,
+        "cancel_command_checked": 0,
+        "audit_review_checked": 0,
+        "rollback_review_checked": 0,
+        "defender_command_checked": 0,
+        "import_preview_checked": 0,
+        "blocked_or_unsafe_outcomes": None,
+        "warning_count": 0,
+        "error_count": 0,
+        "evidence_gap": "clean-profile summary has no first-party agent product-loop evidence",
+    }
+
+
 def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
     manifest = accepted["manifest"]
     clean_profile = accepted["clean_profile"]
@@ -285,6 +308,7 @@ def build_lane_evidence(hardware_class: str, accepted: dict) -> dict:
         "server_step_workload": server_step_workload_measurement(summary),
         "player_load_tick_probe": player_probe_measurement(summary),
         "mutation_write_throughput": mutation_summary,
+        "first_party_agent_product_loop": first_party_agent_product_loop_measurement(summary),
         "demo_entity_runtime_cost": demo_summary,
         "map_chunk_workload": summary["map_chunk_workload"],
         "memory": summary["memory"],
