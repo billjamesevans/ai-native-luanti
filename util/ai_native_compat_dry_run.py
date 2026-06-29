@@ -19,6 +19,7 @@ APPLY_SUMMARY_VERSION = 1
 ADAPTER_APPLY_SMOKE_VERSION = 1
 ADAPTER_APPLY_SMOKE_REVIEW_VERSION = 1
 STRUCTURE_IMPORT_PROMOTION_PACKAGE_VERSION = 1
+ASSET_REFERENCE_PROMOTION_PACKAGE_VERSION = 1
 TOP_LEVEL_REQUIRED = (
     "report_version",
     "mode",
@@ -179,6 +180,29 @@ PROMOTION_PACKAGE_REQUIRED_CAPABILITIES = (
     "world.batch",
     "rollback.execute",
     "admin.override",
+)
+ASSET_REFERENCE_SOURCE_CLASSES = (
+    "java_resource_pack",
+    "bedrock_resource_pack",
+)
+ASSET_REFERENCE_ACTIONS = (
+    "copy_asset_reference",
+    "map_texture",
+    "map_sound",
+)
+ASSET_REFERENCE_FORBIDDEN_KEYS = (
+    "asset_payload",
+    "raw_asset_payload",
+    "payload_bytes",
+    "asset_bytes",
+    "raw_bytes",
+    "source_payload",
+    "private_payload",
+    "texture_bytes",
+    "sound_bytes",
+    "model_bytes",
+    "media_payload",
+    "copied_protected_content",
 )
 PLANNED_ACTION_TASK_MAPPINGS = {
     "copy_asset_reference": {
@@ -2496,6 +2520,301 @@ def build_apply_plan(report, request):
     return summary
 
 
+def _find_forbidden_asset_payload(value):
+    if isinstance(value, dict):
+        for key, nested in value.items():
+            normalized = str(key).lower()
+            if normalized in ASSET_REFERENCE_FORBIDDEN_KEYS:
+                return normalized
+            found = _find_forbidden_asset_payload(nested)
+            if found:
+                return found
+    elif isinstance(value, list):
+        for nested in value:
+            found = _find_forbidden_asset_payload(nested)
+            if found:
+                return found
+    return None
+
+
+def _assert_no_asset_payloads(value):
+    forbidden = _find_forbidden_asset_payload(value)
+    if not forbidden:
+        return
+    if forbidden == "copied_protected_content":
+        raise ValueError("copied protected content cannot be packaged")
+    if "bytes" in forbidden:
+        raise ValueError("asset bytes cannot be embedded in promotion packages")
+    raise ValueError("raw asset payloads cannot be packaged")
+
+
+def _assert_asset_reference_target(request):
+    target_world = request.get("target_world")
+    if not isinstance(target_world, dict):
+        raise ValueError("target_world is required for asset-reference promotion package")
+    world_id = str(target_world.get("world_id") or "")
+    if not world_id:
+        raise ValueError("target_world.world_id is required for asset-reference promotion package")
+    if world_id in ADAPTER_APPLY_FORBIDDEN_WORLD_IDS:
+        raise ValueError("asset-reference promotion cannot target the live family world")
+    if target_world.get("world_mutation_allowed") is True:
+        raise ValueError("live-world mutation is not allowed for asset-reference promotion")
+    return {
+        "world_id": world_id,
+        "staging": target_world.get("staging") is True,
+        "disposable": target_world.get("disposable") is True,
+        "world_mutation_allowed": False,
+    }
+
+
+def _assert_asset_reference_report(report):
+    source = report.get("source", {})
+    source_class = source.get("source_class")
+    if source_class not in ASSET_REFERENCE_SOURCE_CLASSES:
+        raise ValueError("asset-reference promotion requires a Java or Bedrock resource-pack dry-run")
+    if source.get("license_status") != "user_supplied":
+        raise ValueError("asset-reference promotion requires user_supplied license status")
+    if source.get("path_policy") != "external_reference":
+        raise ValueError("asset-reference promotion requires external_reference path policy")
+    _assert_no_asset_payloads(report)
+
+
+def _asset_reference_approved_actions(approved_actions):
+    asset_actions = []
+    for action_index, requested, planned in approved_actions:
+        action = planned["action"]
+        cost = _calibrated_action_cost(planned)
+        if action not in ASSET_REFERENCE_ACTIONS:
+            if "behavior" in action:
+                raise ValueError("behavior-script execution is not allowed for asset-reference promotion")
+            if action == "import_structure" or cost["node_writes"] > 0 or cost["mapblock_churn"] > 0:
+                raise ValueError("asset-reference promotion cannot include world-mutating actions")
+            raise ValueError(f"approved action {action} is not an asset-reference action")
+        if cost["node_writes"] != 0 or cost["mapblock_churn"] != 0:
+            raise ValueError("asset-reference promotion cannot include world-mutating actions")
+        asset_actions.append((action_index, requested, planned))
+    if not asset_actions:
+        raise ValueError("asset-reference promotion requires an approved asset-reference action")
+    return asset_actions
+
+
+def _assert_request_has_no_world_mutating_asset_actions(report, request):
+    planned_actions = report.get("planned_actions", [])
+    approved_actions = request.get("approved_actions", [])
+    if not isinstance(planned_actions, list) or not isinstance(approved_actions, list):
+        return
+    for requested in approved_actions:
+        if not isinstance(requested, dict):
+            continue
+        action_index = requested.get("action_index")
+        if not isinstance(action_index, int) or action_index < 0 or action_index >= len(planned_actions):
+            continue
+        planned = planned_actions[action_index]
+        if not isinstance(planned, dict):
+            continue
+        cost = planned.get("mutation_cost") or {}
+        if (
+            planned.get("action") == "import_structure"
+            or cost.get("node_writes", 0) > 0
+            or cost.get("mapblock_churn", 0) > 0
+        ):
+            raise ValueError("asset-reference promotion cannot include world-mutating actions")
+
+
+def _asset_reference_approval_summary(asset_actions, task_definitions):
+    task_by_index = {
+        definition["provenance"]["action_index"]: definition
+        for definition in task_definitions
+    }
+    actions = []
+    for action_index, requested, planned in asset_actions:
+        task = task_by_index[action_index]
+        actions.append({
+            "action_index": action_index,
+            "action": planned["action"],
+            "status": requested["status"],
+            "description": planned["description"],
+            "task_id": task["task_id"],
+            "mutation_cost": planned["mutation_cost"],
+        })
+    return actions
+
+
+def _asset_task_summary(task_definitions):
+    planned_tasks = []
+    for definition in task_definitions:
+        planned_tasks.append({
+            "task_id": definition["task_id"],
+            "action_index": definition["provenance"]["action_index"],
+            "action": definition["source_action"]["action"],
+            "label": definition["label"],
+            "mutation_class": definition["mutation_class"],
+            "queue_state": definition["queue_state"],
+            "required_capabilities": definition["required_capabilities"],
+            "runtime_handoff": {
+                "status": definition["runtime_handoff"]["status"],
+                "mutation_enabled": definition["runtime_handoff"]["mutation_enabled"],
+                "operation": definition["runtime_handoff"]["operation"],
+            },
+            "calibrated_cost": definition["calibrated_cost"],
+        })
+    return {
+        "task_count": len(task_definitions),
+        "task_ids": [task["task_id"] for task in planned_tasks],
+        "labels": sorted({task["label"] for task in planned_tasks}),
+        "mutation_classes": sorted({task["mutation_class"] for task in planned_tasks}),
+        "queued_task_count": sum(1 for task in planned_tasks if task["queue_state"] != "not_queued"),
+        "required_capabilities": sorted({
+            capability
+            for task in planned_tasks
+            for capability in task["required_capabilities"]
+        }),
+        "planned_tasks": planned_tasks,
+    }
+
+
+def _asset_budget_gates(request, asset_actions):
+    totals = _approved_cost_totals(asset_actions)
+    budget = request["budget"]
+    return {
+        "media_files": _package_budget_gate(
+            "media_files",
+            totals["media_files"],
+            budget["max_media_files"],
+        ),
+        "entity_definitions": _package_budget_gate(
+            "entity_definitions",
+            totals["entity_definitions"],
+            budget["max_entity_definitions"],
+        ),
+        "node_writes": _package_budget_gate(
+            "node_writes",
+            totals["node_writes"],
+            budget["max_node_writes_total"],
+        ),
+        "node_writes_per_step": _package_budget_gate(
+            "node_writes_per_step",
+            0,
+            budget["max_node_writes_per_step"],
+        ),
+        "mapblock_churn": _package_budget_gate(
+            "mapblock_churn",
+            totals["mapblock_churn"],
+            budget["max_mapblock_churn_total"],
+        ),
+        "manual_review_items": _package_budget_gate(
+            "manual_review_items",
+            totals["manual_review_items"],
+            budget["max_manual_review_items"],
+        ),
+        "wall_time_ms": _package_budget_gate(
+            "wall_time_ms",
+            totals["estimated_wall_time_ms"],
+            budget["max_wall_time_ms"],
+        ),
+    }
+
+
+def _asset_capability_gates(task_summary):
+    required_capabilities = sorted({
+        "import.assets",
+        *task_summary["required_capabilities"],
+    })
+    return {
+        "required_capabilities": required_capabilities,
+        "operator_runtime_hooks": [],
+        "world_mutation": "disabled",
+        "status": "ready",
+    }
+
+
+def build_asset_reference_promotion_package(report, request):
+    """Build no-mutation promotion evidence for reviewed resource-pack asset references."""
+    _assert_asset_reference_report(report)
+    _assert_request_has_no_world_mutating_asset_actions(report, request)
+    approved_actions = _validated_approved_actions(report, request)
+    asset_actions = _asset_reference_approved_actions(approved_actions)
+    if request["rollback_policy"]["policy"] != "no_world_mutation":
+        raise ValueError("rollback_policy.policy must be no_world_mutation for asset-reference promotion")
+    target_world = _assert_asset_reference_target(request)
+    if request["budget"]["max_node_writes_total"] != 0 or request["budget"]["max_mapblock_churn_total"] != 0:
+        raise ValueError("asset-reference promotion must keep node and mapblock mutation budgets at 0")
+
+    task_definitions = build_apply_task_definitions(report, request)
+    task_summary = _asset_task_summary(task_definitions)
+    apply_plan = build_apply_plan(report, request)
+    package = {
+        "package_version": ASSET_REFERENCE_PROMOTION_PACKAGE_VERSION,
+        "mode": "asset_reference_promotion_package",
+        "generated_at": _utc_now(),
+        "report_id": request["report_id"],
+        "status": "ready_for_operator_asset_reference_promotion",
+        "dry_run": {
+            "report_id": request["report_id"],
+            "report_version": report["report_version"],
+            "source_id": report["source"]["source_id"],
+            "source_class": report["source"]["source_class"],
+            "source_reference": {
+                "reference_type": request["source_reference"]["reference_type"],
+                "redacted_id": request["source_reference"]["redacted_id"],
+                "inventory_hash": request["source_reference"]["inventory_hash"],
+            },
+            "source_inventory": _source_inventory_summary(report),
+            "license_status": report["source"]["license_status"],
+            "rights_status": "operator_confirmed",
+            "estimated_world_mutations": report["summary"]["estimated_world_mutations"],
+        },
+        "operator_approval": {
+            "approval_state": "approved",
+            "operator": request["operator"],
+            "agent_id": request["agent_id"],
+            "approved_actions": request["approved_actions"],
+            "target_world": target_world,
+            "rollback_policy": request["rollback_policy"],
+            "budget": request["budget"],
+        },
+        "approved_asset_reference_actions": _asset_reference_approval_summary(
+            asset_actions,
+            task_definitions,
+        ),
+        "apply_plan_summary": {
+            "summary_version": apply_plan["summary_version"],
+            "apply_id": apply_plan["apply_id"],
+            "status": apply_plan["status"],
+            "approved_actions": apply_plan["approved_actions"],
+            "mutation_cost_actual": apply_plan["mutation_cost_actual"],
+            "rollback_records": apply_plan["rollback_records"],
+            "audit_record_count": apply_plan["audit_record_count"],
+            "safety": apply_plan["safety"],
+        },
+        "no_world_mutation_task_summary": task_summary,
+        "budget_gates": _asset_budget_gates(request, asset_actions),
+        "capability_gates": _asset_capability_gates(task_summary),
+        "unsupported_feature_summary": _unsupported_feature_summary(report),
+        "operator_next_actions": [
+            "Archive this package with the reviewed dry-run and approval artifacts.",
+            "Keep source textures, sounds, and model metadata operator-supplied outside the fork.",
+            "Use the planned tasks as manifest intent only; do not copy asset bytes or mutate a world.",
+        ],
+        "safety": {
+            "public_safe_source": True,
+            "assets_remain_operator_supplied": True,
+            "no_asset_bytes_embedded": True,
+            "no_raw_payloads": True,
+            "no_private_source_paths": True,
+            "no_proprietary_assets": True,
+            "no_behavior_script_execution": True,
+            "no_world_mutation": True,
+            "no_live_family_world_mutation": True,
+            "world_mutation_executed": False,
+        },
+    }
+    if _package_has_private_source_paths(package):
+        raise ValueError("asset-reference promotion package cannot include private source paths")
+    _assert_no_asset_payloads(package)
+    return package
+
+
 def _runtime_apply_task_from_definition(definition, target_world):
     staged_apply = definition["staged_apply"]
     return {
@@ -2719,6 +3038,20 @@ def _print_promotion_package_summary(package):
     )
 
 
+def _print_asset_reference_promotion_package_summary(package):
+    task_summary = package["no_world_mutation_task_summary"]
+    print(
+        "asset_promotion={status} report={report} target={target} asset_tasks={asset_tasks} "
+        "unsupported={unsupported}".format(
+            status=package["status"],
+            report=package["report_id"],
+            target=package["operator_approval"]["target_world"]["world_id"],
+            asset_tasks=task_summary["task_count"],
+            unsupported=package["unsupported_feature_summary"]["count"],
+        )
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="User-owned pack, structure, or world source to inspect.")
@@ -2726,6 +3059,7 @@ def main(argv=None):
     parser.add_argument("--adapter-apply-smoke", help="Dry-run report JSON to turn into a reviewed adapter apply smoke.")
     parser.add_argument("--review-adapter-smoke", help="Adapter apply smoke JSON to review for operator gating.")
     parser.add_argument("--promotion-package", help="Dry-run report JSON to package with reviewed adapter smoke evidence.")
+    parser.add_argument("--asset-promotion-package", help="Dry-run resource-pack report JSON to package as no-mutation asset-reference evidence.")
     parser.add_argument("--approval", help="Apply request JSON containing explicit operator approvals.")
     parser.add_argument("--adapter-smoke", help="Adapter apply smoke JSON for --promotion-package.")
     parser.add_argument("--adapter-review", help="Adapter smoke review JSON for --promotion-package.")
@@ -2739,16 +3073,23 @@ def main(argv=None):
             bool(args.adapter_apply_smoke),
             bool(args.review_adapter_smoke),
             bool(args.promotion_package),
+            bool(args.asset_promotion_package),
         ]
         if sum(selected_modes) > 1:
             raise ValueError(
                 "--apply-plan, --adapter-apply-smoke, --review-adapter-smoke, "
-                "and --promotion-package "
+                "--promotion-package, and --asset-promotion-package "
                 "cannot be used together"
             )
         if (args.adapter_smoke or args.adapter_review) and not args.promotion_package:
             raise ValueError("--adapter-smoke and --adapter-review are only valid with --promotion-package")
-        if args.promotion_package:
+        if args.asset_promotion_package:
+            if not args.approval:
+                raise ValueError("--approval is required with --asset-promotion-package")
+            report = _read_json(pathlib.Path(args.asset_promotion_package))
+            request = _read_json(pathlib.Path(args.approval))
+            payload_obj = build_asset_reference_promotion_package(report, request)
+        elif args.promotion_package:
             if not args.approval:
                 raise ValueError("--approval is required with --promotion-package")
             if not args.adapter_smoke:
@@ -2782,7 +3123,7 @@ def main(argv=None):
             payload_obj = build_apply_plan(report, request)
         else:
             if not args.source:
-                raise ValueError("source is required unless --apply-plan is used")
+                raise ValueError("source is required unless a dry-run report mode is used")
             payload_obj = build_report(args.source)
         payload = json.dumps(payload_obj, indent=2, sort_keys=True) + "\n"
         if args.output:
@@ -2791,6 +3132,8 @@ def main(argv=None):
             sys.stdout.write(payload)
         if args.summary and args.review_adapter_smoke:
             _print_adapter_smoke_review_summary(payload_obj)
+        elif args.summary and args.asset_promotion_package:
+            _print_asset_reference_promotion_package_summary(payload_obj)
         elif args.summary and args.promotion_package:
             _print_promotion_package_summary(payload_obj)
         elif args.summary and args.adapter_apply_smoke:

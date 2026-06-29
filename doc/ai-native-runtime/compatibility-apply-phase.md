@@ -241,6 +241,36 @@ The command fails closed when approval is missing, the dry-run hash does not mat
 
 Promotion packages are available only for public-safe adapter handoffs. Synthetic fixtures remain useful for tests and runtime smoke coverage, but they are not eligible for operator promotion packages.
 
+## Reviewed Asset-Reference Promotion Package
+
+Resource-pack compatibility uses a separate no-mutation promotion package. It is an operator evidence artifact for Java or Bedrock resource-pack dry-run reports, not an asset copier. It can package reviewed texture, sound, and model-reference intent while leaving all source asset bytes operator-supplied outside the fork.
+
+The package binds together:
+
+- the immutable dry-run report id and redacted source inventory
+- license status and operator-confirmed rights status
+- explicit operator approval, operator id, agent id, rollback policy, and zero-mutation budgets
+- approved asset-reference actions such as `copy_asset_reference`, `map_texture`, and `map_sound`
+- planned no-world-mutation task definitions and apply-plan summary
+- budget gates for media, manual review, wall-clock, node writes, and mapblock churn
+- required capabilities, currently `import.assets`
+- unsupported-feature summary for rows such as behavior scripts that remain unexecuted
+- public-safety flags that keep private paths, raw payloads, copied protected content, embedded asset bytes, behavior-script execution, and live-family-world mutation out of the artifact
+
+The CLI shape is:
+
+```bash
+python3 util/ai_native_compat_dry_run.py \
+	--asset-promotion-package /path/to/resource-pack-dry-run-report.json \
+	--approval /path/to/apply-request.json \
+	--output /path/to/asset-reference-promotion-package.json \
+	--summary
+```
+
+The command fails closed when approval is missing, rights are not `user_supplied`, the dry-run hash does not match the approval request, a source path is private, raw payload or asset byte fields are present, copied protected content is declared, behavior-script execution is approved, the approval includes world-mutating actions, the rollback policy is not `no_world_mutation`, mutation budgets are nonzero, or the target names a family or production world.
+
+This path intentionally does not require adapter smoke or rollback execution evidence because it never queues world mutation. Structure, schematic, and world conversion promotion must continue through the reviewed adapter smoke chain.
+
 ## Audit Requirements
 
 Apply must audit:
@@ -317,6 +347,7 @@ This summary is separate from the dry-run report so the dry-run artifact remains
 8. Add the first public-safe structure format adapter behind operator review before broader schematic or world conversion support.
 9. Add a reviewed public-safe structure promotion package before broader schematic or world conversion support.
 10. Add a public-safe schematic preflight adapter behind the same promotion chain before broader schematic or world conversion support.
+11. Add a reviewed no-mutation asset-reference promotion package for user-owned resource-pack dry runs before asset staging or media-copy support.
 
 This order keeps compatibility import aligned with the fork strategy: AI-native runtime first, compatibility automation second, world mutation last.
 
