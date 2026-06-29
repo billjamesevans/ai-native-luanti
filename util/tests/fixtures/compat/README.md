@@ -16,6 +16,11 @@ Rules:
 - Public structure fixtures are tiny original `ai_native_structure_v1` JSON
   files used to exercise the reviewed structure adapter path. They do not
   contain copied Minecraft, marketplace, family-world, or showcase payloads.
+- Public schematic preflight fixtures are tiny original
+  `ai_native_schematic_preflight_v1` JSON files. They contain metadata-only
+  estimated placements and explicit unsupported/manual-review rows, never raw
+  schematic/NBT payloads, copied protected content, private source paths, or
+  family-world coordinates.
 
 The reporter may inventory these files, but tests must keep them small and free
   of binary media payloads.

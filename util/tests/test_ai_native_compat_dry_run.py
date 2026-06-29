@@ -274,6 +274,108 @@ class CompatibilityDryRunTests(unittest.TestCase):
         )
         self.assertEqual(validate_report(report), [])
 
+    def test_public_safe_schematic_preflight_emits_structure_handoff(self):
+        source = self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json"
+
+        report = build_report(source)
+
+        self.assertEqual(report["source"]["source_class"], "structure")
+        self.assertEqual(report["source"]["path_policy"], "external_reference")
+        self.assertEqual(report["source"]["license_status"], "user_supplied")
+        metadata = report["source"]["metadata"]
+        self.assertEqual(metadata["adapter_kind"], "public_safe_structure_v1")
+        self.assertEqual(metadata["source_adapter_kind"], "public_safe_schematic_preflight_v1")
+        self.assertEqual(metadata["structure_format"], "ai_native_schematic_preflight_v1")
+        self.assertEqual(metadata["source_format"], "schematic")
+        self.assertEqual(metadata["placement_count"], 5)
+        self.assertEqual(metadata["palette_count"], 3)
+        self.assertEqual(report["summary"]["estimated_world_mutations"]["node_writes"], 5)
+        self.assertEqual(report["summary"]["estimated_world_mutations"]["mapblock_churn"], 3)
+        inventory = self.inventory_by_path(report)
+        self.assertEqual(
+            inventory["open_platform.ai-schematic-preflight.json"]["reason"],
+            "public_safe_schematic_preflight_review_required",
+        )
+        features = {item["feature"]: item for item in report["unsupported_features"]}
+        self.assertEqual(features["structure.block_entities"]["reason"], "requires_manual_review")
+        self.assertEqual(features["structure.biomes"]["reason"], "requires_manual_review")
+        import_action = next(
+            action for action in report["planned_actions"]
+            if action["action"] == "import_structure"
+        )
+        adapter = import_action["structure_adapter"]
+        self.assertTrue(adapter["public_safe"])
+        self.assertFalse(adapter["synthetic"])
+        self.assertEqual(adapter["adapter_kind"], "public_safe_structure_v1")
+        self.assertEqual(adapter["source_adapter_kind"], "public_safe_schematic_preflight_v1")
+        self.assertEqual(adapter["structure_format"], "ai_native_schematic_preflight_v1")
+        self.assertEqual(adapter["source_format"], "schematic")
+        self.assertEqual(adapter["payload_policy"], "metadata_only")
+        self.assertTrue(adapter["estimated_from_preflight"])
+        self.assertEqual(adapter["placement_count"], 5)
+        self.assertEqual(adapter["recommended_chunk_count"], 3)
+        self.assertEqual(adapter["placements"][1]["param1"], 1)
+        self.assertEqual(adapter["placements"][1]["param2"], 2)
+        serialized = json.dumps(report)
+        self.assertNotIn(str(self.fixture_root), serialized)
+        self.assertNotIn("raw_schematic_payload", serialized.lower())
+        self.assertNotIn("asset_payload", serialized.lower())
+        self.assertEqual(validate_report(report), [])
+
+    def test_public_safe_schematic_preflight_flows_through_promotion_package(self):
+        source = self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json"
+        report, request, smoke, review = self.build_public_safe_promotion_chain(source)
+
+        package = compat.build_structure_import_promotion_package(report, request, smoke, review)
+
+        self.assertEqual(smoke["status"], "ready")
+        self.assertEqual(review["status"], "ready")
+        self.assertEqual(package["status"], "ready_for_operator_promotion")
+        self.assertEqual(package["dry_run"]["structure_format"], "ai_native_schematic_preflight_v1")
+        self.assertEqual(
+            package["dry_run"]["source_adapter_kind"],
+            "public_safe_schematic_preflight_v1",
+        )
+        self.assertEqual(package["apply_task_summary"]["placement_count"], 5)
+        self.assertEqual(package["rollback_task_summary"]["task_count"], 1)
+        self.assertTrue(package["rollback_task_summary"]["metadata_required"])
+
+    def test_public_safe_schematic_preflight_rejects_unsafe_inputs(self):
+        source = self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json"
+        base = json.loads(source.read_text(encoding="utf-8"))
+
+        cases = {
+            "license.rights_confirmed": lambda raw: raw["license"].update({
+                "rights_confirmed": False,
+            }),
+            "raw_schematic_payload": lambda raw: raw.update({
+                "raw_schematic_payload": "not allowed",
+            }),
+            "copied_protected_content": lambda raw: raw.update({
+                "copied_protected_content": True,
+            }),
+            "private source paths": lambda raw: raw["preflight"].update({
+                "source_path": "/private/operator/build.schem",
+            }),
+            "family_world_coordinates": lambda raw: raw.update({
+                "family_world_coordinates": [{"x": 10, "y": 20, "z": 30}],
+            }),
+        }
+
+        for expected_message, mutate in cases.items():
+            with self.subTest(expected_message=expected_message):
+                candidate = json.loads(json.dumps(base))
+                mutate(candidate)
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    path = pathlib.Path(tmpdir) / "bad.ai-schematic-preflight.json"
+                    path.write_text(
+                        json.dumps(candidate, indent=2, sort_keys=True),
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(ValueError, expected_message):
+                        build_report(path)
+
     def test_public_safe_structure_promotion_package_binds_review_chain(self):
         report, request, smoke, review = self.build_public_safe_promotion_chain()
         builder = getattr(compat, "build_structure_import_promotion_package", None)
@@ -496,10 +598,9 @@ class CompatibilityDryRunTests(unittest.TestCase):
         request["rollback_policy"]["policy"] = "chunked"
         return request
 
-    def build_public_safe_promotion_chain(self):
-        report = build_report(
-            self.fixture_root / "public_structure" / "open_platform.ai-structure.json"
-        )
+    def build_public_safe_promotion_chain(self, source=None):
+        source = source or self.fixture_root / "public_structure" / "open_platform.ai-structure.json"
+        report = build_report(source)
         request = self.build_adapter_smoke_request(report)
         smoke = build_adapter_apply_smoke(report, request)
         review = review_adapter_apply_smoke(smoke)
