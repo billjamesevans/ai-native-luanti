@@ -42,3 +42,13 @@ POST /v1/model-adapter
 
 The request and response shapes are the same provider-neutral envelopes
 documented under `doc/ai-native-runtime/model-adapter-contract.md`.
+
+Luanti bridge:
+
+```text
+ai_runtime.enable_agents_sdk_adapter = true
+/ai_agents_sdk_adapter_probe
+```
+
+The Luanti bridge accepts loopback endpoints only by default and keeps world
+mutation in the engine task/approval/rollback path.

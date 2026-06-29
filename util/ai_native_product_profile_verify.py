@@ -33,8 +33,9 @@ RUNTIME_SOURCE_PRIVATE_PATTERNS = re.compile(
     re.I,
 )
 PROFILE_CODE_FIXTURE_PATTERNS = re.compile(
-    r"ai_runtime_test|devtest|enable_smoke_command|enable_demo_benchmark_command|"
-    r"enable_model_adapter_probe_command|admin\.override|import\.assets|combat\.defend",
+	r"ai_runtime_test|devtest|enable_smoke_command|enable_demo_benchmark_command|"
+	r"enable_model_adapter_probe_command|enable_agents_sdk_adapter|"
+	r"admin\.override|import\.assets|combat\.defend",
     re.I,
 )
 
