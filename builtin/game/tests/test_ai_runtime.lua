@@ -3951,6 +3951,7 @@ assert(guide_chat_text:find("importer=gated", 1, true))
 assert(guide_chat_text:find("commands=status", 1, true))
 assert(guide_chat_text:find("build marker", 1, true))
 assert(guide_chat_text:find("import plan", 1, true))
+assert(guide_chat_text:find("come", 1, true))
 assert(guide_chat_text:find("stay", 1, true))
 
 local pending_chat_ok, pending_chat_text = core.registered_chatcommands.nova.func(

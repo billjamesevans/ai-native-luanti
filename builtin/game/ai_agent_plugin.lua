@@ -77,13 +77,20 @@ local PRODUCT_SURFACES = {
 		required_capabilities = { "world.read" },
 		optional_capabilities = { "task.cancel", "http.llm" },
 		commands = {
+			"status",
 			"guide",
 			"tasks",
+			"task <task_id>",
 			"pending plan",
 			"edit plan",
 			"discard plan",
 			"cancel",
+			"cancel <task_id>",
+			"follow",
+			"follow N",
+			"come",
 			"stay",
+			"wait",
 			"audit",
 			"audit <task_id>",
 			"rollback",
@@ -386,7 +393,7 @@ local function format_command_reply(result)
 			append(lines, "surfaces=" .. join_limited(surfaces, 8))
 		end
 		if type(result.commands) == "table" then
-			append(lines, "commands=" .. join_limited(result.commands, 24))
+			append(lines, "commands=" .. join_limited(result.commands, 32))
 		end
 		local pending = pending_approval_summary(result.pending_approval)
 		if pending then
@@ -2315,6 +2322,8 @@ local function handle_guide(name)
 			"approve",
 			"approve <approval_id>",
 			"follow",
+			"follow N",
+			"come",
 			"light",
 			"build plan",
 			"build marker",

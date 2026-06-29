@@ -302,6 +302,42 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "  local stay_after = task_status(stay_follow.task_id)",
             "  local stay_state = core.ai_agent_plugin.get_player_state(\"StayLive\")",
             "",
+            "  local come_player_pos = pos(11)",
+            "  local come_player = {",
+            "    get_pos = function() return copy_pos(come_player_pos) end,",
+            "  }",
+            "  local come_setup = handle(\"ComeLive\", \"follow 1\", {",
+            "    get_player_by_name = function(name)",
+            "      if name == \"ComeLive\" then return come_player end",
+            "      return nil",
+            "    end,",
+            "    max_follow_steps = 1,",
+            "    max_follow_step_distance = 1,",
+            "    max_follow_total_distance = 2,",
+            "    max_follow_stop_distance = 0,",
+            "  })",
+            "  task_ids[#task_ids + 1] = come_setup.task_id",
+            "  local come_setup_status = step_until_final(come_setup.task_id, 2)",
+            "  local come_target = { x = come_player_pos.x + 2, y = come_player_pos.y, z = come_player_pos.z }",
+            "  local come_reply = handle(\"ComeLive\", \"come\", {",
+            "    pos = come_target,",
+            "    max_follow_steps = 2,",
+            "    max_follow_step_distance = 2,",
+            "    max_follow_total_distance = 4,",
+            "    max_follow_stop_distance = 0,",
+            "  })",
+            "  task_ids[#task_ids + 1] = come_reply.task_id",
+            "  local come_status = step_until_final(come_reply.task_id, 3)",
+            "  local come_task = core.get_ai_task(come_reply.task_id)",
+            "  local come_result = come_task and come_task.last_result or {}",
+            "  local come_entity = come_result.entity or {}",
+            "  local come_metrics = come_result.metrics or {}",
+            "  local come_state = core.ai_agent_plugin.get_player_state(\"ComeLive\")",
+            "  local come_entity_pos = come_entity.pos or {}",
+            "  local come_target_reached = math.abs((come_entity_pos.x or 0) - come_target.x) < 0.001",
+            "    and math.abs((come_entity_pos.y or 0) - come_target.y) < 0.001",
+            "    and math.abs((come_entity_pos.z or 0) - come_target.z) < 0.001",
+            "",
             "  local guide_reply = handle(\"BuilderLive\", \"guide\", {})",
             "  local tasks_reply = handle(\"BuilderLive\", \"tasks\", {})",
             "  local audit_reply = handle(\"BuilderLive\", \"audit\", {})",
@@ -530,6 +566,16 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "        stay_after_status = stay_after,",
             "        stay_mode = stay_state.mode,",
             "        stay_entity_retained = stay_state.entity_id ~= nil,",
+            "        come_status = come_reply.status,",
+            "        come_setup_task_status = come_setup_status,",
+            "        come_task_id = come_reply.task_id,",
+            "        come_task_status = come_status,",
+            "        come_entity_name = come_entity.entity_name,",
+            "        come_distance_moved = come_metrics.distance_moved or 0,",
+            "        come_total_distance_moved = come_metrics.total_distance_moved or 0,",
+            "        come_node_writes = come_metrics.node_writes or 0,",
+            "        come_mode = come_state.mode,",
+            "        come_target_reached = come_target_reached,",
             "      },",
             "      targeted_reviews = {",
             "        audit_status = targeted_audit_reply.status,",
@@ -609,6 +655,14 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "          and (stay_reply.cancelled or 0) == 1",
             "          and stay_state.mode == \"stay\"",
             "          and stay_state.entity_id ~= nil,",
+            "        come_command_checked = come_reply.status == \"queued\"",
+            "          and come_setup_status == \"completed\"",
+            "          and come_status == \"completed\"",
+            "          and come_entity.entity_name == \"ai_runtime_base:helper\"",
+            "          and (come_metrics.total_distance_moved or 0) > 0",
+            "          and (come_metrics.node_writes or 0) == 0",
+            "          and come_state.mode == \"come\"",
+            "          and come_target_reached == true,",
             "        defender_command_checked = defend_status == \"completed\" and defended == true,",
             "        import_preview_checked = import_status == \"completed\",",
             "        operator_status_checked = operator_status_snapshot.status == \"ready\"",
@@ -633,6 +687,7 @@ def write_probe_world(world_dir: Path, generated_at: str, max_bytes: int) -> Non
             "        + (targeted_rollback_record_count > 0 and 1 or 0),",
             "      follow_command_count = follow_status == \"completed\" and 1 or 0,",
             "      stay_command_count = stay_after == \"cancelled\" and stay_state.mode == \"stay\" and 1 or 0,",
+            "      come_command_count = come_status == \"completed\" and come_target_reached and 1 or 0,",
             "      status_context_count = build_status_context.status == \"success\" and 1 or 0,",
             "      node_writes_verified = 5,",
             "      transient_blocked_outcomes = retry_blocked_status == \"blocked\" and 1 or 0,",
@@ -823,6 +878,23 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     if navigation.get("stay_mode") != "stay":
         raise ValueError("agent product loop stay mode was not retained")
     _require_bool(navigation, "stay_entity_retained")
+    if navigation.get("come_status") != "queued":
+        raise ValueError("agent product loop come command did not queue")
+    if navigation.get("come_setup_task_status") != "completed":
+        raise ValueError("agent product loop come setup task did not complete")
+    if navigation.get("come_task_status") != "completed":
+        raise ValueError("agent product loop come task did not complete")
+    if navigation.get("come_entity_name") != "ai_runtime_base:helper":
+        raise ValueError("agent product loop come did not use clean helper entity")
+    if not isinstance(navigation.get("come_distance_moved"), (int, float)):
+        raise ValueError("agent product loop come movement evidence is invalid")
+    if not isinstance(navigation.get("come_total_distance_moved"), (int, float)) or navigation["come_total_distance_moved"] <= 0:
+        raise ValueError("agent product loop come total movement evidence missing")
+    if navigation.get("come_node_writes") != 0:
+        raise ValueError("agent product loop come mutated nodes")
+    if navigation.get("come_mode") != "come":
+        raise ValueError("agent product loop come mode was not retained")
+    _require_bool(navigation, "come_target_reached")
 
     if targeted_reviews.get("audit_status") != "success":
         raise ValueError("agent product loop targeted audit did not pass")
@@ -875,6 +947,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "targeted_rollback_record_review_checked",
         "follow_command_checked",
         "stay_command_checked",
+        "come_command_checked",
         "defender_command_checked",
         "import_preview_checked",
         "operator_status_checked",
@@ -914,6 +987,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "targeted_rollback_review_count": 2,
         "follow_command_count": 1,
         "stay_command_count": 1,
+        "come_command_count": 1,
         "status_context_count": 1,
         "node_writes_verified": 5,
         "transient_blocked_outcomes": 1,
@@ -973,11 +1047,13 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_product_loop_targeted_rollback_reviews": summary["targeted_rollback_review_count"],
         "agent_product_loop_follow_commands": summary["follow_command_count"],
         "agent_product_loop_stay_commands": summary["stay_command_count"],
+        "agent_product_loop_come_commands": summary["come_command_count"],
         "agent_product_loop_status_contexts": summary["status_context_count"],
         "agent_product_loop_cancel_checked": True,
         "agent_product_loop_retry_checked": True,
         "agent_product_loop_follow_checked": True,
         "agent_product_loop_stay_checked": True,
+        "agent_product_loop_come_checked": True,
         "agent_product_loop_status_context_checked": True,
         "agent_product_loop_follow_helper_entity": navigation["follow_entity_name"],
         "agent_product_loop_operator_status_checked": True,
