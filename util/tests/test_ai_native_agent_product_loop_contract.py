@@ -49,6 +49,7 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "`import plan`",
             "`follow N`",
             "`build plan`",
+            "`build platform width N depth N`",
             "`repair plan`",
             "`repair radius N`",
             "`max_repair_radius`",
