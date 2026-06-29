@@ -1068,11 +1068,14 @@ local function normalize_structure_placements(placements)
 	local normalized = {}
 	for index, placement in ipairs(placements) do
 		assert(type(placement) == "table", "Structure placements must be tables")
-		local node_name = placement.node_name or placement.name
+		local node = placement.node or {}
+		local node_name = placement.node_name or placement.name or node.name
 		check_string(node_name, "placements[" .. index .. "].node_name")
 		normalized[#normalized + 1] = {
 			pos = check_pos(placement.pos, "placements[" .. index .. "].pos"),
 			node_name = node_name,
+			param1 = placement.param1 or node.param1 or 0,
+			param2 = placement.param2 or node.param2 or 0,
 		}
 	end
 	return normalized

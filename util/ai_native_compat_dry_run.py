@@ -16,6 +16,7 @@ import zipfile
 REPORT_VERSION = 1
 APPLY_REQUEST_VERSION = 1
 APPLY_SUMMARY_VERSION = 1
+ADAPTER_APPLY_SMOKE_VERSION = 1
 TOP_LEVEL_REQUIRED = (
     "report_version",
     "mode",
@@ -122,6 +123,37 @@ APPLY_SUMMARY_SAFETY_REQUIRED = (
     "dry_run_report_unchanged",
     "world_mutation_executed",
 )
+ADAPTER_APPLY_SMOKE_REQUIRED = (
+    "smoke_version",
+    "mode",
+    "generated_at",
+    "report_id",
+    "status",
+    "target_world",
+    "approved_actions",
+    "apply_tasks",
+    "rollback_plan",
+    "rollback_tasks",
+    "mutation_cost_expected",
+    "operator_summary",
+    "operator_next_actions",
+    "safety",
+)
+ADAPTER_APPLY_SMOKE_SAFETY_REQUIRED = (
+    "synthetic_only",
+    "disposable_staging_only",
+    "dry_run_report_unchanged",
+    "assets_remain_operator_supplied",
+    "no_live_family_world_mutation",
+    "world_mutation_executed",
+)
+ADAPTER_APPLY_FORBIDDEN_WORLD_IDS = {
+    "family",
+    "family_voxelibre",
+    "luanti-family",
+    "live-family",
+    "production",
+}
 PLANNED_ACTION_TASK_MAPPINGS = {
     "copy_asset_reference": {
         "label": "compat.asset.reference",
@@ -1100,6 +1132,53 @@ def validate_apply_summary(summary):
     return errors
 
 
+def validate_adapter_apply_smoke(smoke):
+    """Return validation errors for a reviewed adapter apply smoke manifest."""
+    errors = []
+    _require_keys(errors, smoke, "smoke", ADAPTER_APPLY_SMOKE_REQUIRED)
+    if errors:
+        return errors
+
+    if smoke.get("smoke_version") != ADAPTER_APPLY_SMOKE_VERSION:
+        errors.append(f"smoke.smoke_version must be {ADAPTER_APPLY_SMOKE_VERSION}")
+    if smoke.get("mode") != "adapter_apply_smoke":
+        errors.append("smoke.mode must be adapter_apply_smoke")
+    if smoke.get("status") != "ready":
+        errors.append("smoke.status must be ready")
+
+    target_world = smoke.get("target_world")
+    _require_keys(errors, target_world, "target_world", ("world_id", "staging", "disposable"))
+    if isinstance(target_world, dict):
+        if target_world.get("staging") is not True:
+            errors.append("target_world.staging must be true")
+        if target_world.get("disposable") is not True:
+            errors.append("target_world.disposable must be true")
+
+    for field in ("approved_actions", "apply_tasks", "rollback_tasks", "operator_next_actions"):
+        _require_sequence(errors, smoke.get(field), field)
+    if isinstance(smoke.get("apply_tasks"), list) and not smoke["apply_tasks"]:
+        errors.append("apply_tasks must contain at least one task")
+    if isinstance(smoke.get("rollback_tasks"), list) and not smoke["rollback_tasks"]:
+        errors.append("rollback_tasks must contain at least one task")
+
+    _validate_mutation_cost(
+        errors,
+        smoke.get("mutation_cost_expected"),
+        "mutation_cost_expected",
+    )
+    safety = smoke.get("safety")
+    _require_keys(errors, safety, "safety", ADAPTER_APPLY_SMOKE_SAFETY_REQUIRED)
+    if isinstance(safety, dict):
+        for key in ADAPTER_APPLY_SMOKE_SAFETY_REQUIRED:
+            if key == "world_mutation_executed":
+                if safety.get(key) is not False:
+                    errors.append("safety.world_mutation_executed must be false")
+            elif safety.get(key) is not True:
+                errors.append(f"safety.{key} must be true")
+
+    return errors
+
+
 def _report_inventory_hash(report):
     hashes = report.get("source", {}).get("content_hashes", [])
     if not hashes:
@@ -1224,6 +1303,24 @@ def _validated_approved_actions(report, request):
         approved_actions.append((requested["action_index"], requested, planned))
     _enforce_runtime_handoff_gates(report, request, approved_actions)
     return approved_actions
+
+
+def _require_disposable_staging_world(request):
+    target_world = request.get("target_world") or {}
+    if target_world.get("staging") is not True:
+        raise ValueError("target_world.staging must be true for adapter apply smoke")
+    if target_world.get("disposable") is not True:
+        raise ValueError("target_world.disposable must be true for adapter apply smoke")
+    world_id = str(target_world.get("world_id") or "")
+    if not world_id:
+        raise ValueError("target_world.world_id is required for adapter apply smoke")
+    if world_id in ADAPTER_APPLY_FORBIDDEN_WORLD_IDS:
+        raise ValueError("adapter apply smoke cannot target the live family world")
+    return {
+        "world_id": world_id,
+        "staging": True,
+        "disposable": True,
+    }
 
 
 def _structure_runtime_entrypoint(planned, request):
@@ -1401,6 +1498,167 @@ def build_apply_plan(report, request):
     return summary
 
 
+def _runtime_apply_task_from_definition(definition, target_world):
+    staged_apply = definition["staged_apply"]
+    return {
+        "task_id": definition["task_id"] + ":apply-smoke",
+        "entrypoint": staged_apply["task_constructor"],
+        "agent_id": definition["agent_id"],
+        "owner": definition["owner"],
+        "label": definition["label"],
+        "report_id": definition["provenance"]["report_id"],
+        "action_index": definition["provenance"]["action_index"],
+        "world_id": target_world["world_id"],
+        "target_world": target_world,
+        "staging": True,
+        "explicit_approval": True,
+        "allow_mutation": True,
+        "rollback_policy": definition["rollback"]["policy"],
+        "placements": staged_apply["placements"],
+        "placement_count": staged_apply["placement_count"],
+        "chunk_size": staged_apply["chunk_size"],
+        "chunk_count": staged_apply["chunk_count"],
+        "max_node_writes_total": definition["budget"]["max_node_writes_total"],
+        "max_node_writes_per_step": definition["budget"]["max_node_writes_per_step"],
+        "max_mapblock_churn_total": definition["budget"]["max_mapblock_churn_total"],
+        "max_wall_time_ms": definition["budget"]["max_wall_time_ms"],
+        "required_capabilities": definition["required_capabilities"],
+        "source_reference": definition["provenance"]["source_reference"],
+        "operator_supplied_runtime_hooks": [
+            "get_node",
+            "set_node",
+            "persist_record",
+        ],
+    }
+
+
+def _runtime_rollback_task_from_definition(definition, apply_task, target_world):
+    staged_apply = definition["staged_apply"]
+    rollback_mapblock_budget = max(
+        definition["budget"]["max_mapblock_churn_total"],
+        staged_apply["placement_count"],
+    )
+    return {
+        "task_id": definition["task_id"] + ":rollback-smoke",
+        "entrypoint": staged_apply["rollback_execute_entrypoint"],
+        "agent_id": "compat_rollback:runtime",
+        "owner": definition["owner"],
+        "label": "compat.structure.rollback",
+        "source_task_id": apply_task["task_id"],
+        "world_id": target_world["world_id"],
+        "target_world": target_world,
+        "staging": True,
+        "explicit_approval": True,
+        "allow_mutation": True,
+        "rollback_policy": definition["rollback"]["policy"],
+        "reverse_order": True,
+        "max_node_writes_total": definition["budget"]["max_node_writes_total"],
+        "max_node_writes_per_step": definition["budget"]["max_node_writes_per_step"],
+        "max_mapblock_churn_total": rollback_mapblock_budget,
+        "max_wall_time_ms": definition["budget"]["max_wall_time_ms"],
+        "required_capabilities": [
+            "admin.override",
+            "rollback.execute",
+            "world.batch",
+            "world.place",
+        ],
+        "operator_supplied_runtime_hooks": [
+            "get_node",
+            "set_node",
+            "persist_record",
+            "inspect_record",
+        ],
+    }
+
+
+def build_adapter_apply_smoke(report, request):
+    """Build a reviewed synthetic adapter apply-and-rollback smoke manifest."""
+    target_world = _require_disposable_staging_world(request)
+    task_definitions = build_apply_task_definitions(report, request)
+    apply_tasks = []
+    rollback_tasks = []
+    approved_actions = []
+    totals = {
+        "node_writes": 0,
+        "mapblock_churn": 0,
+        "media_files": 0,
+        "entity_definitions": 0,
+        "manual_review_items": 0,
+    }
+
+    for definition in task_definitions:
+        staged_apply = definition.get("staged_apply")
+        if not staged_apply:
+            continue
+        if staged_apply.get("task_constructor") != "core.ai_import_ops.define_chunked_structure_apply_task":
+            raise ValueError("adapter apply smoke requires chunked structure apply")
+        if staged_apply.get("rollback_execute_entrypoint") != "core.ai_import_ops.queue_chunked_structure_rollback_task":
+            raise ValueError("adapter apply smoke requires chunked rollback execution")
+        if definition["rollback"]["policy"] != "chunked":
+            raise ValueError("adapter apply smoke requires rollback_policy.policy chunked")
+        apply_task = _runtime_apply_task_from_definition(definition, target_world)
+        rollback_task = _runtime_rollback_task_from_definition(definition, apply_task, target_world)
+        apply_tasks.append(apply_task)
+        rollback_tasks.append(rollback_task)
+        approved_actions.append({
+            "action_index": definition["provenance"]["action_index"],
+            "action": definition["source_action"]["action"],
+            "task_id": apply_task["task_id"],
+        })
+        cost = definition["source_action"]["mutation_cost"]
+        for key in totals:
+            totals[key] += cost.get(key, 0)
+
+    if not apply_tasks:
+        raise ValueError("adapter apply smoke requires an approved synthetic structure adapter action")
+
+    smoke = {
+        "smoke_version": ADAPTER_APPLY_SMOKE_VERSION,
+        "mode": "adapter_apply_smoke",
+        "generated_at": _utc_now(),
+        "report_id": request["report_id"],
+        "status": "ready",
+        "target_world": target_world,
+        "approved_actions": approved_actions,
+        "apply_tasks": apply_tasks,
+        "rollback_plan": {
+            "entrypoint": "core.ai_import_ops.plan_structure_rollback",
+            "source_task_ids": [task["task_id"] for task in apply_tasks],
+            "readback_required": True,
+            "will_mutate": False,
+        },
+        "rollback_tasks": rollback_tasks,
+        "mutation_cost_expected": totals,
+        "operator_summary": {
+            "status": "ready_for_disposable_staging_smoke",
+            "apply_task_count": len(apply_tasks),
+            "rollback_task_count": len(rollback_tasks),
+            "expected_node_writes": totals["node_writes"],
+            "expected_mapblock_churn": totals["mapblock_churn"],
+            "expected_apply_chunks": sum(task["chunk_count"] for task in apply_tasks),
+            "expected_rollback_chunks": sum(task["chunk_count"] for task in apply_tasks),
+        },
+        "operator_next_actions": [
+            "Run apply tasks only in the declared disposable staging world.",
+            "Read rollback records back through core.ai_import_ops.plan_structure_rollback.",
+            "Run rollback tasks only after reviewing the rollback plan.",
+            "Discard the disposable staging world after the smoke.",
+        ],
+        "safety": {
+            "synthetic_only": True,
+            "disposable_staging_only": True,
+            "dry_run_report_unchanged": True,
+            "assets_remain_operator_supplied": True,
+            "no_live_family_world_mutation": True,
+            "world_mutation_executed": False,
+        },
+    }
+    smoke_errors = validate_adapter_apply_smoke(smoke)
+    if smoke_errors:
+        raise ValueError(smoke_errors[0])
+    return smoke
+
+
 def _print_summary(report):
     summary = report["summary"]
     print(
@@ -1416,17 +1674,41 @@ def _print_summary(report):
     )
 
 
+def _print_adapter_apply_smoke_summary(smoke):
+    operator_summary = smoke["operator_summary"]
+    print(
+        "smoke={status} report={report} apply_tasks={apply_tasks} "
+        "chunks={chunks} expected_writes={writes} rollback_tasks={rollback_tasks}".format(
+            status=operator_summary["status"],
+            report=smoke["report_id"],
+            apply_tasks=operator_summary["apply_task_count"],
+            chunks=operator_summary["expected_apply_chunks"],
+            writes=operator_summary["expected_node_writes"],
+            rollback_tasks=operator_summary["rollback_task_count"],
+        )
+    )
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", nargs="?", help="User-owned pack, structure, or world source to inspect.")
     parser.add_argument("--apply-plan", help="Dry-run report JSON to plan for apply without mutation.")
+    parser.add_argument("--adapter-apply-smoke", help="Dry-run report JSON to turn into a reviewed adapter apply smoke.")
     parser.add_argument("--approval", help="Apply request JSON containing explicit operator approvals.")
     parser.add_argument("--output", help="Write machine-readable JSON report to this path.")
     parser.add_argument("--summary", action="store_true", help="Print a concise human-readable summary.")
     args = parser.parse_args(argv)
 
     try:
-        if args.apply_plan:
+        if args.apply_plan and args.adapter_apply_smoke:
+            raise ValueError("--apply-plan and --adapter-apply-smoke cannot be used together")
+        if args.adapter_apply_smoke:
+            if not args.approval:
+                raise ValueError("--approval is required with --adapter-apply-smoke")
+            report = _read_json(pathlib.Path(args.adapter_apply_smoke))
+            request = _read_json(pathlib.Path(args.approval))
+            payload_obj = build_adapter_apply_smoke(report, request)
+        elif args.apply_plan:
             if not args.approval:
                 raise ValueError("--approval is required with --apply-plan")
             report = _read_json(pathlib.Path(args.apply_plan))
@@ -1441,7 +1723,9 @@ def main(argv=None):
             pathlib.Path(args.output).write_text(payload, encoding="utf-8")
         else:
             sys.stdout.write(payload)
-        if args.summary and not args.apply_plan:
+        if args.summary and args.adapter_apply_smoke:
+            _print_adapter_apply_smoke_summary(payload_obj)
+        elif args.summary and not args.apply_plan:
             _print_summary(payload_obj)
         return 0
     except (OSError, ValueError, json.JSONDecodeError) as exc:

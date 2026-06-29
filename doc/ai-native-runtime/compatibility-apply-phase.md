@@ -1,6 +1,6 @@
 # Compatibility Apply Phase
 
-Status: phase-two design and planning implementation through issue #24
+Status: phase-two design, no-mutation planning, staged structure apply, reviewed rollback, and adapter smoke implementation
 
 ## Purpose
 
@@ -147,6 +147,35 @@ Rollback execution is not a default player action. It requires:
 
 Each rollback execution chunk writes rollback-of-rollback metadata before it mutates the world. If that safety metadata cannot be persisted, the task blocks before node writes. Protected areas and safe-world failures remain visible as structured action results, including changed and skipped counts.
 
+## Reviewed Adapter Apply Smoke
+
+The public-safe synthetic structure adapter can now produce a reviewed apply-and-rollback smoke manifest for disposable staging worlds. This mode consumes the `structure_adapter` handoff emitted by the dry-run report and turns it into a machine-readable runtime sequence:
+
+- `core.ai_import_ops.define_chunked_structure_apply_task` for approved structure placement.
+- `core.ai_import_ops.plan_structure_rollback` for readback of generated rollback records.
+- `core.ai_import_ops.queue_chunked_structure_rollback_task` for reviewed rollback execution.
+
+The smoke manifest is not a live-world importer. It requires:
+
+- an approved synthetic structure-adapter `import_structure` action
+- `target_world.staging = true`
+- `target_world.disposable = true`
+- `rollback_policy.policy = chunked`
+- node-write and mapblock-churn budgets large enough for the adapter payload
+- operator-supplied runtime hooks for node reads/writes and rollback persistence
+
+The CLI shape is:
+
+```bash
+python3 util/ai_native_compat_dry_run.py \
+	--adapter-apply-smoke /path/to/dry-run-report.json \
+	--approval /path/to/apply-request.json \
+	--output /path/to/adapter-smoke.json \
+	--summary
+```
+
+The generated manifest reports expected node writes, mapblock churn, apply chunk count, rollback chunk count, target world, required capabilities, and the runtime entrypoints. Creating the manifest does not mutate a world; the server-side smoke is verified by `TestAIRuntime`, which applies the reviewed handoff in a disposable in-memory staging world, reads rollback records back, executes rollback in reverse chunk order, and covers approval denial, non-staging denial, and protected partial behavior.
+
 ## Audit Requirements
 
 Apply must audit:
@@ -218,6 +247,7 @@ This summary is separate from the dry-run report so the dry-run artifact remains
 3. Map approved planned actions into task definitions.
 4. Add media/entity staging tasks with no mapblock writes.
 5. Add structure placement only after rollback metadata and safe world operations are covered by tests.
+6. Add reviewed adapter apply smoke for disposable staging worlds before broadening supported structure formats.
 
 This order keeps compatibility import aligned with the fork strategy: AI-native runtime first, compatibility automation second, world mutation last.
 

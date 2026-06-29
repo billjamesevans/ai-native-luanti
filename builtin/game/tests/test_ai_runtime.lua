@@ -2704,6 +2704,318 @@ end
 
 run_compat_structure_apply_tests()
 
+local function run_structure_adapter_handoff_smoke_tests()
+	local smoke_base = test_pos(6200)
+	local function adapter_placements(origin)
+		return {
+			{
+				pos = vector.add(origin, { x = 0, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+			},
+			{
+				pos = vector.add(origin, { x = 1, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+				param1 = 3,
+				param2 = 7,
+			},
+			{
+				pos = vector.add(origin, { x = 17, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+			},
+			{
+				pos = vector.add(origin, { x = 34, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+			},
+			{
+				pos = vector.add(origin, { x = 35, y = 0, z = 0 }),
+				node_name = "ai_runtime_test:stone",
+			},
+		}
+	end
+
+	local staged_apply = {
+		status = "review_required",
+		task_constructor = "core.ai_import_ops.define_chunked_structure_apply_task",
+		rollback_plan_entrypoint = "core.ai_import_ops.plan_structure_rollback",
+		rollback_execute_entrypoint = "core.ai_import_ops.queue_chunked_structure_rollback_task",
+		placements = adapter_placements(smoke_base),
+		placement_count = 5,
+		chunk_size = 2,
+		chunk_count = 3,
+		target_world = {
+			world_id = "disposable-staging-world",
+			staging = true,
+			disposable = true,
+		},
+		rollback_policy = "chunked",
+		requires_explicit_approval = true,
+		allow_mutation = false,
+	}
+	assert(staged_apply.status == "review_required")
+	assert(staged_apply.allow_mutation == false)
+	assert(staged_apply.target_world.disposable == true)
+
+	local smoke_writes = 0
+	local function smoke_set_node(pos, node)
+		smoke_writes = smoke_writes + 1
+		return set_test_node(pos, node)
+	end
+
+	for _, placement in ipairs(staged_apply.placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+
+	local apply_records = {}
+	local smoke_storage = {}
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		inspect_record = function(storage_ref)
+			return smoke_storage[storage_ref]
+		end,
+		persist_record = function(record)
+			apply_records[#apply_records + 1] = record
+			local storage_ref = "rollback://adapter-smoke/" .. record.record_id
+			smoke_storage[storage_ref] = record
+			return {
+				ok = true,
+				storage_ref = storage_ref,
+			}
+		end,
+	})
+
+	local apply_task_id = "compat-adapter-smoke:apply"
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = apply_task_id,
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		report_id = "synthetic-structure-report",
+		action_index = 0,
+		world_id = staged_apply.target_world.world_id,
+		target_world = staged_apply.target_world,
+		staging = staged_apply.target_world.staging,
+		explicit_approval = staged_apply.requires_explicit_approval,
+		allow_mutation = true,
+		rollback_policy = staged_apply.rollback_policy,
+		placements = staged_apply.placements,
+		get_node = get_test_node,
+		set_node = smoke_set_node,
+		chunk_size = staged_apply.chunk_size,
+		max_node_writes_total = staged_apply.placement_count,
+		max_node_writes_per_step = staged_apply.chunk_size,
+		max_mapblock_churn_total = staged_apply.chunk_count,
+		max_wall_time_ms = 5000,
+		source_reference = {
+			reference_type = "mounted_fixture",
+			redacted_id = "synthetic-structure-fixture",
+			inventory_hash = string.rep("3", 64),
+		},
+	})
+	core.step_ai_tasks()
+	assert(core.get_ai_task(apply_task_id).status == "running")
+	core.step_ai_tasks()
+	assert(core.get_ai_task(apply_task_id).status == "running")
+	core.step_ai_tasks()
+	local apply_task = core.get_ai_task(apply_task_id)
+	assert(apply_task.status == "completed")
+	assert(apply_task.progress.current == staged_apply.chunk_count)
+	assert(apply_task.last_result.operation == "ai_world.batch_place")
+	assert(#apply_records == staged_apply.chunk_count)
+	assert(smoke_writes == staged_apply.placement_count)
+	for _, placement in ipairs(staged_apply.placements) do
+		assert(get_test_node(placement.pos).name == "ai_runtime_test:stone")
+	end
+	assert(get_test_node(staged_apply.placements[2].pos).param1 == 3)
+	assert(get_test_node(staged_apply.placements[2].pos).param2 == 7)
+
+	local rollback_plan = core.ai_import_ops.plan_structure_rollback({
+		agent_id = "compat_import:runtime",
+		task_id = apply_task_id,
+		owner = "compat-operator",
+	})
+	assert(rollback_plan.ok == true)
+	assert(rollback_plan.status == "success")
+	assert(rollback_plan.changed == 0)
+	assert(rollback_plan.rollback_plan.will_mutate == false)
+	assert(#rollback_plan.rollback_records == staged_apply.chunk_count)
+	assert(rollback_plan.metrics.planned_node_writes == staged_apply.placement_count)
+
+	local rollback_records = {}
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		inspect_record = function(storage_ref)
+			return smoke_storage[storage_ref]
+		end,
+		persist_record = function(record)
+			rollback_records[#rollback_records + 1] = record
+			local storage_ref = "rollback://adapter-smoke-rollback/" .. record.record_id
+			smoke_storage[storage_ref] = record
+			return {
+				ok = true,
+				storage_ref = storage_ref,
+			}
+		end,
+	})
+	local rollback_task_id = "compat-adapter-smoke:rollback"
+	core.ai_import_ops.queue_chunked_structure_rollback_task({
+		task_id = rollback_task_id,
+		agent_id = "compat_rollback:runtime",
+		owner = "compat-operator",
+		source_task_id = apply_task_id,
+		world_id = staged_apply.target_world.world_id,
+		target_world = staged_apply.target_world,
+		staging = staged_apply.target_world.staging,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = staged_apply.rollback_policy,
+		get_node = get_test_node,
+		set_node = smoke_set_node,
+		max_node_writes_total = staged_apply.placement_count,
+		max_node_writes_per_step = staged_apply.chunk_size,
+		max_mapblock_churn_total = staged_apply.placement_count,
+		max_wall_time_ms = 5000,
+	})
+	core.step_ai_tasks()
+	assert(core.get_ai_task(rollback_task_id).status == "running")
+	core.step_ai_tasks()
+	assert(core.get_ai_task(rollback_task_id).status == "running")
+	core.step_ai_tasks()
+	local rollback_task = core.get_ai_task(rollback_task_id)
+	assert(rollback_task.status == "completed")
+	assert(rollback_task.last_result.operation == "ai_import.rollback_execute")
+	assert(#rollback_records == staged_apply.chunk_count)
+	assert(rollback_records[1].chunk.chunk_index == 2)
+	assert(rollback_records[2].chunk.chunk_index == 1)
+	assert(rollback_records[3].chunk.chunk_index == 0)
+	assert(smoke_writes == staged_apply.placement_count * 2)
+	for _, placement in ipairs(staged_apply.placements) do
+		assert(get_test_node(placement.pos).name == "air")
+	end
+
+	local denied_origin = vector.add(smoke_base, { x = 128, y = 0, z = 0 })
+	local denied_placements = adapter_placements(denied_origin)
+	for _, placement in ipairs(denied_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local writes_before_denied = smoke_writes
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-adapter-smoke:no-approval",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = staged_apply.target_world.world_id,
+		staging = true,
+		explicit_approval = false,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = denied_placements,
+		get_node = get_test_node,
+		set_node = smoke_set_node,
+		chunk_size = 2,
+		max_node_writes_total = 5,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 3,
+		persist_record = function()
+			error("rollback must not be written without approval")
+		end,
+	})
+	core.step_ai_tasks()
+	local no_approval = core.get_ai_task("compat-adapter-smoke:no-approval")
+	assert(no_approval.status == "blocked")
+	assert(no_approval.last_result.reason == "approval_required")
+	assert(smoke_writes == writes_before_denied)
+
+	local non_staging_origin = vector.add(smoke_base, { x = 256, y = 0, z = 0 })
+	local non_staging_placements = adapter_placements(non_staging_origin)
+	for _, placement in ipairs(non_staging_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-adapter-smoke:non-staging",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = "family_voxelibre",
+		staging = false,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = non_staging_placements,
+		get_node = get_test_node,
+		set_node = smoke_set_node,
+		chunk_size = 2,
+		max_node_writes_total = 5,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 3,
+		persist_record = function()
+			error("rollback must not be written for a non-staging target")
+		end,
+	})
+	core.step_ai_tasks()
+	local non_staging = core.get_ai_task("compat-adapter-smoke:non-staging")
+	assert(non_staging.status == "blocked")
+	assert(non_staging.last_result.reason == "staging_target_required")
+
+	local partial_origin = vector.add(smoke_base, { x = 384, y = 0, z = 0 })
+	local partial_placements = {
+		{
+			pos = vector.add(partial_origin, { x = 0, y = 0, z = 0 }),
+			node_name = "ai_runtime_test:stone",
+		},
+		{
+			pos = vector.add(partial_origin, { x = 1, y = 0, z = 0 }),
+			node_name = "ai_runtime_test:stone",
+		},
+	}
+	for _, placement in ipairs(partial_placements) do
+		set_test_node(placement.pos, { name = "air" })
+	end
+	local old_partial_protected = core.is_protected
+	core.is_protected = function(pos, name)
+		return name == "compat-operator" and pos.x == partial_placements[1].pos.x
+	end
+	local partial_records = {}
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		persist_record = function(record)
+			partial_records[#partial_records + 1] = record
+			return {
+				ok = true,
+				storage_ref = "rollback://adapter-smoke-partial/" .. record.record_id,
+			}
+		end,
+	})
+	core.ai_import_ops.queue_chunked_structure_apply_task({
+		task_id = "compat-adapter-smoke:protected-partial",
+		agent_id = "compat_import:runtime",
+		owner = "compat-operator",
+		world_id = staged_apply.target_world.world_id,
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		placements = partial_placements,
+		get_node = get_test_node,
+		set_node = smoke_set_node,
+		chunk_size = 2,
+		max_node_writes_total = 2,
+		max_node_writes_per_step = 2,
+		max_mapblock_churn_total = 1,
+	})
+	core.step_ai_tasks()
+	core.is_protected = old_partial_protected
+	local partial_task = core.get_ai_task("compat-adapter-smoke:protected-partial")
+	assert(partial_task.status == "completed")
+	assert(partial_task.last_result.status == "partial")
+	assert(partial_task.last_result.reason == "some_operations_skipped")
+	assert(partial_task.last_result.changed == 1)
+	assert(partial_task.last_result.skipped == 1)
+	assert(partial_task.last_result.samples[1].reason == "protected_area")
+	assert(#partial_records == 1)
+	assert(get_test_node(partial_placements[1].pos).name == "air")
+	assert(get_test_node(partial_placements[2].pos).name == "ai_runtime_test:stone")
+	core.ai_rollback_storage.configure(nil)
+end
+
+run_structure_adapter_handoff_smoke_tests()
+
 assert(core.registered_chatcommands.ai_runtime ~= nil)
 local command_ok, command_message = core.registered_chatcommands.ai_runtime.func("admin", "")
 assert(command_ok == true)
