@@ -232,7 +232,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "build": {
                     "preview_status": "success",
                     "pending_status": "pending_approval",
+                    "pending_review_status": "success",
                     "approval_id": "approval:build",
+                    "edit_status": "success",
+                    "edit_approval_id": "approval:build",
+                    "edit_build_kind": "platform",
+                    "edit_build_width": 2,
+                    "edit_build_depth": 2,
+                    "edit_planned_node_writes": 4,
                     "approved_status": "queued",
                     "task_id": "task:build",
                     "task_status": "completed",
@@ -242,7 +249,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "repair": {
                     "preview_status": "success",
                     "pending_status": "pending_approval",
+                    "pending_review_status": "success",
                     "approval_id": "approval:repair",
+                    "edit_status": "success",
+                    "edit_approval_id": "approval:repair",
+                    "edit_repair_radius": 0,
+                    "edit_candidate_count": 1,
                     "approved_status": "queued",
                     "task_id": "task:repair",
                     "task_status": "completed",
@@ -260,6 +272,22 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "retry_result_status": "queued",
                     "retry_final_status": "completed",
                 },
+                "targeted_reviews": {
+                    "audit_status": "success",
+                    "audit_target_kind": "task",
+                    "audit_target_id": "task:build",
+                    "audit_event_count": 1,
+                    "rollback_status": "success",
+                    "rollback_target_kind": "task",
+                    "rollback_target_id": "task:build",
+                    "rollback_record_count": 1,
+                    "rollback_record_id": "rollback:build",
+                    "rollback_record_status": "success",
+                    "rollback_record_target_kind": "rollback",
+                    "rollback_record_target_id": "rollback:build",
+                    "rollback_record_review_count": 1,
+                    "no_rollback_execution": True,
+                },
                 "surfaces": {
                     "guide_command_checked": True,
                     "product_surface_catalog_checked": True,
@@ -271,6 +299,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "tasks_command_checked": True,
                     "audit_review_checked": True,
                     "rollback_review_checked": True,
+                    "pending_plan_review_checked": True,
+                    "plan_edit_checked": True,
+                    "targeted_audit_review_checked": True,
+                    "targeted_rollback_review_checked": True,
+                    "targeted_rollback_record_review_checked": True,
                     "defender_command_checked": True,
                     "import_preview_checked": True,
                     "operator_status_checked": True,
@@ -288,13 +321,17 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             },
             "summary": {
                 "preview_plan_count": 2,
+                "pending_plan_review_count": 2,
+                "plan_edit_count": 2,
                 "approval_plan_count": 2,
                 "approved_task_count": 2,
                 "task_count": 6,
                 "task_status_counts": {"completed": 5, "cancelled": 1},
                 "rollback_record_count": 2,
                 "audit_event_count": 2,
-                "node_writes_verified": 2,
+                "targeted_audit_review_count": 1,
+                "targeted_rollback_review_count": 2,
+                "node_writes_verified": 5,
                 "transient_blocked_outcomes": 1,
                 "final_blocked_or_unsafe_outcomes": 0,
             },
@@ -1110,6 +1147,16 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 2,
             )
             self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_pending_plan_reviews"
+                ],
+                2,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"]["agent_product_loop_plan_edits"],
+                2,
+            )
+            self.assertEqual(
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_approval_plans"],
                 2,
             )
@@ -1128,7 +1175,44 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_retry_checked"]
             )
             self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_pending_plan_review_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_plan_edit_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_targeted_audit_review_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_targeted_rollback_review_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_targeted_rollback_record_review_checked"
+                ]
+            )
+            self.assertTrue(
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_operator_status_checked"]
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_targeted_audit_reviews"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_product_loop_live_evidence"][
+                    "agent_product_loop_targeted_rollback_reviews"
+                ],
+                2,
             )
             self.assertGreaterEqual(
                 manifest["agent_product_loop_live_evidence"]["agent_product_loop_operator_status_tasks"],
@@ -1212,7 +1296,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 13200)
+            self.assertLess(len(serialized), 14000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
