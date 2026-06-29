@@ -539,6 +539,36 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             self.assertIn("next_action", first_action)
             self.assertIn("suggested_issue_title", first_action)
             self.assertTrue(first_action["blocks_minecraft_parity"])
+            self.assertEqual(
+                len(report["ranked_improvement_targets"]),
+                len(report["actionable_scorecard"]),
+            )
+            first_target = report["ranked_improvement_targets"][0]
+            self.assertEqual(first_target["rank"], first_action["rank"])
+            self.assertEqual(first_target["target_id"], first_action["action_id"])
+            self.assertIn(
+                first_target["priority"],
+                {"critical", "high", "medium", "low"},
+            )
+            self.assertIn(
+                first_target["owner_lane"],
+                {
+                    "engine_runtime_hardening",
+                    "agent_plugin_and_import_productization",
+                    "operator_control_plane",
+                    "game_content_parity",
+                },
+            )
+            self.assertEqual(first_target["dimension_ids"], first_action["dimension_ids"])
+            self.assertEqual(first_target["current_evidence"], first_action["evidence"])
+            self.assertEqual(first_target["next_action"], first_action["next_action"])
+            self.assertIn("target_bands", first_target)
+            self.assertIn("done_when", first_target)
+            self.assertGreater(len(first_target["done_when"]), 0)
+            self.assertEqual(
+                report["improvement_target_summary"]["target_count"],
+                len(report["ranked_improvement_targets"]),
+            )
             self.assertIn("issue_seeds", report)
             self.assertEqual(len(report["issue_seeds"]), len(report["actionable_scorecard"]))
             first_seed = report["issue_seeds"][0]
@@ -743,6 +773,9 @@ class MinecraftParityHarnessTests(unittest.TestCase):
                 "ready_for_import_preview",
             )
             self.assertEqual(report["actionable_scorecard"], [])
+            self.assertEqual(report["ranked_improvement_targets"], [])
+            self.assertEqual(report["improvement_target_summary"]["target_count"], 0)
+            self.assertEqual(report["improvement_target_summary"]["scorecard_status"], "pass")
             self.assertEqual(report["issue_seeds"], [])
             self.assertEqual(report["issue_seed_summary"]["issue_seed_count"], 0)
             self.assertEqual(report["issue_seed_summary"]["scorecard_status"], "pass")
@@ -921,6 +954,7 @@ class MinecraftParityHarnessTests(unittest.TestCase):
             "safe to run locally and on the Pi side-by-side service",
             "measured facts",
             "qualitative Minecraft-parity gaps",
+            "ranked improvement targets",
             "issue_seeds",
             "issue_seed_summary",
             "follow-up issue seeds",
