@@ -248,6 +248,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 },
                 "surfaces": {
                     "guide_command_checked": True,
+                    "product_surface_catalog_checked": True,
+                    "builder_surface_agent_checked": True,
+                    "repair_surface_agent_checked": True,
+                    "guide_surface_agent_checked": True,
+                    "defender_clean_grant_absent": True,
+                    "importer_clean_grant_absent": True,
                     "tasks_command_checked": True,
                     "audit_review_checked": True,
                     "rollback_review_checked": True,
