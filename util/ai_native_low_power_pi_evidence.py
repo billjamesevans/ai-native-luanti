@@ -173,12 +173,16 @@ def remote_service_command(args) -> str:
             ),
             f"fork_version=$({shlex.quote(args.remote_server_bin)} --version | head -n 1 || true)",
             f"fork_commit=$(git -C {shlex.quote(args.remote_repo)} rev-parse --short HEAD 2>/dev/null || true)",
+            f"fork_restart_count=$(systemctl show {shlex.quote(args.fork_service)} -p NRestarts --value 2>/dev/null || true)",
+            f"fork_active_enter_timestamp=$(systemctl show {shlex.quote(args.fork_service)} -p ActiveEnterTimestamp --value 2>/dev/null || true)",
             'printf "family_service_active=%s\\n" "$family_status"',
             'printf "fork_service_active=%s\\n" "$fork_status"',
             'printf "family_udp_listening=%s\\n" "$family_udp"',
             'printf "fork_udp_listening=%s\\n" "$fork_udp"',
             'printf "fork_version=%s\\n" "$fork_version"',
             'printf "fork_commit=%s\\n" "$fork_commit"',
+            'printf "fork_restart_count=%s\\n" "${fork_restart_count:-unknown}"',
+            'printf "fork_active_enter_timestamp=%s\\n" "${fork_active_enter_timestamp:-unknown}"',
         ]
     )
 
@@ -193,6 +197,24 @@ def parse_key_values(output: str) -> dict[str, str]:
         if key:
             values[key] = value.strip()
     return values
+
+
+def number(value):
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def integer(value):
+    parsed = number(value)
+    if parsed is None:
+        return None
+    return int(parsed)
 
 
 def parse_remote_manifest_path(output: str) -> str:
@@ -233,6 +255,12 @@ def runtime_evidence(remote_manifest: dict) -> dict:
     clean = remote_manifest.get("clean_profile_evidence") or {}
     product = remote_manifest.get("product_profile_evidence") or {}
     server_step_workload = clean.get("server_step_workload") or {}
+    avg_cpu = clean.get("avg_process_cpu_percent")
+    max_cpu = clean.get("max_interval_cpu_percent")
+    max_rss_kb = clean.get("max_rss_kb")
+    max_rss_mb = None
+    if isinstance(max_rss_kb, (int, float)):
+        max_rss_mb = round(max_rss_kb / 1024, 3)
     return {
         "remote_manifest_status": sanitize_text(remote_manifest.get("overall_status", "unknown")),
         "logical_run_dir": sanitize_text(remote_manifest.get("logical_run_dir", "")),
@@ -254,12 +282,107 @@ def runtime_evidence(remote_manifest: dict) -> dict:
             or server_step_workload.get("status")
             or "unknown"
         ),
+        "server_step_attempted_samples": clean.get("server_step_attempted_samples"),
+        "server_step_completed_samples": clean.get("server_step_completed_samples"),
+        "server_step_failed_samples": clean.get("server_step_failed_samples"),
+        "actionable_warning_count": clean.get("actionable_warning_count"),
+        "server_log_error_count": clean.get("server_log_error_count"),
+        "cpu_status": sanitize_text(clean.get("cpu_status", "unknown")),
+        "cpu_sample_count": clean.get("cpu_sample_count"),
+        "avg_process_cpu_percent": avg_cpu,
+        "max_interval_cpu_percent": max_cpu,
+        "rss_sample_count": clean.get("rss_sample_count"),
+        "max_rss_kb": max_rss_kb,
+        "max_rss_mb": max_rss_mb,
         "failure_count": len(remote_manifest.get("failure_reasons") or []),
     }
 
 
-def build_manifest(args, remote_manifest: dict, service_values: dict, *, now_fn=utc_now) -> dict:
+def build_soak_evidence(args, remote_manifests: list[dict]) -> dict:
+    samples = []
+    max_avg_cpu = None
+    max_interval_cpu = None
+    max_rss_mb = None
+    max_actionable_warnings = 0
+    max_errors = 0
+    passed = 0
+    for index, remote_manifest in enumerate(remote_manifests, start=1):
+        evidence = runtime_evidence(remote_manifest)
+        sample = {
+            "iteration": index,
+            "remote_manifest_status": evidence["remote_manifest_status"],
+            "clean_profile_status": evidence["clean_profile_status"],
+            "server_step_workload_status": evidence["server_step_workload_status"],
+            "player_load_probe_status": evidence["player_load_probe_status"],
+            "cpu_status": evidence["cpu_status"],
+            "cpu_sample_count": evidence["cpu_sample_count"],
+            "avg_process_cpu_percent": evidence["avg_process_cpu_percent"],
+            "max_interval_cpu_percent": evidence["max_interval_cpu_percent"],
+            "rss_sample_count": evidence["rss_sample_count"],
+            "max_rss_mb": evidence["max_rss_mb"],
+            "actionable_warning_count": evidence["actionable_warning_count"],
+            "server_log_error_count": evidence["server_log_error_count"],
+            "failure_count": evidence["failure_count"],
+        }
+        samples.append(sample)
+        if remote_manifest.get("overall_status") == "pass":
+            passed += 1
+        for field, current in (
+            ("avg_process_cpu_percent", "max_avg_cpu"),
+            ("max_interval_cpu_percent", "max_interval_cpu"),
+            ("max_rss_mb", "max_rss_mb"),
+        ):
+            value = number(sample.get(field))
+            if value is None:
+                continue
+            if current == "max_avg_cpu":
+                max_avg_cpu = value if max_avg_cpu is None else max(max_avg_cpu, value)
+            elif current == "max_interval_cpu":
+                max_interval_cpu = value if max_interval_cpu is None else max(max_interval_cpu, value)
+            elif current == "max_rss_mb":
+                max_rss_mb = value if max_rss_mb is None else max(max_rss_mb, value)
+        max_actionable_warnings = max(
+            max_actionable_warnings,
+            integer(sample.get("actionable_warning_count")) or 0,
+        )
+        max_errors = max(max_errors, integer(sample.get("server_log_error_count")) or 0)
+
+    return {
+        "mode": "repeatable_side_by_side_low_power_soak",
+        "iterations_requested": int(args.soak_iterations),
+        "iterations_completed": len(samples),
+        "iterations_passed": passed,
+        "iterations_failed": max(0, len(samples) - passed),
+        "sample_interval_seconds": float(args.soak_interval_seconds),
+        "resource_budgets": {
+            "max_avg_cpu_percent": float(args.max_avg_cpu_percent),
+            "max_interval_cpu_percent": float(args.max_interval_cpu_percent),
+            "max_rss_mb": float(args.max_rss_mb),
+            "max_actionable_warning_count": int(args.max_actionable_warning_count),
+            "max_server_log_error_count": int(args.max_server_log_error_count),
+            "max_fork_restarts": int(args.max_fork_restarts),
+        },
+        "resource_maxima": {
+            "avg_process_cpu_percent": max_avg_cpu,
+            "max_interval_cpu_percent": max_interval_cpu,
+            "max_rss_mb": max_rss_mb,
+            "actionable_warning_count": max_actionable_warnings,
+            "server_log_error_count": max_errors,
+        },
+        "samples": samples,
+    }
+
+
+def build_manifest(
+    args,
+    remote_manifest: dict,
+    service_values: dict,
+    *,
+    soak_manifests: list[dict] | None = None,
+    now_fn=utc_now,
+) -> dict:
     remote_manifest = sanitize_value(remote_manifest)
+    soak_manifests = sanitize_value(soak_manifests or [remote_manifest])
     service_values = {key: sanitize_text(value) for key, value in service_values.items()}
     commit = (
         args.luanti_commit
@@ -267,6 +390,8 @@ def build_manifest(args, remote_manifest: dict, service_values: dict, *, now_fn=
         or service_values.get("fork_commit")
         or "unknown"
     )
+    fork_restart_count = integer(service_values.get("fork_restart_count"))
+    soak_evidence = build_soak_evidence(args, soak_manifests)
     manifest = {
         "schema_version": 1,
         "evidence_kind": "ai_native_low_power_pi_evidence",
@@ -290,9 +415,12 @@ def build_manifest(args, remote_manifest: dict, service_values: dict, *, now_fn=
                 "udp_listening": service_values.get("fork_udp_listening") == "true",
                 "version": service_values.get("fork_version") or "unknown",
                 "commit": service_values.get("fork_commit") or "unknown",
+                "restart_count": fork_restart_count,
+                "active_enter_timestamp": service_values.get("fork_active_enter_timestamp") or "unknown",
             },
         },
         "runtime_verification_evidence": runtime_evidence(remote_manifest),
+        "soak_evidence": soak_evidence,
         "backup_evidence": backup_evidence(args),
         "run_context": {
             "mode": "low-power-pi-side-by-side-clean-profile-evidence",
@@ -316,6 +444,10 @@ def build_manifest(args, remote_manifest: dict, service_values: dict, *, now_fn=
     failures = manifest["failure_reasons"]
     if not args.confirm_backup_first:
         failures.append("backup_first_confirmation_missing")
+    if soak_evidence["iterations_completed"] != int(args.soak_iterations):
+        failures.append("soak_iterations_incomplete")
+    if soak_evidence["iterations_passed"] != int(args.soak_iterations):
+        failures.append("soak_iteration_failed")
     if remote_manifest.get("overall_status") != "pass":
         failures.append("remote_low_power_verifier_not_pass")
     if remote_manifest.get("hardware_class") != "low-power-server":
@@ -356,9 +488,31 @@ def build_manifest(args, remote_manifest: dict, service_values: dict, *, now_fn=
         failures.append("fork_test_service_not_active")
     if not manifest["service_boundary"]["fork_test_service"]["udp_listening"]:
         failures.append("fork_test_udp_port_not_listening")
+    if fork_restart_count is None:
+        failures.append("fork_restart_evidence_missing")
+    elif fork_restart_count > int(args.max_fork_restarts):
+        failures.append("fork_restart_budget_exceeded")
     fork_commit = manifest["service_boundary"]["fork_test_service"]["commit"]
     if fork_commit not in {"", "unknown"} and commit not in {"", "unknown"} and fork_commit != commit:
         failures.append("fork_commit_mismatch")
+
+    maxima = soak_evidence["resource_maxima"]
+    if number(maxima.get("avg_process_cpu_percent")) is None:
+        failures.append("avg_cpu_evidence_missing")
+    elif maxima["avg_process_cpu_percent"] > float(args.max_avg_cpu_percent):
+        failures.append("avg_cpu_budget_exceeded")
+    if number(maxima.get("max_interval_cpu_percent")) is None:
+        failures.append("max_cpu_evidence_missing")
+    elif maxima["max_interval_cpu_percent"] > float(args.max_interval_cpu_percent):
+        failures.append("max_cpu_budget_exceeded")
+    if number(maxima.get("max_rss_mb")) is None:
+        failures.append("memory_rss_evidence_missing")
+    elif maxima["max_rss_mb"] > float(args.max_rss_mb):
+        failures.append("memory_rss_budget_exceeded")
+    if maxima["actionable_warning_count"] > int(args.max_actionable_warning_count):
+        failures.append("actionable_warning_budget_exceeded")
+    if maxima["server_log_error_count"] > int(args.max_server_log_error_count):
+        failures.append("server_log_error_budget_exceeded")
 
     serialized = json.dumps(manifest, sort_keys=True)
     if PRIVATE_PATTERN.search(serialized):
@@ -384,25 +538,34 @@ def read_remote_manifest(args, remote_path: str, runner) -> tuple[CommandRun, di
 
 
 def run(args, *, runner=run_subprocess, now_fn=utc_now):
-    verify_result = runner(
-        ssh_command(args, remote_verify_command(args)),
-        timeout=args.remote_verify_timeout,
-    )
-    remote_manifest = None
-    remote_path = parse_remote_manifest_path(verify_result.stdout)
-    if remote_path:
-        _, remote_manifest = read_remote_manifest(args, remote_path, runner)
-    if remote_manifest is None:
-        remote_manifest = {
-            "schema_version": 1,
-            "overall_status": "fail",
-            "hardware_class": "low-power-server",
-            "game_profile": "ai_runtime",
-            "luanti_commit": args.luanti_commit or "unknown",
-            "logical_run_dir": logical_run_dir(args.date, args.luanti_commit or "unknown"),
-            "artifact_paths": {},
-            "failure_reasons": ["remote_manifest_unavailable"],
-        }
+    remote_manifests = []
+    verify_returncodes = []
+    for iteration in range(int(args.soak_iterations)):
+        verify_result = runner(
+            ssh_command(args, remote_verify_command(args)),
+            timeout=args.remote_verify_timeout,
+        )
+        verify_returncodes.append(verify_result.returncode)
+        remote_manifest = None
+        remote_path = parse_remote_manifest_path(verify_result.stdout)
+        if remote_path:
+            _, remote_manifest = read_remote_manifest(args, remote_path, runner)
+        if remote_manifest is None:
+            remote_manifest = {
+                "schema_version": 1,
+                "overall_status": "fail",
+                "hardware_class": "low-power-server",
+                "game_profile": "ai_runtime",
+                "luanti_commit": args.luanti_commit or "unknown",
+                "logical_run_dir": logical_run_dir(args.date, args.luanti_commit or "unknown"),
+                "artifact_paths": {},
+                "failure_reasons": ["remote_manifest_unavailable"],
+            }
+        remote_manifests.append(remote_manifest)
+        if iteration + 1 < int(args.soak_iterations) and args.soak_interval_seconds > 0:
+            time.sleep(args.soak_interval_seconds)
+
+    remote_manifest = remote_manifests[-1]
 
     service_result = runner(
         ssh_command(args, remote_service_command(args)),
@@ -415,8 +578,14 @@ def run(args, *, runner=run_subprocess, now_fn=utc_now):
         service_values.setdefault("family_udp_listening", "false")
         service_values.setdefault("fork_udp_listening", "false")
 
-    manifest = build_manifest(args, remote_manifest, service_values, now_fn=now_fn)
-    if verify_result.returncode != 0:
+    manifest = build_manifest(
+        args,
+        remote_manifest,
+        service_values,
+        soak_manifests=remote_manifests,
+        now_fn=now_fn,
+    )
+    if any(returncode != 0 for returncode in verify_returncodes):
         manifest["failure_reasons"].append("remote_low_power_verifier_command_failed")
     if service_result.returncode != 0:
         manifest["failure_reasons"].append("remote_service_probe_failed")
@@ -444,13 +613,26 @@ def parse_args(argv=None):
     parser.add_argument("--fork-port", type=int, default=30001)
     parser.add_argument("--headless-player-count", type=int, default=1)
     parser.add_argument("--headless-player-timeout", type=float, default=2.0)
+    parser.add_argument("--soak-iterations", type=int, default=1, help="Number of repeated low-power verifier samples to collect.")
+    parser.add_argument("--soak-interval-seconds", type=float, default=0.0, help="Delay between soak iterations.")
+    parser.add_argument("--max-avg-cpu-percent", type=float, default=85.0)
+    parser.add_argument("--max-interval-cpu-percent", type=float, default=160.0)
+    parser.add_argument("--max-rss-mb", type=float, default=1024.0)
+    parser.add_argument("--max-actionable-warning-count", type=int, default=0)
+    parser.add_argument("--max-server-log-error-count", type=int, default=0)
+    parser.add_argument("--max-fork-restarts", type=int, default=0)
     parser.add_argument("--confirm-backup-first", action="store_true")
     parser.add_argument("--backup-artifact-label", help="Backup archive basename or label from the preceding deploy.")
     parser.add_argument("--backup-sha256", help="SHA256 of the preceding backup archive.")
     parser.add_argument("--ssh-connect-timeout", type=int, default=10)
     parser.add_argument("--ssh-timeout", type=int, default=60)
     parser.add_argument("--remote-verify-timeout", type=int, default=600)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if args.soak_iterations < 1:
+        parser.error("--soak-iterations must be at least 1")
+    if args.soak_interval_seconds < 0:
+        parser.error("--soak-interval-seconds must be non-negative")
+    return args
 
 
 def main(argv=None, *, runner=run_subprocess, now_fn=utc_now):
