@@ -71,6 +71,10 @@ The sidecar must get its provider API key from server-local secret
 configuration. No key, private prompt, raw provider payload, or asset payload
 belongs in this profile, manifest, or verification output.
 
+Use `/ai_agents_sdk_adapter_probe_async` for live provider checks. It uses
+Luanti's callback HTTP API so a slow hosted model or web-search call does not
+force the engine to spin-wait on the request.
+
 ## Boundaries
 
 - This profile requires no live server.

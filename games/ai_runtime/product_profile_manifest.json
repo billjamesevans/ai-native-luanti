@@ -166,7 +166,7 @@
       "source_file": "builtin/game/ai_agents_sdk_adapter_plugin.lua",
       "command": "ai_agents_sdk_adapter_probe",
       "default_enabled": false,
-      "purpose": "Agents SDK sidecar model adapter probe and bridge"
+      "purpose": "Agents SDK sidecar model adapter probe, async live probe, and bridge"
     }
   ],
   "required_runtime_surfaces": [

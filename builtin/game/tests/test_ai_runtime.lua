@@ -6246,6 +6246,89 @@ run_model_adapter_plugin_probe_tests();
 	assert(not command_message:find("raw_provider_response", 1, true))
 	assert(#command_message < 12000)
 
+	local captured_async_http_request
+	local captured_async_adapter_request
+	core.ai_agents_sdk_adapter_plugin.configure({
+		endpoint = "http://127.0.0.1:8766/v1/model-adapter",
+		timeout = 42,
+		http_api = {
+			fetch = function(http_request, callback)
+				captured_async_http_request = table.copy(http_request)
+				captured_async_adapter_request = core.parse_json(http_request.data)
+				callback({
+					completed = true,
+					succeeded = true,
+					code = 200,
+					data = core.write_json({
+						schema_version = 1,
+						response_kind = "ai_native_model_adapter_response",
+						adapter_contract = "provider_neutral_v1",
+						ok = true,
+						message = "Async Agents SDK sidecar response.",
+						adapter_name = "openai-agents-sdk-model-adapter",
+						elapsed_us = 2400,
+						response = {
+							agentic_execution = true,
+							web_search_available = true,
+							tools_enabled = {
+								"summarize_runtime_capabilities",
+								"classify_world_action",
+								"WebSearchTool",
+							},
+						},
+					}),
+				})
+			end,
+		},
+	})
+	local async_probe
+	local queued, queue_reason = core.ai_agents_sdk_adapter_plugin.run_probe_async({
+		agent_id = "agents_sdk_adapter_probe:async",
+		owner = "synthetic-operator",
+		task_id = "agents-sdk-adapter-probe:async",
+		prompt = "Should the runtime queue live agent calls asynchronously?",
+		context = {
+			surface_id = "guide",
+			capabilities = "world.read,http.llm,task.cancel",
+		},
+	}, function(report)
+		async_probe = report
+	end)
+	assert(queued == true)
+	assert(queue_reason == "queued")
+	assert(async_probe ~= nil)
+	assert(async_probe.schema_version == 1)
+	assert(async_probe.operation == "ai_agents_sdk_adapter_plugin.run_probe_async")
+	assert(async_probe.ok == true)
+	assert(async_probe.status == "success")
+	assert(async_probe.reason == "model_response")
+	assert(async_probe.config.loopback_endpoint == true)
+	assert(async_probe.config.has_http_api == true)
+	assert(captured_async_http_request ~= nil)
+	assert(captured_async_http_request.url == "http://127.0.0.1:8766/v1/model-adapter")
+	assert(captured_async_http_request.method == "POST")
+	assert(captured_async_http_request.timeout == 42)
+	assert(captured_async_adapter_request.schema_version == 1)
+	assert(captured_async_adapter_request.request_kind == "ai_native_model_adapter_request")
+	assert(captured_async_adapter_request.agent_id == "agents_sdk_adapter_probe:async")
+	assert(captured_async_adapter_request.public_prompt
+		== "Should the runtime queue live agent calls asynchronously?")
+	assert(async_probe.response.response_kind == "ai_native_model_adapter_response")
+	assert(async_probe.response.adapter_name == "openai-agents-sdk-model-adapter")
+	assert(async_probe.result.response.agentic_execution == true)
+	assert(async_probe.result.response.tools_enabled[3] == "WebSearchTool")
+	assert(async_probe.metrics.model_adapter_requests_delta == 1)
+	assert(async_probe.metrics.model_adapter_successes_delta == 1)
+	assert(async_probe.metrics.model_adapter_failures_delta == 0)
+	assert(async_probe.metrics.model_adapter_timeouts_delta == 0)
+	assert(async_probe.safety.loopback_endpoint_only == true)
+	assert(async_probe.safety.sidecar_executes_world_mutation == false)
+	assert(async_probe.raw_provider_response == nil)
+	assert(async_probe.provider_credentials == nil)
+	assert(async_probe.asset_payload == nil)
+	assert(core.registered_chatcommands.ai_agents_sdk_adapter_probe_async ~= nil)
+	assert(core.registered_chatcommands.ai_agents_sdk_adapter_probe_async.privs.server == true)
+
 	core.ai_agents_sdk_adapter_plugin.configure({
 		endpoint = "https://example.com/v1/model-adapter",
 	})

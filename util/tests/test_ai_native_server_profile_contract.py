@@ -106,6 +106,10 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
             ),
             agents_sdk_adapter_lua.find('core.register_chatcommand("ai_agents_sdk_adapter_probe"'),
         )
+        self.assertIn(
+            'core.register_chatcommand("ai_agents_sdk_adapter_probe_async"',
+            agents_sdk_adapter_lua,
+        )
         self.assertIn('g_settings->setBool("ai_runtime.enable_smoke_command", true)', unittest_cpp)
         self.assertIn('g_settings->setBool("ai_runtime.enable_demo_benchmark_command", true)', unittest_cpp)
         self.assertIn(
