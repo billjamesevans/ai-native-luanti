@@ -105,6 +105,12 @@ def main(argv: list[str] | None = None) -> int:
     summary = {
         "candidate_queue": relative_label(root, candidate_queue_output),
         "candidate_queue_status": candidate_queue.get("status"),
+        "adapter_contract_failures": candidate_queue.get("source_summary", {}).get(
+            "adapter_contract_failures", 0
+        ),
+        "ready_for_adapter_contract_eval": candidate_queue.get("source_summary", {}).get(
+            "ready_for_adapter_contract_eval", 0
+        ),
         "case_pack": relative_label(root, case_pack_output),
         "case_pack_status": case_pack.get("status"),
         "cases_total": case_pack.get("summary", {}).get("cases_total", 0),

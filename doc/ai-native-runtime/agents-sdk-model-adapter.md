@@ -117,7 +117,10 @@ fields, credentials, raw provider payloads, private prompts, asset payloads, or
 private world references. Known regressions such as `build me a fire and only a
 fire` and `build a wall of tnt` are labeled with ready prompt-eval assertions;
 unknown prompts stay in `needs_operator_label` until a maintainer records the
-expected behavior.
+expected behavior. Adapter traces that miss required SDK tools are also marked
+`ready_for_adapter_contract_eval = true` and counted under
+`adapter_contract_failures`, even when the expected build-output behavior still
+needs an operator label.
 
 Ready candidates can then become an `ai_native_agent_prompt_eval_case_pack`:
 
