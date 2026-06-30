@@ -43,6 +43,50 @@ clean-checkout gates, local runtime evidence, compatibility/parity review,
 backup-first Pi side-by-side promotion requirements, release closeout evidence,
 and the public/private content boundary.
 
+## Agent Improvement Loop
+
+Live agent behavior must feed the eval backlog. After a bad Nova response or a
+surprising Agents SDK sidecar result, collect the public-safe sidecar JSONL and
+Luanti action/debug log, then produce an eval candidate queue:
+
+```bash
+python3 util/ai_native_agent_eval_queue.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The queue is review-first. Ready candidates such as fire-only and TNT-wall
+regressions can be promoted into `/ai_agent_eval`; unknown prompts require an
+operator label before they become pass/fail tests. This keeps improvement tied
+to observed failures while preserving the public/private boundary.
+
+Promote reviewed ready candidates into a replayable
+`ai_native_agent_prompt_eval_case_pack`:
+
+```bash
+python3 util/ai_native_agent_eval_promote.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+Case packs are for harnesses and disposable-world probes. They run through
+`core.ai_agent_plugin.run_prompt_eval({ cases = "custom", custom_cases = ... })`
+so promoted cases exercise the same preview, approval, cleanup, trace, and
+metric checks as built-in `/ai_agent_eval` cases. The chat command remains
+limited to built-in eval cases until a reviewed operator import surface exists.
+
+Ambiguous build behavior must be improved through the same loop. The Agents SDK
+sidecar can reason and call read-only tools, but Luanti only changes an
+executable pending build when the sidecar returns a structured
+`selected_option_id` or `tool_decisions.build_option.selected_option_id` that
+matches a candidate Luanti already offered. When the sidecar selects the wrong
+candidate, capture the request/response logs, promote the public-safe failure
+into a custom prompt-eval case, and fix the agent/tool contract or candidate
+ranking until the eval passes.
+
 ## Pi Promotion Loop
 
 Pi promotion is an operator lane, not a contributor default. Promote only after

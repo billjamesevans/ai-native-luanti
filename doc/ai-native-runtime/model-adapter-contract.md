@@ -9,9 +9,11 @@ client. The runtime does define the safe boundary that optional provider plugins
 must use. That boundary keeps model calls capability-gated, bounded,
 public-safe by default, and observable through existing model audit and metrics.
 
-Runtime entrypoint: `core.ai_model_ops.request`
+Runtime entrypoints: `core.ai_model_ops.request` and
+`core.ai_model_ops.request_async`
 
-Agent plugin entrypoint: `core.ai_agent_plugin.set_model_adapter`
+Agent plugin entrypoints: `core.ai_agent_plugin.set_model_adapter` and
+`core.ai_agent_plugin.set_model_adapter_async`
 
 Optional scaffold: [`model-adapter-plugin-scaffold.md`](model-adapter-plugin-scaffold.md)
 documents the disabled-by-default mock probe used to verify this contract
@@ -26,8 +28,9 @@ keeping this runtime contract provider-neutral.
 Luanti-side opt-in:
 `builtin/game/ai_agents_sdk_adapter_plugin.lua` is loaded only when
 `ai_runtime.enable_agents_sdk_adapter = true`. It posts this request envelope to
-the loopback sidecar endpoint and installs the resulting adapter through
-`core.ai_agent_plugin.set_model_adapter`.
+the loopback sidecar endpoint and installs the resulting adapters through
+`core.ai_agent_plugin.set_model_adapter` and, when available,
+`core.ai_agent_plugin.set_model_adapter_async`.
 
 ## Request Envelope
 
@@ -104,6 +107,13 @@ runtime contract.
 - The runtime records `model.adapter` with success, failure, or timeout.
 - Private payload retention remains disabled unless an explicit operator-only
   audit policy changes it.
+
+`core.ai_model_ops.request_async(prompt, options, callback)` uses the same
+envelope, safety checks, normalization, metrics, and audit records as the sync
+entrypoint. The async adapter receives `(request, done)` and must call `done`
+with a normal model-adapter response. The first-party `/nova` fallback records a
+queued trace immediately and then updates that same trace when the callback
+returns.
 
 ## Example
 

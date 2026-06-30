@@ -77,8 +77,8 @@ python3 util/ai_native_runtime_verify.py --hardware-class local-mac
 ```
 
 The harness runs the AI-native utility contracts, the product-profile hygiene gate, the branch
-benchmark gate, the live operator status command probe, the compatibility import staging pilot,
-the receipt-gated task-control command probe, and the focused
+benchmark gate, the live operator status command probe, the Nova prompt eval probe, the
+compatibility import staging pilot, the receipt-gated task-control command probe, and the focused
 `TestAIRuntime` smoke in a repeatable order. It writes
 `ai-runtime-verification-manifest.json` under
 `local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
@@ -116,6 +116,18 @@ importer-preview surfaces without private content. It also captures a compact
 same-world operator-status snapshot proving the live status surface sees the product-loop tasks,
 rollback records, and import review without retaining private payloads. Rollback review remains
 read-only in this probe, including targeted rollback-record lookup. It then runs
+`util/ai_native_agent_prompt_eval_live_probe.py` against a disposable live `ai_runtime` world and
+writes `ai-runtime-agent-prompt-eval-live-result.json`. That probe executes the registered
+`/ai_agent_eval` command for the fire case, runs `core.ai_agent_plugin.run_prompt_eval` for
+`build a fire`, strict `build me a fire and only a fire`, `build a wall of tnt`, ambiguous `build a
+small shelter` agentic planning, and the async model-adapter case, checks request/response trace
+routes, verifies the TNT wall is not refused as dangerous, enforces exact preview sizes for one-node
+fire prompts, twelve TNT wall nodes, and the four-node agentic shelter platform, discards pending
+build approvals before mutation, and records model-adapter request/success/failure/timeout deltas.
+By default it
+uses a deterministic mock async adapter and requires no model-network calls; pass
+`--agent-prompt-eval-adapter-endpoint http://127.0.0.1:8766/v1/model-adapter` to run the same
+regression gate through the loopback Agents SDK adapter. It then runs
 `util/ai_native_compat_import_staging_pilot.py` against a disposable live `ai_runtime` staging world
 and writes `ai-runtime-compat-import-staging-pilot-result.json`. That pilot runs public-safe
 inventory discovery, dry-run report generation, reviewed adapter smoke, operator review, chunked
@@ -143,7 +155,11 @@ result must stay receipt-gated, synthetic-task-state-only, task cancel/retry onl
 `--operator-action-execution-result-max-bytes`. The first-party product-loop live result must stay
 disposable-world-only, public-safe, rollback-backed for build and repair, explicit-approval-gated for
 build and repair mutation, operator-status-visible, no rollback execution, no import promotion execution, and bounded by
-`--agent-product-loop-live-result-max-bytes`. The compatibility import staging pilot result must
+`--agent-product-loop-live-result-max-bytes`. The Nova prompt eval live result must stay
+read-only, public-safe, pending-approval cleanup only, no world mutation, five-case complete, and
+bounded by `--agent-prompt-eval-live-result-max-bytes` and
+`--agent-prompt-eval-live-timeout`; optional real adapter checks use
+`--agent-prompt-eval-adapter-endpoint` and `--agent-prompt-eval-adapter-timeout`. The compatibility import staging pilot result must
 stay public-safe, disposable-staging-only, approval-gated, rollback-backed, family-world-free,
 asset-copy-free, and bounded by `--compat-import-staging-pilot-result-max-bytes` and
 `--compat-import-staging-pilot-timeout`. The live task-control result must stay receipt-gated,
@@ -188,6 +204,7 @@ directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifes
 `ai-runtime-operator-action-approval-receipt.json` and
 `ai-runtime-operator-action-execution-result.json` and
 `ai-runtime-agent-product-loop-live-result.json` and
+`ai-runtime-agent-prompt-eval-live-result.json` and
 `ai-runtime-compat-import-staging-pilot-result.json` and
 `ai-runtime-operator-task-control-live-result.json` and
 `ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`. It still requires no family server, no private

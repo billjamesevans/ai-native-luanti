@@ -752,6 +752,45 @@ local function normalize_model_adapter_result(adapter_result, max_response_bytes
 	return normalized
 end
 
+local function finish_model_adapter_request(result, request, options, owner, started_at, adapter_result)
+	adapter_result = normalize_model_adapter_result(adapter_result,
+		request.bounds.max_response_bytes)
+	local elapsed_us = adapter_result and adapter_result.elapsed_us
+	if not elapsed_us then
+		elapsed_us = started_at > 0 and core.get_us_time and (core.get_us_time() - started_at) or 0
+	end
+	local adapter_status = "failure"
+	if adapter_result and adapter_result.timeout then
+		adapter_status = "timeout"
+	elseif adapter_result and adapter_result.ok then
+		adapter_status = "success"
+	end
+	core.record_ai_model_adapter_result({
+		agent_id = options.agent_id,
+		owner_ref = owner,
+		task_id = options.task_id,
+		adapter_name = adapter_result and adapter_result.adapter_name
+			or options.adapter_name or "model_adapter",
+		status = adapter_status,
+		reason = adapter_result and adapter_result.reason,
+		elapsed_us = elapsed_us,
+	})
+
+	result.examined = 1
+	result.metrics.elapsed_us = elapsed_us
+	if adapter_result and adapter_result.response ~= nil then
+		result.response = adapter_result.response
+	end
+	local message = adapter_result and adapter_result.message
+		or "Model adapter did not return a response."
+	if adapter_result and adapter_result.ok then
+		return finish_runtime_gate_result(result, "success", "model_response", message)
+	end
+	result.skipped = 1
+	return finish_runtime_gate_result(result, "blocked",
+		adapter_result and adapter_result.reason or "model_adapter_failed", message)
+end
+
 function core.ai_model_ops.request(prompt, options)
 	check_string(prompt, "prompt")
 	options = options or {}
@@ -803,42 +842,101 @@ function core.ai_model_ops.request(prompt, options)
 			reason = "adapter_error",
 		}
 	end
-	adapter_result = normalize_model_adapter_result(adapter_result,
-		request.bounds.max_response_bytes)
-	local elapsed_us = adapter_result and adapter_result.elapsed_us
-	if not elapsed_us then
-		elapsed_us = started_at > 0 and core.get_us_time and (core.get_us_time() - started_at) or 0
+	return finish_model_adapter_request(result, request, options, owner, started_at,
+		adapter_result)
+end
+
+function core.ai_model_ops.request_async(prompt, options, callback)
+	check_string(prompt, "prompt")
+	assert(type(callback) == "function", "Field 'callback' must be a function")
+	options = options or {}
+	local _, owner, result = runtime_gate_options(options, "ai_model.request")
+	local denied = runtime_gate_denied(options, "ai_model.request", "http.llm", "model.request")
+	if denied then
+		callback(denied)
+		return false, denied.reason
 	end
-	local adapter_status = "failure"
-	if adapter_result and adapter_result.timeout then
-		adapter_status = "timeout"
-	elseif adapter_result and adapter_result.ok then
-		adapter_status = "success"
+	local adapter_async = options.adapter_async
+	local adapter = options.adapter
+	if adapter_async == nil and adapter == nil then
+		result.skipped = 1
+		core.record_ai_runtime_audit({
+			event_type = "model.request",
+			agent_id = result.agent_id,
+			task_id = result.task_id,
+			operation = result.operation,
+			status = "blocked",
+			reason = "model_adapter_unavailable",
+			message = "No model adapter is configured.",
+			skipped = result.skipped,
+		})
+		local blocked = finish_runtime_gate_result(result, "blocked", "model_adapter_unavailable",
+			"No model adapter is configured.")
+		callback(blocked)
+		return false, "model_adapter_unavailable"
 	end
-	core.record_ai_model_adapter_result({
-		agent_id = options.agent_id,
-		owner_ref = owner,
-		task_id = options.task_id,
-		adapter_name = adapter_result and adapter_result.adapter_name
-			or options.adapter_name or "model_adapter",
-		status = adapter_status,
-		reason = adapter_result and adapter_result.reason,
-		elapsed_us = elapsed_us,
+	if adapter_async ~= nil then
+		assert(type(adapter_async) == "function", "Field 'adapter_async' must be a function")
+	end
+	if adapter ~= nil then
+		assert(type(adapter) == "function", "Field 'adapter' must be a function")
+	end
+
+	increment_metric("model_runtime_requests")
+	core.record_ai_runtime_audit({
+		event_type = "model.request",
+		agent_id = result.agent_id,
+		task_id = result.task_id,
+		actor = owner,
+		operation = result.operation,
+		status = "running",
+		reason = "model_adapter_requested",
+		message = "Model adapter requested.",
+		private_payload = {
+			prompt = options.private_prompt or prompt,
+		},
 	})
 
-	result.examined = 1
-	result.metrics.elapsed_us = elapsed_us
-	if adapter_result and adapter_result.response ~= nil then
-		result.response = adapter_result.response
+	local started_at = core.get_us_time and core.get_us_time() or 0
+	local request = build_model_adapter_request(prompt, options, owner)
+	local completed = false
+	local function finish_once(adapter_result)
+		if completed then
+			return
+		end
+		completed = true
+		local finished = finish_model_adapter_request(result, request, options, owner,
+			started_at, adapter_result)
+		local callback_ok, callback_err = pcall(callback, finished)
+		if not callback_ok then
+			core.log("error", "[ai_runtime] async model adapter callback failed: "
+				.. tostring(callback_err))
+		end
 	end
-	local message = adapter_result and adapter_result.message
-		or "Model adapter did not return a response."
-	if adapter_result and adapter_result.ok then
-		return finish_runtime_gate_result(result, "success", "model_response", message)
+
+	if adapter_async == nil then
+		local ok, adapter_result = pcall(adapter, request)
+		if not ok then
+			adapter_result = {
+				ok = false,
+				message = "Model adapter failed.",
+				reason = "adapter_error",
+			}
+		end
+		finish_once(adapter_result)
+		return true, "completed"
 	end
-	result.skipped = 1
-	return finish_runtime_gate_result(result, "blocked",
-		adapter_result and adapter_result.reason or "model_adapter_failed", message)
+
+	local ok, adapter_err = pcall(adapter_async, request, finish_once)
+	if not ok then
+		finish_once({
+			ok = false,
+			message = "Model adapter failed.",
+			reason = "adapter_error",
+		})
+		return false, adapter_err
+	end
+	return true, "queued"
 end
 
 local function import_action_requires_capability(action)

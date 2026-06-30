@@ -9,6 +9,7 @@ PROFILE_DIR = ROOT / "games" / "ai_runtime"
 GAME_CONF = PROFILE_DIR / "game.conf"
 README = PROFILE_DIR / "README.md"
 BASE_MOD = PROFILE_DIR / "mods" / "ai_runtime_base" / "init.lua"
+AGENTS_SDK_BRIDGE_MOD = PROFILE_DIR / "mods" / "ai_runtime_agents_sdk_bridge" / "init.lua"
 SMOKE_LUA = ROOT / "builtin" / "game" / "ai_runtime_smoke.lua"
 DEMO_BENCHMARK_LUA = ROOT / "builtin" / "game" / "demo_entity_benchmark.lua"
 MODEL_ADAPTER_PLUGIN_LUA = ROOT / "builtin" / "game" / "ai_model_adapter_plugin.lua"
@@ -105,6 +106,10 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
             ),
             agents_sdk_adapter_lua.find('core.register_chatcommand("ai_agents_sdk_adapter_probe"'),
         )
+        self.assertIn(
+            'core.register_chatcommand("ai_agents_sdk_adapter_probe_async"',
+            agents_sdk_adapter_lua,
+        )
         self.assertIn('g_settings->setBool("ai_runtime.enable_smoke_command", true)', unittest_cpp)
         self.assertIn('g_settings->setBool("ai_runtime.enable_demo_benchmark_command", true)', unittest_cpp)
         self.assertIn(
@@ -140,6 +145,27 @@ class AIRuntimeServerProfileContractTests(unittest.TestCase):
             "combat.defend",
         ):
             self.assertNotIn(forbidden, base_mod)
+
+    def test_agents_sdk_profile_bridge_only_provides_http_handle(self):
+        self.assertTrue(AGENTS_SDK_BRIDGE_MOD.is_file(), f"missing {AGENTS_SDK_BRIDGE_MOD}")
+        body = AGENTS_SDK_BRIDGE_MOD.read_text(encoding="utf-8")
+
+        self.assertIn("core.ai_agents_sdk_adapter_plugin", body)
+        self.assertIn("core.request_http_api", body)
+        self.assertIn("bridge.configure", body)
+        self.assertIn("http_api = core.request_http_api()", body)
+        self.assertNotRegex(body, PRIVATE_PATTERNS)
+        for forbidden in (
+            "OPENAI",
+            "http://",
+            "https://",
+            "world.place",
+            "world.remove",
+            "set_node",
+            "remove_node",
+            "register_chatcommand",
+        ):
+            self.assertNotIn(forbidden, body)
 
     def test_profile_is_tracked_despite_generated_games_ignore_rule(self):
         ignored = subprocess.run(

@@ -375,6 +375,16 @@ core.register_node(":ai_runtime_test:hazard", {
 	groups = { hazard = 1 },
 })
 
+core.register_node(":ai_runtime_test:fire", {
+	description = "AI Runtime Test Fire",
+	groups = { fire = 1 },
+})
+
+core.register_node(":ai_runtime_test:tnt", {
+	description = "AI Runtime Test TNT",
+	groups = { tnt = 1 },
+})
+
 local function test_pos(x)
 	return { x = x, y = 32, z = 4100 }
 end
@@ -4888,6 +4898,369 @@ local completed_radius_repair = core.get_ai_task(approved_repair_radius.task_id)
 assert(completed_radius_repair.status == "completed")
 assert(completed_radius_repair.last_result.changed == 2)
 
+rawset(_G, "test_ai_agent_plugin_freeform_build_intents", function()
+core.ai_agent_plugin.configure({
+	capability_profile = "clean",
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	platform_node = "ai_runtime_test:stone",
+	path_node = "ai_runtime_test:stone",
+	fire_node = "ai_runtime_test:fire",
+	wall_node = "ai_runtime_test:stone",
+	tnt_node = "ai_runtime_test:tnt",
+	build_material_nodes = {
+		fire = "ai_runtime_test:fire",
+		tnt = "ai_runtime_test:tnt",
+	},
+	repair_nodes = {
+		["ai_runtime_test:hazard"] = true,
+	},
+	max_lights = 16,
+	max_repair_radius = 2,
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
+})
+
+local fire_pos = test_pos(4227)
+set_test_node(fire_pos, { name = "air" })
+local fire_build = core.ai_agent_plugin.handle_command("Wills", "build a fire", {
+	pos = fire_pos,
+	world_id = "product-loop-world",
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(fire_build.ok == true)
+assert(fire_build.action == "build")
+assert(fire_build.status == "pending_approval")
+assert(fire_build.build_kind == "fire")
+assert(fire_build.build_material_name == "fire")
+assert(fire_build.build_material_node == "ai_runtime_test:fire")
+assert(fire_build.planned_node_writes == 1)
+assert(get_test_node(fire_pos).name == "air")
+local fire_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(fire_trace.public_prompt == "build a fire")
+assert(fire_trace.route == "deterministic_build_parser")
+assert(fire_trace.context.build_kind == "fire")
+assert(fire_trace.context.build_material_node == "ai_runtime_test:fire")
+assert(fire_trace.response.status == "pending_approval")
+local approved_fire = core.ai_agent_plugin.handle_command("Wills", "approve build", {})
+assert(approved_fire.ok == true)
+assert(approved_fire.action == "approve")
+assert(approved_fire.approved_action == "build")
+core.step_ai_tasks()
+assert(get_test_node(fire_pos).name == "ai_runtime_test:fire")
+local completed_fire = core.get_ai_task(approved_fire.task_id)
+assert(completed_fire.status == "completed")
+assert(completed_fire.last_result.metrics.node_writes == 1)
+
+local fire_only_pos = test_pos(4229)
+set_test_node(fire_only_pos, { name = "air" })
+local fire_only_build = core.ai_agent_plugin.handle_command(
+	"Wills", "build me a fire and only a fire", {
+		pos = fire_only_pos,
+		world_id = "product-loop-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+	})
+assert(fire_only_build.ok == true)
+assert(fire_only_build.action == "build")
+assert(fire_only_build.status == "pending_approval")
+assert(fire_only_build.build_kind == "fire")
+assert(fire_only_build.build_material_name == "fire")
+assert(fire_only_build.build_material_node == "ai_runtime_test:fire")
+assert(fire_only_build.planned_node_writes == 1)
+assert(get_test_node(fire_only_pos).name == "air")
+local fire_only_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(fire_only_trace.public_prompt == "build me a fire and only a fire")
+assert(fire_only_trace.route == "deterministic_build_parser")
+assert(fire_only_trace.context.build_kind == "fire")
+assert(fire_only_trace.context.build_material_name == "fire")
+assert(fire_only_trace.response.planned_node_writes == 1)
+local discarded_fire_only = core.ai_agent_plugin.handle_command("Wills", "discard plan", {})
+assert(discarded_fire_only.ok == true)
+assert(discarded_fire_only.action == "discard_approval")
+assert(get_test_node(fire_only_pos).name == "air")
+
+local tnt_wall_pos = test_pos(4232)
+for x = 0, 3 do
+	for y = 0, 2 do
+		set_test_node(vector.add(tnt_wall_pos, { x = x, y = y, z = 0 }), {
+			name = "air",
+		})
+	end
+end
+local tnt_wall = core.ai_agent_plugin.handle_command("Wills", "build a wall of tnt", {
+	pos = tnt_wall_pos,
+	world_id = "product-loop-world",
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(tnt_wall.ok == true)
+assert(tnt_wall.action == "build")
+assert(tnt_wall.status == "pending_approval")
+assert(tnt_wall.reason ~= "dangerous")
+assert(tnt_wall.reason ~= "unsafe")
+assert(tnt_wall.build_kind == "wall")
+assert(tnt_wall.build_width == 4)
+assert(tnt_wall.build_height == 3)
+assert(tnt_wall.build_material_name == "tnt")
+assert(tnt_wall.build_material_node == "ai_runtime_test:tnt")
+assert(tnt_wall.planned_node_writes == 12)
+local tnt_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(tnt_trace.public_prompt == "build a wall of tnt")
+assert(tnt_trace.context.build_kind == "wall")
+assert(tnt_trace.context.build_material_name == "tnt")
+assert(tnt_trace.context.build_material_node == "ai_runtime_test:tnt")
+assert(tnt_trace.response.build_material_node == "ai_runtime_test:tnt")
+local traces_reply = core.ai_agent_plugin.handle_command("Wills", "traces", {})
+assert(traces_reply.ok == true)
+assert(traces_reply.action == "request_traces")
+assert(#traces_reply.traces >= 3)
+local approved_tnt_wall = core.ai_agent_plugin.handle_command("Wills", "approve build", {})
+assert(approved_tnt_wall.ok == true)
+assert(approved_tnt_wall.action == "approve")
+assert(approved_tnt_wall.approved_action == "build")
+core.step_ai_tasks()
+for x = 0, 3 do
+	for y = 0, 2 do
+		assert(get_test_node(vector.add(tnt_wall_pos, { x = x, y = y, z = 0 })).name
+			== "ai_runtime_test:tnt")
+	end
+end
+local completed_tnt_wall = core.get_ai_task(approved_tnt_wall.task_id)
+assert(completed_tnt_wall.status == "completed")
+assert(completed_tnt_wall.last_result.metrics.node_writes == 12)
+end)
+
+_G.test_ai_agent_plugin_freeform_build_intents()
+rawset(_G, "test_ai_agent_plugin_freeform_build_intents", nil)
+
+rawset(_G, "test_ai_agent_plugin_agentic_build_planner", function()
+core.ai_agent_plugin.configure({
+	capability_profile = "clean",
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	platform_node = "ai_runtime_test:stone",
+	path_node = "ai_runtime_test:stone",
+	fire_node = "ai_runtime_test:fire",
+	wall_node = "ai_runtime_test:stone",
+	tnt_node = "ai_runtime_test:tnt",
+	build_material_nodes = {
+		fire = "ai_runtime_test:fire",
+		tnt = "ai_runtime_test:tnt",
+	},
+	max_lights = 16,
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
+})
+
+local planner_pos = test_pos(4252)
+for x = 0, 1 do
+	for z = 0, 1 do
+		set_test_node(vector.add(planner_pos, { x = x, y = 0, z = z }), {
+			name = "air",
+		})
+	end
+end
+local async_planner_calls = {}
+local async_planner_done
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	async_planner_calls[#async_planner_calls + 1] = request
+	async_planner_done = done
+	return true, "queued"
+end)
+local queued_plan = core.ai_agent_plugin.handle_command("Planner", "build a small shelter", {
+	pos = planner_pos,
+	world_id = "agentic-build-world",
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(queued_plan.ok == true)
+assert(queued_plan.action == "build_plan")
+assert(queued_plan.status == "queued")
+assert(queued_plan.reason == "agentic_build_planner_queued")
+assert(queued_plan.planner_mode == "agentic_model_adapter")
+assert(queued_plan.selected_candidate_id == "platform")
+assert(queued_plan.candidate_count >= 3)
+assert(#queued_plan.candidate_options >= 3)
+assert(#async_planner_calls == 1)
+assert(async_planner_calls[1].public_prompt:find("build a small shelter", 1, true) ~= nil)
+assert(async_planner_calls[1].context.surface_id == "builder")
+assert(async_planner_calls[1].context.intent == "build_planning")
+assert(async_planner_calls[1].context.selected_candidate_id == "platform")
+assert(async_planner_calls[1].context.player_request == "build a small shelter")
+assert(async_planner_calls[1].context.candidate_count >= 3)
+assert(async_planner_calls[1].private_prompt == nil)
+assert(async_planner_calls[1].safety.private_input_retained == false)
+local queued_planner_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(queued_planner_trace.route == "agentic_build_planner")
+assert(queued_planner_trace.public_prompt == "build a small shelter")
+assert(queued_planner_trace.response.status == "queued")
+assert(queued_planner_trace.response.selected_candidate_id == "platform")
+assert(queued_planner_trace.context.private_prompt == nil)
+
+async_planner_done({
+	ok = true,
+	message = "Use the platform option as the first safe shelter foundation.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 90000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "platform",
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "platform",
+				candidate_count = 4,
+			},
+		},
+		tools_enabled = { "recommend_build_option", "classify_world_action" },
+	},
+})
+local pending_agentic = core.ai_agent_plugin.handle_command("Planner", "pending plan", {})
+assert(pending_agentic.ok == true)
+assert(pending_agentic.action == "pending_plan")
+assert(pending_agentic.pending_action == "build")
+assert(pending_agentic.planner_mode == "agentic_model_adapter")
+assert(pending_agentic.selected_candidate_id == "platform")
+assert(pending_agentic.candidate_count >= 3)
+assert(pending_agentic.build_kind == "platform")
+assert(pending_agentic.build_width == 2)
+assert(pending_agentic.build_depth == 2)
+assert(pending_agentic.planned_node_writes == 4)
+assert(get_test_node(planner_pos).name == "air")
+local completed_planner_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(completed_planner_trace.route == "agentic_build_planner")
+assert(completed_planner_trace.response.status == "pending_approval")
+assert(completed_planner_trace.response.selected_candidate_id == "platform")
+assert(completed_planner_trace.response.candidate_count >= 3)
+local approved_agentic = core.ai_agent_plugin.handle_command("Planner", "approve build", {})
+assert(approved_agentic.ok == true)
+assert(approved_agentic.action == "approve")
+assert(approved_agentic.approved_action == "build")
+core.step_ai_tasks()
+for x = 0, 1 do
+	for z = 0, 1 do
+		assert(get_test_node(vector.add(planner_pos, { x = x, y = 0, z = z })).name
+			== "ai_runtime_test:stone")
+	end
+end
+local completed_agentic = core.get_ai_task(approved_agentic.task_id)
+assert(completed_agentic.status == "completed")
+assert(completed_agentic.last_result.metrics.node_writes == 4)
+local agentic_audit = core.get_ai_runtime_audit({ limit = 8 })
+for _, record in ipairs(agentic_audit) do
+	assert(record.private_payload == nil)
+end
+
+local fire_override_pos = test_pos(4256)
+set_test_node(fire_override_pos, { name = "air" })
+local fire_override_done
+local fire_override_reply
+local fire_override_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build something surprising")
+	fire_override_done = done
+	return true, "queued"
+end)
+local queued_fire_override = core.ai_agent_plugin.handle_command(
+	"PlannerFire", "build something surprising", {
+		pos = fire_override_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			fire_override_reply = reply
+			fire_override_trace = trace
+		end,
+	})
+assert(queued_fire_override.ok == true)
+assert(queued_fire_override.status == "queued")
+assert(queued_fire_override.selected_candidate_id == "platform")
+fire_override_done({
+	ok = true,
+	message = "Use the fire option because the tool selected it.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 70000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "fire",
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "fire",
+				candidate_count = 4,
+			},
+		},
+		tools_enabled = { "recommend_build_option", "classify_world_action" },
+	},
+})
+assert(fire_override_reply ~= nil)
+assert(fire_override_reply.status == "pending_approval")
+assert(fire_override_reply.planner_mode == "agentic_model_adapter")
+assert(fire_override_reply.selected_candidate_id == "fire")
+assert(fire_override_reply.build_kind == "fire")
+assert(fire_override_reply.build_material_name == "fire")
+assert(fire_override_reply.build_material_node == "ai_runtime_test:fire")
+assert(fire_override_reply.planned_node_writes == 1)
+assert(fire_override_trace ~= nil)
+assert(fire_override_trace.selection_source == "model_tool_decision")
+assert(fire_override_trace.model_selected_candidate_id == "fire")
+assert(fire_override_trace.response.selected_candidate_id == "fire")
+assert(get_test_node(fire_override_pos).name == "air")
+local discarded_fire_override = core.ai_agent_plugin.handle_command("PlannerFire", "discard plan", {})
+assert(discarded_fire_override.ok == true)
+assert(discarded_fire_override.action == "discard_approval")
+assert(get_test_node(fire_override_pos).name == "air")
+core.ai_agent_plugin.set_model_adapter_async(nil)
+
+local fallback_pos = test_pos(4258)
+for x = 0, 1 do
+	for z = 0, 1 do
+		set_test_node(vector.add(fallback_pos, { x = x, y = 0, z = z }), {
+			name = "air",
+		})
+	end
+end
+local fallback_plan = core.ai_agent_plugin.handle_command("FallbackPlanner", "build something useful", {
+	pos = fallback_pos,
+	world_id = "agentic-build-world",
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(fallback_plan.ok == true)
+assert(fallback_plan.action == "build")
+assert(fallback_plan.status == "pending_approval")
+assert(fallback_plan.planner_mode == "deterministic_candidate_fallback")
+assert(fallback_plan.selected_candidate_id == "platform")
+assert(fallback_plan.candidate_count >= 3)
+assert(fallback_plan.build_kind == "platform")
+assert(fallback_plan.planned_node_writes == 4)
+local fallback_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(fallback_trace.route == "deterministic_build_candidate_fallback")
+assert(fallback_trace.response.status == "pending_approval")
+local discarded_fallback = core.ai_agent_plugin.handle_command("FallbackPlanner", "discard plan", {})
+assert(discarded_fallback.ok == true)
+assert(discarded_fallback.action == "discard_approval")
+assert(get_test_node(fallback_pos).name == "air")
+end)
+
+_G.test_ai_agent_plugin_agentic_build_planner()
+rawset(_G, "test_ai_agent_plugin_agentic_build_planner", nil)
+
 local guide_reply = core.ai_agent_plugin.handle_command("Wills", "guide", {})
 assert(guide_reply.ok == true)
 assert(guide_reply.action == "guide")
@@ -5228,6 +5601,15 @@ assert(adapter_calls[1].private_prompt == nil)
 assert(adapter_calls[1].safety.public_safe_request == true)
 assert(adapter_calls[1].safety.private_input_retained == false)
 assert(adapter_calls[1].bounds.max_response_bytes == 4000)
+rawset(_G, "model_traces", core.ai_agent_plugin.get_model_traces({ limit = 1 }))
+assert(#_G.model_traces == 1)
+assert(_G.model_traces[1].action == "model")
+assert(_G.model_traces[1].route == "model_adapter")
+assert(_G.model_traces[1].public_prompt == "what should we explore next?")
+assert(_G.model_traces[1].response.status == "success")
+assert(_G.model_traces[1].response.message == "mock adapter response")
+assert(_G.model_traces[1].context.private_prompt == nil)
+rawset(_G, "model_traces", nil)
 
 local plugin_audit = core.get_ai_runtime_audit({ limit = 10 })
 local model_record = plugin_audit[#plugin_audit - 1]
@@ -5303,6 +5685,280 @@ assert(timeout_record.adapter_name == "mock-timeout")
 assert(timeout_record.status == "timeout")
 assert(timeout_record.private_payload == nil)
 assert(timeout_record.payload_retained == false)
+
+rawset(_G, "test_ai_agent_plugin_async_model_adapter_fallback", function(plugin_agent)
+	local async_adapter_calls = {}
+	local async_adapter_done
+	local before_async_metrics = core.get_ai_runtime_metrics()
+	core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+		async_adapter_calls[#async_adapter_calls + 1] = request
+		async_adapter_done = done
+		return true, "queued"
+	end)
+	local async_reply = core.ai_agent_plugin.handle_command("Wills", "what can you plan with tools next?", {
+		private_prompt = "synthetic async private prompt",
+	})
+	assert(async_reply.ok == true)
+	assert(async_reply.action == "model")
+	assert(async_reply.status == "queued")
+	assert(async_reply.reason == "model_adapter_queued")
+	assert(async_reply.trace_id ~= nil)
+	assert(async_reply.async_model_request == true)
+	assert(async_reply.adapter_name == "ai_agent_plugin")
+	assert(#async_adapter_calls == 1)
+	assert(async_adapter_calls[1].agent_id == plugin_agent.agent_id)
+	assert(async_adapter_calls[1].public_prompt == "what can you plan with tools next?")
+	assert(async_adapter_calls[1].private_prompt == nil)
+	assert(async_adapter_calls[1].safety.private_input_retained == false)
+	local queued_async_trace = core.ai_agent_plugin.get_model_traces({ limit = 1 })[1]
+	assert(queued_async_trace.trace_id == async_reply.trace_id)
+	assert(queued_async_trace.action == "model")
+	assert(queued_async_trace.route == "model_adapter_async")
+	assert(queued_async_trace.response.status == "queued")
+	assert(queued_async_trace.context.private_prompt == nil)
+
+	assert(async_adapter_done ~= nil)
+	async_adapter_done({
+		ok = true,
+		message = "async adapter response",
+		adapter_name = "mock-async",
+		elapsed_us = 75000,
+		response = {
+			agentic_execution = true,
+			tools_enabled = { "classify_world_action" },
+		},
+	})
+	local completed_async_trace = core.ai_agent_plugin.get_model_traces({ limit = 1 })[1]
+	assert(completed_async_trace.trace_id == async_reply.trace_id)
+	assert(completed_async_trace.response.status == "success")
+	assert(completed_async_trace.response.message == "async adapter response")
+	assert(completed_async_trace.async_model_request == true)
+	local after_async_metrics = core.get_ai_runtime_metrics()
+	assert(after_async_metrics.model_adapter_requests == before_async_metrics.model_adapter_requests + 1)
+	assert(after_async_metrics.model_adapter_successes == before_async_metrics.model_adapter_successes + 1)
+	assert(after_async_metrics.model_adapter_failures == before_async_metrics.model_adapter_failures)
+	assert(after_async_metrics.model_adapter_timeouts == before_async_metrics.model_adapter_timeouts)
+	local async_audit = core.get_ai_runtime_audit({ limit = 2 })
+	assert(async_audit[1].event_type == "model.request")
+	assert(async_audit[1].private_payload == nil)
+	assert(async_audit[1].payload_retained == false)
+	assert(async_audit[2].event_type == "model.adapter")
+	assert(async_audit[2].adapter_name == "mock-async")
+	assert(async_audit[2].status == "success")
+	assert(async_audit[2].private_payload == nil)
+	assert(async_audit[2].payload_retained == false)
+	core.ai_agent_plugin.set_model_adapter_async(nil)
+end)
+
+_G.test_ai_agent_plugin_async_model_adapter_fallback(plugin_agent)
+rawset(_G, "test_ai_agent_plugin_async_model_adapter_fallback", nil)
+
+rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
+	core.ai_agent_plugin.configure({
+		max_lights = 16,
+	})
+	local eval_reports = {}
+	local async_eval_done = {}
+	local async_eval_requests = {}
+	core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+		async_eval_requests[#async_eval_requests + 1] = request
+		assert(request.private_prompt == nil)
+		assert(request.safety.private_input_retained == false)
+		async_eval_done[#async_eval_done + 1] = done
+		return true, "queued"
+	end)
+	local queued, reason = core.ai_agent_plugin.run_prompt_eval({
+		owner = "EvalTester",
+		cases = "all",
+		context = {
+			pos = test_pos(4248),
+			world_id = "prompt-eval-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+		},
+	}, function(report)
+		eval_reports[#eval_reports + 1] = report
+	end)
+	assert(queued == true)
+	assert(reason == "queued")
+	assert(#eval_reports == 0)
+	assert(#async_eval_done == 2)
+	assert(async_eval_requests[1].public_prompt:find("build a small shelter", 1, true) ~= nil)
+	assert(async_eval_requests[1].context.surface_id == "builder")
+	assert(async_eval_requests[1].context.selected_candidate_id == "platform")
+	assert(async_eval_requests[2].public_prompt == "what can you plan with tools next?")
+	async_eval_done[1]({
+		ok = true,
+		message = "eval async build planner response",
+		adapter_name = "mock-eval-build-planner",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			tools_enabled = { "recommend_build_option", "classify_world_action" },
+		},
+	})
+	assert(#eval_reports == 0)
+	async_eval_done[2]({
+		ok = true,
+		message = "eval async adapter response",
+		adapter_name = "mock-eval-async",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			tools_enabled = { "classify_world_action" },
+		},
+	})
+	assert(#eval_reports == 1)
+	local eval_report = eval_reports[1]
+	assert(eval_report.operation == "ai_agent_plugin.run_prompt_eval")
+	assert(eval_report.ok == true, core.write_json(eval_report))
+	assert(eval_report.status == "pass")
+	assert(eval_report.owner == "EvalTester")
+	assert(#eval_report.cases == 5)
+	local eval_cases = {}
+	for _, case_report in ipairs(eval_report.cases) do
+		eval_cases[case_report.case_id] = case_report
+		assert(case_report.status == "pass")
+		assert(case_report.ok == true)
+	end
+	assert(eval_cases.build_fire.reply.status == "pending_approval")
+	assert(eval_cases.build_fire.reply.build_kind == "fire")
+	assert(eval_cases.build_fire.reply.build_material_node == "ai_runtime_test:fire")
+	assert(eval_cases.build_fire.trace.route == "deterministic_build_parser")
+	assert(eval_cases.build_fire.cleanup.action == "discard_approval")
+	assert(eval_cases.build_fire.cleanup.status == "success")
+	assert(eval_cases.fire_only_strict.prompt == "build me a fire and only a fire")
+	assert(eval_cases.fire_only_strict.reply.status == "pending_approval")
+	assert(eval_cases.fire_only_strict.reply.build_kind == "fire")
+	assert(eval_cases.fire_only_strict.reply.build_material_name == "fire")
+	assert(eval_cases.fire_only_strict.reply.planned_node_writes == 1)
+	assert(eval_cases.fire_only_strict.trace.route == "deterministic_build_parser")
+	assert(eval_cases.fire_only_strict.cleanup.action == "discard_approval")
+	assert(eval_cases.fire_only_strict.cleanup.status == "success")
+	assert(eval_cases.tnt_wall.reply.status == "pending_approval")
+	assert(eval_cases.tnt_wall.reply.reason ~= "dangerous")
+	assert(eval_cases.tnt_wall.reply.reason ~= "unsafe")
+	assert(eval_cases.tnt_wall.reply.build_kind == "wall")
+	assert(eval_cases.tnt_wall.reply.build_material_name == "tnt")
+	assert(eval_cases.tnt_wall.reply.build_material_node == "ai_runtime_test:tnt")
+	assert(eval_cases.tnt_wall.trace.response.build_material_node == "ai_runtime_test:tnt")
+	assert(eval_cases.tnt_wall.cleanup.action == "discard_approval")
+	assert(eval_cases.tnt_wall.cleanup.status == "success")
+	assert(eval_cases.agentic_build_planner.queued_status == "queued")
+	assert(eval_cases.agentic_build_planner.initial_trace.route == "agentic_build_planner")
+	assert(eval_cases.agentic_build_planner.final_status == "pending_approval")
+	assert(eval_cases.agentic_build_planner.final_reply.build_kind == "platform")
+	assert(eval_cases.agentic_build_planner.final_reply.planned_node_writes == 4)
+	assert(eval_cases.agentic_build_planner.final_trace.response.status == "pending_approval")
+	assert(eval_cases.agentic_build_planner.final_trace.context.private_prompt == nil)
+	assert(eval_cases.agentic_build_planner.cleanup.action == "discard_approval")
+	assert(eval_cases.agentic_build_planner.cleanup.status == "success")
+	assert(eval_cases.model.queued_status == "queued")
+	assert(eval_cases.model.initial_trace.route == "model_adapter_async")
+	assert(eval_cases.model.final_status == "success")
+	assert(eval_cases.model.final_trace.response.status == "success")
+	assert(eval_cases.model.final_trace.context.private_prompt == nil)
+	assert(eval_report.metrics.model_adapter_requests_delta == 2)
+	assert(eval_report.metrics.model_adapter_successes_delta == 2)
+	assert(eval_report.metrics.model_adapter_failures_delta == 0)
+	assert(eval_report.metrics.model_adapter_timeouts_delta == 0)
+	assert(eval_report.safety.audit_private_payload_retained == false)
+	local eval_pending = core.ai_agent_plugin.handle_command("EvalTester", "pending plan", {})
+	assert(eval_pending.status == "blocked")
+	assert(eval_pending.reason == "no_pending_approval")
+	core.ai_agent_plugin.set_model_adapter_async(nil)
+
+	assert(core.registered_chatcommands.ai_agent_eval ~= nil)
+	assert(core.registered_chatcommands.ai_agent_eval.privs.server == true)
+	local command_ok, command_message =
+		core.registered_chatcommands.ai_agent_eval.func("EvalCommand", "case=fire")
+	assert(command_ok == true)
+	local command_report = core.parse_json(command_message)
+	assert(command_report.operation == "ai_agent_plugin.run_prompt_eval")
+	assert(command_report.ok == true)
+	assert(command_report.status == "pass")
+	assert(#command_report.cases == 1)
+	assert(command_report.cases[1].case_id == "build_fire")
+	assert(command_report.cases[1].reply.status == "pending_approval")
+	assert(command_report.cases[1].cleanup.action == "discard_approval")
+	assert(command_report.cases[1].cleanup.status == "success")
+	local fire_only_command_ok, fire_only_command_message =
+		core.registered_chatcommands.ai_agent_eval.func("EvalCommand", "case=fire_only")
+	assert(fire_only_command_ok == true)
+	local fire_only_command_report = core.parse_json(fire_only_command_message)
+	assert(fire_only_command_report.operation == "ai_agent_plugin.run_prompt_eval")
+	assert(fire_only_command_report.ok == true)
+	assert(fire_only_command_report.status == "pass")
+	assert(#fire_only_command_report.cases == 1)
+	assert(fire_only_command_report.cases[1].case_id == "fire_only_strict")
+	assert(fire_only_command_report.cases[1].prompt == "build me a fire and only a fire")
+	assert(fire_only_command_report.cases[1].reply.planned_node_writes == 1)
+	assert(fire_only_command_report.cases[1].cleanup.status == "success")
+
+	local custom_eval_reports = {}
+	local custom_queued, custom_reason = core.ai_agent_plugin.run_prompt_eval({
+		owner = "EvalTester",
+		cases = "custom",
+		custom_cases = {
+			{
+				case_id = "promoted_fire_only_strict_1234",
+				case_hint = "fire_only_strict",
+				source_candidate_id = "agent-eval-candidate:1234",
+				prompt = "build me a fire and only a fire",
+				action = "build",
+				expected = {
+					action = "build",
+					build_kind = "fire",
+					build_material_name = "fire",
+					planned_node_writes = 1,
+					route = "deterministic_build_parser",
+				},
+			},
+		},
+		context = {
+			pos = test_pos(4260),
+			world_id = "prompt-eval-custom-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+		},
+	}, function(report)
+		custom_eval_reports[#custom_eval_reports + 1] = report
+	end)
+	assert(custom_queued == true)
+	assert(custom_reason == "completed")
+	assert(#custom_eval_reports == 1)
+	local custom_report = custom_eval_reports[1]
+	assert(custom_report.ok == true, core.write_json(custom_report))
+	assert(custom_report.status == "pass")
+	assert(custom_report.custom_case_count == 1)
+	assert(#custom_report.cases == 1)
+	assert(custom_report.cases[1].case_id == "promoted_fire_only_strict_1234")
+	assert(custom_report.cases[1].case_hint == "fire_only_strict")
+	assert(custom_report.cases[1].source_candidate_id == "agent-eval-candidate:1234")
+	assert(custom_report.cases[1].reply.build_kind == "fire")
+	assert(custom_report.cases[1].reply.planned_node_writes == 1)
+	assert(custom_report.cases[1].trace.route == "deterministic_build_parser")
+	assert(custom_report.cases[1].cleanup.status == "success")
+
+	local missing_custom_reports = {}
+	local missing_custom_queued, missing_custom_reason =
+		core.ai_agent_plugin.run_prompt_eval({
+			owner = "EvalTester",
+			cases = "custom",
+			custom_cases = {},
+		}, function(report)
+			missing_custom_reports[#missing_custom_reports + 1] = report
+		end)
+	assert(missing_custom_queued == true)
+	assert(missing_custom_reason == "completed")
+	assert(#missing_custom_reports == 1)
+	assert(missing_custom_reports[1].ok == false)
+	assert(missing_custom_reports[1].status == "fail")
+	assert(missing_custom_reports[1].cases[1].case_id == "custom_cases_missing")
+	end)
+
+_G.test_ai_agent_plugin_prompt_eval_surface()
+rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", nil)
 
 assert(core.repair_agent ~= nil)
 core.repair_agent.configure({
@@ -5619,6 +6275,8 @@ core.build_agent.configure({
 	marker_node = "ai_runtime_test:stone",
 	platform_node = "ai_runtime_test:stone",
 	path_node = "ai_runtime_test:stone",
+	fire_node = "ai_runtime_test:fire",
+	wall_node = "ai_runtime_test:stone",
 	max_nodes_per_task = 16,
 })
 
@@ -5660,6 +6318,24 @@ local build_definitions = {
 		options = {
 			length = 3,
 			direction = { x = 1, y = 0, z = 0 },
+		},
+	},
+	{
+		kind = "fire",
+		expected_label = "build fire",
+		expected_count = 1,
+		options = {
+			material_node = "ai_runtime_test:fire",
+		},
+	},
+	{
+		kind = "wall",
+		expected_label = "build wall",
+		expected_count = 6,
+		options = {
+			width = 3,
+			height = 2,
+			material_node = "ai_runtime_test:tnt",
 		},
 	},
 }
@@ -5993,6 +6669,7 @@ run_model_adapter_plugin_probe_tests();
 	local captured_adapter_request
 	core.ai_agents_sdk_adapter_plugin.configure({
 		endpoint = "http://127.0.0.1:8766/v1/model-adapter",
+		timeout = 42,
 		fetcher = function(http_request)
 			captured_http_request = table.copy(http_request)
 			captured_adapter_request = core.parse_json(http_request.data)
@@ -6039,9 +6716,11 @@ run_model_adapter_plugin_probe_tests();
 	assert(sdk_probe.reason == "model_response")
 	assert(sdk_probe.config.loopback_endpoint == true)
 	assert(sdk_probe.config.has_fetcher == true)
+	assert(sdk_probe.config.timeout == 42)
 	assert(captured_http_request ~= nil)
 	assert(captured_http_request.url == "http://127.0.0.1:8766/v1/model-adapter")
 	assert(captured_http_request.method == "POST")
+	assert(captured_http_request.timeout == 42)
 	assert(captured_http_request.data ~= nil)
 	assert(captured_http_request.data:find("Should the runtime use a real agent sidecar?", 1, true))
 	assert(captured_adapter_request.schema_version == 1)
@@ -6087,6 +6766,89 @@ run_model_adapter_plugin_probe_tests();
 	assert(not command_message:find("\"provider_credentials\"", 1, true))
 	assert(not command_message:find("raw_provider_response", 1, true))
 	assert(#command_message < 12000)
+
+	local captured_async_http_request
+	local captured_async_adapter_request
+	core.ai_agents_sdk_adapter_plugin.configure({
+		endpoint = "http://127.0.0.1:8766/v1/model-adapter",
+		timeout = 42,
+		http_api = {
+			fetch = function(http_request, callback)
+				captured_async_http_request = table.copy(http_request)
+				captured_async_adapter_request = core.parse_json(http_request.data)
+				callback({
+					completed = true,
+					succeeded = true,
+					code = 200,
+					data = core.write_json({
+						schema_version = 1,
+						response_kind = "ai_native_model_adapter_response",
+						adapter_contract = "provider_neutral_v1",
+						ok = true,
+						message = "Async Agents SDK sidecar response.",
+						adapter_name = "openai-agents-sdk-model-adapter",
+						elapsed_us = 2400,
+						response = {
+							agentic_execution = true,
+							web_search_available = true,
+							tools_enabled = {
+								"summarize_runtime_capabilities",
+								"classify_world_action",
+								"WebSearchTool",
+							},
+						},
+					}),
+				})
+			end,
+		},
+	})
+	local async_probe
+	local queued, queue_reason = core.ai_agents_sdk_adapter_plugin.run_probe_async({
+		agent_id = "agents_sdk_adapter_probe:async",
+		owner = "synthetic-operator",
+		task_id = "agents-sdk-adapter-probe:async",
+		prompt = "Should the runtime queue live agent calls asynchronously?",
+		context = {
+			surface_id = "guide",
+			capabilities = "world.read,http.llm,task.cancel",
+		},
+	}, function(report)
+		async_probe = report
+	end)
+	assert(queued == true)
+	assert(queue_reason == "queued")
+	assert(async_probe ~= nil)
+	assert(async_probe.schema_version == 1)
+	assert(async_probe.operation == "ai_agents_sdk_adapter_plugin.run_probe_async")
+	assert(async_probe.ok == true)
+	assert(async_probe.status == "success")
+	assert(async_probe.reason == "model_response")
+	assert(async_probe.config.loopback_endpoint == true)
+	assert(async_probe.config.has_http_api == true)
+	assert(captured_async_http_request ~= nil)
+	assert(captured_async_http_request.url == "http://127.0.0.1:8766/v1/model-adapter")
+	assert(captured_async_http_request.method == "POST")
+	assert(captured_async_http_request.timeout == 42)
+	assert(captured_async_adapter_request.schema_version == 1)
+	assert(captured_async_adapter_request.request_kind == "ai_native_model_adapter_request")
+	assert(captured_async_adapter_request.agent_id == "agents_sdk_adapter_probe:async")
+	assert(captured_async_adapter_request.public_prompt
+		== "Should the runtime queue live agent calls asynchronously?")
+	assert(async_probe.response.response_kind == "ai_native_model_adapter_response")
+	assert(async_probe.response.adapter_name == "openai-agents-sdk-model-adapter")
+	assert(async_probe.result.response.agentic_execution == true)
+	assert(async_probe.result.response.tools_enabled[3] == "WebSearchTool")
+	assert(async_probe.metrics.model_adapter_requests_delta == 1)
+	assert(async_probe.metrics.model_adapter_successes_delta == 1)
+	assert(async_probe.metrics.model_adapter_failures_delta == 0)
+	assert(async_probe.metrics.model_adapter_timeouts_delta == 0)
+	assert(async_probe.safety.loopback_endpoint_only == true)
+	assert(async_probe.safety.sidecar_executes_world_mutation == false)
+	assert(async_probe.raw_provider_response == nil)
+	assert(async_probe.provider_credentials == nil)
+	assert(async_probe.asset_payload == nil)
+	assert(core.registered_chatcommands.ai_agents_sdk_adapter_probe_async ~= nil)
+	assert(core.registered_chatcommands.ai_agents_sdk_adapter_probe_async.privs.server == true)
 
 	core.ai_agents_sdk_adapter_plugin.configure({
 		endpoint = "https://example.com/v1/model-adapter",
