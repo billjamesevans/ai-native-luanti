@@ -183,6 +183,52 @@ class AgentReviewQueueTests(unittest.TestCase):
         self.assertEqual(report["summary"]["action_items_total"], 0)
         self.assertEqual(report["case_pack"]["case_hints"], ["build_fire"])
 
+    def test_resolved_adapter_contract_evidence_is_not_manual_review_backlog(self):
+        module = load_review_module()
+        queue = candidate_queue_payload(attention=False)
+        queue["candidates"].append({
+            "candidate_id": "agent-eval-candidate:resolved-timeout",
+            "source_kind": "agents_sdk_request_response",
+            "prompt": "build a small shelter",
+            "case_hint": "model_adapter_review",
+            "priority": "high",
+            "review_status": "needs_operator_label",
+            "adapter_contract_review_status": "adapter_contract_resolved",
+            "adapter_contract_resolution": {
+                "status": "resolved_by_later_pass",
+                "resolved_by_candidate_id": "agent-eval-candidate:later-pass",
+                "required_tool_calls_satisfied": True,
+            },
+            "ready_for_prompt_eval": False,
+            "ready_for_adapter_contract_eval": False,
+            "expected": {"operator_must_label_expected_answer": True},
+            "observed": {
+                "selected_option_id": "generated_shelter_floor",
+                "tool_decision_source": "offline_adapter_fallback_after_agent_timeout",
+                "required_tool_calls_satisfied": False,
+                "missing_required_tool_calls": [
+                    "recall_build_prompt_memory",
+                    "select_build_option",
+                    "plan_build_actions",
+                    "propose_build_option",
+                ],
+            },
+        })
+        queue["source_summary"]["candidates_total"] = 2
+        queue["source_summary"]["manual_review_required"] = 0
+        queue["source_summary"]["adapter_contract_failures_resolved"] = 2
+
+        report = module.build_review_queue(
+            queue,
+            case_pack_payload(),
+            generated_at="2026-06-30T16:25:00Z",
+        )
+
+        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["summary"]["review_items_total"], 0)
+        self.assertEqual(report["summary"]["action_items_total"], 0)
+        self.assertEqual(report["summary"]["adapter_contract_failures_resolved"], 2)
+
     def test_duplicate_ready_candidates_do_not_create_refresh_attention(self):
         module = load_review_module()
         queue = candidate_queue_payload(attention=False)

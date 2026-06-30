@@ -145,6 +145,9 @@ summarizes manual-review candidates, active adapter-contract regressions,
 resolved failures, verified live-probe coverage, and the next action to take.
 It is bounded and public-safe, and it does not include provider prompts,
 credentials, raw assets, or family-world coordinates.
+Resolved adapter-contract failures stay retained as evidence, but they do not
+become manual labeling backlog once a later passing run satisfies the required
+tool contract.
 
 Inspect an existing queue and case pack with:
 

@@ -181,10 +181,14 @@ def build_quality_gate(
         _int(candidate_summary.get("adapter_contract_failures")),
     )
     ready_for_adapter_contract_eval = _int(candidate_summary.get("ready_for_adapter_contract_eval"))
-    manual_review_required = _int(candidate_summary.get("manual_review_required"))
     case_count = _int(case_summary.get("cases_total"))
     review_items_total = _int(review_summary.get("review_items_total"), _list_len(review.get("review_items")))
     review_action_items_total = _int(review_summary.get("action_items_total"), _list_len(_action_items(review)))
+    manual_review_required = (
+        _int(review_summary.get("manual_review_required"))
+        if isinstance(review_summary.get("manual_review_required"), int)
+        else _int(candidate_summary.get("manual_review_required"))
+    )
 
     if candidate_queue.get("status") != "ready":
         attention.append({"kind": "candidate_queue_not_ready", "status": bounded_text(candidate_queue.get("status"), 80)})
