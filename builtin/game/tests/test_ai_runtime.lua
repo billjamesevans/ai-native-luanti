@@ -5284,6 +5284,93 @@ local discarded_agentic_first_fire = core.ai_agent_plugin.handle_command(
 assert(discarded_agentic_first_fire.ok == true)
 assert(discarded_agentic_first_fire.action == "discard_approval")
 assert(get_test_node(agentic_first_fire_pos).name == "air")
+
+local fire_constraint_pos = test_pos(4265)
+set_test_node(fire_constraint_pos, { name = "air" })
+local fire_constraint_done
+local fire_constraint_reply
+local fire_constraint_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build me a fire and only a fire")
+	fire_constraint_done = done
+	return true, "queued"
+end)
+local queued_fire_constraint = core.ai_agent_plugin.handle_command(
+	"PlannerFireConstraint", "build me a fire and only a fire", {
+		pos = fire_constraint_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			fire_constraint_reply = reply
+			fire_constraint_trace = trace
+		end,
+	})
+assert(queued_fire_constraint.ok == true)
+assert(queued_fire_constraint.status == "queued")
+assert(queued_fire_constraint.selected_candidate_id == "fire")
+fire_constraint_done({
+	ok = true,
+	message = "Incorrectly prefer a platform.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 70000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "fire",
+		model_selected_option_id = "platform",
+		rejected_model_selected_option_id = "platform",
+		intent_constraint_option_id = "fire",
+		intent_constraint_reason = "player_request_requires_fire_only",
+		tool_decision_source =
+			"adapter_fallback_after_agent_violated_player_request_constraints",
+		required_tool_calls = {
+			"recall_build_prompt_memory",
+			"select_build_option",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "select_build_option" },
+		},
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "fire",
+				candidate_count = 5,
+				decision_source = "offline_adapter_fallback",
+			},
+		},
+	},
+})
+assert(fire_constraint_reply ~= nil)
+assert(fire_constraint_reply.status == "pending_approval")
+assert(fire_constraint_reply.selected_candidate_id == "fire")
+assert(fire_constraint_reply.adapter_selected_candidate_id == "fire")
+assert(fire_constraint_reply.model_selected_candidate_id == "platform")
+assert(fire_constraint_reply.selection_source
+	== "model_tool_decision_rejected_intent_constraint")
+assert(fire_constraint_reply.adapter_rejected_model_selected_candidate_id
+	== "platform")
+assert(fire_constraint_reply.intent_constraint_option_id == "fire")
+assert(fire_constraint_reply.intent_constraint_reason
+	== "player_request_requires_fire_only")
+assert(fire_constraint_reply.build_kind == "fire")
+assert(fire_constraint_reply.build_material_name == "fire")
+assert(fire_constraint_reply.planned_node_writes == 1)
+assert(fire_constraint_trace ~= nil)
+assert(fire_constraint_trace.selection_source
+	== "model_tool_decision_rejected_intent_constraint")
+assert(fire_constraint_trace.model_selected_candidate_id == "platform")
+assert(fire_constraint_trace.adapter_selected_candidate_id == "fire")
+assert(fire_constraint_trace.response.adapter_rejected_model_selected_candidate_id
+	== "platform")
+assert(fire_constraint_trace.response.selected_candidate_id == "fire")
+assert(get_test_node(fire_constraint_pos).name == "air")
+local discarded_fire_constraint =
+	core.ai_agent_plugin.handle_command("PlannerFireConstraint", "discard plan", {})
+assert(discarded_fire_constraint.ok == true)
+assert(discarded_fire_constraint.action == "discard_approval")
 local agentic_audit = core.get_ai_runtime_audit({ limit = 8 })
 for _, record in ipairs(agentic_audit) do
 	assert(record.private_payload == nil)

@@ -401,8 +401,21 @@ local function finish_request_trace(trace, result, extra)
 		planned_node_writes = result and result.planned_node_writes,
 		planner_mode = result and result.planner_mode,
 		selected_candidate_id = result and result.selected_candidate_id,
+		adapter_selected_candidate_id =
+			result and result.adapter_selected_candidate_id,
+		model_selected_candidate_id =
+			result and result.model_selected_candidate_id,
+		selection_source = result and result.selection_source,
+		intent_constraint_option_id =
+			result and result.intent_constraint_option_id,
+		intent_constraint_reason =
+			result and result.intent_constraint_reason,
 		candidate_count = result and result.candidate_count,
 		adapter_tool_decision_source = result and result.adapter_tool_decision_source,
+		adapter_model_selected_candidate_id =
+			result and result.adapter_model_selected_candidate_id,
+		adapter_rejected_model_selected_candidate_id =
+			result and result.adapter_rejected_model_selected_candidate_id,
 		adapter_required_tool_calls = result and result.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls =
 			result and result.adapter_missing_required_tool_calls,
@@ -1216,8 +1229,17 @@ local function compact_pending_approval(pending)
 		build_material_node = pending.build_material_node,
 		planner_mode = pending.planner_mode,
 		selected_candidate_id = pending.selected_candidate_id,
+		adapter_selected_candidate_id = pending.adapter_selected_candidate_id,
+		model_selected_candidate_id = pending.model_selected_candidate_id,
+		selection_source = pending.selection_source,
+		intent_constraint_option_id = pending.intent_constraint_option_id,
+		intent_constraint_reason = pending.intent_constraint_reason,
 		candidate_options = pending.candidate_options,
 		adapter_tool_decision_source = pending.adapter_tool_decision_source,
+		adapter_model_selected_candidate_id =
+			pending.adapter_model_selected_candidate_id,
+		adapter_rejected_model_selected_candidate_id =
+			pending.adapter_rejected_model_selected_candidate_id,
 		adapter_required_tool_calls = pending.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
 		adapter_required_tool_calls_satisfied =
@@ -1250,8 +1272,17 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		build_material_node = extra.build_material_node,
 		planner_mode = extra.planner_mode,
 		selected_candidate_id = extra.selected_candidate_id,
+		adapter_selected_candidate_id = extra.adapter_selected_candidate_id,
+		model_selected_candidate_id = extra.model_selected_candidate_id,
+		selection_source = extra.selection_source,
+		intent_constraint_option_id = extra.intent_constraint_option_id,
+		intent_constraint_reason = extra.intent_constraint_reason,
 		candidate_options = extra.candidate_options,
 		adapter_tool_decision_source = extra.adapter_tool_decision_source,
+		adapter_model_selected_candidate_id =
+			extra.adapter_model_selected_candidate_id,
+		adapter_rejected_model_selected_candidate_id =
+			extra.adapter_rejected_model_selected_candidate_id,
 		adapter_required_tool_calls = extra.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
 		adapter_required_tool_calls_satisfied =
@@ -2778,9 +2809,18 @@ local function create_build_pending_reply(name, context, message, extra)
 		build_material_node = plan.build_material_node,
 		planner_mode = extra.planner_mode,
 		selected_candidate_id = extra.selected_candidate_id,
+		adapter_selected_candidate_id = extra.adapter_selected_candidate_id,
+		model_selected_candidate_id = extra.model_selected_candidate_id,
+		selection_source = extra.selection_source,
+		intent_constraint_option_id = extra.intent_constraint_option_id,
+		intent_constraint_reason = extra.intent_constraint_reason,
 		candidate_options = extra.candidate_options,
 		candidate_count = extra.candidate_count,
 		adapter_tool_decision_source = extra.adapter_tool_decision_source,
+		adapter_model_selected_candidate_id =
+			extra.adapter_model_selected_candidate_id,
+		adapter_rejected_model_selected_candidate_id =
+			extra.adapter_rejected_model_selected_candidate_id,
 		adapter_required_tool_calls = extra.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
 		adapter_required_tool_calls_satisfied =
@@ -2810,9 +2850,18 @@ local function create_build_pending_reply(name, context, message, extra)
 			plan_status = result.status,
 			planner_mode = extra.planner_mode,
 			selected_candidate_id = extra.selected_candidate_id,
+			adapter_selected_candidate_id = extra.adapter_selected_candidate_id,
+			model_selected_candidate_id = extra.model_selected_candidate_id,
+			selection_source = extra.selection_source,
+			intent_constraint_option_id = extra.intent_constraint_option_id,
+			intent_constraint_reason = extra.intent_constraint_reason,
 			candidate_options = extra.candidate_options,
 			candidate_count = extra.candidate_count,
 			adapter_tool_decision_source = extra.adapter_tool_decision_source,
+			adapter_model_selected_candidate_id =
+				extra.adapter_model_selected_candidate_id,
+			adapter_rejected_model_selected_candidate_id =
+				extra.adapter_rejected_model_selected_candidate_id,
 			adapter_required_tool_calls = extra.adapter_required_tool_calls,
 			adapter_missing_required_tool_calls =
 				extra.adapter_missing_required_tool_calls,
@@ -2989,6 +3038,25 @@ local function find_agentic_build_candidate(candidates, option_id)
 	return nil
 end
 
+local function locked_agentic_build_candidate_id(raw_prompt, candidates)
+	local lower_prompt = tostring(raw_prompt or ""):lower()
+	if (lower_prompt:find("only a fire", 1, true)
+			or ((lower_prompt:find("build a fire", 1, true)
+					or lower_prompt:find("build me a fire", 1, true))
+				and not lower_prompt:find("tnt", 1, true)
+				and not lower_prompt:find("wall", 1, true)
+				and not lower_prompt:find("platform", 1, true)))
+			and find_agentic_build_candidate(candidates, "fire") then
+		return "fire", "player_request_requires_fire_only"
+	end
+	if lower_prompt:find("tnt", 1, true)
+			and lower_prompt:find("wall", 1, true)
+			and find_agentic_build_candidate(candidates, "tnt_wall") then
+		return "tnt_wall", "player_request_requires_tnt_wall"
+	end
+	return nil, nil
+end
+
 local GENERATED_BUILD_KINDS = {
 	marker = true,
 	platform = true,
@@ -3131,7 +3199,7 @@ local function append_generated_agentic_build_candidate(candidates, name,
 	return candidate, "validated"
 end
 
-local function selected_agentic_candidate_id_from_model_result(model_result)
+local function adapter_selected_agentic_candidate_id_from_model_result(model_result)
 	if type(model_result) ~= "table" or model_result.status ~= "success" then
 		return nil
 	end
@@ -3151,6 +3219,23 @@ local function selected_agentic_candidate_id_from_model_result(model_result)
 		return build_option.selected_option_id
 	end
 	return nil
+end
+
+local function model_selected_agentic_candidate_id_from_model_result(model_result)
+	if type(model_result) ~= "table" or model_result.status ~= "success" then
+		return nil
+	end
+	local response = model_result.response
+	if type(response) ~= "table" then
+		return nil
+	end
+	if type(response.model_selected_option_id) == "string" then
+		return response.model_selected_option_id
+	end
+	if type(response.rejected_model_selected_option_id) == "string" then
+		return response.rejected_model_selected_option_id
+	end
+	return adapter_selected_agentic_candidate_id_from_model_result(model_result)
 end
 
 local function agentic_model_response(model_result)
@@ -3215,6 +3300,14 @@ local function agentic_build_planner_adapter_metadata(model_result)
 		and table.copy(response.required_tool_calls) or nil
 	return {
 		adapter_tool_decision_source = response.tool_decision_source,
+		adapter_selected_candidate_id = response.selected_option_id,
+		adapter_model_selected_candidate_id = response.model_selected_option_id,
+		adapter_rejected_model_selected_candidate_id =
+			response.rejected_model_selected_option_id,
+		adapter_intent_constraint_option_id =
+			response.intent_constraint_option_id,
+		adapter_intent_constraint_reason =
+			response.intent_constraint_reason,
 		adapter_required_tool_calls = required,
 		adapter_missing_required_tool_calls = missing_required,
 		adapter_required_tool_calls_satisfied =
@@ -3359,22 +3452,47 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				generated_option_reason = generated_reason
 			end
 		end
+		local adapter_selected_id =
+			adapter_selected_agentic_candidate_id_from_model_result(model_result)
 		local model_selected_id =
-			selected_agentic_candidate_id_from_model_result(model_result)
-		local final_selected = find_agentic_build_candidate(candidates, model_selected_id)
+			model_selected_agentic_candidate_id_from_model_result(model_result)
+		local locked_candidate_id, locked_candidate_reason =
+			locked_agentic_build_candidate_id(raw_prompt, candidates)
+		local final_selected = find_agentic_build_candidate(candidates, adapter_selected_id)
+			or find_agentic_build_candidate(candidates, model_selected_id)
 			or selected
 		local selection_source = "deterministic_preselection"
-		if final_selected.option_id == model_selected_id then
+		if final_selected.option_id == adapter_selected_id
+				and adapter_selected_id == model_selected_id then
 			selection_source = "model_tool_decision"
+		elseif final_selected.option_id == adapter_selected_id then
+			selection_source =
+				adapter_metadata.adapter_tool_decision_source
+				or "adapter_selected_candidate"
 		elseif generated_option_status == "rejected" then
 			selection_source = "generated_option_rejected_fallback"
 		elseif model_selected_id then
 			selection_source = "model_tool_decision_rejected_fallback"
 		end
+		if locked_candidate_id and model_selected_id ~= locked_candidate_id then
+			local locked_candidate =
+				find_agentic_build_candidate(candidates, locked_candidate_id)
+			if locked_candidate then
+				final_selected = locked_candidate
+				selection_source = model_selected_id
+					and "model_tool_decision_rejected_intent_constraint"
+					or "intent_constraint_preselection"
+			end
+		end
 		local pending_reply = create_build_pending_reply(name, final_selected.context,
 			"Agentic build planner selected an approval-gated build option.", {
 				planner_mode = planner_mode,
 				selected_candidate_id = final_selected.option_id,
+				adapter_selected_candidate_id = adapter_selected_id,
+				model_selected_candidate_id = model_selected_id,
+				selection_source = selection_source,
+				intent_constraint_option_id = locked_candidate_id,
+				intent_constraint_reason = locked_candidate_reason,
 				candidate_options = public_candidates,
 				candidate_count = #public_candidates,
 				planner_model_status = model_result.status,
@@ -3382,6 +3500,10 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				planner_guidance = bounded_trace_text(model_result.message, 1000),
 				adapter_tool_decision_source =
 					adapter_metadata.adapter_tool_decision_source,
+				adapter_model_selected_candidate_id =
+					adapter_metadata.adapter_model_selected_candidate_id,
+				adapter_rejected_model_selected_candidate_id =
+					adapter_metadata.adapter_rejected_model_selected_candidate_id,
 				adapter_required_tool_calls =
 					adapter_metadata.adapter_required_tool_calls,
 				adapter_missing_required_tool_calls =
@@ -3403,16 +3525,23 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				generated_candidate_id = generated_candidate_id,
 				trace_id = trace.trace_id,
 				adapter_name = model_result.adapter_name or adapter_name,
-			})
+		})
 		return finish_request_trace(trace, pending_reply, {
 			planner_mode = planner_mode,
 			selected_candidate_id = final_selected.option_id,
+			adapter_selected_candidate_id = adapter_selected_id,
 			model_selected_candidate_id = model_selected_id,
 			selection_source = selection_source,
+			intent_constraint_option_id = locked_candidate_id,
+			intent_constraint_reason = locked_candidate_reason,
 			candidate_count = #public_candidates,
 			adapter_name = model_result.adapter_name or adapter_name,
 			adapter_tool_decision_source =
 				adapter_metadata.adapter_tool_decision_source,
+			adapter_model_selected_candidate_id =
+				adapter_metadata.adapter_model_selected_candidate_id,
+			adapter_rejected_model_selected_candidate_id =
+				adapter_metadata.adapter_rejected_model_selected_candidate_id,
 			adapter_required_tool_calls =
 				adapter_metadata.adapter_required_tool_calls,
 			adapter_missing_required_tool_calls =
@@ -4170,8 +4299,17 @@ local function handle_pending_plan(name)
 		build_material_node = pending.build_material_node,
 		planner_mode = pending.planner_mode,
 		selected_candidate_id = pending.selected_candidate_id,
+		adapter_selected_candidate_id = pending.adapter_selected_candidate_id,
+		model_selected_candidate_id = pending.model_selected_candidate_id,
+		selection_source = pending.selection_source,
+		intent_constraint_option_id = pending.intent_constraint_option_id,
+		intent_constraint_reason = pending.intent_constraint_reason,
 		candidate_options = pending.candidate_options,
 		adapter_tool_decision_source = pending.adapter_tool_decision_source,
+		adapter_model_selected_candidate_id =
+			pending.adapter_model_selected_candidate_id,
+		adapter_rejected_model_selected_candidate_id =
+			pending.adapter_rejected_model_selected_candidate_id,
 		adapter_required_tool_calls = pending.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
 		adapter_required_tool_calls_satisfied =

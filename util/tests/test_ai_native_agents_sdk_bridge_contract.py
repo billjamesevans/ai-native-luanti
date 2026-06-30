@@ -98,6 +98,34 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(result["requires_rollback"])
         self.assertFalse(result["direct_world_mutation"])
 
+    def test_build_option_validator_rejects_fire_only_mismatch(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        result = module.select_build_option_payload(
+            "platform:platform:default:4|fire:fire:fire:1|marker:marker:default:1",
+            "platform",
+            "build me a fire and only a fire",
+            "A platform might be more useful.",
+        )
+        fallback = module.recommend_build_option_payload(
+            "platform:platform:default:4|fire:fire:fire:1|marker:marker:default:1",
+            "build me a fire and only a fire",
+        )
+
+        self.assertIsNone(result["selected_option_id"])
+        self.assertEqual(result["selection_status"], "rejected")
+        self.assertEqual(
+            result["rejection_reason"],
+            "selection_violates_player_request_constraints",
+        )
+        self.assertEqual(result["required_option_id"], "fire")
+        self.assertEqual(fallback["selected_option_id"], "fire")
+        self.assertEqual(fallback["selected_build_kind"], "fire")
+
     def test_generated_build_option_is_read_only_and_bounded(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)
@@ -323,6 +351,77 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(nested["missing_required_tool_calls"], [])
         self.assertTrue(nested["required_tool_calls_satisfied"])
+
+    def test_live_agent_fire_only_mismatch_falls_back_to_constraint(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build me a fire and only a fire"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build me a fire and only a fire",
+            "candidate_summary": "platform:platform:default:4|fire:fire:fire:1",
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+
+        async def fake_run_sdk_agent(_request, model=None):
+            return {
+                "final_output": "Use the platform option.",
+                "tool_trace": [
+                    {"tool_name": "recall_build_prompt_memory", "result": {}},
+                    {
+                        "tool_name": "select_build_option",
+                        "result": {
+                            "selected_option_id": "platform",
+                            "selection_status": "accepted",
+                            "candidate_count": 2,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                ],
+                "tool_decisions": {
+                    "build_option": {
+                        "selected_option_id": "platform",
+                        "selection_status": "accepted",
+                        "candidate_count": 2,
+                        "direct_world_mutation": False,
+                    },
+                },
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertEqual(nested["selected_option_id"], "fire")
+        self.assertEqual(nested["model_selected_option_id"], "platform")
+        self.assertEqual(nested["rejected_model_selected_option_id"], "platform")
+        self.assertEqual(nested["intent_constraint_option_id"], "fire")
+        self.assertEqual(
+            nested["intent_constraint_reason"],
+            "player_request_requires_fire_only",
+        )
+        self.assertEqual(
+            nested["tool_decision_source"],
+            "adapter_fallback_after_agent_violated_player_request_constraints",
+        )
+        self.assertEqual(
+            nested["tool_decisions"]["build_option"]["selected_option_id"],
+            "fire",
+        )
 
     def test_live_generated_option_requires_propose_tool_trace(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
