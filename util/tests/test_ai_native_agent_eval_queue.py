@@ -283,6 +283,138 @@ def operator_labels_payload(prompt="build a bridge"):
     }
 
 
+def verified_live_probe_payload(cases=None):
+    def probe_case(
+        case_id,
+        prompt,
+        selected,
+        build_kind,
+        material,
+        writes,
+        *,
+        width=None,
+        height=None,
+        generated=False,
+    ):
+        tool_trace = ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"]
+        if generated:
+            tool_trace = [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "propose_build_option",
+                "select_build_option",
+                "plan_build_actions",
+            ]
+        return {
+            "case_id": case_id,
+            "prompt": prompt,
+            "status": "pass",
+            "ok": True,
+            "expected_candidate": selected,
+            "expected_node": f"ai_runtime_base:{material}",
+            "expected_writes": writes,
+            "node_count": writes,
+            "non_air_count": writes,
+            "checks": {
+                "agentic_route": True,
+                "reply_queued": True,
+                "auto_applied": True,
+                "approved_build": True,
+                "selected_candidate": True,
+                "kind": True,
+                "material": True,
+                "node": True,
+                "planned_writes": True,
+                "width": True,
+                "height": True,
+                "required_tools": True,
+                "tool_trace_names": True,
+                "action_plan_ready": True,
+                "world_mutation_authority": True,
+                "generated_option": True,
+                "task_completed": True,
+                "rollback_record": True,
+                "node_count": True,
+                "no_extra_nodes": True,
+            },
+            "trace": {
+                "route": "agentic_build_planner",
+                "action": "build",
+                "public_prompt": prompt,
+            },
+            "reply": {
+                "ok": True,
+                "action": "build",
+                "status": "queued",
+                "approved_action": "build",
+                "auto_applied_approval": True,
+                "auto_apply_policy": "ai_runtime.auto_apply_build_approvals",
+                "planner_mode": "agentic_model_adapter",
+                "selected_candidate_id": selected,
+                "adapter_tool_decision_source": "agents_sdk_function_tool",
+                "adapter_required_tool_calls_satisfied": True,
+                "adapter_missing_required_tool_calls": None,
+                "adapter_tool_trace_names": tool_trace,
+                "adapter_build_action_plan_status": "ready",
+                "adapter_build_action_plan_step_count": 4,
+                "adapter_build_action_plan_world_mutation_authority": "luanti",
+                "planned_node_writes": writes,
+                "build_kind": build_kind,
+                "build_material_name": material,
+                "build_material_node": f"ai_runtime_base:{material}",
+                "build_width": width,
+                "build_height": height,
+                "generated_build_option_status": "validated" if generated else None,
+                "generated_candidate_id": selected if generated else None,
+                "agentic_tool_success_required": generated,
+            },
+        }
+
+    if cases is None:
+        cases = [
+            probe_case("fire_only_strict", "build me a fire and only a fire", "fire", "fire", "fire", 1),
+            probe_case("tnt_wall", "build a wall of tnt", "tnt_wall", "wall", "tnt", 12, width=4, height=3),
+            probe_case(
+                "generated_dimensioned_wall",
+                "build a 6 wide 2 high lookout wall",
+                "generated_dimensioned_wall",
+                "wall",
+                "stone",
+                12,
+                width=6,
+                height=2,
+                generated=True,
+            ),
+        ]
+    return {
+        "schema_version": 1,
+        "live_result_kind": "ai_native_nova_auto_apply_live_result",
+        "generated_at": "2026-06-30T14:41:15Z",
+        "status": "pass",
+        "ok": True,
+        "reason": None,
+        "runtime_context": {
+            "mode": "disposable_live_ai_runtime_nova_auto_apply_probe",
+            "requires_private_world": False,
+            "requires_private_assets": False,
+            "world_mutation_scope": "disposable_synthetic_ai_runtime_world",
+        },
+        "summary": {
+            "cases_total": len(cases),
+            "cases_passed": len(cases),
+            "cases_failed": 0,
+            "agentic_build_planner_checked": True,
+            "auto_apply_checked": True,
+        },
+        "cases": cases,
+        "safety": {
+            "public_safe_output": True,
+            "requires_private_world": False,
+            "requires_private_assets": False,
+        },
+    }
+
+
 class AgentEvalQueueTests(unittest.TestCase):
     def test_builds_public_safe_eval_candidates_from_sidecar_and_nova_logs(self):
         module = load_queue_module()
@@ -655,6 +787,69 @@ class AgentEvalQueueTests(unittest.TestCase):
                 "select_build_option",
                 "plan_build_actions",
             ],
+        )
+
+    def test_verified_live_probe_cases_become_prompt_eval_candidates(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            probe_dir = root / "live-probes"
+            probe_dir.mkdir()
+            (probe_dir / "nova-auto-apply.json").write_text(
+                json.dumps(verified_live_probe_payload()),
+                encoding="utf-8",
+            )
+
+            payload = module.build_eval_candidate_queue(
+                verified_live_probe_paths=[probe_dir],
+                generated_at="2026-06-30T15:00:00Z",
+            )
+
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["source_summary"]["verified_live_probe_files_read"], 1)
+        self.assertEqual(payload["source_summary"]["verified_live_probe_cases_read"], 3)
+        self.assertEqual(payload["source_summary"]["verified_live_probe_candidates_added"], 3)
+        self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 3)
+        self.assertFalse(PRIVATE_PATTERNS.search(json.dumps(payload, sort_keys=True)))
+        by_hint = {candidate["case_hint"]: candidate for candidate in payload["candidates"]}
+        self.assertEqual(by_hint["fire_only_strict"]["source_kind"], module.VERIFIED_LIVE_PROBE_KIND)
+        self.assertEqual(by_hint["fire_only_strict"]["expected"]["route"], "agentic_build_planner")
+        self.assertEqual(by_hint["tnt_wall"]["expected"]["build_material_name"], "tnt")
+        generated = by_hint["generated_dimensioned_wall"]
+        self.assertEqual(generated["expected"]["selected_candidate_id"], "generated_dimensioned_wall")
+        self.assertEqual(generated["expected"]["build_width"], 6)
+        self.assertEqual(generated["expected"]["build_height"], 2)
+        self.assertEqual(generated["observed"]["generated_option_status"], "ready")
+        self.assertEqual(
+            generated["observed"]["tool_trace_names"],
+            [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "propose_build_option",
+                "select_build_option",
+                "plan_build_actions",
+            ],
+        )
+
+    def test_verified_live_probe_failed_case_does_not_promote(self):
+        module = load_queue_module()
+        bad_case = verified_live_probe_payload()["cases"][0]
+        bad_case["checks"]["selected_candidate"] = False
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            probe = root / "bad-live-probe.json"
+            probe.write_text(json.dumps(verified_live_probe_payload([bad_case])), encoding="utf-8")
+
+            payload = module.build_eval_candidate_queue(
+                verified_live_probe_paths=[probe],
+                generated_at="2026-06-30T15:00:00Z",
+            )
+
+        self.assertEqual(payload["status"], "empty")
+        self.assertEqual(payload["source_summary"]["verified_live_probe_cases_read"], 1)
+        self.assertEqual(payload["source_summary"]["verified_live_probe_candidates_added"], 0)
+        self.assertTrue(
+            any(item["kind"] == "verified_live_probe_case_not_promotable" for item in payload["violations"])
         )
 
     def test_generated_option_survives_small_candidate_queue(self):

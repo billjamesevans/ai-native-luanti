@@ -114,6 +114,7 @@ python3 util/ai_native_agent_eval_queue.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --verified-live-probe local/logs/live-probes \
   --output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --generated-at 2026-06-30T00:00:00Z
 ```
@@ -131,6 +132,11 @@ Adapter traces that miss required SDK tools are also marked
 `ready_for_adapter_contract_eval = true` and counted under
 `adapter_contract_failures`, even when the expected build-output behavior still
 needs an operator label.
+
+Passing Nova auto-apply live probe artifacts can also feed the queue through
+`--verified-live-probe`. Those cases are treated as reviewed evidence only when
+the disposable-world probe proves the SDK tool trace, selected candidate, ready
+Luanti action plan, auto-apply path, rollback record, and no-extra-node checks.
 
 Use the artifact builder for reviewed corrections instead of hand-writing label
 JSON:
@@ -185,6 +191,7 @@ python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --verified-live-probe local/logs/live-probes \
   --from-operator-feedback \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \

@@ -284,6 +284,111 @@ def nova_request_trace_line(prompt="build a bridge"):
     return "[ai_agent_plugin] request_trace=" + json.dumps(payload, sort_keys=True)
 
 
+def verified_live_probe_payload():
+    checks = {
+        "agentic_route": True,
+        "reply_queued": True,
+        "auto_applied": True,
+        "approved_build": True,
+        "selected_candidate": True,
+        "kind": True,
+        "material": True,
+        "node": True,
+        "planned_writes": True,
+        "width": True,
+        "height": True,
+        "required_tools": True,
+        "tool_trace_names": True,
+        "action_plan_ready": True,
+        "world_mutation_authority": True,
+        "generated_option": True,
+        "task_completed": True,
+        "rollback_record": True,
+        "node_count": True,
+        "no_extra_nodes": True,
+    }
+
+    def case(case_id, prompt, selected, kind, material, writes, width=None, height=None, generated=False):
+        tool_trace = ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"]
+        if generated:
+            tool_trace = [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "propose_build_option",
+                "select_build_option",
+                "plan_build_actions",
+            ]
+        return {
+            "case_id": case_id,
+            "prompt": prompt,
+            "status": "pass",
+            "ok": True,
+            "expected_candidate": selected,
+            "expected_node": f"ai_runtime_base:{material}",
+            "expected_writes": writes,
+            "node_count": writes,
+            "non_air_count": writes,
+            "checks": dict(checks),
+            "trace": {"route": "agentic_build_planner", "action": "build", "public_prompt": prompt},
+            "reply": {
+                "ok": True,
+                "action": "build",
+                "status": "queued",
+                "approved_action": "build",
+                "auto_applied_approval": True,
+                "planner_mode": "agentic_model_adapter",
+                "selected_candidate_id": selected,
+                "adapter_tool_decision_source": "agents_sdk_function_tool",
+                "adapter_required_tool_calls_satisfied": True,
+                "adapter_missing_required_tool_calls": None,
+                "adapter_tool_trace_names": tool_trace,
+                "adapter_build_action_plan_status": "ready",
+                "adapter_build_action_plan_step_count": 4,
+                "adapter_build_action_plan_world_mutation_authority": "luanti",
+                "planned_node_writes": writes,
+                "build_kind": kind,
+                "build_material_name": material,
+                "build_material_node": f"ai_runtime_base:{material}",
+                "build_width": width,
+                "build_height": height,
+                "generated_build_option_status": "validated" if generated else None,
+                "generated_candidate_id": selected if generated else None,
+                "agentic_tool_success_required": generated,
+            },
+        }
+
+    cases = [
+        case("fire_only_strict", "build me a fire and only a fire", "fire", "fire", "fire", 1),
+        case("tnt_wall", "build a wall of tnt", "tnt_wall", "wall", "tnt", 12, width=4, height=3),
+        case(
+            "generated_dimensioned_wall",
+            "build a 6 wide 2 high lookout wall",
+            "generated_dimensioned_wall",
+            "wall",
+            "stone",
+            12,
+            width=6,
+            height=2,
+            generated=True,
+        ),
+    ]
+    return {
+        "schema_version": 1,
+        "live_result_kind": "ai_native_nova_auto_apply_live_result",
+        "generated_at": "2026-06-30T14:41:15Z",
+        "status": "pass",
+        "ok": True,
+        "runtime_context": {
+            "mode": "disposable_live_ai_runtime_nova_auto_apply_probe",
+            "requires_private_world": False,
+            "requires_private_assets": False,
+        },
+        "summary": {"cases_total": 3, "cases_passed": 3, "cases_failed": 0},
+        "cases": cases,
+        "safety": {"public_safe_output": True},
+    }
+
+
 class AgentMemoryRefreshTests(unittest.TestCase):
     def test_builds_queue_and_case_pack_from_sidecar_player_request(self):
         module = load_refresh_module()
@@ -330,6 +435,35 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(pack["cases"][0]["expected"]["selected_candidate_id"], "generated_dimensioned_wall")
         self.assertEqual(pack["cases"][0]["expected"]["build_width"], 6)
         self.assertEqual(pack["cases"][0]["expected"]["build_height"], 2)
+
+    def test_memory_refresh_promotes_verified_live_probe_cases(self):
+        module = load_refresh_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            live_probe_dir = root / "live-probes"
+            live_probe_dir.mkdir()
+            (live_probe_dir / "nova-auto-apply.json").write_text(
+                json.dumps(verified_live_probe_payload()),
+                encoding="utf-8",
+            )
+
+            queue, pack = module.build_memory_artifacts(
+                verified_live_probe_paths=[live_probe_dir],
+                generated_at="2026-06-30T15:00:00Z",
+                candidate_queue_source_path="local/benchmarks/ai-agent-eval-candidate-queue.json",
+            )
+
+        self.assertEqual(queue["status"], "ready")
+        self.assertEqual(queue["source_summary"]["verified_live_probe_files_read"], 1)
+        self.assertEqual(queue["source_summary"]["verified_live_probe_cases_read"], 3)
+        self.assertEqual(queue["source_summary"]["verified_live_probe_candidates_added"], 3)
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 3)
+        by_hint = {case["case_hint"]: case for case in pack["cases"]}
+        self.assertEqual(by_hint["fire_only_strict"]["expected"]["route"], "agentic_build_planner")
+        self.assertEqual(by_hint["tnt_wall"]["expected"]["build_material_name"], "tnt")
+        self.assertEqual(by_hint["generated_dimensioned_wall"]["expected"]["build_width"], 6)
+        self.assertEqual(by_hint["generated_dimensioned_wall"]["expected"]["build_height"], 2)
 
     def test_builds_queue_and_case_pack_from_nova_agent_log(self):
         module = load_refresh_module()
