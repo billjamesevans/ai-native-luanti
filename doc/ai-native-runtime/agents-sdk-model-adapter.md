@@ -232,6 +232,7 @@ read-only tool decision:
     "required_tool_calls": [
       "recall_build_prompt_memory",
       "select_build_option",
+      "plan_build_actions",
       "propose_build_option"
     ],
     "missing_required_tool_calls": [],
@@ -245,8 +246,19 @@ read-only tool decision:
       },
       {
         "tool_name": "select_build_option"
+      },
+      {
+        "tool_name": "plan_build_actions"
       }
     ],
+    "build_action_plan": {
+      "status": "ready",
+      "selected_option_id": "generated_tower_wall",
+      "plan_kind": "luanti_build_action_plan_v1",
+      "step_count": 4,
+      "direct_world_mutation": false,
+      "world_mutation_authority": "luanti"
+    },
     "tool_decisions": {
       "build_option": {
         "selected_option_id": "generated_tower_wall",
@@ -261,6 +273,14 @@ read-only tool decision:
           "planned_node_writes": 12
         },
         "direct_world_mutation": false
+      },
+      "build_action_plan": {
+        "status": "ready",
+        "selected_option_id": "generated_tower_wall",
+        "plan_kind": "luanti_build_action_plan_v1",
+        "step_count": 4,
+        "direct_world_mutation": false,
+        "world_mutation_authority": "luanti"
       }
     }
   }
@@ -277,9 +297,11 @@ can change the pending preview plan.
 For healthy live agent evidence, generated-option decisions require an explicit
 `propose_build_option` entry in `tool_trace`. Fixed options such as strict fire
 or TNT wall still require `recall_build_prompt_memory` and
-`select_build_option`; generated options add `propose_build_option` to
-`required_tool_calls`. If a live run selects a generated option without that
-tool call, the adapter labels the response as
+`select_build_option`, and every healthy build-planning response requires
+`plan_build_actions` so the sidecar records the Luanti preview, approval,
+rollback, task, and improvement-evidence workflow. Generated options add
+`propose_build_option` to `required_tool_calls`. If a live run selects a
+generated option without that tool call, the adapter labels the response as
 `adapter_fallback_after_agent_missing_required_tool` and records
 `missing_required_tool_calls = ["propose_build_option"]`.
 If a live agent does not call the required function tools, the adapter still
@@ -396,6 +418,10 @@ Initial tools are deliberately read-only:
 - `recall_build_prompt_memory`: checks an optional reviewed prompt-eval case pack
   for exact public prompt regressions, then returns only a bounded option id and
   case id.
+- `plan_build_actions`: converts the selected build option into a read-only
+  `luanti_build_action_plan_v1` workflow. It does not mutate the world; it
+  states that Luanti owns preview, player approval, rollback-backed task
+  execution, and improvement evidence.
 - `propose_build_option`: creates a bounded generated build option for
   open-ended player requests such as towers, bridges, paths, or shelter floors;
   it is read-only and Luanti may reject it before preview.

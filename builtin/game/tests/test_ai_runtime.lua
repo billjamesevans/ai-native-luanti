@@ -5413,12 +5413,20 @@ fire_override_done({
 		required_tool_calls = {
 			"recall_build_prompt_memory",
 			"recommend_build_option",
+			"plan_build_actions",
 		},
 		missing_required_tool_calls = {},
 		required_tool_calls_satisfied = true,
 		tool_trace = {
 			{ tool_name = "recall_build_prompt_memory" },
 			{ tool_name = "recommend_build_option" },
+			{ tool_name = "plan_build_actions" },
+		},
+		build_action_plan = {
+			status = "ready",
+			selected_option_id = "fire",
+			step_count = 4,
+			world_mutation_authority = "luanti",
 		},
 		tool_decisions = {
 			build_option = {
@@ -5430,6 +5438,12 @@ fire_override_done({
 					matched_case_id = "promoted_fire_only_strict_81bd6f366e",
 					case_hint = "fire_only_strict",
 				},
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "fire",
+				step_count = 4,
+				world_mutation_authority = "luanti",
 			},
 		},
 		tools_enabled = { "recommend_build_option", "classify_world_action" },
@@ -5447,6 +5461,9 @@ assert(fire_override_reply.adapter_tool_decision_source == "agents_sdk_function_
 assert(fire_override_reply.adapter_required_tool_calls[1] == "recall_build_prompt_memory")
 assert(fire_override_reply.adapter_missing_required_tool_calls[1] == nil)
 assert(fire_override_reply.adapter_required_tool_calls_satisfied == true)
+assert(fire_override_reply.adapter_build_action_plan_status == "ready")
+assert(fire_override_reply.adapter_build_action_plan_step_count == 4)
+assert(fire_override_reply.adapter_build_action_plan_selected_candidate_id == "fire")
 assert(fire_override_reply.build_option_decision_source == "reviewed_prompt_memory")
 assert(fire_override_reply.adapter_memory_matched_case_id == "promoted_fire_only_strict_81bd6f366e")
 assert(fire_override_trace ~= nil)
@@ -5455,6 +5472,8 @@ assert(fire_override_trace.model_selected_candidate_id == "fire")
 assert(fire_override_trace.response.selected_candidate_id == "fire")
 assert(fire_override_trace.response.adapter_tool_decision_source == "agents_sdk_function_tool")
 assert(fire_override_trace.response.adapter_required_tool_calls[1] == "recall_build_prompt_memory")
+assert(fire_override_trace.response.adapter_build_action_plan_status == "ready")
+assert(fire_override_trace.response.adapter_build_action_plan_step_count == 4)
 assert(fire_override_trace.response.adapter_memory_matched_case_id == "promoted_fire_only_strict_81bd6f366e")
 assert(get_test_node(fire_override_pos).name == "air")
 local discarded_fire_override = core.ai_agent_plugin.handle_command("PlannerFire", "discard plan", {})

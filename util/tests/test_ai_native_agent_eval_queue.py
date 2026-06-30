@@ -144,7 +144,11 @@ def nova_trace_line(prompt="build a wall of tnt"):
                 "adapter_tool_trace_names": [
                     "recall_build_prompt_memory",
                     "select_build_option",
+                    "plan_build_actions",
                 ],
+                "adapter_build_action_plan_status": "ready",
+                "adapter_build_action_plan_step_count": 4,
+                "adapter_build_action_plan_selected_candidate_id": "tnt_wall",
             },
         },
     }
@@ -274,7 +278,13 @@ class AgentEvalQueueTests(unittest.TestCase):
         )
         self.assertEqual(
             trace_tnt["observed"]["adapter_tool_trace_names"],
-            ["recall_build_prompt_memory", "select_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
+        )
+        self.assertEqual(trace_tnt["observed"]["adapter_build_action_plan_status"], "ready")
+        self.assertEqual(trace_tnt["observed"]["adapter_build_action_plan_step_count"], 4)
+        self.assertEqual(
+            trace_tnt["observed"]["adapter_build_action_plan_selected_candidate_id"],
+            "tnt_wall",
         )
         self.assertEqual(trace_tnt["observed"]["selected_candidate_id"], "tnt_wall")
         self.assertEqual(trace_tnt["observed"]["model_selected_candidate_id"], "tnt_wall")
@@ -330,7 +340,16 @@ class AgentEvalQueueTests(unittest.TestCase):
             "tool_trace": [
                 {"tool_name": "recall_build_prompt_memory"},
                 {"tool_name": "select_build_option"},
+                {"tool_name": "plan_build_actions"},
             ],
+            "build_action_plan": {
+                "status": "ready",
+                "selected_option_id": "fire",
+                "plan_kind": "luanti_build_action_plan_v1",
+                "step_count": 4,
+                "direct_world_mutation": False,
+                "world_mutation_authority": "luanti",
+            },
             "tool_decisions": {
                 "build_option": {
                     "selected_option_id": "fire",
@@ -339,6 +358,14 @@ class AgentEvalQueueTests(unittest.TestCase):
                         "memory_available": True,
                         "matched_case_id": "promoted_fire_only_strict_123",
                     },
+                },
+                "build_action_plan": {
+                    "status": "ready",
+                    "selected_option_id": "fire",
+                    "plan_kind": "luanti_build_action_plan_v1",
+                    "step_count": 4,
+                    "direct_world_mutation": False,
+                    "world_mutation_authority": "luanti",
                 },
             },
         })
@@ -356,7 +383,17 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertTrue(candidate["observed"]["memory_available"])
         self.assertEqual(
             candidate["observed"]["tool_trace_names"],
-            ["recall_build_prompt_memory", "select_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
+        )
+        self.assertEqual(candidate["observed"]["build_action_plan_status"], "ready")
+        self.assertEqual(candidate["observed"]["build_action_plan_step_count"], 4)
+        self.assertEqual(
+            candidate["observed"]["build_action_plan_selected_option_id"],
+            "fire",
+        )
+        self.assertEqual(
+            candidate["observed"]["build_action_plan_world_mutation_authority"],
+            "luanti",
         )
         self.assertFalse(candidate["ready_for_adapter_contract_eval"])
 
