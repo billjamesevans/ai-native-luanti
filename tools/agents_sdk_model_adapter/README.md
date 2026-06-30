@@ -15,6 +15,7 @@ The sidecar owns:
 - Agents SDK orchestration through `Agent` and `Runner`;
 - hosted web search through `WebSearchTool`;
 - deterministic function tools through `function_tool`;
+- reviewed prompt-memory lookup through an optional case pack;
 - a structured `tool_powers` manifest for readiness and release evidence;
 - conversion back to the provider-neutral
   `ai_native_model_adapter_response` envelope.
@@ -64,6 +65,22 @@ uv run --project tools/agents_sdk_model_adapter \
 This stricter probe must show `agentic_execution = true`, hosted web lookup
 availability, bounded public-safe response metadata, and
 `world_mutation_authority = luanti`. It does not write secrets to the report.
+
+For build-planning requests, live responses should include
+`tool_decision_source = agents_sdk_function_tool` plus a bounded `tool_trace`.
+If the model does not call the required tools, the adapter labels the executable
+choice as `adapter_fallback_after_agent_no_tool` so bad agent behavior is visible
+in logs and eval queues.
+
+Reviewed prompt-eval cases can be mounted as runtime memory:
+
+```bash
+export AI_NATIVE_AGENT_CASE_PACK_PATH=local/benchmarks/ai-agent-prompt-eval-case-pack.json
+```
+
+That file must be an `ai_native_agent_prompt_eval_case_pack`. The sidecar only
+uses it through the read-only `recall_build_prompt_memory` tool; it never mutates
+world state or bypasses Luanti approval/rollback gates.
 
 Adapter endpoint:
 

@@ -74,8 +74,12 @@ def validate_contract() -> dict:
         "WebSearchTool()",
         "TOOL_POWER_MANIFEST",
         "def tool_power_manifest",
+        "recall_build_prompt_memory",
+        "_TOOL_TRACE",
+        '"tool_trace": tool_trace',
         '"tool_powers": tool_power_manifest()',
         '"tool_decisions": tool_decisions',
+        '"tool_decision_source": decision_source',
         '"selected_option_id": _selected_option_id(tool_decisions)',
         '"direct_world_mutation": False',
         '"world_mutation_authority": "luanti"',
@@ -181,9 +185,16 @@ def validate_contract() -> dict:
             "offline_response_should_not_claim_live_agent", str(response), violations)
         _require("WebSearchTool" in nested.get("tools_enabled", []),
             "offline_response_missing_web_search_tool", str(response), violations)
+        _require("recall_build_prompt_memory" in nested.get("tools_enabled", []),
+            "offline_response_missing_prompt_memory_tool", str(response), violations)
+        _require(nested.get("tool_decision_source") == "offline_adapter_fallback",
+            "offline_response_decision_source_invalid", str(response), violations)
         tool_powers = nested.get("tool_powers") if isinstance(nested.get("tool_powers"), list) else []
         _require(any(power.get("name") == "WebSearchTool" for power in tool_powers if isinstance(power, dict)),
             "offline_response_missing_web_search_power", str(response), violations)
+        _require(any(power.get("name") == "recall_build_prompt_memory"
+            for power in tool_powers if isinstance(power, dict)),
+            "offline_response_missing_prompt_memory_power", str(response), violations)
         _require(all(power.get("direct_world_mutation") is False for power in tool_powers if isinstance(power, dict)),
             "offline_response_tool_can_mutate_world", str(response), violations)
         _require(nested.get("world_mutation_authority") == "luanti",

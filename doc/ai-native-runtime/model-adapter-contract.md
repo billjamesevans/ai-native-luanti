@@ -91,6 +91,15 @@ The first-party Agents SDK sidecar places a public `tool_powers` manifest inside
 `direct_world_mutation = false`; Luanti remains the only world writer through
 capability, preview, approval, task, audit, and rollback APIs.
 
+For build-planning responses, first-party adapters should also include a bounded
+`tool_trace`, `tool_decision_source`, and `tool_decisions.build_option` object.
+`tool_decision_source = agents_sdk_function_tool` means the executable selection
+came from an SDK function-tool call. Fallback labels such as
+`offline_adapter_fallback` or `adapter_fallback_after_agent_no_tool` are allowed
+but should be treated as eval/improvement signals, not proof of healthy live
+agent behavior. Luanti may honor `selected_option_id` only when it matches one
+of the bounded executable candidates already supplied by the engine.
+
 The runtime rejects unsafe/raw response fields with
 `adapter_payload_rejected`. Optional provider plugins should keep raw provider
 requests, provider responses, credentials, headers, and private payloads in
