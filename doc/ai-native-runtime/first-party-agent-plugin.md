@@ -141,8 +141,15 @@ Implemented deterministic commands:
   requires player approval before the rollback-backed `build_agent` task is
   queued. Healthy live agent runs should label the selection as
   `tool_decision_source = agents_sdk_function_tool`; missing tool calls are
-  fallback/eval signals. Invalid or missing model selections fall back to the
-  deterministic preselected candidate rather than inventing a build shape.
+  fallback/eval signals. The pending plan and bounded `nova_request_trace`
+  response retain `adapter_tool_decision_source`,
+  `adapter_required_tool_calls`, `adapter_missing_required_tool_calls`,
+  `adapter_required_tool_calls_satisfied`, `build_option_decision_source`,
+  `adapter_memory_matched_case_id`, and `adapter_tool_trace_names` so reviewed
+  prompt-memory matches and missing required tools can be promoted into the eval
+  queue without storing raw provider payloads. Invalid or missing model
+  selections fall back to the deterministic preselected candidate rather than
+  inventing a build shape.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair plan radius N`, `repair radius N`: plans a bounded wider repair
   area before approval. `N` must be within the configured `max_repair_radius`

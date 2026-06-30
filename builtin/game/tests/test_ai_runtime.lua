@@ -5121,10 +5121,27 @@ async_planner_done({
 	response = {
 		agentic_execution = true,
 		selected_option_id = "platform",
+		tool_decision_source = "agents_sdk_function_tool",
+		required_tool_calls = {
+			"recall_build_prompt_memory",
+			"recommend_build_option",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "recommend_build_option" },
+		},
 		tool_decisions = {
 			build_option = {
 				selected_option_id = "platform",
 				candidate_count = 4,
+				decision_source = "reviewed_prompt_memory",
+				memory_match = {
+					memory_available = true,
+					matched_case_id = "promoted_shelter_platform",
+					case_hint = "agentic_build_planner",
+				},
 			},
 		},
 		tools_enabled = { "recommend_build_option", "classify_world_action" },
@@ -5141,12 +5158,28 @@ assert(pending_agentic.build_kind == "platform")
 assert(pending_agentic.build_width == 2)
 assert(pending_agentic.build_depth == 2)
 assert(pending_agentic.planned_node_writes == 4)
+assert(pending_agentic.adapter_tool_decision_source == "agents_sdk_function_tool")
+assert(pending_agentic.adapter_required_tool_calls[1] == "recall_build_prompt_memory")
+assert(pending_agentic.adapter_missing_required_tool_calls[1] == nil)
+assert(pending_agentic.adapter_required_tool_calls_satisfied == true)
+assert(pending_agentic.build_option_decision_source == "reviewed_prompt_memory")
+assert(pending_agentic.adapter_memory_available == true)
+assert(pending_agentic.adapter_memory_matched_case_id == "promoted_shelter_platform")
+assert(pending_agentic.adapter_tool_trace_names[1] == "recall_build_prompt_memory")
+assert(pending_agentic.adapter_tool_trace_names[2] == "recommend_build_option")
 assert(get_test_node(planner_pos).name == "air")
 local completed_planner_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
 assert(completed_planner_trace.route == "agentic_build_planner")
 assert(completed_planner_trace.response.status == "pending_approval")
 assert(completed_planner_trace.response.selected_candidate_id == "platform")
 assert(completed_planner_trace.response.candidate_count >= 3)
+assert(completed_planner_trace.response.adapter_tool_decision_source == "agents_sdk_function_tool")
+assert(completed_planner_trace.response.adapter_required_tool_calls[1] == "recall_build_prompt_memory")
+assert(completed_planner_trace.response.adapter_missing_required_tool_calls[1] == nil)
+assert(completed_planner_trace.response.adapter_required_tool_calls_satisfied == true)
+assert(completed_planner_trace.response.build_option_decision_source == "reviewed_prompt_memory")
+assert(completed_planner_trace.response.adapter_memory_matched_case_id == "promoted_shelter_platform")
+assert(completed_planner_trace.response.adapter_tool_trace_names[1] == "recall_build_prompt_memory")
 local approved_agentic = core.ai_agent_plugin.handle_command("Planner", "approve build", {})
 assert(approved_agentic.ok == true)
 assert(approved_agentic.action == "approve")
@@ -5199,10 +5232,27 @@ fire_override_done({
 	response = {
 		agentic_execution = true,
 		selected_option_id = "fire",
+		tool_decision_source = "agents_sdk_function_tool",
+		required_tool_calls = {
+			"recall_build_prompt_memory",
+			"recommend_build_option",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "recommend_build_option" },
+		},
 		tool_decisions = {
 			build_option = {
 				selected_option_id = "fire",
 				candidate_count = 4,
+				decision_source = "reviewed_prompt_memory",
+				memory_match = {
+					memory_available = true,
+					matched_case_id = "promoted_fire_only_strict_81bd6f366e",
+					case_hint = "fire_only_strict",
+				},
 			},
 		},
 		tools_enabled = { "recommend_build_option", "classify_world_action" },
@@ -5216,10 +5266,19 @@ assert(fire_override_reply.build_kind == "fire")
 assert(fire_override_reply.build_material_name == "fire")
 assert(fire_override_reply.build_material_node == "ai_runtime_test:fire")
 assert(fire_override_reply.planned_node_writes == 1)
+assert(fire_override_reply.adapter_tool_decision_source == "agents_sdk_function_tool")
+assert(fire_override_reply.adapter_required_tool_calls[1] == "recall_build_prompt_memory")
+assert(fire_override_reply.adapter_missing_required_tool_calls[1] == nil)
+assert(fire_override_reply.adapter_required_tool_calls_satisfied == true)
+assert(fire_override_reply.build_option_decision_source == "reviewed_prompt_memory")
+assert(fire_override_reply.adapter_memory_matched_case_id == "promoted_fire_only_strict_81bd6f366e")
 assert(fire_override_trace ~= nil)
 assert(fire_override_trace.selection_source == "model_tool_decision")
 assert(fire_override_trace.model_selected_candidate_id == "fire")
 assert(fire_override_trace.response.selected_candidate_id == "fire")
+assert(fire_override_trace.response.adapter_tool_decision_source == "agents_sdk_function_tool")
+assert(fire_override_trace.response.adapter_required_tool_calls[1] == "recall_build_prompt_memory")
+assert(fire_override_trace.response.adapter_memory_matched_case_id == "promoted_fire_only_strict_81bd6f366e")
 assert(get_test_node(fire_override_pos).name == "air")
 local discarded_fire_override = core.ai_agent_plugin.handle_command("PlannerFire", "discard plan", {})
 assert(discarded_fire_override.ok == true)
