@@ -4052,9 +4052,8 @@ local function run_build_eval_case(report, owner, case_id, prompt, context, expe
 				or (reply and reply.build_material_name == expected.build_material_name),
 			material_node = expected.build_material_node == nil
 				or (reply and reply.build_material_node == expected.build_material_node),
-			planned_writes = expected.min_planned_node_writes == nil
-				or (reply and (reply.planned_node_writes or 0)
-					>= expected.min_planned_node_writes),
+			planned_writes = expected.planned_node_writes == nil
+				or (reply and reply.planned_node_writes == expected.planned_node_writes),
 			cleanup_discarded = cleanup == nil
 				or (cleanup.action == "discard_approval"
 					and cleanup.status == "success"),
@@ -4363,14 +4362,14 @@ function plugin.run_prompt_eval(options, callback)
 				build_kind = "fire",
 				build_material_name = "fire",
 				build_material_node = settings.fire_node,
-				min_planned_node_writes = 1,
+				planned_node_writes = 1,
 			})
 		elseif case_id == "tnt_wall" then
 			run_build_eval_case(report, owner, case_id, "build a wall of tnt", context, {
 				build_kind = "wall",
 				build_material_name = "tnt",
 				build_material_node = settings.tnt_node,
-				min_planned_node_writes = 1,
+				planned_node_writes = 12,
 			})
 		elseif case_id == "agentic_build_planner" then
 			if run_agentic_build_eval_case(report, owner, "build a small shelter",

@@ -17,7 +17,9 @@ and Guide can receive only their relevant clean grants; Defender does not get
 The profile also registers simple code-only fire and TNT nodes so `/nova build
 a fire` and `/nova build a wall of tnt` exercise the real build planner,
 approval, rollback, and trace paths without requiring private content or a
-larger game package.
+larger game package. The prompt-eval verifier treats these as exact behavior
+contracts: fire must preview exactly one node write, and the default TNT wall
+must preview exactly twelve node writes.
 Ambiguous build prompts such as `/nova build a small shelter` route through the
 agentic build planner, which presents bounded executable candidates, can ask the
 Agents SDK sidecar for guidance, and still requires approval before mutation.
