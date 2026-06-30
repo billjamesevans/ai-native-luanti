@@ -98,8 +98,8 @@ material, dimensions, and write budget before creating a pending preview.
 `required_next_tool`, and minimal `propose_build_option_args` for generated
 requests so the live model has an explicit tool path before it selects a
 `generated_` option.
-Healthy live generated-option decisions must show `propose_build_option` in
-`tool_trace`; otherwise the adapter marks the response as
+Healthy live generated-option decisions must show `propose_build_option` before
+`select_build_option` in `tool_trace`; otherwise the adapter marks the response as
 `adapter_fallback_after_agent_missing_required_tool` so the run is treated as
 improvement evidence rather than a healthy agent action.
 If the model does not call the required tools, the adapter labels the executable

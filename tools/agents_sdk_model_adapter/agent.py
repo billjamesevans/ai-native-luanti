@@ -44,6 +44,13 @@ BUILD_PLANNING_REQUIRED_TOOLS = (
     "select_build_option",
     "plan_build_actions",
 )
+GENERATED_BUILD_PLANNING_REQUIRED_TOOLS = (
+    "inspect_build_site_context",
+    "recall_build_prompt_memory",
+    "propose_build_option",
+    "select_build_option",
+    "plan_build_actions",
+)
 FALLBACK_AFTER_AGENT_MISSING_REQUIRED_TOOL = "adapter_fallback_after_agent_missing_required_tool"
 LOCAL_AGENT_TOOL_CONTRACT_FAST_PATH = "local_agent_tool_contract_fast_path"
 FORBIDDEN_RESPONSE_KEYS = {
@@ -1674,9 +1681,10 @@ def _required_tool_names_for_request(
     context = _safe_context(request.get("context"))
     required: list[str] = []
     if context.get("intent") == "build_planning" and context.get("candidate_summary"):
-        required.extend(BUILD_PLANNING_REQUIRED_TOOLS)
         if _build_option_uses_generated(tool_decisions):
-            required.append("propose_build_option")
+            required.extend(GENERATED_BUILD_PLANNING_REQUIRED_TOOLS)
+        else:
+            required.extend(BUILD_PLANNING_REQUIRED_TOOLS)
     return required
 
 
@@ -1998,7 +2006,7 @@ def select_build_option(
     player_request: str,
     selection_reason: str = "",
 ) -> dict[str, Any]:
-    """Validate the build option selected by the agent without mutating the world."""
+    """Validate a selected option; generated_ ids require propose_build_option first in this run."""
 
     result = select_build_option_payload(
         candidate_summary,
@@ -2095,6 +2103,10 @@ def build_agent(model: str | None = None) -> Any:
             "request_class generated_shape, required_next_tool "
             "propose_build_option, or when the listed fixed candidates are too "
             "generic for the player request. For those generated-shape cases, "
+            "the required tool sequence is inspect_build_site_context, "
+            "recall_build_prompt_memory, propose_build_option, "
+            "select_build_option, plan_build_actions. Never call "
+            "select_build_option before propose_build_option in that sequence. "
             "call propose_build_option with candidate_summary and "
             "player_request before any select_build_option call; the tool can "
             "auto-generate the bounded option when custom fields are empty. "

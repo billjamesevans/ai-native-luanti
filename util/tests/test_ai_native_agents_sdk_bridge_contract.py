@@ -22,9 +22,9 @@ BUILD_REQUIRED_TOOLS = [
 GENERATED_REQUIRED_TOOLS = [
     "inspect_build_site_context",
     "recall_build_prompt_memory",
+    "propose_build_option",
     "select_build_option",
     "plan_build_actions",
-    "propose_build_option",
 ]
 BUILD_TOOL_TRACE_NAMES = [
     "inspect_build_site_context",

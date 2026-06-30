@@ -267,9 +267,9 @@ read-only tool decision:
     "required_tool_calls": [
       "inspect_build_site_context",
       "recall_build_prompt_memory",
+      "propose_build_option",
       "select_build_option",
-      "plan_build_actions",
-      "propose_build_option"
+      "plan_build_actions"
     ],
     "missing_required_tool_calls": [],
     "required_tool_calls_satisfied": true,
@@ -339,7 +339,8 @@ or TNT wall still require `inspect_build_site_context`,
 `recall_build_prompt_memory`, and `select_build_option`, and every healthy
 build-planning response requires `plan_build_actions` so the sidecar records the
 Luanti preview, approval, rollback, task, and improvement-evidence workflow.
-Generated options add `propose_build_option` to `required_tool_calls`.
+Generated options insert `propose_build_option` before `select_build_option`
+in `required_tool_calls`.
 `inspect_build_site_context` returns `required_next_tool =
 propose_build_option`, a generated-option hint, and the minimal proposal-tool
 arguments for open-ended requests such as shelter, tower, bridge, path, house,
