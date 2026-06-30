@@ -571,6 +571,45 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertNotEqual(candidate["case_hint"], "fire_only_strict")
         self.assertFalse(candidate["ready_for_prompt_eval"])
 
+    def test_nova_trace_accepts_null_tool_trace_names_from_live_log(self):
+        module = load_queue_module()
+        payload = json.loads(nova_trace_line().split("request_trace=", 1)[1])
+        payload["trace"]["response"]["adapter_tool_trace_names"] = None
+
+        candidate = module.candidate_from_nova_trace(payload)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["source_kind"], "nova_request_trace")
+        self.assertEqual(candidate["observed"]["adapter_tool_trace_names"], [])
+
+    def test_action_log_queue_handles_null_and_non_object_response_without_crashing(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            action_log = root / "debug.log"
+            null_tool_payload = json.loads(nova_trace_line().split("request_trace=", 1)[1])
+            null_tool_payload["trace"]["response"]["adapter_tool_trace_names"] = None
+            invalid_payload = json.loads(nova_trace_line().split("request_trace=", 1)[1])
+            invalid_payload["trace"]["response"] = "not a response object"
+            action_log.write_text(
+                "[ai_agent_plugin] request_trace="
+                + json.dumps(null_tool_payload, sort_keys=True)
+                + "\n"
+                + "[ai_agent_plugin] request_trace="
+                + json.dumps(invalid_payload, sort_keys=True)
+                + "\n",
+                encoding="utf-8",
+            )
+
+            payload = module.build_eval_candidate_queue(
+                action_logs=[action_log],
+                generated_at="2026-06-30T13:45:00Z",
+            )
+
+        self.assertEqual(payload["source_summary"]["nova_request_traces_read"], 2)
+        self.assertEqual(payload["source_summary"]["candidates_total"], 2)
+        self.assertEqual(payload["candidates"][0]["observed"]["adapter_tool_trace_names"], [])
+
     def test_operator_labels_promote_unknown_prompt_to_reviewed_candidate(self):
         module = load_queue_module()
         with tempfile.TemporaryDirectory() as tmpdir:
