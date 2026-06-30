@@ -212,6 +212,14 @@ proposed kind, material, dimensions, and write budget and can produce a normal
 rollback-backed preview plan from it. The model's prose is kept as player
 guidance; the structured `tool_decisions` field is the execution contract that
 can change the pending preview plan.
+For healthy live agent evidence, generated-option decisions require an explicit
+`propose_build_option` entry in `tool_trace`. Fixed options such as strict fire
+or TNT wall still require `recall_build_prompt_memory` and
+`recommend_build_option`; generated options add `propose_build_option` to
+`required_tool_calls`. If a live run selects a generated option without that
+tool call, the adapter labels the response as
+`adapter_fallback_after_agent_missing_required_tool` and records
+`missing_required_tool_calls = ["propose_build_option"]`.
 If a live agent does not call the required function tools, the adapter still
 returns a bounded fallback decision but labels it with
 `tool_decision_source = adapter_fallback_after_agent_missing_required_tool`,
