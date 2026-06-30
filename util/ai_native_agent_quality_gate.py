@@ -146,6 +146,7 @@ def build_quality_gate(
     live_prompt_eval_path: str | None = None,
     request_response_log_gate_path: str | None = None,
     compat_import_pilot_path: str | None = None,
+    require_live_prompt_eval: bool = False,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> dict[str, Any]:
     generated_at = generated_at or utc_now()
@@ -271,6 +272,11 @@ def build_quality_gate(
             })
     live_prompt_eval_status = None
     live_prompt_evidence: dict[str, Any] = {}
+    if require_live_prompt_eval and not live_prompt_eval:
+        violations.append({
+            "kind": "live_prompt_eval_required",
+            "details": "missing --live-prompt-eval artifact",
+        })
     if live_prompt_eval:
         try:
             live_prompt_evidence = prompt_eval_live_probe.validate_live_result(live_prompt_eval)
@@ -344,6 +350,7 @@ def build_quality_gate(
             "live_prompt_eval_agentic_tool_cases_required": _int(
                 live_prompt_evidence.get("agent_prompt_eval_agentic_tool_cases_required")
             ),
+            "live_prompt_eval_required": require_live_prompt_eval,
             "candidates_total": _int(candidate_summary.get("candidates_total"), _list_len(candidate_queue.get("candidates"))),
             "ready_for_prompt_eval": _int(candidate_summary.get("ready_for_prompt_eval")),
             "unique_ready_for_prompt_eval": _int(review_summary.get("unique_ready_for_prompt_eval")),
@@ -430,6 +437,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--adapter-contract-eval", default=None, help="Optional adapter-contract replay result JSON path.")
     parser.add_argument("--live-prompt-eval", default=None, help="Optional latest live prompt-eval probe result JSON path.")
     parser.add_argument(
+        "--require-live-prompt-eval",
+        action="store_true",
+        help="Fail when --live-prompt-eval is missing or invalid.",
+    )
+    parser.add_argument(
         "--request-response-log-gate",
         default=None,
         help="Optional request/response log gate JSON path.",
@@ -504,6 +516,7 @@ def main(argv: list[str] | None = None) -> int:
         live_prompt_eval_path=relative_label(root, live_prompt_eval_path),
         request_response_log_gate_path=relative_label(root, request_response_log_gate_path),
         compat_import_pilot_path=relative_label(root, compat_import_pilot_path),
+        require_live_prompt_eval=args.require_live_prompt_eval,
         max_bytes=max(1000, args.max_bytes),
     )
     if load_errors:

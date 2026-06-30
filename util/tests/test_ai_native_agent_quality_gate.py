@@ -391,6 +391,25 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 4)
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 4)
 
+    def test_required_live_prompt_eval_missing_fails_gate(self):
+        module = load_quality_gate_module()
+
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            generated_at="2026-06-30T18:05:00Z",
+            require_live_prompt_eval=True,
+        )
+
+        self.assertEqual(report["status"], "fail")
+        self.assertTrue(report["summary"]["live_prompt_eval_required"])
+        self.assertTrue(any(
+            item["kind"] == "live_prompt_eval_required"
+            for item in report["violations"]
+        ))
+
     def test_request_response_log_gate_pass_is_recorded(self):
         module = load_quality_gate_module()
 
@@ -615,6 +634,7 @@ class AgentQualityGateTests(unittest.TestCase):
                     str(adapter_eval),
                     "--live-prompt-eval",
                     str(live_eval),
+                    "--require-live-prompt-eval",
                     "--compat-import-staging-pilot",
                     str(compat_pilot),
                     "--output",
@@ -635,6 +655,7 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(summary["live_prompt_eval_status"], "pass")
         self.assertEqual(summary["compat_import_staging_pilot_status"], "pass")
         self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["summary"]["live_prompt_eval_required"])
 
 
 if __name__ == "__main__":

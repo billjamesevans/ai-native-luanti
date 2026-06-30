@@ -214,6 +214,7 @@ python3 util/ai_native_agent_quality_gate.py \
   --review-queue local/benchmarks/ai-agent-review-queue.json \
   --adapter-contract-eval local/benchmarks/ai-agent-adapter-contract-eval.json \
   --live-prompt-eval local/benchmarks/ai-agent-prompt-eval-live-latest.json \
+  --require-live-prompt-eval \
   --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --compat-import-staging-pilot local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json \
   --output local/benchmarks/ai-agent-quality-gate.json
@@ -227,7 +228,10 @@ adapter-contract replay failures, a failed latest live prompt eval, or a failed
 compatibility staging pilot remain deploy-blocking. When supplied, the
 compatibility staging pilot proves dry-run import planning, bounded
 disposable-world apply, rollback, and refusal gates without touching the family
-server or private assets. When supplied, the request/response log gate also
+server or private assets. For deployment promotion, pass
+`--require-live-prompt-eval` so the gate cannot pass without a fresh in-engine
+disposable-world `/ai_agent_eval` artifact. When supplied, the
+request/response log gate also
 blocks on retained evidence for the fire-only, TNT-wall, and generated-build
 tool contracts.
 In `agents_sdk_sidecar` mode, the live prompt eval must also retain untruncated

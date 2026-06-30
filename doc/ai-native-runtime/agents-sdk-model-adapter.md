@@ -237,6 +237,11 @@ an accepted tool-contract source (`agents_sdk_function_tool`,
 `agents_sdk_repair_function_tool`, or `local_agent_tool_contract_fast_path`),
 and Luanti-only world mutation authority.
 
+Deployment promotion should include the quality gate with a fresh live prompt
+eval artifact and `--require-live-prompt-eval`. That makes missing in-engine
+disposable-world `/ai_agent_eval` evidence deploy-blocking instead of allowing
+the agent loop to pass from sidecar logs alone.
+
 When a sidecar log includes `context.player_request`, that exact player request
 is promoted as the case prompt. This keeps reviewed memory aligned to the command
 the player actually typed instead of the adapter's larger wrapper prompt.
