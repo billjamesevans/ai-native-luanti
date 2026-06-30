@@ -59,18 +59,22 @@ uv run --project tools/agents_sdk_model_adapter \
   --mode managed-http \
   --port 8766 \
   --require-live-agent \
+  --require-build-planning-tools \
   --output local/benchmarks/agents-sdk-sidecar-live-readiness.json
 ```
 
 This stricter probe must show `agentic_execution = true`, hosted web lookup
-availability, bounded public-safe response metadata, and
+availability, bounded public-safe response metadata,
+`required_tool_calls_satisfied = true` for the build-planning probe, and
 `world_mutation_authority = luanti`. It does not write secrets to the report.
 
 For build-planning requests, live responses should include
 `tool_decision_source = agents_sdk_function_tool` plus a bounded `tool_trace`.
 If the model does not call the required tools, the adapter labels the executable
-choice as `adapter_fallback_after_agent_no_tool` so bad agent behavior is visible
-in logs and eval queues.
+choice as `adapter_fallback_after_agent_missing_required_tool`, records
+`missing_required_tool_calls`, and sets `required_tool_calls_satisfied = false`
+so bad agent behavior is visible in logs and eval queues. If the model returns no
+tool decision at all, the source is `adapter_fallback_after_agent_no_tool`.
 
 Reviewed prompt-eval cases can be mounted as runtime memory:
 
