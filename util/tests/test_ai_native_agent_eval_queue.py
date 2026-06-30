@@ -70,6 +70,41 @@ def agents_sdk_log_entry(prompt="build me a fire and only a fire"):
     }
 
 
+def agents_sdk_missing_required_tool_entry():
+    entry = agents_sdk_log_entry("AI-native Luanti model adapter request.")
+    entry["request"]["context"].update({
+        "intent": "build_planning",
+        "player_request": "build me a tower",
+        "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+    })
+    entry["response"]["message"] = "Fell back to bounded tower planning after missing SDK tool evidence."
+    entry["response"]["response"].update({
+        "agentic_execution": True,
+        "selected_option_id": "generated_tower_wall",
+        "tool_decision_source": "adapter_fallback_after_agent_missing_required_tool",
+        "required_tool_calls": [
+            "recall_build_prompt_memory",
+            "recommend_build_option",
+            "propose_build_option",
+        ],
+        "missing_required_tool_calls": ["propose_build_option"],
+        "required_tool_calls_satisfied": False,
+        "tool_trace": [
+            {"tool_name": "recall_build_prompt_memory"},
+            {"tool_name": "recommend_build_option"},
+        ],
+        "tool_decisions": {
+            "build_option": {
+                "selected_option_id": "generated_tower_wall",
+                "decision_source": "offline_adapter_fallback",
+                "generated_option_status": "ready",
+                "direct_world_mutation": False,
+            },
+        },
+    })
+    return entry
+
+
 def nova_trace_line(prompt="build a wall of tnt"):
     payload = {
         "schema_version": 1,
@@ -295,6 +330,60 @@ class AgentEvalQueueTests(unittest.TestCase):
             candidate["observed"]["tool_trace_names"],
             ["recall_build_prompt_memory", "recommend_build_option"],
         )
+        self.assertFalse(candidate["ready_for_adapter_contract_eval"])
+
+    def test_agents_sdk_missing_required_tool_becomes_contract_eval_candidate(self):
+        module = load_queue_module()
+        entry = agents_sdk_missing_required_tool_entry()
+
+        candidate = module.candidate_from_agents_sdk_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["prompt"], "build me a tower")
+        self.assertEqual(candidate["case_hint"], "model_adapter_review")
+        self.assertEqual(candidate["priority"], "high")
+        self.assertFalse(candidate["ready_for_prompt_eval"])
+        self.assertTrue(candidate["ready_for_adapter_contract_eval"])
+        self.assertEqual(candidate["adapter_contract_review_status"], "adapter_contract_candidate_ready")
+        contract = candidate["adapter_tool_contract"]
+        self.assertEqual(contract["status"], "fail")
+        self.assertEqual(
+            contract["required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option", "propose_build_option"],
+        )
+        self.assertEqual(contract["missing_required_tool_calls"], ["propose_build_option"])
+        self.assertFalse(contract["required_tool_calls_satisfied"])
+        self.assertEqual(
+            contract["expected"]["missing_required_tool_calls"],
+            [],
+        )
+        self.assertEqual(
+            contract["expected"]["tool_decision_source"],
+            "agents_sdk_function_tool",
+        )
+
+    def test_queue_counts_adapter_contract_failures(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            sidecar_log.write_text(
+                json.dumps(agents_sdk_missing_required_tool_entry()) + "\n",
+                encoding="utf-8",
+            )
+
+            payload = module.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T12:30:00Z",
+            )
+
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["source_summary"]["candidates_total"], 1)
+        self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 0)
+        self.assertEqual(payload["source_summary"]["manual_review_required"], 1)
+        self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 1)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures"], 1)
+        self.assertTrue(payload["candidates"][0]["ready_for_adapter_contract_eval"])
 
     def test_agents_sdk_candidate_extracts_embedded_player_request_from_wrapper_prompt(self):
         module = load_queue_module()

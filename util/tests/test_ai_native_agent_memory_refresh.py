@@ -71,6 +71,39 @@ def build_planning_sidecar_entry():
     }
 
 
+def missing_required_tool_sidecar_entry():
+    entry = build_planning_sidecar_entry()
+    entry["request"]["context"].update({
+        "player_request": "build me a tower",
+        "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+    })
+    entry["response"]["message"] = "Fell back after missing required tool trace."
+    entry["response"]["response"].update({
+        "selected_option_id": "generated_tower_wall",
+        "tool_decision_source": "adapter_fallback_after_agent_missing_required_tool",
+        "required_tool_calls": [
+            "recall_build_prompt_memory",
+            "recommend_build_option",
+            "propose_build_option",
+        ],
+        "missing_required_tool_calls": ["propose_build_option"],
+        "required_tool_calls_satisfied": False,
+        "tool_trace": [
+            {"tool_name": "recall_build_prompt_memory"},
+            {"tool_name": "recommend_build_option"},
+        ],
+        "tool_decisions": {
+            "build_option": {
+                "selected_option_id": "generated_tower_wall",
+                "decision_source": "offline_adapter_fallback",
+                "generated_option_status": "ready",
+                "direct_world_mutation": False,
+            },
+        },
+    })
+    return entry
+
+
 def nova_agent_log_entry():
     return {
         "ts": "2026-06-30T13:05:00Z",
@@ -149,6 +182,26 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(pack["cases"][0]["expected"]["build_kind"], "wall")
         self.assertEqual(pack["cases"][0]["expected"]["build_material_name"], "tnt")
 
+    def test_refresh_summarizes_adapter_contract_failures_without_prompt_promotion(self):
+        module = load_refresh_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            sidecar_log.write_text(json.dumps(missing_required_tool_sidecar_entry()) + "\n", encoding="utf-8")
+
+            queue, pack = module.build_memory_artifacts(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T13:00:00Z",
+                candidate_queue_source_path="local/benchmarks/ai-agent-eval-candidate-queue.json",
+            )
+
+        self.assertEqual(queue["status"], "ready")
+        self.assertEqual(queue["source_summary"]["ready_for_adapter_contract_eval"], 1)
+        self.assertEqual(queue["source_summary"]["adapter_contract_failures"], 1)
+        self.assertTrue(queue["candidates"][0]["ready_for_adapter_contract_eval"])
+        self.assertEqual(pack["status"], "empty")
+        self.assertEqual(pack["summary"]["cases_total"], 0)
+
     def test_cli_writes_refresh_artifacts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)
@@ -186,6 +239,8 @@ class AgentMemoryRefreshTests(unittest.TestCase):
             summary = json.loads(completed.stdout)
             self.assertEqual(summary["case_pack_status"], "ready")
             self.assertEqual(summary["cases_total"], 2)
+            self.assertEqual(summary["adapter_contract_failures"], 0)
+            self.assertEqual(summary["ready_for_adapter_contract_eval"], 0)
             self.assertEqual(json.loads(candidate_queue.read_text(encoding="utf-8"))["status"], "ready")
             self.assertEqual(json.loads(case_pack.read_text(encoding="utf-8"))["summary"]["cases_total"], 2)
 
