@@ -605,13 +605,33 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
     def write_nova_auto_apply_live_artifact(self, path, *, adapter_mode="mock_async_adapter"):
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        def case_payload(case_id, prompt, candidate, kind, material, node, writes):
+        def case_payload(
+            case_id,
+            prompt,
+            candidate,
+            kind,
+            material,
+            node,
+            writes,
+            *,
+            width=None,
+            height=None,
+            generated=False,
+            tool_trace_names=None,
+        ):
+            if tool_trace_names is None:
+                tool_trace_names = [
+                    "recall_build_prompt_memory",
+                    "select_build_option",
+                    "plan_build_actions",
+                ]
             return {
                 "case_id": case_id,
                 "prompt": prompt,
                 "expected_candidate": candidate,
                 "expected_node": node,
                 "expected_writes": writes,
+                "expected_tool_trace_names": tool_trace_names,
                 "prepared_center_node": "air",
                 "center_node": node,
                 "node_count": writes,
@@ -629,10 +649,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "material": True,
                     "node": True,
                     "planned_writes": True,
+                    "width": True,
+                    "height": True,
                     "required_tools": True,
                     "tool_trace_names": True,
                     "action_plan_ready": True,
                     "world_mutation_authority": True,
+                    "generated_option": True,
                     "task_completed": True,
                     "rollback_record": True,
                     "node_count": True,
@@ -662,20 +685,23 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "model_selected_candidate_id": candidate,
                     "selection_source": "model_tool_decision",
                     "build_kind": kind,
+                    "build_width": width,
+                    "build_height": height,
                     "build_material_name": material,
                     "build_material_node": node,
                     "planned_node_writes": writes,
                     "adapter_tool_decision_source": "agents_sdk_function_tool",
                     "adapter_required_tool_calls_satisfied": True,
                     "adapter_missing_required_tool_calls": [],
-                    "adapter_tool_trace_names": [
-                        "recall_build_prompt_memory",
-                        "select_build_option",
-                        "plan_build_actions",
-                    ],
+                    "adapter_tool_trace_names": tool_trace_names,
                     "adapter_build_action_plan_status": "ready",
                     "adapter_build_action_plan_step_count": 4,
                     "adapter_build_action_plan_world_mutation_authority": "luanti",
+                    "generated_build_option_status": "validated" if generated else None,
+                    "generated_build_option_reason": (
+                        "validated_by_luanti_build_planner" if generated else None
+                    ),
+                    "generated_candidate_id": candidate if generated else None,
                 },
                 "trace": {
                     "trace_id": f"nova_trace:{case_id}",
@@ -723,11 +749,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "world_mutation_scope": "disposable_synthetic_ai_runtime_world",
             },
             "summary": {
-                "cases_total": 2,
-                "cases_passed": 2,
+                "cases_total": 3,
+                "cases_passed": 3,
                 "cases_failed": 0,
                 "fire_only_strict_checked": True,
                 "tnt_wall_checked": True,
+                "generated_dimensioned_wall_checked": True,
                 "agentic_build_planner_checked": True,
                 "auto_apply_checked": True,
                 "rollback_checked": True,
@@ -751,6 +778,25 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "ai_runtime_base:tnt",
                     12,
                 ),
+                case_payload(
+                    "generated_dimensioned_wall",
+                    "build a 6 wide 2 high lookout wall",
+                    "generated_dimensioned_wall",
+                    "wall",
+                    "stone",
+                    "ai_runtime_base:stone",
+                    12,
+                    width=6,
+                    height=2,
+                    generated=True,
+                    tool_trace_names=[
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "propose_build_option",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                ),
             ],
             "safety": {
                 "public_safe_output": True,
@@ -764,7 +810,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "no_private_prompt_retained": True,
             },
             "bounds": {
-                "max_bytes": 26000,
+                "max_bytes": 36000,
                 "output_bytes": 0,
                 "truncated": False,
             },
@@ -1397,6 +1443,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 evidence["nova_auto_apply_tnt_wall_planned_node_writes"],
                 12,
             )
+            self.assertEqual(
+                evidence["nova_auto_apply_generated_dimensioned_wall_planned_node_writes"],
+                12,
+            )
+            self.assertEqual(
+                evidence["nova_auto_apply_generated_dimensioned_wall_width"],
+                6,
+            )
+            self.assertEqual(
+                evidence["nova_auto_apply_generated_dimensioned_wall_height"],
+                2,
+            )
 
             fire_extra = json.loads(json.dumps(payload))
             fire_extra["cases"][0]["node_count"] = 2
@@ -1408,6 +1466,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "tnt_wall planned writes are invalid"):
                 probe.validate_live_result(tnt_underplanned)
 
+            generated_wrong_width = json.loads(json.dumps(payload))
+            generated_wrong_width["cases"][2]["reply"]["build_width"] = 4
+            with self.assertRaisesRegex(ValueError, "generated_dimensioned_wall width is invalid"):
+                probe.validate_live_result(generated_wrong_width)
+
             no_auto_apply = json.loads(json.dumps(payload))
             no_auto_apply["cases"][0]["reply"]["auto_applied_approval"] = False
             with self.assertRaisesRegex(ValueError, "fire_only_strict was not auto-applied"):
@@ -1417,6 +1480,26 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             missing_tool_trace["cases"][0]["reply"]["adapter_tool_trace_names"] = []
             with self.assertRaisesRegex(ValueError, "fire_only_strict tool trace names are invalid"):
                 probe.validate_live_result(missing_tool_trace)
+
+            generated_missing_propose = json.loads(json.dumps(payload))
+            generated_missing_propose["cases"][2]["reply"]["adapter_tool_trace_names"] = [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+            ]
+            with self.assertRaisesRegex(
+                ValueError,
+                "generated_dimensioned_wall tool trace names are invalid",
+            ):
+                probe.validate_live_result(generated_missing_propose)
+
+            generated_not_validated = json.loads(json.dumps(payload))
+            generated_not_validated["cases"][2]["reply"]["generated_build_option_status"] = "ready"
+            with self.assertRaisesRegex(
+                ValueError,
+                "generated_dimensioned_wall generated option was not validated",
+            ):
+                probe.validate_live_result(generated_not_validated)
 
     def test_agent_improvement_loop_validator_requires_memory_and_contract_evidence(self):
         verifier = load_agent_improvement_module()
@@ -2031,6 +2114,23 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "nova_auto_apply_tnt_wall_changed_nodes"
                 ],
                 12,
+            )
+            self.assertTrue(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_generated_dimensioned_wall_checked"
+                ]
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_generated_dimensioned_wall_planned_node_writes"
+                ],
+                12,
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_generated_dimensioned_wall_width"
+                ],
+                6,
             )
             self.assertTrue(
                 manifest["nova_auto_apply_live_evidence"][

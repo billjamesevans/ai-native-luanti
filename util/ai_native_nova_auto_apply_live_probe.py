@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIVE_ARTIFACT_NAME = "ai-runtime-nova-auto-apply-live-result.json"
 LIVE_RESULT_NAME = "ai-runtime-nova-auto-apply-live-probe-result.json"
 PROBE_MOD_NAME = "nova_auto_apply_live_probe"
-DEFAULT_MAX_BYTES = 26000
+DEFAULT_MAX_BYTES = 36000
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[^\s\"']+"),
@@ -111,9 +111,36 @@ def write_probe_world(
             "    expected_writes = 12,",
             "    count_radius = 5,",
             "  },",
+            "  {",
+            "    case_id = \"generated_dimensioned_wall\",",
+            "    owner = \"AutoApplyGeneratedWallProbe\",",
+            "    prompt = \"build a 6 wide 2 high lookout wall\",",
+            "    pos = { x = 60, y = 10, z = 20 },",
+            "    expected_candidate = \"generated_dimensioned_wall\",",
+            "    expected_kind = \"wall\",",
+            "    expected_material = \"stone\",",
+            "    expected_node = \"ai_runtime_base:stone\",",
+            "    expected_writes = 12,",
+            "    expected_width = 6,",
+            "    expected_height = 2,",
+            "    requires_generated_option = true,",
+            "    expected_tool_trace_names = {",
+            "      \"recall_build_prompt_memory\",",
+            "      \"select_build_option\",",
+            "      \"propose_build_option\",",
+            "      \"select_build_option\",",
+            "      \"plan_build_actions\",",
+            "    },",
+            "    count_radius = 7,",
+            "  },",
             "}",
             "",
             "local results = {}",
+            "local default_tool_trace_names = {",
+            "  \"recall_build_prompt_memory\",",
+            "  \"select_build_option\",",
+            "  \"plan_build_actions\",",
+            "}",
             "",
             "local function clone_pos(pos)",
             "  return { x = pos.x, y = pos.y, z = pos.z }",
@@ -138,6 +165,8 @@ def write_probe_world(
             "    model_selected_candidate_id = reply.model_selected_candidate_id,",
             "    selection_source = reply.selection_source,",
             "    build_kind = reply.build_kind,",
+            "    build_width = reply.build_width,",
+            "    build_height = reply.build_height,",
             "    build_material_name = reply.build_material_name,",
             "    build_material_node = reply.build_material_node,",
             "    planned_node_writes = reply.planned_node_writes,",
@@ -150,6 +179,9 @@ def write_probe_world(
             "    adapter_build_action_plan_step_count = reply.adapter_build_action_plan_step_count,",
             "    adapter_build_action_plan_world_mutation_authority =",
             "      reply.adapter_build_action_plan_world_mutation_authority,",
+            "    generated_build_option_status = reply.generated_build_option_status,",
+            "    generated_build_option_reason = reply.generated_build_option_reason,",
+            "    generated_candidate_id = reply.generated_candidate_id,",
             "  }",
             "end",
             "",
@@ -229,6 +261,7 @@ def write_probe_world(
             "      cases_failed = #results - passed,",
             "      fire_only_strict_checked = false,",
             "      tnt_wall_checked = false,",
+            "      generated_dimensioned_wall_checked = false,",
             "      agentic_build_planner_checked = true,",
             "      auto_apply_checked = true,",
             "      rollback_checked = true,",
@@ -252,6 +285,9 @@ def write_probe_world(
             "      payload.summary.fire_only_strict_checked = true",
             "    elseif case.case_id == \"tnt_wall\" and case.ok == true then",
             "      payload.summary.tnt_wall_checked = true",
+            "    elseif case.case_id == \"generated_dimensioned_wall\"",
+            "        and case.ok == true then",
+            "      payload.summary.generated_dimensioned_wall_checked = true",
             "    end",
             "  end",
             "  payload.bounds.output_bytes = #core.write_json(payload)",
@@ -338,6 +374,25 @@ def write_probe_world(
             "  return count",
             "end",
             "",
+            "local function tool_trace_contains_in_order(tool_names, expected)",
+            "  if type(tool_names) ~= \"table\" or type(expected) ~= \"table\" then",
+            "    return false",
+            "  end",
+            "  local expected_index = 1",
+            "  if #expected == 0 then",
+            "    return true",
+            "  end",
+            "  for _, name in ipairs(tool_names) do",
+            "    if name == expected[expected_index] then",
+            "      expected_index = expected_index + 1",
+            "      if expected_index > #expected then",
+            "        return true",
+            "      end",
+            "    end",
+            "  end",
+            "  return false",
+            "end",
+            "",
             "local function emerge_for_case(spec, case_result, callback)",
             "  local minp, maxp = bounds(spec.pos, spec.count_radius + 2)",
             "  if core.load_area then",
@@ -370,7 +425,25 @@ def write_probe_world(
             "  if prompt:find(\"tnt\", 1, true) then",
             "    return \"tnt_wall\"",
             "  end",
+            "  if prompt:find(\"6 wide\", 1, true)",
+            "      and prompt:find(\"2 high\", 1, true)",
+            "      and prompt:find(\"wall\", 1, true) then",
+            "    return \"generated_dimensioned_wall\"",
+            "  end",
             "  return \"fire\"",
+            "end",
+            "",
+            "local function generated_dimensioned_wall_option()",
+            "  return {",
+            "    option_id = \"generated_dimensioned_wall\",",
+            "    label = \"Generated 6x2 stone wall\",",
+            "    reason = \"player requested exact wall dimensions\",",
+            "    build_kind = \"wall\",",
+            "    build_material_name = \"stone\",",
+            "    build_width = 6,",
+            "    build_height = 2,",
+            "    planned_node_writes = 12,",
+            "  }",
             "end",
             "",
             "local function install_mock_adapter()",
@@ -380,6 +453,33 @@ def write_probe_world(
             "  core.ai_agent_plugin.set_model_adapter_async(function(request, done)",
             "    local prompt = request and request.context and request.context.player_request or \"\"",
             "    local selected = mock_selected_option_id(prompt)",
+            "    local generated_option = nil",
+            "    local required_tools = {",
+            "      \"recall_build_prompt_memory\",",
+            "      \"select_build_option\",",
+            "      \"plan_build_actions\",",
+            "    }",
+            "    local tool_trace = {",
+            "      { tool_name = \"recall_build_prompt_memory\" },",
+            "      { tool_name = \"select_build_option\" },",
+            "      { tool_name = \"plan_build_actions\" },",
+            "    }",
+            "    if selected == \"generated_dimensioned_wall\" then",
+            "      generated_option = generated_dimensioned_wall_option()",
+            "      required_tools = {",
+            "        \"recall_build_prompt_memory\",",
+            "        \"propose_build_option\",",
+            "        \"select_build_option\",",
+            "        \"plan_build_actions\",",
+            "      }",
+            "      tool_trace = {",
+            "        { tool_name = \"recall_build_prompt_memory\" },",
+            "        { tool_name = \"select_build_option\" },",
+            "        { tool_name = \"propose_build_option\" },",
+            "        { tool_name = \"select_build_option\" },",
+            "        { tool_name = \"plan_build_actions\" },",
+            "      }",
+            "    end",
             "    core.after(0.1, function()",
             "      done({",
             "        ok = true,",
@@ -390,22 +490,19 @@ def write_probe_world(
             "          agentic_execution = true,",
             "          selected_option_id = selected,",
             "          tool_decision_source = \"agents_sdk_function_tool\",",
-            "          required_tool_calls = {",
-            "            \"recall_build_prompt_memory\",",
-            "            \"select_build_option\",",
-            "            \"plan_build_actions\",",
-            "          },",
+            "          generated_build_option = generated_option,",
+            "          required_tool_calls = required_tools,",
             "          missing_required_tool_calls = {},",
             "          required_tool_calls_satisfied = true,",
-            "          tool_trace = {",
-            "            { tool_name = \"recall_build_prompt_memory\" },",
-            "            { tool_name = \"select_build_option\" },",
-            "            { tool_name = \"plan_build_actions\" },",
-            "          },",
+            "          tool_trace = tool_trace,",
             "          tool_decisions = {",
             "            build_option = {",
             "              selected_option_id = selected,",
-            "              decision_source = \"agent_selected_build_option\",",
+            "              decision_source = selected == \"generated_dimensioned_wall\"",
+            "                and \"agent_selected_generated_build_option\"",
+            "                or \"agent_selected_build_option\",",
+            "              generated_option_status = generated_option and \"ready\" or nil,",
+            "              generated_option = generated_option,",
             "            },",
             "            build_action_plan = {",
             "              status = \"ready\",",
@@ -437,6 +534,8 @@ def write_probe_world(
             "    expected_candidate = spec.expected_candidate,",
             "    expected_node = spec.expected_node,",
             "    expected_writes = spec.expected_writes,",
+            "    expected_tool_trace_names = spec.expected_tool_trace_names",
+            "      or default_tool_trace_names,",
             "    checks = {},",
             "  }",
             "  emerge_for_case(spec, case_result, function()",
@@ -479,17 +578,24 @@ def write_probe_world(
             "          case_result.checks.node = reply and reply.build_material_node == spec.expected_node",
             "          case_result.checks.planned_writes = reply",
             "            and reply.planned_node_writes == spec.expected_writes",
+            "          case_result.checks.width = spec.expected_width == nil",
+            "            or (reply and reply.build_width == spec.expected_width)",
+            "          case_result.checks.height = spec.expected_height == nil",
+            "            or (reply and reply.build_height == spec.expected_height)",
             "          case_result.checks.required_tools = reply",
             "            and reply.adapter_required_tool_calls_satisfied == true",
             "          local tool_names = reply and reply.adapter_tool_trace_names or {}",
-            "          case_result.checks.tool_trace_names = type(tool_names) == \"table\"",
-            "            and tool_names[1] == \"recall_build_prompt_memory\"",
-            "            and tool_names[2] == \"select_build_option\"",
-            "            and tool_names[3] == \"plan_build_actions\"",
+            "          case_result.checks.tool_trace_names =",
+            "            tool_trace_contains_in_order(tool_names,",
+            "              case_result.expected_tool_trace_names)",
             "          case_result.checks.action_plan_ready = reply",
             "            and reply.adapter_build_action_plan_status == \"ready\"",
             "          case_result.checks.world_mutation_authority = reply",
             "            and reply.adapter_build_action_plan_world_mutation_authority == \"luanti\"",
+            "          case_result.checks.generated_option =",
+            "            spec.requires_generated_option ~= true",
+            "            or (reply and reply.generated_build_option_status == \"validated\"",
+            "              and reply.generated_candidate_id == spec.expected_candidate)",
             "          case_result.checks.task_completed = task and task.status == \"completed\"",
             "          case_result.checks.rollback_record = last.rollback_record_id ~= nil",
             "          case_result.checks.node_count = case_result.node_count == spec.expected_writes",
@@ -585,7 +691,32 @@ def _case_by_id(payload: dict) -> dict[str, dict]:
     }
 
 
-def _validate_case(case: dict, *, case_id: str, candidate: str, node: str, writes: int) -> None:
+def _tool_trace_contains_in_order(tool_names: object, expected: list[str]) -> bool:
+    if not isinstance(tool_names, list):
+        return False
+    if not expected:
+        return True
+    expected_index = 0
+    for name in tool_names:
+        if name == expected[expected_index]:
+            expected_index += 1
+            if expected_index >= len(expected):
+                return True
+    return False
+
+
+def _validate_case(
+    case: dict,
+    *,
+    case_id: str,
+    candidate: str,
+    node: str,
+    writes: int,
+    expected_tool_trace_names: list[str] | None = None,
+    width: int | None = None,
+    height: int | None = None,
+    generated: bool = False,
+) -> None:
     if case.get("status") != "pass" or case.get("ok") is not True:
         raise ValueError(f"nova auto-apply {case_id} did not pass")
     if case.get("node_count") != writes or case.get("non_air_count") != writes:
@@ -624,6 +755,10 @@ def _validate_case(case: dict, *, case_id: str, candidate: str, node: str, write
         raise ValueError(f"nova auto-apply {case_id} material node is invalid")
     if reply.get("planned_node_writes") != writes:
         raise ValueError(f"nova auto-apply {case_id} planned writes are invalid")
+    if width is not None and reply.get("build_width") != width:
+        raise ValueError(f"nova auto-apply {case_id} width is invalid")
+    if height is not None and reply.get("build_height") != height:
+        raise ValueError(f"nova auto-apply {case_id} height is invalid")
     if reply.get("auto_applied_approval") is not True:
         raise ValueError(f"nova auto-apply {case_id} was not auto-applied")
     if reply.get("auto_apply_policy") != "ai_runtime.auto_apply_build_approvals":
@@ -632,16 +767,23 @@ def _validate_case(case: dict, *, case_id: str, candidate: str, node: str, write
         raise ValueError(f"nova auto-apply {case_id} did not use agent tool decision")
     if reply.get("adapter_required_tool_calls_satisfied") is not True:
         raise ValueError(f"nova auto-apply {case_id} required tools were not satisfied")
-    if reply.get("adapter_tool_trace_names") != [
+    expected_tools = expected_tool_trace_names or [
         "recall_build_prompt_memory",
         "select_build_option",
         "plan_build_actions",
-    ]:
+    ]
+    if not _tool_trace_contains_in_order(reply.get("adapter_tool_trace_names"), expected_tools):
         raise ValueError(f"nova auto-apply {case_id} tool trace names are invalid")
     if reply.get("adapter_build_action_plan_status") != "ready":
         raise ValueError(f"nova auto-apply {case_id} action plan was not ready")
     if reply.get("adapter_build_action_plan_world_mutation_authority") != "luanti":
         raise ValueError(f"nova auto-apply {case_id} mutation authority is invalid")
+    if generated:
+        _require_bool(checks, "generated_option")
+        if reply.get("generated_build_option_status") != "validated":
+            raise ValueError(f"nova auto-apply {case_id} generated option was not validated")
+        if reply.get("generated_candidate_id") != candidate:
+            raise ValueError(f"nova auto-apply {case_id} generated candidate is invalid")
     trace = case.get("trace") if isinstance(case.get("trace"), dict) else {}
     if trace.get("route") != "agentic_build_planner":
         raise ValueError(f"nova auto-apply {case_id} route is invalid")
@@ -684,13 +826,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("nova auto-apply mutation scope is invalid")
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 2 or summary.get("cases_passed") != 2:
+    if summary.get("cases_total") != 3 or summary.get("cases_passed") != 3:
         raise ValueError("nova auto-apply summary case counts are invalid")
     if summary.get("cases_failed") != 0:
         raise ValueError("nova auto-apply summary has failed cases")
     for field in (
         "fire_only_strict_checked",
         "tnt_wall_checked",
+        "generated_dimensioned_wall_checked",
         "agentic_build_planner_checked",
         "auto_apply_checked",
         "rollback_checked",
@@ -711,6 +854,23 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         candidate="tnt_wall",
         node="ai_runtime_base:tnt",
         writes=12,
+    )
+    _validate_case(
+        cases.get("generated_dimensioned_wall", {}),
+        case_id="generated_dimensioned_wall",
+        candidate="generated_dimensioned_wall",
+        node="ai_runtime_base:stone",
+        writes=12,
+        width=6,
+        height=2,
+        generated=True,
+        expected_tool_trace_names=[
+            "recall_build_prompt_memory",
+            "select_build_option",
+            "propose_build_option",
+            "select_build_option",
+            "plan_build_actions",
+        ],
     )
 
     safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
@@ -740,14 +900,19 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     return {
         "nova_auto_apply_status": "pass",
         "nova_auto_apply_output_bytes": output_bytes,
-        "nova_auto_apply_cases": 2,
-        "nova_auto_apply_passed": 2,
+        "nova_auto_apply_cases": 3,
+        "nova_auto_apply_passed": 3,
         "nova_auto_apply_fire_only_strict_checked": True,
         "nova_auto_apply_fire_only_strict_planned_node_writes": 1,
         "nova_auto_apply_fire_only_strict_changed_nodes": 1,
         "nova_auto_apply_tnt_wall_checked": True,
         "nova_auto_apply_tnt_wall_planned_node_writes": 12,
         "nova_auto_apply_tnt_wall_changed_nodes": 12,
+        "nova_auto_apply_generated_dimensioned_wall_checked": True,
+        "nova_auto_apply_generated_dimensioned_wall_planned_node_writes": 12,
+        "nova_auto_apply_generated_dimensioned_wall_changed_nodes": 12,
+        "nova_auto_apply_generated_dimensioned_wall_width": 6,
+        "nova_auto_apply_generated_dimensioned_wall_height": 2,
         "nova_auto_apply_agentic_build_planner_checked": True,
         "nova_auto_apply_auto_apply_checked": True,
         "nova_auto_apply_rollback_checked": True,
