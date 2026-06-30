@@ -89,6 +89,16 @@ def safe_scalar(value: Any, max_bytes: int = 1000) -> str | int | float | bool |
     return bounded_text(value, max_bytes)
 
 
+def safe_string_list(value: Any, *, max_items: int = 8, max_bytes: int = 80) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [
+        bounded_text(item, max_bytes)
+        for item in value
+        if isinstance(item, str)
+    ][:max_items]
+
+
 def stable_candidate_id(candidate: dict[str, Any]) -> str:
     seed = {
         "source_kind": candidate.get("source_kind"),
@@ -180,6 +190,66 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
     }
 
 
+def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | None:
+    observed = candidate.get("observed") if isinstance(candidate.get("observed"), dict) else {}
+    required = safe_string_list(
+        observed.get("required_tool_calls") or observed.get("adapter_required_tool_calls")
+    )
+    missing = safe_string_list(
+        observed.get("missing_required_tool_calls") or observed.get("adapter_missing_required_tool_calls")
+    )
+    satisfied = observed.get("required_tool_calls_satisfied")
+    if satisfied is None:
+        satisfied = observed.get("adapter_required_tool_calls_satisfied")
+    decision_source = observed.get("tool_decision_source") or observed.get("adapter_tool_decision_source")
+    if not required and not missing and satisfied is None and not decision_source:
+        return None
+
+    status = "unknown"
+    if satisfied is True and not missing:
+        status = "pass"
+    if satisfied is False or missing or decision_source == "adapter_fallback_after_agent_missing_required_tool":
+        status = "fail"
+
+    return {
+        "status": status,
+        "required_tool_calls": required,
+        "missing_required_tool_calls": missing,
+        "required_tool_calls_satisfied": satisfied,
+        "tool_decision_source": safe_scalar(decision_source),
+        "ready_for_adapter_contract_eval": status == "fail",
+        "expected": {
+            "required_tool_calls": required,
+            "missing_required_tool_calls": [],
+            "required_tool_calls_satisfied": True,
+            "tool_decision_source": "agents_sdk_function_tool",
+        },
+    }
+
+
+def finalize_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
+    expected = expected_outcome_for(candidate["prompt"], candidate)
+    candidate.update({
+        "candidate_id": stable_candidate_id(candidate),
+        "priority": candidate_priority(candidate, expected),
+        **expected,
+    })
+    tool_contract = adapter_tool_contract_for(candidate)
+    if tool_contract:
+        candidate["adapter_tool_contract"] = tool_contract
+        candidate["ready_for_adapter_contract_eval"] = tool_contract.get("ready_for_adapter_contract_eval") is True
+        candidate["adapter_contract_review_status"] = (
+            "adapter_contract_candidate_ready"
+            if tool_contract.get("ready_for_adapter_contract_eval") is True
+            else "adapter_contract_observed"
+        )
+        if tool_contract.get("status") == "fail":
+            candidate["priority"] = "high"
+    else:
+        candidate["ready_for_adapter_contract_eval"] = False
+    return candidate
+
+
 def candidate_priority(candidate: dict[str, Any], expected: dict[str, Any]) -> str:
     status = str(candidate.get("observed_status") or "").lower()
     reason = str(candidate.get("observed_reason") or "").lower()
@@ -258,6 +328,9 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
                 for item in nested.get("tools_enabled", [])
                 if isinstance(item, str)
             ][:8],
+            "required_tool_calls": safe_string_list(nested.get("required_tool_calls")),
+            "missing_required_tool_calls": safe_string_list(nested.get("missing_required_tool_calls")),
+            "required_tool_calls_satisfied": nested.get("required_tool_calls_satisfied"),
             "tool_trace_names": [
                 bounded_text(item.get("tool_name"), 80)
                 for item in tool_trace
@@ -265,13 +338,7 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             ][:8],
         },
     })
-    expected = expected_outcome_for(candidate["prompt"], candidate)
-    candidate.update({
-        "candidate_id": stable_candidate_id(candidate),
-        "priority": candidate_priority(candidate, expected),
-        **expected,
-    })
-    return candidate
+    return finalize_candidate(candidate)
 
 
 def _extract_action_log_json(line: str) -> dict[str, Any] | None:
@@ -319,16 +386,10 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             "selected_candidate_id": safe_scalar(response.get("selected_candidate_id")),
             "candidate_count": safe_scalar(response.get("candidate_count")),
             "adapter_tool_decision_source": safe_scalar(response.get("adapter_tool_decision_source")),
-            "adapter_required_tool_calls": [
-                bounded_text(item, 80)
-                for item in response.get("adapter_required_tool_calls", [])
-                if isinstance(item, str)
-            ][:8],
-            "adapter_missing_required_tool_calls": [
-                bounded_text(item, 80)
-                for item in response.get("adapter_missing_required_tool_calls", [])
-                if isinstance(item, str)
-            ][:8],
+            "adapter_required_tool_calls": safe_string_list(response.get("adapter_required_tool_calls")),
+            "adapter_missing_required_tool_calls": safe_string_list(
+                response.get("adapter_missing_required_tool_calls")
+            ),
             "adapter_required_tool_calls_satisfied": response.get("adapter_required_tool_calls_satisfied"),
             "build_option_decision_source": safe_scalar(response.get("build_option_decision_source")),
             "adapter_memory_available": response.get("adapter_memory_available"),
@@ -341,13 +402,7 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             ][:8],
         },
     })
-    expected = expected_outcome_for(candidate["prompt"], candidate)
-    candidate.update({
-        "candidate_id": stable_candidate_id(candidate),
-        "priority": candidate_priority(candidate, expected),
-        **expected,
-    })
-    return candidate
+    return finalize_candidate(candidate)
 
 
 def _first_action(entry: dict[str, Any]) -> dict[str, Any]:
@@ -459,13 +514,7 @@ def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any]
             "action_count": len(entry.get("actions")) if isinstance(entry.get("actions"), list) else 0,
         },
     })
-    expected = expected_outcome_for(candidate["prompt"], candidate)
-    candidate.update({
-        "candidate_id": stable_candidate_id(candidate),
-        "priority": candidate_priority(candidate, expected),
-        **expected,
-    })
-    return candidate
+    return finalize_candidate(candidate)
 
 
 def _read_jsonl_candidates(paths: list[Path], violations: list[dict[str, str]]) -> tuple[list[dict[str, Any]], int, int]:
@@ -610,6 +659,15 @@ def build_eval_candidate_queue(
 
     ready_count = sum(1 for item in candidates if item.get("ready_for_prompt_eval") is True)
     manual_count = sum(1 for item in candidates if item.get("ready_for_prompt_eval") is not True)
+    adapter_contract_ready_count = sum(
+        1 for item in candidates if item.get("ready_for_adapter_contract_eval") is True
+    )
+    adapter_contract_failure_count = sum(
+        1
+        for item in candidates
+        if isinstance(item.get("adapter_tool_contract"), dict)
+        and item["adapter_tool_contract"].get("status") == "fail"
+    )
     status = "ready"
     if not candidates:
         status = "empty"
@@ -628,6 +686,8 @@ def build_eval_candidate_queue(
             "entries_skipped_private": sdk_private + nova_agent_private + trace_private,
             "candidates_total": len(candidates),
             "ready_for_prompt_eval": ready_count,
+            "ready_for_adapter_contract_eval": adapter_contract_ready_count,
+            "adapter_contract_failures": adapter_contract_failure_count,
             "manual_review_required": manual_count,
             "review_required": True,
         },
@@ -660,6 +720,15 @@ def build_eval_candidate_queue(
         )
         payload["source_summary"]["manual_review_required"] = sum(
             1 for item in payload["candidates"] if item.get("ready_for_prompt_eval") is not True
+        )
+        payload["source_summary"]["ready_for_adapter_contract_eval"] = sum(
+            1 for item in payload["candidates"] if item.get("ready_for_adapter_contract_eval") is True
+        )
+        payload["source_summary"]["adapter_contract_failures"] = sum(
+            1
+            for item in payload["candidates"]
+            if isinstance(item.get("adapter_tool_contract"), dict)
+            and item["adapter_tool_contract"].get("status") == "fail"
         )
         raw = json.dumps(payload, sort_keys=True)
 

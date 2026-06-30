@@ -60,8 +60,11 @@ python3 util/ai_native_agent_eval_queue.py \
 
 The queue is review-first. Ready candidates such as fire-only and TNT-wall
 regressions can be promoted into `/ai_agent_eval`; unknown prompts require an
-operator label before they become pass/fail tests. This keeps improvement tied
-to observed failures while preserving the public/private boundary.
+operator label before they become pass/fail tests. The same queue marks missing
+Agents SDK required-tool calls as high-priority adapter-contract regressions with
+`ready_for_adapter_contract_eval = true`, so a bad agent trace is not buried as
+generic manual review. This keeps improvement tied to observed failures while
+preserving the public/private boundary.
 
 Promote reviewed ready candidates into a replayable
 `ai_native_agent_prompt_eval_case_pack`:
@@ -100,8 +103,10 @@ executable pending build when the sidecar returns a structured
 `selected_option_id` or `tool_decisions.build_option.selected_option_id` that
 matches a candidate Luanti already offered. When the sidecar selects the wrong
 candidate, capture the request/response logs, promote the public-safe failure
-into a custom prompt-eval case, and fix the agent/tool contract or candidate
-ranking until the eval passes.
+into a custom prompt-eval case if the expected build behavior is known, and fix
+the agent/tool contract or candidate ranking until the eval passes. When the
+problem is missing tool evidence rather than a known wrong build output, keep it
+in the adapter-contract lane until the expected build behavior is reviewed.
 
 ## Pi Promotion Loop
 
