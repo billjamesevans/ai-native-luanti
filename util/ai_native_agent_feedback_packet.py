@@ -1,0 +1,204 @@
+#!/usr/bin/env python3
+"""Create a reviewed Nova feedback packet from runtime logs."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import sys
+from typing import Any
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import ai_native_agent_eval_queue as eval_queue
+import ai_native_agent_memory_refresh as memory_refresh
+import ai_native_agent_operator_label as operator_label
+
+
+def resolve_path(root: Path, value: str | Path) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    return root / path
+
+
+def relative_label(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix() if path.is_relative_to(root) else path.name
+
+
+def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description=(
+            "Build one public-safe reviewed Nova feedback packet: candidate queue, "
+            "operator label, and prompt-memory case pack."
+        ),
+    )
+    parser.add_argument("--root", default=".", help="Repository root for relative paths.")
+    parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
+    parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
+    parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log with request_trace JSON.")
+    parser.add_argument("--candidate-id", default=None, help="Candidate id to label.")
+    parser.add_argument("--prompt", default=None, help="Public prompt to label when candidate id is not supplied.")
+    parser.add_argument("--source-kind", default=None, help="Optional source_kind match guard.")
+    parser.add_argument("--case-hint", default=None, help="Prompt-memory case hint.")
+    parser.add_argument("--label-id", default=None, help="Stable reviewed label id.")
+    parser.add_argument("--build-kind", required=True, help="Expected build kind, such as fire, wall, or platform.")
+    parser.add_argument("--build-material-name", required=True, help="Expected material name, such as fire or tnt.")
+    parser.add_argument("--build-material-node", default=None, help="Optional expected Luanti node name.")
+    parser.add_argument("--planned-node-writes", type=int, default=None, help="Expected planned write count.")
+    parser.add_argument("--route", default=None, help="Optional expected route.")
+    parser.add_argument("--danger-refusal-allowed", type=operator_label.parse_optional_bool, default=None)
+    parser.add_argument("--forbidden-extra-structure", type=operator_label.parse_optional_bool, default=None)
+    parser.add_argument("--allow-unmatched", action="store_true", help="Create the label even if no candidate matches.")
+    parser.add_argument(
+        "--candidate-queue-output",
+        default="local/benchmarks/ai-agent-eval-candidate-queue.json",
+        help="Output candidate queue JSON path.",
+    )
+    parser.add_argument(
+        "--operator-label-output",
+        default="local/benchmarks/ai-agent-operator-labels.json",
+        help="Output operator-label JSON path.",
+    )
+    parser.add_argument(
+        "--case-pack-output",
+        default="local/benchmarks/ai-agent-prompt-eval-case-pack.json",
+        help="Output prompt-memory case pack JSON path.",
+    )
+    parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
+    parser.add_argument("--max-candidates", type=int, default=eval_queue.DEFAULT_MAX_CANDIDATES)
+    parser.add_argument("--max-candidate-queue-bytes", type=int, default=eval_queue.DEFAULT_MAX_BYTES)
+    parser.add_argument("--max-cases", type=int, default=25)
+    parser.add_argument("--max-case-pack-bytes", type=int, default=24000)
+    return parser.parse_args(argv)
+
+
+def build_feedback_packet(
+    *,
+    root: Path,
+    agents_sdk_logs: list[Path],
+    nova_agent_logs: list[Path],
+    action_logs: list[Path],
+    candidate_queue_output: Path,
+    operator_label_output: Path,
+    case_pack_output: Path,
+    candidate_id: str | None,
+    prompt: str | None,
+    source_kind: str | None,
+    case_hint: str | None,
+    label_id: str | None,
+    expected: dict[str, Any],
+    allow_unmatched: bool,
+    generated_at: str | None,
+    max_candidates: int,
+    max_candidate_queue_bytes: int,
+    max_cases: int,
+    max_case_pack_bytes: int,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    initial_queue = eval_queue.build_eval_candidate_queue(
+        agents_sdk_logs=agents_sdk_logs,
+        nova_agent_logs=nova_agent_logs,
+        action_logs=action_logs,
+        generated_at=generated_at,
+        max_candidates=max(0, max_candidates),
+        max_bytes=max(1000, max_candidate_queue_bytes),
+    )
+    label_artifact = operator_label.build_operator_label_artifact(
+        candidate_queue=initial_queue,
+        candidate_queue_path=relative_label(root, candidate_queue_output),
+        candidate_id=candidate_id,
+        prompt=prompt,
+        source_kind=source_kind,
+        case_hint=case_hint,
+        label_id=label_id,
+        expected=expected,
+        allow_unmatched=allow_unmatched,
+        generated_at=generated_at,
+    )
+    write_json(operator_label_output, label_artifact)
+    candidate_queue, case_pack = memory_refresh.build_memory_artifacts(
+        agents_sdk_logs=agents_sdk_logs,
+        nova_agent_logs=nova_agent_logs,
+        action_logs=action_logs,
+        operator_label_files=[operator_label_output],
+        generated_at=generated_at,
+        candidate_queue_source_path=relative_label(root, candidate_queue_output),
+        max_candidates=max_candidates,
+        max_candidate_queue_bytes=max_candidate_queue_bytes,
+        max_cases=max_cases,
+        max_case_pack_bytes=max_case_pack_bytes,
+    )
+    write_json(candidate_queue_output, candidate_queue)
+    write_json(case_pack_output, case_pack)
+    label = label_artifact["labels"][0]
+    summary = {
+        "status": "ready" if "fail" not in {candidate_queue.get("status"), case_pack.get("status")} else "fail",
+        "candidate_queue": relative_label(root, candidate_queue_output),
+        "candidate_queue_status": candidate_queue.get("status"),
+        "operator_label": relative_label(root, operator_label_output),
+        "operator_label_id": label.get("label_id"),
+        "operator_label_matched": label_artifact.get("source", {}).get("matched"),
+        "operator_labels_applied": candidate_queue.get("source_summary", {}).get("operator_labels_applied", 0),
+        "case_pack": relative_label(root, case_pack_output),
+        "case_pack_status": case_pack.get("status"),
+        "cases_total": case_pack.get("summary", {}).get("cases_total", 0),
+        "manual_review_required": candidate_queue.get("source_summary", {}).get("manual_review_required", 0),
+        "ready_for_prompt_eval": candidate_queue.get("source_summary", {}).get("ready_for_prompt_eval", 0),
+    }
+    return candidate_queue, label_artifact, case_pack, summary
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv or sys.argv[1:])
+    root = resolve_path(Path.cwd(), args.root).resolve()
+    agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
+    nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
+    action_logs = [resolve_path(root, path) for path in args.action_log]
+    candidate_queue_output = resolve_path(root, args.candidate_queue_output)
+    operator_label_output = resolve_path(root, args.operator_label_output)
+    case_pack_output = resolve_path(root, args.case_pack_output)
+    try:
+        expected = operator_label.expected_build_behavior(
+            build_kind=args.build_kind,
+            build_material_name=args.build_material_name,
+            build_material_node=args.build_material_node,
+            planned_node_writes=args.planned_node_writes,
+            route=args.route,
+            danger_refusal_allowed=args.danger_refusal_allowed,
+            forbidden_extra_structure=args.forbidden_extra_structure,
+        )
+        _, _, _, summary = build_feedback_packet(
+            root=root,
+            agents_sdk_logs=agents_sdk_logs,
+            nova_agent_logs=nova_agent_logs,
+            action_logs=action_logs,
+            candidate_queue_output=candidate_queue_output,
+            operator_label_output=operator_label_output,
+            case_pack_output=case_pack_output,
+            candidate_id=args.candidate_id,
+            prompt=args.prompt,
+            source_kind=args.source_kind,
+            case_hint=args.case_hint,
+            label_id=args.label_id,
+            expected=expected,
+            allow_unmatched=args.allow_unmatched,
+            generated_at=args.generated_at,
+            max_candidates=args.max_candidates,
+            max_candidate_queue_bytes=args.max_candidate_queue_bytes,
+            max_cases=args.max_cases,
+            max_case_pack_bytes=args.max_case_pack_bytes,
+        )
+    except operator_label.OperatorLabelError as exc:
+        print(json.dumps({"status": "fail", "error": str(exc)}, sort_keys=True), file=sys.stderr)
+        return 1
+    print(json.dumps(summary, sort_keys=True))
+    return 0 if summary.get("status") != "fail" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
