@@ -116,6 +116,130 @@ def adapter_eval_payload(**overrides):
     return payload
 
 
+def live_prompt_eval_payload(**overrides):
+    payload = {
+        "schema_version": 1,
+        "live_result_kind": "ai_native_agent_prompt_eval_live_result",
+        "generated_at": "2026-06-30T18:00:00Z",
+        "runtime_context": {
+            "mode": "disposable_live_ai_runtime_agent_prompt_eval_probe",
+            "gameid": "ai_runtime",
+            "command": "/ai_agent_eval",
+            "adapter_mode": "agents_sdk_sidecar",
+            "requires_live_pi": False,
+            "requires_private_world": False,
+            "requires_private_assets": False,
+            "requires_model_network": True,
+            "world_mutation_performed": False,
+            "world_mutation_scope": "read_only_prompt_eval_pending_approval_cleanup",
+        },
+        "command": {
+            "fire_case_status": "pass",
+            "fire_case_ok": True,
+            "fire_case_count": 0,
+            "registered": True,
+            "server_privilege_required": True,
+        },
+        "prompt_eval": {
+            "status": "pass",
+            "ok": True,
+            "owner": "PromptEvalLive",
+            "cases_total": 5,
+            "cases_passed": 5,
+            "cases_failed": 0,
+            "case_ids": {
+                "build_fire": True,
+                "fire_only_strict": True,
+                "tnt_wall": True,
+                "agentic_build_planner": True,
+                "model": True,
+            },
+            "cases": [
+                {
+                    "case_id": "build_fire",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "build a fire",
+                    "route": "agentic_build_planner",
+                    "build_kind": "fire",
+                    "build_material_name": "fire",
+                    "planned_node_writes": 1,
+                },
+                {
+                    "case_id": "fire_only_strict",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "build me a fire and only a fire",
+                    "route": "agentic_build_planner",
+                    "build_kind": "fire",
+                    "build_material_name": "fire",
+                    "planned_node_writes": 1,
+                },
+                {
+                    "case_id": "tnt_wall",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "build a wall of tnt",
+                    "route": "agentic_build_planner",
+                    "build_kind": "wall",
+                    "build_material_name": "tnt",
+                    "planned_node_writes": 12,
+                },
+                {
+                    "case_id": "agentic_build_planner",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "build a small lookout wall",
+                    "route": "agentic_build_planner",
+                    "build_kind": "wall",
+                    "build_material_name": "stone",
+                    "planned_node_writes": 8,
+                    "selected_candidate_id": "generated_stone_wall",
+                    "candidate_count": 3,
+                },
+                {
+                    "case_id": "model",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "what can you plan with tools next?",
+                    "route": "model_adapter_async",
+                },
+            ],
+            "metrics": {},
+            "safety": {},
+        },
+        "summary": {
+            "cases_total": 5,
+            "cases_passed": 5,
+            "cases_failed": 0,
+            "build_fire_checked": True,
+            "fire_only_strict_checked": True,
+            "tnt_wall_checked": True,
+            "agentic_build_planner_checked": True,
+            "model_checked": True,
+            "model_adapter_requests": 2,
+            "model_adapter_successes": 2,
+            "model_adapter_failures": 0,
+            "model_adapter_timeouts": 0,
+        },
+        "safety": {
+            "public_safe_output": True,
+            "disposable_live_world_only": True,
+            "read_only_prompt_eval": True,
+            "pending_approvals_discarded": True,
+            "world_mutation_performed": False,
+            "no_world_mutation": True,
+            "no_raw_assets": True,
+            "no_provider_prompts": True,
+            "no_family_world_coordinates": True,
+            "no_private_prompt_retained": True,
+        },
+        "bounds": {"max_bytes": 22000, "output_bytes": 3000, "truncated": False},
+    }
+    payload.update(overrides)
+    return payload
+
+
 class AgentQualityGateTests(unittest.TestCase):
     def test_ready_artifacts_pass_quality_gate(self):
         module = load_quality_gate_module()
@@ -133,6 +257,46 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["attention"], [])
         self.assertEqual(report["violations"], [])
         self.assertTrue(report["safety"]["public_safe_output"])
+
+    def test_live_prompt_eval_pass_is_recorded(self):
+        module = load_quality_gate_module()
+
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            live_prompt_eval=live_prompt_eval_payload(),
+            generated_at="2026-06-30T18:05:00Z",
+        )
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
+        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 2)
+
+    def test_live_prompt_eval_failure_fails_gate(self):
+        module = load_quality_gate_module()
+
+        failed_live_eval = live_prompt_eval_payload(
+            summary={
+                **live_prompt_eval_payload()["summary"],
+                "cases_passed": 4,
+                "cases_failed": 1,
+                "model_adapter_failures": 1,
+            }
+        )
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            live_prompt_eval=failed_live_eval,
+            generated_at="2026-06-30T18:05:00Z",
+        )
+
+        self.assertEqual(report["status"], "fail")
+        self.assertTrue(any(item["kind"] == "live_prompt_eval_not_passing" for item in report["violations"]))
 
     def test_review_queue_attention_keeps_gate_attention_not_fail(self):
         module = load_quality_gate_module()
@@ -208,11 +372,13 @@ class AgentQualityGateTests(unittest.TestCase):
             case_pack = root / "case-pack.json"
             review_queue = root / "review-queue.json"
             adapter_eval = root / "adapter-contract-eval.json"
+            live_eval = root / "live-prompt-eval.json"
             output = root / "quality-gate.json"
             candidate_queue.write_text(json.dumps(candidate_queue_payload()), encoding="utf-8")
             case_pack.write_text(json.dumps(case_pack_payload()), encoding="utf-8")
             review_queue.write_text(json.dumps(review_queue_payload()), encoding="utf-8")
             adapter_eval.write_text(json.dumps(adapter_eval_payload()), encoding="utf-8")
+            live_eval.write_text(json.dumps(live_prompt_eval_payload()), encoding="utf-8")
 
             completed = subprocess.run(
                 [
@@ -228,6 +394,8 @@ class AgentQualityGateTests(unittest.TestCase):
                     str(review_queue),
                     "--adapter-contract-eval",
                     str(adapter_eval),
+                    "--live-prompt-eval",
+                    str(live_eval),
                     "--output",
                     str(output),
                     "--generated-at",
@@ -243,6 +411,7 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         self.assertEqual(summary["quality_gate_status"], "pass")
+        self.assertEqual(summary["live_prompt_eval_status"], "pass")
         self.assertEqual(report["status"], "pass")
 
 

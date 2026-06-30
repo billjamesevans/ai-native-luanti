@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_agent_adapter_contract_eval as adapter_contract_eval
 import ai_native_agent_eval_promote as eval_promote
 import ai_native_agent_eval_queue as eval_queue
+import ai_native_agent_prompt_eval_live_probe as prompt_eval_live_probe
 import ai_native_agent_review_queue as review_queue
 
 
@@ -97,6 +98,11 @@ def _adapter_summary(adapter_eval: dict[str, Any]) -> dict[str, Any]:
     return summary if isinstance(summary, dict) else {}
 
 
+def _prompt_eval_summary(live_prompt_eval: dict[str, Any]) -> dict[str, Any]:
+    summary = live_prompt_eval.get("summary")
+    return summary if isinstance(summary, dict) else {}
+
+
 def _violations(payload: dict[str, Any]) -> list[Any]:
     violations = payload.get("violations")
     return violations if isinstance(violations, list) else []
@@ -117,15 +123,18 @@ def build_quality_gate(
     case_pack: dict[str, Any],
     review: dict[str, Any],
     adapter_eval: dict[str, Any] | None = None,
+    live_prompt_eval: dict[str, Any] | None = None,
     generated_at: str | None = None,
     candidate_queue_path: str | None = None,
     case_pack_path: str | None = None,
     review_queue_path: str | None = None,
     adapter_contract_eval_path: str | None = None,
+    live_prompt_eval_path: str | None = None,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> dict[str, Any]:
     generated_at = generated_at or utc_now()
     adapter_eval = adapter_eval or {}
+    live_prompt_eval = live_prompt_eval or {}
     violations: list[dict[str, str]] = []
     attention: list[dict[str, Any]] = []
 
@@ -146,6 +155,7 @@ def build_quality_gate(
         ("case_pack", case_pack),
         ("review_queue", review),
         ("adapter_contract_eval", adapter_eval),
+        ("live_prompt_eval", live_prompt_eval),
     ):
         if payload and _artifact_private(payload):
             violations.append({"kind": f"{name}_not_public_safe", "details": "private or forbidden content"})
@@ -154,6 +164,7 @@ def build_quality_gate(
     case_summary = _case_pack_summary(case_pack)
     review_summary = _review_summary(review)
     adapter_summary = _adapter_summary(adapter_eval)
+    live_prompt_summary = _prompt_eval_summary(live_prompt_eval)
 
     active_contract_failures = _int(
         candidate_summary.get("adapter_contract_failures_active"),
@@ -207,6 +218,18 @@ def build_quality_gate(
             })
         if _violations(adapter_eval):
             violations.append({"kind": "adapter_contract_eval_violations", "details": str(len(_violations(adapter_eval)))})
+    live_prompt_eval_status = None
+    if live_prompt_eval:
+        try:
+            prompt_eval_live_probe.validate_live_result(live_prompt_eval)
+        except ValueError as exc:
+            live_prompt_eval_status = "fail"
+            violations.append({
+                "kind": "live_prompt_eval_not_passing",
+                "details": bounded_text(exc, 240) or "invalid live prompt eval",
+            })
+        else:
+            live_prompt_eval_status = "pass"
 
     status = "pass"
     if attention:
@@ -224,12 +247,18 @@ def build_quality_gate(
             "case_pack_path": case_pack_path,
             "review_queue_path": review_queue_path,
             "adapter_contract_eval_path": adapter_contract_eval_path,
+            "live_prompt_eval_path": live_prompt_eval_path,
         },
         "summary": {
             "candidate_queue_status": bounded_text(candidate_queue.get("status"), 80),
             "case_pack_status": bounded_text(case_pack.get("status"), 80),
             "review_queue_status": bounded_text(review.get("status"), 80),
             "adapter_contract_eval_status": bounded_text(adapter_eval_status, 80),
+            "live_prompt_eval_status": bounded_text(live_prompt_eval_status, 80),
+            "live_prompt_eval_cases_total": _int(live_prompt_summary.get("cases_total")),
+            "live_prompt_eval_cases_passed": _int(live_prompt_summary.get("cases_passed")),
+            "live_prompt_eval_cases_failed": _int(live_prompt_summary.get("cases_failed")),
+            "live_prompt_eval_model_adapter_requests": _int(live_prompt_summary.get("model_adapter_requests")),
             "candidates_total": _int(candidate_summary.get("candidates_total"), _list_len(candidate_queue.get("candidates"))),
             "ready_for_prompt_eval": _int(candidate_summary.get("ready_for_prompt_eval")),
             "unique_ready_for_prompt_eval": _int(review_summary.get("unique_ready_for_prompt_eval")),
@@ -296,6 +325,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--case-pack", required=True, help="Prompt-eval case pack JSON path.")
     parser.add_argument("--review-queue", required=True, help="Agent review queue JSON path.")
     parser.add_argument("--adapter-contract-eval", default=None, help="Optional adapter-contract replay result JSON path.")
+    parser.add_argument("--live-prompt-eval", default=None, help="Optional latest live prompt-eval probe result JSON path.")
     parser.add_argument("--output", required=True, help="Output quality-gate JSON path.")
     parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
@@ -312,6 +342,10 @@ def main(argv: list[str] | None = None) -> int:
         resolve_path(root, args.adapter_contract_eval)
         if args.adapter_contract_eval else None
     )
+    live_prompt_eval_path = (
+        resolve_path(root, args.live_prompt_eval)
+        if args.live_prompt_eval else None
+    )
     output = resolve_path(root, args.output)
 
     payloads: dict[str, dict[str, Any]] = {}
@@ -321,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
         ("case_pack", case_pack_path),
         ("review_queue", review_queue_path),
         ("adapter_contract_eval", adapter_contract_eval_path),
+        ("live_prompt_eval", live_prompt_eval_path),
     ):
         if path is None:
             payloads[name] = {}
@@ -335,11 +370,13 @@ def main(argv: list[str] | None = None) -> int:
         case_pack=payloads["case_pack"],
         review=payloads["review_queue"],
         adapter_eval=payloads["adapter_contract_eval"],
+        live_prompt_eval=payloads["live_prompt_eval"],
         generated_at=args.generated_at,
         candidate_queue_path=relative_label(root, candidate_queue_path),
         case_pack_path=relative_label(root, case_pack_path),
         review_queue_path=relative_label(root, review_queue_path),
         adapter_contract_eval_path=relative_label(root, adapter_contract_eval_path),
+        live_prompt_eval_path=relative_label(root, live_prompt_eval_path),
         max_bytes=max(1000, args.max_bytes),
     )
     if load_errors:
@@ -354,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         "violations_total": len(report.get("violations", [])) if isinstance(report.get("violations"), list) else 0,
         "review_queue_status": report.get("summary", {}).get("review_queue_status"),
         "adapter_contract_eval_status": report.get("summary", {}).get("adapter_contract_eval_status"),
+        "live_prompt_eval_status": report.get("summary", {}).get("live_prompt_eval_status"),
     }, sort_keys=True))
     return 1 if report.get("status") == "fail" else 0
 
