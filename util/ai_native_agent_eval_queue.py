@@ -502,6 +502,13 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
     nested = response.get("response") if isinstance(response.get("response"), dict) else {}
     tool_decisions = nested.get("tool_decisions") if isinstance(nested.get("tool_decisions"), dict) else {}
     build_option = tool_decisions.get("build_option") if isinstance(tool_decisions.get("build_option"), dict) else {}
+    build_action_plan = nested.get("build_action_plan")
+    if not isinstance(build_action_plan, dict):
+        build_action_plan = (
+            tool_decisions.get("build_action_plan")
+            if isinstance(tool_decisions.get("build_action_plan"), dict)
+            else {}
+        )
     memory_match = build_option.get("memory_match") if isinstance(build_option.get("memory_match"), dict) else {}
     tool_trace = nested.get("tool_trace") if isinstance(nested.get("tool_trace"), list) else []
     candidate = _base_candidate(
@@ -534,6 +541,14 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             "tool_decision_source": safe_scalar(nested.get("tool_decision_source")),
             "build_option_decision_source": safe_scalar(build_option.get("decision_source")),
             "build_option_selected_option_id": safe_scalar(build_option.get("selected_option_id")),
+            "build_action_plan_status": safe_scalar(build_action_plan.get("status")),
+            "build_action_plan_selected_option_id": safe_scalar(
+                build_action_plan.get("selected_option_id")
+            ),
+            "build_action_plan_step_count": safe_scalar(build_action_plan.get("step_count")),
+            "build_action_plan_world_mutation_authority": safe_scalar(
+                build_action_plan.get("world_mutation_authority")
+            ),
             "memory_available": memory_match.get("memory_available"),
             "memory_matched_case_id": safe_scalar(memory_match.get("matched_case_id")),
             "tools_enabled": [
@@ -627,6 +642,15 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
                 for item in response.get("adapter_tool_trace_names", [])
                 if isinstance(item, str)
             ][:8],
+            "adapter_build_action_plan_status": safe_scalar(
+                response.get("adapter_build_action_plan_status")
+            ),
+            "adapter_build_action_plan_selected_candidate_id": safe_scalar(
+                response.get("adapter_build_action_plan_selected_candidate_id")
+            ),
+            "adapter_build_action_plan_step_count": safe_scalar(
+                response.get("adapter_build_action_plan_step_count")
+            ),
         },
     })
     return finalize_candidate(candidate)

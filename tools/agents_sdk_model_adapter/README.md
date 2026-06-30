@@ -18,6 +18,9 @@ The sidecar owns:
 - reviewed prompt-memory lookup through an optional case pack;
 - bounded generated build-option proposals that Luanti validates before any
   preview or task;
+- bounded build-action workflow plans that hand the selected option back to
+  Luanti for preview, approval, rollback, task execution, and improvement
+  evidence;
 - a structured `tool_powers` manifest for readiness and release evidence;
 - conversion back to the provider-neutral
   `ai_native_model_adapter_response` envelope.
@@ -72,7 +75,10 @@ availability, bounded public-safe response metadata,
 
 For build-planning requests, live responses should include
 `tool_decision_source = agents_sdk_function_tool` plus a bounded `tool_trace`
-containing `recall_build_prompt_memory` and `select_build_option`.
+containing `recall_build_prompt_memory`, `select_build_option`, and
+`plan_build_actions`. The action-plan tool is read-only; it records the intended
+Luanti workflow and confirms that the engine, not the sidecar, owns preview,
+approval, rollback, task execution, and improvement evidence.
 For open-ended build requests, the `propose_build_option` function tool may
 return a generated option such as a tower wall, bridge platform, path platform,
 or shelter floor. That proposal is still read-only: Luanti validates the kind,

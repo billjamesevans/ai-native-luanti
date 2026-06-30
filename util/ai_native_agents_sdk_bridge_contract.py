@@ -49,6 +49,23 @@ def _load_agent_module():
     return module
 
 
+def _build_planning_sample_request(module) -> dict:
+    request = module.sample_request()
+    request["public_prompt"] = "\n".join([
+        "Plan a Luanti build request using only the listed executable options.",
+        "Player request: build a wall of tnt",
+        "Candidate summary: platform:platform:default:4|tnt_wall:wall:tnt:12",
+    ])
+    request["context"] = {
+        "surface_id": "builder",
+        "intent": "build_planning",
+        "capabilities": "world.read,http.llm",
+        "player_request": "build a wall of tnt",
+        "candidate_summary": "platform:platform:default:4|tnt_wall:wall:tnt:12",
+    }
+    return request
+
+
 def validate_contract() -> dict:
     violations: list[dict] = []
     for path in (AGENT, MAIN, PYPROJECT, README, DOC, READINESS, ADAPTER_CONTRACT_EVAL, LUA_PLUGIN):
@@ -79,6 +96,8 @@ def validate_contract() -> dict:
         "recall_build_prompt_memory",
         "propose_build_option",
         "select_build_option",
+        "plan_build_actions",
+        "luanti_build_action_plan_v1",
         "BUILD_PLANNING_REQUIRED_TOOLS",
         "required_tool_calls_satisfied",
         "generated_option",
@@ -90,6 +109,7 @@ def validate_contract() -> dict:
         '"tool_trace": tool_trace',
         '"tool_powers": tool_power_manifest()',
         '"tool_decisions": tool_decisions',
+        '"build_action_plan": tool_decisions.get("build_action_plan")',
         '"tool_decision_source": decision_source',
         '"selected_option_id": _selected_option_id(tool_decisions)',
         '"direct_world_mutation": False',
@@ -223,6 +243,8 @@ def validate_contract() -> dict:
             "offline_response_missing_generated_option_tool", str(response), violations)
         _require("select_build_option" in nested.get("tools_enabled", []),
             "offline_response_missing_select_option_tool", str(response), violations)
+        _require("plan_build_actions" in nested.get("tools_enabled", []),
+            "offline_response_missing_build_action_plan_tool", str(response), violations)
         _require(nested.get("tool_decision_source") == "offline_adapter_fallback",
             "offline_response_decision_source_invalid", str(response), violations)
         _require(nested.get("required_tool_calls_satisfied") is not False,
@@ -239,6 +261,9 @@ def validate_contract() -> dict:
         _require(any(power.get("name") == "select_build_option"
             for power in tool_powers if isinstance(power, dict)),
             "offline_response_missing_select_option_power", str(response), violations)
+        _require(any(power.get("name") == "plan_build_actions"
+            for power in tool_powers if isinstance(power, dict)),
+            "offline_response_missing_build_action_plan_power", str(response), violations)
         _require(all(power.get("direct_world_mutation") is False for power in tool_powers if isinstance(power, dict)),
             "offline_response_tool_can_mutate_world", str(response), violations)
         _require(nested.get("world_mutation_authority") == "luanti",
@@ -250,6 +275,31 @@ def validate_contract() -> dict:
             "private_payload",
             "asset_payload",
         )), "offline_response_has_forbidden_payload", str(response), violations)
+
+        build_response = module.run_model_adapter_request(
+            _build_planning_sample_request(module),
+            force_offline=True,
+        )
+        build_nested = (
+            build_response.get("response")
+            if isinstance(build_response.get("response"), dict)
+            else {}
+        )
+        build_plan = (
+            build_nested.get("build_action_plan")
+            if isinstance(build_nested.get("build_action_plan"), dict)
+            else {}
+        )
+        _require(build_plan.get("status") == "ready",
+            "offline_build_response_missing_build_action_plan", str(build_response), violations)
+        _require(build_plan.get("selected_option_id") == "tnt_wall",
+            "offline_build_response_plan_selected_option_invalid", str(build_response), violations)
+        _require(build_plan.get("plan_kind") == "luanti_build_action_plan_v1",
+            "offline_build_response_plan_kind_invalid", str(build_response), violations)
+        _require(build_plan.get("step_count") == 4,
+            "offline_build_response_plan_step_count_invalid", str(build_response), violations)
+        _require("plan_build_actions" in build_nested.get("required_tool_calls", []),
+            "offline_build_response_missing_required_plan_tool", str(build_response), violations)
 
     return {
         "status": "pass" if not violations else "fail",
