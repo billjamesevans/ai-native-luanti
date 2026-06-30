@@ -66,6 +66,42 @@ Agents SDK required-tool calls as high-priority adapter-contract regressions wit
 generic manual review. This keeps improvement tied to observed failures while
 preserving the public/private boundary.
 
+When a maintainer knows the expected build output for an unknown prompt, add a
+public-safe `ai_native_agent_eval_operator_labels` file and pass it with
+`--operator-labels`. Labels may match by exact `candidate_id` or exact public
+`prompt`, and can only promote build-output expectations that the runtime prompt
+eval can replay:
+
+```json
+{
+  "schema_version": 1,
+  "artifact_kind": "ai_native_agent_eval_operator_labels",
+  "labels": [
+    {
+      "label_id": "reviewed_stone_bridge_platform",
+      "prompt": "build a bridge",
+      "case_hint": "stone_bridge_platform",
+      "expected": {
+        "action": "build",
+        "build_kind": "platform",
+        "build_material_name": "stone",
+        "planned_node_writes": 12,
+        "route": "agentic_build_planner"
+      }
+    }
+  ]
+}
+```
+
+```bash
+python3 util/ai_native_agent_eval_queue.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --operator-labels local/benchmarks/ai-agent-operator-labels.json \
+  --output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
 Promote reviewed ready candidates into a replayable
 `ai_native_agent_prompt_eval_case_pack`:
 
@@ -83,6 +119,7 @@ python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
   --generated-at 2026-06-30T00:00:00Z

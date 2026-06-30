@@ -48,17 +48,17 @@ def build_planning_sidecar_entry():
             "adapter_name": "openai-agents-sdk-model-adapter",
             "response": {
                 "agentic_execution": True,
-                "tools_enabled": ["recall_build_prompt_memory", "recommend_build_option"],
+                "tools_enabled": ["recall_build_prompt_memory", "select_build_option", "recommend_build_option"],
                 "tool_decision_source": "agents_sdk_function_tool",
                 "selected_option_id": "fire",
                 "tool_trace": [
                     {"tool_name": "recall_build_prompt_memory"},
-                    {"tool_name": "recommend_build_option"},
+                    {"tool_name": "select_build_option"},
                 ],
                 "tool_decisions": {
                     "build_option": {
                         "selected_option_id": "fire",
-                        "decision_source": "agent_build_option_tool",
+                        "decision_source": "agent_selected_build_option",
                         "memory_match": {
                             "memory_available": False,
                             "matched_case_id": None,
@@ -83,19 +83,19 @@ def missing_required_tool_sidecar_entry():
         "tool_decision_source": "adapter_fallback_after_agent_missing_required_tool",
         "required_tool_calls": [
             "recall_build_prompt_memory",
-            "recommend_build_option",
+            "select_build_option",
             "propose_build_option",
         ],
         "missing_required_tool_calls": ["propose_build_option"],
         "required_tool_calls_satisfied": False,
         "tool_trace": [
             {"tool_name": "recall_build_prompt_memory"},
-            {"tool_name": "recommend_build_option"},
+            {"tool_name": "select_build_option"},
         ],
         "tool_decisions": {
             "build_option": {
                 "selected_option_id": "generated_tower_wall",
-                "decision_source": "offline_adapter_fallback",
+                "decision_source": "agent_selected_generated_build_option",
                 "generated_option_status": "ready",
                 "direct_world_mutation": False,
             },
@@ -130,6 +130,27 @@ def nova_agent_log_entry():
         "tool_trace": [
             {"tool_name": "analyze_build_intent"},
             {"tool_name": "validate_plan_contract"},
+        ],
+    }
+
+
+def operator_labels_payload(prompt="build a bridge"):
+    return {
+        "schema_version": 1,
+        "artifact_kind": "ai_native_agent_eval_operator_labels",
+        "labels": [
+            {
+                "label_id": "reviewed_stone_bridge_platform",
+                "prompt": prompt,
+                "case_hint": "stone_bridge_platform",
+                "expected": {
+                    "action": "build",
+                    "build_kind": "platform",
+                    "build_material_name": "stone",
+                    "planned_node_writes": 12,
+                    "route": "agentic_build_planner",
+                },
+            }
         ],
     }
 
@@ -202,15 +223,45 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(pack["status"], "empty")
         self.assertEqual(pack["summary"]["cases_total"], 0)
 
+    def test_refresh_applies_operator_labels_to_unknown_prompts(self):
+        module = load_refresh_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            operator_labels = root / "operator-labels.json"
+            entry = build_planning_sidecar_entry()
+            entry["request"]["context"]["player_request"] = "build a bridge"
+            sidecar_log.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+            operator_labels.write_text(json.dumps(operator_labels_payload()), encoding="utf-8")
+
+            queue, pack = module.build_memory_artifacts(
+                agents_sdk_logs=[sidecar_log],
+                operator_label_files=[operator_labels],
+                generated_at="2026-06-30T13:00:00Z",
+                candidate_queue_source_path="local/benchmarks/ai-agent-eval-candidate-queue.json",
+            )
+
+        self.assertEqual(queue["status"], "ready")
+        self.assertEqual(queue["source_summary"]["operator_labels_read"], 1)
+        self.assertEqual(queue["source_summary"]["operator_labels_applied"], 1)
+        self.assertEqual(queue["source_summary"]["ready_for_prompt_eval"], 1)
+        self.assertEqual(queue["candidates"][0]["review_status"], "operator_labeled_candidate_ready")
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 1)
+        self.assertEqual(pack["cases"][0]["case_hint"], "stone_bridge_platform")
+        self.assertEqual(pack["cases"][0]["promotion"]["mode"], "operator_label_overlay")
+
     def test_cli_writes_refresh_artifacts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)
             sidecar_log = root / "agents-sdk-model-adapter.jsonl"
             nova_agent_log = root / "nova-agent-requests.jsonl"
+            operator_labels = root / "operator-labels.json"
             candidate_queue = root / "ai-agent-eval-candidate-queue.json"
             case_pack = root / "ai-agent-prompt-eval-case-pack.json"
             sidecar_log.write_text(json.dumps(build_planning_sidecar_entry()) + "\n", encoding="utf-8")
             nova_agent_log.write_text(json.dumps(nova_agent_log_entry()) + "\n", encoding="utf-8")
+            operator_labels.write_text(json.dumps(operator_labels_payload()), encoding="utf-8")
 
             completed = subprocess.run(
                 [
@@ -222,6 +273,8 @@ class AgentMemoryRefreshTests(unittest.TestCase):
                     str(sidecar_log),
                     "--nova-agent-log",
                     str(nova_agent_log),
+                    "--operator-labels",
+                    str(operator_labels),
                     "--candidate-queue-output",
                     str(candidate_queue),
                     "--case-pack-output",
@@ -241,6 +294,8 @@ class AgentMemoryRefreshTests(unittest.TestCase):
             self.assertEqual(summary["cases_total"], 2)
             self.assertEqual(summary["adapter_contract_failures"], 0)
             self.assertEqual(summary["ready_for_adapter_contract_eval"], 0)
+            self.assertEqual(summary["operator_labels_read"], 1)
+            self.assertEqual(summary["operator_labels_applied"], 0)
             self.assertEqual(json.loads(candidate_queue.read_text(encoding="utf-8"))["status"], "ready")
             self.assertEqual(json.loads(case_pack.read_text(encoding="utf-8"))["summary"]["cases_total"], 2)
 

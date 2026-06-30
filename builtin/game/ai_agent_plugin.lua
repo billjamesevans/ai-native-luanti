@@ -4509,7 +4509,8 @@ local function run_build_eval_case(report, owner, case_id, prompt, context, expe
 	})
 end
 
-local function finish_agentic_build_eval_case(case_report, final_reply, final_trace)
+local function finish_agentic_build_eval_case(case_report, final_reply, final_trace, expected)
+	expected = expected or {}
 	final_trace = final_trace or trace_by_id(case_report.trace_id) or latest_request_trace()
 	local cleanup
 	if final_reply and final_reply.status == "pending_approval" then
@@ -4529,16 +4530,23 @@ local function finish_agentic_build_eval_case(case_report, final_reply, final_tr
 	case_report.checks.final_status = final_reply and final_reply.status == "pending_approval"
 	case_report.checks.approval_required = final_reply and final_reply.approval_id ~= nil
 	case_report.checks.planner_mode = final_reply
-		and final_reply.planner_mode == "agentic_model_adapter"
-	case_report.checks.selected_candidate = final_reply
-		and final_reply.selected_candidate_id == "platform"
+		and (expected.agentic_model_required == false
+			or final_reply.planner_mode == "agentic_model_adapter")
+	case_report.checks.selected_candidate = expected.selected_candidate_id == nil
+		or (final_reply and final_reply.selected_candidate_id == expected.selected_candidate_id)
 	case_report.checks.multiple_options = final_reply
 		and (final_reply.candidate_count or 0) >= 3
-	case_report.checks.build_kind = final_reply and final_reply.build_kind == "platform"
-	case_report.checks.planned_writes = final_reply
-		and (final_reply.planned_node_writes or 0) == 4
+	case_report.checks.build_kind = expected.build_kind == nil
+		or (final_reply and final_reply.build_kind == expected.build_kind)
+	case_report.checks.material_name = expected.build_material_name == nil
+		or (final_reply and final_reply.build_material_name == expected.build_material_name)
+	case_report.checks.material_node = expected.build_material_node == nil
+		or (final_reply and final_reply.build_material_node == expected.build_material_node)
+	case_report.checks.planned_writes = expected.planned_node_writes == nil
+		or (final_reply and (final_reply.planned_node_writes or 0)
+			== expected.planned_node_writes)
 	case_report.checks.trace_route = final_trace
-		and final_trace.route == "agentic_build_planner"
+		and final_trace.route == (expected.route or "agentic_build_planner")
 	case_report.checks.trace_status = final_trace and final_trace.response
 		and final_trace.response.status == "pending_approval"
 	case_report.checks.trace_prompt = final_trace
@@ -4555,18 +4563,29 @@ local function finish_agentic_build_eval_case(case_report, final_reply, final_tr
 	case_report.owner = nil
 end
 
-local function run_agentic_build_eval_case(report, owner, prompt, context, async_done)
+local function run_agentic_build_eval_case(report, owner, prompt, context, async_done,
+		case_id, expected, metadata)
+	expected = expected or {
+		build_kind = "platform",
+		planned_node_writes = 4,
+		route = "agentic_build_planner",
+		selected_candidate_id = "platform",
+	}
+	metadata = metadata or {}
 	local case_report = {
-		case_id = "agentic_build_planner",
+		case_id = case_id or "agentic_build_planner",
+		case_hint = metadata.case_hint,
+		source_candidate_id = metadata.source_candidate_id,
 		owner = owner,
 		prompt = prompt,
+		expected = table.copy(expected),
 		checks = {},
 	}
 	report.cases[#report.cases + 1] = case_report
 	local planner_context = table.copy(context or {})
 	planner_context.on_agentic_build_planner_complete = function(final_reply, final_trace)
 		case_report.completed_by_hook = true
-		finish_agentic_build_eval_case(case_report, final_reply, final_trace)
+		finish_agentic_build_eval_case(case_report, final_reply, final_trace, expected)
 		if case_report.initial_recorded then
 			async_done()
 		end
@@ -4607,7 +4626,7 @@ local function run_agentic_build_eval_case(report, owner, prompt, context, async
 	if case_report.completed_by_hook then
 		return false
 	end
-	finish_agentic_build_eval_case(case_report, initial_reply, initial_trace)
+	finish_agentic_build_eval_case(case_report, initial_reply, initial_trace, expected)
 	return false
 end
 
@@ -4887,11 +4906,22 @@ function plugin.run_prompt_eval(options, callback)
 		end
 	end
 	for _, custom_case in ipairs(custom_cases) do
-		run_build_eval_case(report, owner, custom_case.case_id,
-			custom_case.prompt, context, custom_case.expected, {
-				case_hint = custom_case.case_hint,
-				source_candidate_id = custom_case.source_candidate_id,
-			})
+		if custom_case.expected.route == "agentic_build_planner" then
+			if run_agentic_build_eval_case(report, owner, custom_case.prompt,
+					context, async_case_done, custom_case.case_id,
+					custom_case.expected, {
+						case_hint = custom_case.case_hint,
+						source_candidate_id = custom_case.source_candidate_id,
+					}) then
+				pending_async_count = pending_async_count + 1
+			end
+		else
+			run_build_eval_case(report, owner, custom_case.case_id,
+				custom_case.prompt, context, custom_case.expected, {
+					case_hint = custom_case.case_hint,
+					source_candidate_id = custom_case.source_candidate_id,
+				})
+		end
 	end
 	if pending_async_count > 0 and not finished then
 		return true, "queued"

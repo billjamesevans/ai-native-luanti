@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CASE_PACK_KIND = "ai_native_agent_prompt_eval_case_pack"
 DEFAULT_MAX_BYTES = 24000
 DEFAULT_MAX_CASES = 25
+READY_REVIEW_STATUSES = {"candidate_ready", "operator_labeled_candidate_ready"}
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[^\s\"']+"),
@@ -104,7 +105,8 @@ def _candidate_selected(candidate: dict[str, Any], selected_ids: set[str] | None
 def case_from_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     if candidate.get("ready_for_prompt_eval") is not True:
         return None
-    if candidate.get("review_status") != "candidate_ready":
+    review_status = candidate.get("review_status")
+    if review_status not in READY_REVIEW_STATUSES:
         return None
     prompt = candidate.get("prompt")
     expected = candidate.get("expected")
@@ -125,6 +127,11 @@ def case_from_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
     if sanitized_expected.get("build_material_name") is None:
         return None
     sanitized_expected["action"] = "build"
+    promotion_mode = (
+        "operator_label_overlay"
+        if review_status == "operator_labeled_candidate_ready"
+        else "candidate_ready_only"
+    )
     return {
         "case_id": prompt_case_id(case_hint, candidate_id, prompt),
         "case_hint": bounded_text(case_hint, 120),
@@ -134,8 +141,8 @@ def case_from_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
         "action": "build",
         "expected": sanitized_expected,
         "promotion": {
-            "mode": "candidate_ready_only",
-            "review_status": "ready_for_prompt_eval_review",
+            "mode": promotion_mode,
+            "review_status": review_status,
             "requires_maintainer_review_before_default_gate": True,
         },
     }

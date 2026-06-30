@@ -71,7 +71,8 @@ availability, bounded public-safe response metadata,
 `world_mutation_authority = luanti`. It does not write secrets to the report.
 
 For build-planning requests, live responses should include
-`tool_decision_source = agents_sdk_function_tool` plus a bounded `tool_trace`.
+`tool_decision_source = agents_sdk_function_tool` plus a bounded `tool_trace`
+containing `recall_build_prompt_memory` and `select_build_option`.
 For open-ended build requests, the `propose_build_option` function tool may
 return a generated option such as a tower wall, bridge platform, path platform,
 or shelter floor. That proposal is still read-only: Luanti validates the kind,
@@ -105,12 +106,16 @@ Refresh candidate queues and mounted prompt memory from runtime logs with:
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json
 ```
 
 For build-planning logs, `context.player_request` becomes the reviewed memory
 prompt so future agent tool calls can match the exact player command.
+Unknown prompts stay in manual review until a maintainer supplies a public-safe
+`ai_native_agent_eval_operator_labels` file with a replayable build-output
+expectation.
 
 Replay adapter-contract failures against the loopback sidecar with:
 
