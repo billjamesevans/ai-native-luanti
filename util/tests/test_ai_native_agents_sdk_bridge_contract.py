@@ -1,4 +1,5 @@
 import importlib.util
+import asyncio
 import json
 import os
 import pathlib
@@ -569,6 +570,70 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(nested["missing_required_tool_calls"], [])
         self.assertTrue(nested["required_tool_calls_satisfied"])
+
+    def test_live_agent_model_timeout_returns_bounded_fallback(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build a wall of tnt"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build a wall of tnt",
+            "candidate_summary": "platform:platform:default:4|tnt_wall:wall:tnt:12",
+        }
+
+        old_key = os.environ.get("OPENAI_API_KEY")
+        old_timeout = os.environ.get("AI_NATIVE_AGENT_MODEL_TIMEOUT_SECONDS")
+        old_agent = module.Agent
+        old_runner = module.Runner
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        os.environ["AI_NATIVE_AGENT_MODEL_TIMEOUT_SECONDS"] = "0.05"
+
+        class SlowAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        class SlowRunner:
+            @staticmethod
+            async def run(*args, **kwargs):
+                await asyncio.sleep(2)
+                return "too late"
+
+        module.Agent = SlowAgent
+        module.Runner = SlowRunner
+        try:
+            response = module.run_model_adapter_request(request)
+        finally:
+            module.Agent = old_agent
+            module.Runner = old_runner
+            if old_key is None:
+                os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                os.environ["OPENAI_API_KEY"] = old_key
+            if old_timeout is None:
+                os.environ.pop("AI_NATIVE_AGENT_MODEL_TIMEOUT_SECONDS", None)
+            else:
+                os.environ["AI_NATIVE_AGENT_MODEL_TIMEOUT_SECONDS"] = old_timeout
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(response["reason"], "agents_sdk_model_timeout")
+        nested = response["response"]
+        self.assertFalse(nested["agentic_execution"])
+        self.assertTrue(nested["agent_model_timeout"])
+        self.assertEqual(
+            nested["tool_decision_source"],
+            "offline_adapter_fallback_after_agent_timeout",
+        )
+        self.assertEqual(nested["selected_option_id"], "tnt_wall")
+        self.assertEqual(
+            nested["missing_required_tool_calls"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
+        )
 
     def test_live_agent_fire_only_mismatch_falls_back_to_constraint(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
