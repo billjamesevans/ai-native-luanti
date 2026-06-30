@@ -123,7 +123,8 @@ writes `ai-runtime-agent-prompt-eval-live-result.json`. That probe executes the 
 small shelter` agentic planning, and the async model-adapter case, checks request/response trace
 routes, verifies the TNT wall is not refused as dangerous, enforces exact preview sizes for one-node
 fire prompts, twelve TNT wall nodes, and the four-node agentic shelter platform, discards pending
-build approvals before mutation, and records model-adapter request/success/failure/timeout deltas.
+build approvals before mutation, rejects model-selected generic platforms for fire-only prompts via
+the intent-constraint guard, and records model-adapter request/success/failure/timeout deltas.
 By default it
 uses a deterministic mock async adapter and requires no model-network calls; pass
 `--agent-prompt-eval-adapter-endpoint http://127.0.0.1:8766/v1/model-adapter` to run the same

@@ -289,6 +289,13 @@ sets `required_tool_calls_satisfied = false`, and records
 `missing_required_tool_calls` so the run can be promoted into evals instead of
 being mistaken for healthy agent behavior. If no tool decision is returned at
 all, the source is `adapter_fallback_after_agent_no_tool`.
+The same review loop now treats exact build requests as constraints. `build a
+fire`, `build me a fire and only a fire`, and `build a wall of tnt` must resolve
+to their matching executable candidates when those candidates are available. A
+live agent can still reason and call tools, but a mismatched choice is labeled
+`adapter_fallback_after_agent_violated_player_request_constraints`; the adapter
+returns the constrained option while preserving the rejected tool trace in the
+request/response log.
 
 Managed readiness probe, without provider credentials:
 
