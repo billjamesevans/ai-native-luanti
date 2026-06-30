@@ -100,6 +100,9 @@ local PRODUCT_SURFACES = {
 			"guide",
 			"help",
 			"commands",
+			"last",
+			"last command",
+			"diagnostics",
 			"tasks",
 			"task <task_id>",
 			"traces",
@@ -718,6 +721,86 @@ local function format_command_reply(result)
 		local pending = pending_approval_summary(result.pending_approval)
 		if pending then
 			append(lines, pending)
+		end
+	elseif result.action == "last_command" then
+		append_task_details(lines, result)
+		if result.prompt then
+			append(lines, "prompt=" .. tostring(result.prompt))
+		end
+		if result.route then
+			append(lines, "route=" .. tostring(result.route))
+		end
+		if result.planner_mode then
+			append(lines, "planner_mode=" .. tostring(result.planner_mode))
+		end
+		if result.selected_candidate_id then
+			append(lines, "selected_candidate=" .. tostring(result.selected_candidate_id))
+		end
+		if result.model_selected_candidate_id then
+			append(lines, "model_selected_candidate="
+				.. tostring(result.model_selected_candidate_id))
+		end
+		if result.adapter_selected_candidate_id then
+			append(lines, "adapter_selected_candidate="
+				.. tostring(result.adapter_selected_candidate_id))
+		end
+		if result.selection_source then
+			append(lines, "selection_source=" .. tostring(result.selection_source))
+		end
+		if result.intent_constraint_option_id then
+			append(lines, "intent_constraint="
+				.. tostring(result.intent_constraint_option_id))
+		end
+		if result.intent_constraint_reason then
+			append(lines, "intent_constraint_reason="
+				.. tostring(result.intent_constraint_reason))
+		end
+		if result.build_kind then
+			append(lines, "build_kind=" .. tostring(result.build_kind))
+		end
+		if result.build_width then
+			append(lines, "width=" .. tostring(result.build_width))
+		end
+		if result.build_depth then
+			append(lines, "depth=" .. tostring(result.build_depth))
+		end
+		append_build_material_details(lines, result)
+		if result.planned_node_writes then
+			append(lines, "planned_writes=" .. tostring(result.planned_node_writes))
+		end
+		if result.actual_node_writes ~= nil then
+			append(lines, "actual_writes=" .. tostring(result.actual_node_writes))
+		end
+		if result.task_result_status then
+			append(lines, "task_result_status=" .. tostring(result.task_result_status))
+		end
+		if result.task_result_reason then
+			append(lines, "task_result_reason=" .. tostring(result.task_result_reason))
+		end
+		if result.rollback_record_id then
+			append(lines, "rollback_record=" .. tostring(result.rollback_record_id))
+		end
+		if type(result.adapter_tool_trace_names) == "table"
+				and #result.adapter_tool_trace_names > 0 then
+			append(lines, "tools=" .. join_limited(result.adapter_tool_trace_names, 8))
+		end
+		if result.adapter_tool_decision_source then
+			append(lines, "tool_decision_source="
+				.. tostring(result.adapter_tool_decision_source))
+		end
+		if result.adapter_required_tool_calls_satisfied ~= nil then
+			append(lines, "required_tools_satisfied="
+				.. tostring(result.adapter_required_tool_calls_satisfied))
+		end
+		local review = result.eval_review or {}
+		if review.request_trace_logged ~= nil then
+			append(lines, "review=source=" .. tostring(review.source_kind or "unknown")
+				.. " prompt_eval="
+				.. tostring(review.ready_for_prompt_eval and "ready" or "not_ready")
+				.. " adapter_contract="
+				.. tostring(review.ready_for_adapter_contract_eval and "ready" or "not_needed")
+				.. " memory_refresh="
+				.. tostring(review.memory_refresh_required and "required" or "not_required"))
 		end
 	elseif result.action == "task_status" then
 		append_task_details(lines, result)
@@ -4114,6 +4197,9 @@ local function handle_guide(name)
 			"status",
 			"help",
 			"commands",
+			"last",
+			"last command",
+			"diagnostics",
 			"tasks",
 			"task <task_id>",
 			"traces",
@@ -4208,6 +4294,159 @@ local function handle_request_traces(name)
 		surface_id = "guide",
 		traces = plugin.get_request_traces({ limit = 25 }),
 	})
+end
+
+function plugin.latest_player_request_trace(name)
+	local traces = plugin.get_request_traces({ limit = settings.max_request_traces or 50 })
+	for index = #traces, 1, -1 do
+		local trace = traces[index]
+		if trace.owner == name then
+			return trace
+		end
+	end
+	return nil
+end
+
+function plugin.compact_task_outcome(task)
+	if type(task) ~= "table" then
+		return nil
+	end
+	local result = type(task.last_result) == "table" and task.last_result or {}
+	local metrics = type(result.metrics) == "table" and result.metrics or {}
+	return {
+		task_id = task.task_id,
+		task_status = task.status,
+		task_result_status = result.status,
+		task_result_reason = result.reason,
+		operation = result.operation,
+		changed = result.changed,
+		examined = result.examined,
+		skipped = result.skipped,
+		actual_node_writes = metrics.node_writes or result.changed,
+		rollback_record_id = result.rollback_record_id,
+		rollback_storage_ref = result.rollback_storage_ref,
+		mapblock_churn = metrics.mapblock_churn,
+	}
+end
+
+function plugin.command_eval_review(trace, response)
+	local missing_tools = response.adapter_missing_required_tool_calls
+		or trace.adapter_missing_required_tool_calls
+	local ready_for_adapter_contract_eval =
+		type(missing_tools) == "table" and #missing_tools > 0
+	local ready_for_prompt_eval = type(trace.public_prompt) == "string"
+		and trace.public_prompt ~= ""
+		and response.action == "build"
+		and type(response.build_kind) == "string"
+		and type(response.planned_node_writes) == "number"
+	return {
+		source_kind = "nova_request_trace",
+		request_trace_logged = true,
+		agents_sdk_sidecar_log_expected =
+			response.planner_mode == "agentic_model_adapter",
+		ready_for_prompt_eval = ready_for_prompt_eval,
+		ready_for_adapter_contract_eval = ready_for_adapter_contract_eval,
+		memory_refresh_required = ready_for_prompt_eval
+			or ready_for_adapter_contract_eval,
+		candidate_review_status =
+			ready_for_prompt_eval and "candidate_ready" or "needs_operator_label",
+	}
+end
+
+function plugin.get_last_command_diagnostic(name)
+	name = normalize_player_name(name)
+	local trace = plugin.latest_player_request_trace(name)
+	if not trace then
+		return nil
+	end
+	local response = type(trace.response) == "table" and trace.response or {}
+	local task = response.task_id and core.get_ai_task(response.task_id) or nil
+	local task_outcome = plugin.compact_task_outcome(task) or {}
+	local required_tools_satisfied = response.adapter_required_tool_calls_satisfied
+	if required_tools_satisfied == nil then
+		required_tools_satisfied = trace.adapter_required_tool_calls_satisfied
+	end
+	local memory_available = response.adapter_memory_available
+	if memory_available == nil then
+		memory_available = trace.adapter_memory_available
+	end
+	local diagnostic = {
+		schema_version = 1,
+		diagnostic_kind = "nova_last_command",
+		trace_id = trace.trace_id,
+		prompt = bounded_trace_text(trace.public_prompt, 1000),
+		route = trace.route,
+		action = response.action or trace.action,
+		response_status = response.status,
+		response_reason = response.reason,
+		message = bounded_trace_text(response.message, 1000),
+		task_id = response.task_id,
+		task_status = task_outcome.task_status,
+		task_result_status = task_outcome.task_result_status,
+		task_result_reason = task_outcome.task_result_reason,
+		task_operation = task_outcome.operation,
+		actual_node_writes = task_outcome.actual_node_writes,
+		changed = task_outcome.changed,
+		examined = task_outcome.examined,
+		skipped = task_outcome.skipped,
+		rollback_record_id = task_outcome.rollback_record_id,
+		rollback_storage_ref = task_outcome.rollback_storage_ref,
+		mapblock_churn = task_outcome.mapblock_churn,
+		build_kind = response.build_kind,
+		build_width = response.build_width,
+		build_depth = response.build_depth,
+		build_height = response.build_height,
+		build_material_name = response.build_material_name,
+		build_material_node = response.build_material_node,
+		planned_node_writes = response.planned_node_writes,
+		planner_mode = response.planner_mode,
+		selected_candidate_id = response.selected_candidate_id,
+		adapter_selected_candidate_id =
+			response.adapter_selected_candidate_id or trace.adapter_selected_candidate_id,
+		model_selected_candidate_id =
+			response.model_selected_candidate_id or trace.model_selected_candidate_id,
+		selection_source = response.selection_source,
+		intent_constraint_option_id =
+			response.intent_constraint_option_id or trace.intent_constraint_option_id,
+		intent_constraint_reason =
+			response.intent_constraint_reason or trace.intent_constraint_reason,
+		candidate_count = response.candidate_count,
+		adapter_name = trace.adapter_name,
+		adapter_tool_decision_source =
+			response.adapter_tool_decision_source or trace.adapter_tool_decision_source,
+		adapter_required_tool_calls =
+			table.copy(response.adapter_required_tool_calls
+				or trace.adapter_required_tool_calls or {}),
+		adapter_missing_required_tool_calls =
+			table.copy(response.adapter_missing_required_tool_calls
+				or trace.adapter_missing_required_tool_calls or {}),
+		adapter_required_tool_calls_satisfied = required_tools_satisfied,
+		adapter_tool_trace_names =
+			table.copy(response.adapter_tool_trace_names
+				or trace.adapter_tool_trace_names or {}),
+		adapter_memory_available = memory_available,
+		adapter_memory_matched_case_id =
+			response.adapter_memory_matched_case_id or trace.adapter_memory_matched_case_id,
+		adapter_memory_case_hint =
+			response.adapter_memory_case_hint or trace.adapter_memory_case_hint,
+		eval_review = plugin.command_eval_review(trace, response),
+	}
+	return diagnostic
+end
+
+function plugin.handle_last_command(name)
+	plugin.ensure_surface_agent(name, "guide")
+	local diagnostic = plugin.get_last_command_diagnostic(name)
+	if not diagnostic then
+		return public_reply(name, "last_command", "blocked",
+			"No Nova request trace is available for this player yet.", {
+				surface_id = "guide",
+				reason = "no_request_trace",
+			})
+	end
+	diagnostic.surface_id = "guide"
+	return public_reply(name, "last_command", "success",
+		"Last Nova command diagnostic returned.", diagnostic)
 end
 
 local function handle_rollback_review(name, requested_token)
@@ -4775,6 +5014,12 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt == "guide" or prompt == "help" or prompt == "commands" then
 		return handle_guide(name)
+	end
+	if prompt == "last" or prompt == "last command" or prompt == "last nova"
+			or prompt == "diagnostic" or prompt == "diagnostics"
+			or prompt == "debug last" or prompt == "why"
+			or prompt == "what happened" or prompt == "what did you do" then
+		return plugin.handle_last_command(name)
 	end
 	if prompt == "traces" or prompt == "trace" or prompt == "logs"
 			or prompt == "model traces" or prompt == "request traces" then
