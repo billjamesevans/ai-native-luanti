@@ -605,6 +605,7 @@ class AgentMemoryRefreshTests(unittest.TestCase):
             operator_labels = root / "operator-labels.json"
             candidate_queue = root / "ai-agent-eval-candidate-queue.json"
             case_pack = root / "ai-agent-prompt-eval-case-pack.json"
+            review_queue = root / "ai-agent-review-queue.json"
             sidecar_log.write_text(json.dumps(build_planning_sidecar_entry()) + "\n", encoding="utf-8")
             nova_agent_log.write_text(json.dumps(nova_agent_log_entry()) + "\n", encoding="utf-8")
             operator_labels.write_text(json.dumps(operator_labels_payload()), encoding="utf-8")
@@ -625,6 +626,8 @@ class AgentMemoryRefreshTests(unittest.TestCase):
                     str(candidate_queue),
                     "--case-pack-output",
                     str(case_pack),
+                    "--review-output",
+                    str(review_queue),
                     "--generated-at",
                     "2026-06-30T13:00:00Z",
                 ],
@@ -642,8 +645,11 @@ class AgentMemoryRefreshTests(unittest.TestCase):
             self.assertEqual(summary["ready_for_adapter_contract_eval"], 0)
             self.assertEqual(summary["operator_labels_read"], 1)
             self.assertEqual(summary["operator_labels_applied"], 0)
+            self.assertEqual(summary["review_queue_status"], "ready")
+            self.assertEqual(summary["review_items_total"], 0)
             self.assertEqual(json.loads(candidate_queue.read_text(encoding="utf-8"))["status"], "ready")
             self.assertEqual(json.loads(case_pack.read_text(encoding="utf-8"))["summary"]["cases_total"], 2)
+            self.assertEqual(json.loads(review_queue.read_text(encoding="utf-8"))["status"], "ready")
 
     def test_cli_harvests_operator_feedback_from_action_log(self):
         with tempfile.TemporaryDirectory() as tmpdir:
