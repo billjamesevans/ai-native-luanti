@@ -1046,10 +1046,28 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
     return result
 
 
-def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, str, str]:
+def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
+    if candidate.get("ready_for_adapter_contract_eval") is True:
+        return 0
+    expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
+    selected = expected.get("selected_candidate_id")
+    if (
+        str(candidate.get("case_hint") or "").startswith("generated_")
+        or (isinstance(selected, str) and selected.startswith("generated_"))
+    ):
+        return 1
+    if isinstance(candidate.get("operator_label"), dict):
+        return 2
+    if candidate.get("ready_for_prompt_eval") is True:
+        return 3
+    return 4
+
+
+def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, str, str]:
     priority_rank = 0 if candidate.get("priority") == "high" else 1
+    learning_rank = _candidate_learning_rank(candidate)
     ready_rank = "0" if candidate.get("ready_for_prompt_eval") is True else "1"
-    return (priority_rank, ready_rank, str(candidate.get("candidate_id") or ""))
+    return (priority_rank, learning_rank, ready_rank, str(candidate.get("candidate_id") or ""))
 
 
 def build_eval_candidate_queue(
