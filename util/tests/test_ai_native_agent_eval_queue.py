@@ -854,7 +854,7 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ready")
         self.assertEqual(payload["source_summary"]["candidates_total"], 1)
         self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 0)
-        self.assertEqual(payload["source_summary"]["manual_review_required"], 1)
+        self.assertEqual(payload["source_summary"]["manual_review_required"], 0)
         self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 1)
         self.assertEqual(payload["source_summary"]["adapter_contract_failures"], 1)
         self.assertEqual(payload["source_summary"]["adapter_contract_failures_active"], 1)
@@ -884,6 +884,7 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(payload["source_summary"]["adapter_contract_failures_total"], 1)
         self.assertEqual(payload["source_summary"]["adapter_contract_failures_resolved"], 1)
         self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 0)
+        self.assertEqual(payload["source_summary"]["manual_review_required"], 0)
         resolved = next(
             candidate
             for candidate in payload["candidates"]

@@ -795,6 +795,19 @@ def adapter_contract_summary(candidates: list[dict[str, Any]]) -> dict[str, int]
     }
 
 
+def _candidate_requires_manual_review(candidate: dict[str, Any]) -> bool:
+    if candidate.get("ready_for_prompt_eval") is True:
+        return False
+    if candidate.get("ready_for_adapter_contract_eval") is True:
+        return False
+    if (
+        candidate.get("adapter_contract_review_status") == "adapter_contract_resolved"
+        and isinstance(candidate.get("adapter_contract_resolution"), dict)
+    ):
+        return False
+    return candidate.get("review_status") in {"needs_operator_label", "manual_review_required"}
+
+
 def finalize_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     expected = expected_outcome_for(candidate["prompt"], candidate)
     candidate.update({
@@ -1630,7 +1643,7 @@ def build_eval_candidate_queue(
     candidates = candidates[:max(0, max_candidates)]
 
     ready_count = sum(1 for item in candidates if item.get("ready_for_prompt_eval") is True)
-    manual_count = sum(1 for item in candidates if item.get("ready_for_prompt_eval") is not True)
+    manual_count = sum(1 for item in candidates if _candidate_requires_manual_review(item))
     contract_summary = adapter_contract_summary(candidates)
     status = "ready"
     if not candidates:
@@ -1690,7 +1703,7 @@ def build_eval_candidate_queue(
             1 for item in payload["candidates"] if item.get("ready_for_prompt_eval") is True
         )
         payload["source_summary"]["manual_review_required"] = sum(
-            1 for item in payload["candidates"] if item.get("ready_for_prompt_eval") is not True
+            1 for item in payload["candidates"] if _candidate_requires_manual_review(item)
         )
         payload["source_summary"].update(adapter_contract_summary(payload["candidates"]))
         payload["source_summary"]["operator_labels_applied"] = sum(

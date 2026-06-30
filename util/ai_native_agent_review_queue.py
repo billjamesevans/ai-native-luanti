@@ -106,6 +106,12 @@ def _candidate_review_reason(candidate: dict[str, Any]) -> str | None:
         return "adapter_contract_eval_required"
     if candidate.get("adapter_contract_review_status") == "adapter_contract_regression":
         return "adapter_contract_regression"
+    if (
+        candidate.get("adapter_contract_review_status") == "adapter_contract_resolved"
+        and isinstance(candidate.get("adapter_contract_resolution"), dict)
+        and candidate.get("ready_for_prompt_eval") is not True
+    ):
+        return None
     if candidate.get("review_status") == "manual_review_required":
         return "manual_review_required"
     if candidate.get("ready_for_prompt_eval") is not True:
@@ -236,11 +242,15 @@ def build_review_queue(
     review_items.sort(key=lambda item: item[0])
     truncated = len(review_items) > max_items
     items = [item for _, item in review_items[:max(0, max_items)]]
+    manual_review_items_total = sum(
+        1
+        for _, item in review_items
+        if item.get("review_reason") in {"manual_review_required", "prompt_eval_expectation_missing"}
+    )
 
     action_items: list[dict[str, Any]] = []
     active_contract_failures = int(source_summary.get("adapter_contract_failures_active") or 0)
     ready_for_adapter_contract_eval = int(source_summary.get("ready_for_adapter_contract_eval") or 0)
-    manual_review_required = int(source_summary.get("manual_review_required") or 0)
     ready_for_prompt_eval = int(source_summary.get("ready_for_prompt_eval") or 0)
     case_summary = _case_pack_summary(case_pack)
     cases_total = int(case_summary.get("cases_total") or 0)
@@ -254,13 +264,11 @@ def build_review_queue(
             "reason": "active_agent_tool_contract_regressions",
             "candidate_count": max(active_contract_failures, ready_for_adapter_contract_eval),
         })
-    if manual_review_required or any(item["review_reason"] == "manual_review_required" for item in items):
+    if manual_review_items_total:
         action_items.append({
             "action": "review_and_label_manual_candidates",
             "reason": "prompt_output_expectation_missing",
-            "candidate_count": max(manual_review_required, sum(
-                1 for item in items if item["review_reason"] == "manual_review_required"
-            )),
+            "candidate_count": manual_review_items_total,
         })
     if unpromoted_case_keys:
         action_items.append({
@@ -295,7 +303,7 @@ def build_review_queue(
             "candidates_total": len(raw_candidates),
             "review_items_total": len(review_items),
             "review_items_retained": len(items),
-            "manual_review_required": manual_review_required,
+            "manual_review_required": manual_review_items_total,
             "ready_for_prompt_eval": ready_for_prompt_eval,
             "unique_ready_for_prompt_eval": len(promotable_case_keys),
             "ready_for_adapter_contract_eval": ready_for_adapter_contract_eval,
