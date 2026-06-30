@@ -528,6 +528,14 @@ def inspect_build_site_context_payload(
     constraints: list[str] = []
     placement_strategy = "fixed_candidate_preview"
     expected_option_id: str | None = None
+    required_tool_sequence = [
+        "inspect_build_site_context",
+        "recall_build_prompt_memory",
+        "select_build_option",
+        "plan_build_actions",
+    ]
+    generated_option_hint: dict[str, Any] | None = None
+    propose_args: dict[str, Any] | None = None
 
     if request_class == "single_fire":
         constraints.extend([
@@ -550,6 +558,22 @@ def inspect_build_site_context_payload(
             "validate_generated_option_before_preview",
         ])
         placement_strategy = "generated_option_preview"
+        required_tool_sequence = [
+            "inspect_build_site_context",
+            "recall_build_prompt_memory",
+            "propose_build_option",
+            "select_build_option",
+            "plan_build_actions",
+        ]
+        proposal = propose_build_option_payload(candidate_summary, player_request)
+        proposed_option = proposal.get("generated_option") if isinstance(proposal, dict) else None
+        if isinstance(proposed_option, dict) and proposal.get("status") == "ready":
+            generated_option_hint = proposed_option
+            expected_option_id = str(proposed_option.get("option_id") or "") or None
+            propose_args = {
+                "candidate_summary": candidate_summary,
+                "player_request": player_request,
+            }
     else:
         constraints.append("choose_best_bounded_candidate")
 
@@ -575,6 +599,12 @@ def inspect_build_site_context_payload(
         "expected_option_available": bool(selected_candidate) if expected_option_id else None,
         "relevant_constraints": constraints,
         "placement_strategy": placement_strategy,
+        "required_tool_sequence": required_tool_sequence,
+        "required_next_tool": "propose_build_option"
+            if request_class == "generated_shape"
+            else "select_build_option",
+        "propose_build_option_args": propose_args,
+        "generated_option_hint": generated_option_hint,
         "planned_node_writes_hint": planned_writes,
         "site_context": context_signals,
         "requires_preview": True,
@@ -1859,7 +1889,7 @@ def propose_build_option(
     reason: str = "",
     label: str = "",
 ) -> dict[str, Any]:
-    """Propose or validate a generated build option that Luanti must validate before preview."""
+    """Propose or validate a generated build option before selecting a generated_ id."""
 
     result = propose_build_option_payload(
         candidate_summary,
@@ -1996,8 +2026,14 @@ def build_agent(model: str | None = None) -> Any:
             "For build planning, call inspect_build_site_context first, then "
             "call recall_build_prompt_memory, and then choose among the listed "
             "options yourself from the inspected player constraints; call "
-            "propose_build_option when the listed fixed candidates are too "
-            "generic for the player request. When you propose a custom "
+            "propose_build_option when inspect_build_site_context reports "
+            "request_class generated_shape, required_next_tool "
+            "propose_build_option, or when the listed fixed candidates are too "
+            "generic for the player request. For those generated-shape cases, "
+            "call propose_build_option with candidate_summary and "
+            "player_request before any select_build_option call; the tool can "
+            "auto-generate the bounded option when custom fields are empty. "
+            "When you propose a custom "
             "bounded option, pass a generated option_id plus build_kind, "
             "material, dimensions, and reason through propose_build_option; "
             "if reviewed prompt memory suggests a generated_ option, call "
@@ -2061,9 +2097,12 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             "For build planning, first call inspect_build_site_context, then "
             "call recall_build_prompt_memory, then decide which executable "
             "option best matches the player request and inspected constraints. "
-            "Call propose_build_option when the fixed candidates are too "
-            "generic; for custom generated options pass a generated option_id, "
-            "build_kind, material, bounded dimensions, and reason. If reviewed "
+            "If inspect_build_site_context returns required_next_tool "
+            "propose_build_option or request_class generated_shape, call "
+            "propose_build_option with the exact candidate_summary and "
+            "player_request before selecting a generated_ option. For custom "
+            "generated options pass a generated option_id, build_kind, "
+            "material, bounded dimensions, and reason. If reviewed "
             "prompt memory points at a generated_ option, call "
             "propose_build_option first to materialize that option in this "
             "tool run. Then call "

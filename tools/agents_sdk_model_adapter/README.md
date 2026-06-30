@@ -94,6 +94,10 @@ For open-ended build requests, the `propose_build_option` function tool may
 return a generated option such as a tower wall, bridge platform, path platform,
 or shelter floor. That proposal is still read-only: Luanti validates the kind,
 material, dimensions, and write budget before creating a pending preview.
+`inspect_build_site_context` now returns a `required_tool_sequence`,
+`required_next_tool`, and minimal `propose_build_option_args` for generated
+requests so the live model has an explicit tool path before it selects a
+`generated_` option.
 Healthy live generated-option decisions must show `propose_build_option` in
 `tool_trace`; otherwise the adapter marks the response as
 `adapter_fallback_after_agent_missing_required_tool` so the run is treated as

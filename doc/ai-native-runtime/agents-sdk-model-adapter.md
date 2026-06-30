@@ -339,8 +339,12 @@ or TNT wall still require `inspect_build_site_context`,
 `recall_build_prompt_memory`, and `select_build_option`, and every healthy
 build-planning response requires `plan_build_actions` so the sidecar records the
 Luanti preview, approval, rollback, task, and improvement-evidence workflow.
-Generated options add `propose_build_option` to `required_tool_calls`. If a live run selects a
-generated option without that tool call, the adapter labels the response as
+Generated options add `propose_build_option` to `required_tool_calls`.
+`inspect_build_site_context` returns `required_next_tool =
+propose_build_option`, a generated-option hint, and the minimal proposal-tool
+arguments for open-ended requests such as shelter, tower, bridge, path, house,
+base, floor, or room. If a live run selects a generated option without that tool
+call, the adapter labels the response as
 `adapter_fallback_after_agent_missing_required_tool` and records
 `missing_required_tool_calls = ["propose_build_option"]`.
 In live mode the adapter prefers streamed Agents SDK execution. Once

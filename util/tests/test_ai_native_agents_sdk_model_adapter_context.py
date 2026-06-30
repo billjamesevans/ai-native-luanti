@@ -51,6 +51,40 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
         self.assertIn("do_not_refuse_as_real_world_danger", result["relevant_constraints"])
         self.assertFalse(result["direct_world_mutation"])
 
+    def test_inspect_build_site_context_requires_propose_for_generated_shape(self):
+        module = load_agent_module()
+
+        result = module.inspect_build_site_context_payload(
+            "platform:platform:default:4|wall:wall:default:12",
+            "build a small shelter",
+        )
+
+        self.assertEqual(result["request_class"], "generated_shape")
+        self.assertEqual(result["required_next_tool"], "propose_build_option")
+        self.assertEqual(
+            result["required_tool_sequence"],
+            [
+                "inspect_build_site_context",
+                "recall_build_prompt_memory",
+                "propose_build_option",
+                "select_build_option",
+                "plan_build_actions",
+            ],
+        )
+        self.assertEqual(result["expected_option_id"], "generated_shelter_floor")
+        self.assertEqual(
+            result["generated_option_hint"]["option_id"],
+            "generated_shelter_floor",
+        )
+        self.assertEqual(
+            result["propose_build_option_args"],
+            {
+                "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+                "player_request": "build a small shelter",
+            },
+        )
+        self.assertFalse(result["direct_world_mutation"])
+
     def test_local_build_contract_trace_starts_with_context_inspection(self):
         module = load_agent_module()
         request = {
