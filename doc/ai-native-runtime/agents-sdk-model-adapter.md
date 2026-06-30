@@ -126,6 +126,22 @@ Adapter traces that miss required SDK tools are also marked
 `adapter_contract_failures`, even when the expected build-output behavior still
 needs an operator label.
 
+Use the artifact builder for reviewed corrections instead of hand-writing label
+JSON:
+
+```bash
+python3 util/ai_native_agent_operator_label.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --prompt "build a bridge" \
+  --case-hint stone_bridge_platform \
+  --build-kind platform \
+  --build-material-name stone \
+  --planned-node-writes 12 \
+  --route agentic_build_planner \
+  --output local/benchmarks/ai-agent-operator-labels.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
 Ready candidates can then become an `ai_native_agent_prompt_eval_case_pack`:
 
 ```bash

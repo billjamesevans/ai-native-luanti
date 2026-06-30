@@ -66,31 +66,24 @@ Agents SDK required-tool calls as high-priority adapter-contract regressions wit
 generic manual review. This keeps improvement tied to observed failures while
 preserving the public/private boundary.
 
-When a maintainer knows the expected build output for an unknown prompt, add a
-public-safe `ai_native_agent_eval_operator_labels` file and pass it with
+When a maintainer knows the expected build output for an unknown prompt, create a
+public-safe `ai_native_agent_eval_operator_labels` artifact and pass it with
 `--operator-labels`. Labels may match by exact `candidate_id` or exact public
 `prompt`, and can only promote build-output expectations that the runtime prompt
-eval can replay:
+eval can replay. Use the builder so reviewed corrections come from the candidate
+queue instead of hand-written JSON:
 
-```json
-{
-  "schema_version": 1,
-  "artifact_kind": "ai_native_agent_eval_operator_labels",
-  "labels": [
-    {
-      "label_id": "reviewed_stone_bridge_platform",
-      "prompt": "build a bridge",
-      "case_hint": "stone_bridge_platform",
-      "expected": {
-        "action": "build",
-        "build_kind": "platform",
-        "build_material_name": "stone",
-        "planned_node_writes": 12,
-        "route": "agentic_build_planner"
-      }
-    }
-  ]
-}
+```bash
+python3 util/ai_native_agent_operator_label.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --prompt "build a bridge" \
+  --case-hint stone_bridge_platform \
+  --build-kind platform \
+  --build-material-name stone \
+  --planned-node-writes 12 \
+  --route agentic_build_planner \
+  --output local/benchmarks/ai-agent-operator-labels.json \
+  --generated-at 2026-06-30T00:00:00Z
 ```
 
 ```bash
