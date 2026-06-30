@@ -397,6 +397,9 @@ local function finish_request_trace(trace, result, extra)
 		adapter_memory_matched_case_id = result and result.adapter_memory_matched_case_id,
 		adapter_memory_case_hint = result and result.adapter_memory_case_hint,
 		adapter_tool_trace_names = result and result.adapter_tool_trace_names,
+		generated_build_option_status = result and result.generated_build_option_status,
+		generated_build_option_reason = result and result.generated_build_option_reason,
+		generated_candidate_id = result and result.generated_candidate_id,
 	}
 	for key, value in pairs(extra) do
 		trace[key] = value
@@ -2509,6 +2512,9 @@ local function create_build_pending_reply(name, context, message, extra)
 		adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
 		adapter_memory_case_hint = extra.adapter_memory_case_hint,
 		adapter_tool_trace_names = extra.adapter_tool_trace_names,
+		generated_build_option_status = extra.generated_build_option_status,
+		generated_build_option_reason = extra.generated_build_option_reason,
+		generated_candidate_id = extra.generated_candidate_id,
 	})
 	local reply = public_reply(name, "build", "pending_approval",
 		message or "Build plan is pending approval before mutation.", {
@@ -2539,6 +2545,9 @@ local function create_build_pending_reply(name, context, message, extra)
 			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
 			adapter_memory_case_hint = extra.adapter_memory_case_hint,
 			adapter_tool_trace_names = extra.adapter_tool_trace_names,
+			generated_build_option_status = extra.generated_build_option_status,
+			generated_build_option_reason = extra.generated_build_option_reason,
+			generated_candidate_id = extra.generated_candidate_id,
 			planner_model_status = extra.planner_model_status,
 			planner_model_reason = extra.planner_model_reason,
 			planner_guidance = extra.planner_guidance,
@@ -2593,6 +2602,14 @@ local function public_candidate_option(candidate)
 	}
 end
 
+local function public_candidate_options(candidates)
+	local public_candidates = {}
+	for _, candidate in ipairs(candidates or {}) do
+		public_candidates[#public_candidates + 1] = public_candidate_option(candidate)
+	end
+	return public_candidates
+end
+
 local function candidate_summary(candidates)
 	local parts = {}
 	for _, candidate in ipairs(candidates or {}) do
@@ -2612,13 +2629,15 @@ local function append_agentic_build_candidate(candidates, name, base_context,
 	if not ok or not plan then
 		return
 	end
-	candidates[#candidates + 1] = {
+	local candidate = {
 		option_id = option_id,
 		label = label,
 		reason = reason,
 		context = context,
 		planned_node_writes = plan.metrics and plan.metrics.planned_node_writes or 0,
 	}
+	candidates[#candidates + 1] = candidate
+	return candidate
 end
 
 local function select_agentic_build_candidate(candidates, lower_prompt)
@@ -2656,6 +2675,148 @@ local function find_agentic_build_candidate(candidates, option_id)
 		end
 	end
 	return nil
+end
+
+local GENERATED_BUILD_KINDS = {
+	marker = true,
+	platform = true,
+	wall = true,
+	fire = true,
+}
+
+local GENERATED_BUILD_MATERIALS = {
+	["default"] = true,
+	stone = true,
+	tnt = true,
+	fire = true,
+}
+
+local function generated_positive_int(value)
+	if type(value) == "number" then
+		value = math.floor(value)
+		if value >= 1 then
+			return value
+		end
+		return nil
+	end
+	if type(value) == "string" then
+		return parse_build_positive_int(value)
+	end
+	return nil
+end
+
+local function generated_build_material(kind, material_name)
+	if type(material_name) == "string" then
+		material_name = material_name:lower()
+	else
+		material_name = nil
+	end
+	if material_name == "" then
+		material_name = nil
+	end
+	if material_name == "default" then
+		material_name = nil
+	end
+	if kind == "fire" then
+		material_name = "fire"
+	end
+	if material_name and not GENERATED_BUILD_MATERIALS[material_name] then
+		return nil, nil, "generated_build_material_unsupported"
+	end
+	if material_name == "fire" and kind ~= "fire" then
+		return nil, nil, "generated_build_material_kind_mismatch"
+	end
+	local fallback_node = settings.marker_node
+	if kind == "platform" then
+		fallback_node = settings.platform_node
+	elseif kind == "wall" then
+		fallback_node = settings.wall_node
+	elseif kind == "fire" then
+		fallback_node = settings.fire_node
+	end
+	local node_name = resolve_build_material_node(material_name, fallback_node)
+	if material_name and not node_name then
+		return nil, nil, "generated_build_material_unavailable"
+	end
+	return material_name, node_name or fallback_node, nil
+end
+
+local function safe_generated_option_id(option_id)
+	if type(option_id) ~= "string" then
+		return "generated_agent_option"
+	end
+	option_id = bounded_trace_text(option_id, 64)
+	if option_id:match("^generated[%w_%-]*$") then
+		return option_id
+	end
+	return "generated_agent_option"
+end
+
+local function append_generated_agentic_build_candidate(candidates, name,
+		base_context, option)
+	if type(option) ~= "table" then
+		return nil, "generated_build_option_missing"
+	end
+	local kind = option.build_kind or option.kind
+	if type(kind) ~= "string" then
+		return nil, "generated_build_kind_missing"
+	end
+	kind = kind:lower()
+	if not GENERATED_BUILD_KINDS[kind] then
+		return nil, "generated_build_kind_unsupported"
+	end
+	local material_name, material_node, material_reason =
+		generated_build_material(kind,
+			option.build_material_name or option.material_name or option.material)
+	if material_reason then
+		return nil, material_reason
+	end
+	local fields = {
+		build_kind = kind,
+		build_material_name = material_name,
+		build_material_node = material_node,
+	}
+	if kind == "platform" then
+		local width = generated_positive_int(option.build_width or option.width)
+		local depth = generated_positive_int(option.build_depth or option.depth)
+		if not width or not depth then
+			return nil, "generated_build_dimensions_missing"
+		end
+		if width * depth > settings.max_lights then
+			return nil, "generated_build_shape_out_of_bounds"
+		end
+		fields.build_width = width
+		fields.build_depth = depth
+	elseif kind == "wall" then
+		local width = generated_positive_int(option.build_width or option.width)
+		local height = generated_positive_int(option.build_height or option.height)
+		if not width or not height then
+			return nil, "generated_build_dimensions_missing"
+		end
+		if width * height > settings.max_lights then
+			return nil, "generated_build_shape_out_of_bounds"
+		end
+		fields.build_width = width
+		fields.build_height = height
+	elseif kind == "fire" then
+		local count = generated_positive_int(option.build_count or option.count or 1)
+		if not count then
+			return nil, "generated_build_dimensions_missing"
+		end
+		if count > settings.max_lights then
+			return nil, "generated_build_shape_out_of_bounds"
+		end
+		fields.build_count = count
+	end
+	local candidate = append_agentic_build_candidate(candidates, name, base_context,
+		safe_generated_option_id(option.option_id),
+		bounded_trace_text(option.label or "Generated build option", 120),
+		bounded_trace_text(option.reason or "agent-proposed bounded option", 240),
+		fields)
+	if not candidate then
+		return nil, "generated_build_plan_rejected"
+	end
+	return candidate, "validated"
 end
 
 local function selected_agentic_candidate_id_from_model_result(model_result)
@@ -2696,6 +2857,20 @@ local function agentic_build_option_decision(response)
 		return nil
 	end
 	return build_option
+end
+
+local function generated_build_option(response)
+	if type(response) ~= "table" then
+		return nil
+	end
+	if type(response.generated_build_option) == "table" then
+		return response.generated_build_option
+	end
+	local build_option = agentic_build_option_decision(response)
+	if type(build_option) == "table" and type(build_option.generated_option) == "table" then
+		return build_option.generated_option
+	end
+	return nil
 end
 
 local function agentic_tool_trace_names(response)
@@ -2786,16 +2961,13 @@ local function build_agentic_candidate_options(name, raw_prompt, context)
 				build_material_node = tnt_node,
 			})
 	end
-	local public_candidates = {}
-	for _, candidate in ipairs(candidates) do
-		public_candidates[#public_candidates + 1] = public_candidate_option(candidate)
-	end
+	local public_candidates = public_candidate_options(candidates)
 	return candidates, public_candidates, select_agentic_build_candidate(candidates, lower)
 end
 
 local function agentic_build_planner_prompt(raw_prompt, public_candidates)
 	local lines = {
-		"Plan a Luanti build request using only the listed executable options.",
+		"Plan a Luanti build request using listed executable options or one bounded generated option.",
 		"Luanti will enforce capabilities, approval, rollback, and world mutation.",
 		"Player request: " .. bounded_trace_text(raw_prompt, 500),
 		"Options:",
@@ -2810,7 +2982,7 @@ local function agentic_build_planner_prompt(raw_prompt, public_candidates)
 			tostring(candidate.planned_node_writes or 0))
 	end
 	lines[#lines + 1] =
-		"Return concise public guidance and name the safest option id to preview."
+		"Return concise public guidance and name the option id to preview; generated options must be returned through the build-option tool contract for Luanti validation."
 	return table.concat(lines, "\n")
 end
 
@@ -2847,12 +3019,37 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 	local function finish_with_pending(model_result, planner_mode)
 		model_result = model_result or {}
 		local adapter_metadata = agentic_build_planner_adapter_metadata(model_result)
+		local response = agentic_model_response(model_result)
+		local generated_option_status
+		local generated_option_reason
+		local generated_candidate_id
+		local proposed_generated = generated_build_option(response)
+		if proposed_generated then
+			local generated_candidate, generated_reason =
+				append_generated_agentic_build_candidate(candidates, name,
+					context, proposed_generated)
+			if generated_candidate then
+				generated_option_status = "validated"
+				generated_option_reason = "validated_by_luanti_build_planner"
+				generated_candidate_id = generated_candidate.option_id
+				public_candidates = public_candidate_options(candidates)
+			else
+				generated_option_status = "rejected"
+				generated_option_reason = generated_reason
+			end
+		end
 		local model_selected_id =
 			selected_agentic_candidate_id_from_model_result(model_result)
 		local final_selected = find_agentic_build_candidate(candidates, model_selected_id)
 			or selected
-		local selection_source = final_selected.option_id == model_selected_id
-			and "model_tool_decision" or "deterministic_preselection"
+		local selection_source = "deterministic_preselection"
+		if final_selected.option_id == model_selected_id then
+			selection_source = "model_tool_decision"
+		elseif generated_option_status == "rejected" then
+			selection_source = "generated_option_rejected_fallback"
+		elseif model_selected_id then
+			selection_source = "model_tool_decision_rejected_fallback"
+		end
 		local pending_reply = create_build_pending_reply(name, final_selected.context,
 			"Agentic build planner selected an approval-gated build option.", {
 				planner_mode = planner_mode,
@@ -2880,6 +3077,9 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 					adapter_metadata.adapter_memory_case_hint,
 				adapter_tool_trace_names =
 					adapter_metadata.adapter_tool_trace_names,
+				generated_build_option_status = generated_option_status,
+				generated_build_option_reason = generated_option_reason,
+				generated_candidate_id = generated_candidate_id,
 				trace_id = trace.trace_id,
 				adapter_name = model_result.adapter_name or adapter_name,
 			})
@@ -2908,6 +3108,9 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				adapter_metadata.adapter_memory_case_hint,
 			adapter_tool_trace_names =
 				adapter_metadata.adapter_tool_trace_names,
+			generated_build_option_status = generated_option_status,
+			generated_build_option_reason = generated_option_reason,
+			generated_candidate_id = generated_candidate_id,
 		})
 	end
 	if not model_adapter_async or not core.ai_model_ops or not core.ai_model_ops.request_async then

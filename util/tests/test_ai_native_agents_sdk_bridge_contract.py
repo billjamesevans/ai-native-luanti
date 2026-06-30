@@ -42,6 +42,7 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertFalse(response["response"]["agentic_execution"])
         self.assertIn("WebSearchTool", response["response"]["tools_enabled"])
         self.assertIn("recommend_build_option", response["response"]["tools_enabled"])
+        self.assertIn("propose_build_option", response["response"]["tools_enabled"])
         self.assertIn("recall_build_prompt_memory", response["response"]["tools_enabled"])
         self.assertEqual(response["response"]["tool_trace"], [])
         self.assertEqual(response["response"]["tool_decision_source"], "offline_adapter_fallback")
@@ -49,6 +50,7 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         tool_powers = response["response"]["tool_powers"]
         self.assertIn("WebSearchTool", {power["name"] for power in tool_powers})
         self.assertIn("recommend_build_option", {power["name"] for power in tool_powers})
+        self.assertIn("propose_build_option", {power["name"] for power in tool_powers})
         self.assertIn("recall_build_prompt_memory", {power["name"] for power in tool_powers})
         self.assertTrue(all(power["direct_world_mutation"] is False for power in tool_powers))
 
@@ -71,6 +73,36 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(result["requires_rollback"])
         self.assertFalse(result["direct_world_mutation"])
         self.assertEqual(result["policy"], "luanti_executes_only_after_player_approval")
+
+    def test_generated_build_option_is_read_only_and_bounded(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        candidate_summary = "platform:platform:default:4|wall:wall:default:12|marker:marker:default:1"
+        proposal = module.propose_build_option_payload(
+            candidate_summary,
+            "build me a tall tower",
+        )
+        recommendation = module.recommend_build_option_payload(
+            candidate_summary,
+            "build me a tall tower",
+        )
+
+        self.assertEqual(proposal["status"], "ready")
+        self.assertFalse(proposal["direct_world_mutation"])
+        self.assertLessEqual(proposal["generated_option"]["planned_node_writes"], 12)
+        self.assertEqual(proposal["generated_option"]["build_kind"], "wall")
+        self.assertEqual(recommendation["selected_option_id"], "generated_tower_wall")
+        self.assertEqual(recommendation["decision_source"], "generated_build_option_tool")
+        self.assertEqual(
+            recommendation["generated_option"]["option_id"],
+            "generated_tower_wall",
+        )
+        self.assertTrue(recommendation["requires_approval"])
+        self.assertFalse(recommendation["direct_world_mutation"])
 
     def test_reviewed_prompt_memory_can_drive_repeated_build_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
@@ -157,6 +189,36 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
             ["recall_build_prompt_memory", "recommend_build_option"],
         )
         self.assertFalse(nested["required_tool_calls_satisfied"])
+
+    def test_build_planning_response_can_expose_generated_tool_option(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build me a tower"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build me a tower",
+            "candidate_summary": "platform:platform:default:4|wall:wall:default:12|marker:marker:default:1",
+        }
+
+        response = module.run_model_adapter_request(request, force_offline=True)
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertEqual(nested["selected_option_id"], "generated_tower_wall")
+        build_option = nested["tool_decisions"]["build_option"]
+        self.assertEqual(build_option["decision_source"], "offline_adapter_fallback")
+        self.assertEqual(build_option["generated_option_status"], "ready")
+        self.assertEqual(
+            build_option["generated_option"]["option_id"],
+            "generated_tower_wall",
+        )
+        self.assertFalse(build_option["direct_world_mutation"])
 
     def test_live_agent_response_uses_tool_trace_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)

@@ -5284,6 +5284,172 @@ local discarded_fire_override = core.ai_agent_plugin.handle_command("PlannerFire
 assert(discarded_fire_override.ok == true)
 assert(discarded_fire_override.action == "discard_approval")
 assert(get_test_node(fire_override_pos).name == "air")
+
+local generated_tower_pos = test_pos(4257)
+for x = 0, 2 do
+	for y = 0, 3 do
+		set_test_node(vector.add(generated_tower_pos, { x = x, y = y, z = 0 }), {
+			name = "air",
+		})
+	end
+end
+local generated_tower_done
+local generated_tower_reply
+local generated_tower_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build me a tower")
+	generated_tower_done = done
+	return true, "queued"
+end)
+local queued_generated_tower = core.ai_agent_plugin.handle_command(
+	"PlannerTower", "build me a tower", {
+		pos = generated_tower_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			generated_tower_reply = reply
+			generated_tower_trace = trace
+		end,
+	})
+assert(queued_generated_tower.ok == true)
+assert(queued_generated_tower.status == "queued")
+generated_tower_done({
+	ok = true,
+	message = "Use the generated tower wall option.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 71000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "generated_tower_wall",
+		tool_decision_source = "agents_sdk_function_tool",
+		required_tool_calls = {
+			"recall_build_prompt_memory",
+			"recommend_build_option",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "propose_build_option" },
+			{ tool_name = "recommend_build_option" },
+		},
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "generated_tower_wall",
+				candidate_count = 4,
+				decision_source = "generated_build_option_tool",
+				generated_option = {
+					option_id = "generated_tower_wall",
+					label = "Generated tower wall",
+					reason = "bounded tower preview",
+					build_kind = "wall",
+					build_width = 3,
+					build_height = 4,
+					build_material_name = "stone",
+				},
+			},
+		},
+		tools_enabled = { "propose_build_option", "recommend_build_option" },
+	},
+})
+assert(generated_tower_reply ~= nil)
+assert(generated_tower_reply.status == "pending_approval")
+assert(generated_tower_reply.selected_candidate_id == "generated_tower_wall")
+assert(generated_tower_reply.generated_build_option_status == "validated")
+assert(generated_tower_reply.generated_build_option_reason == "validated_by_luanti_build_planner")
+assert(generated_tower_reply.generated_candidate_id == "generated_tower_wall")
+assert(generated_tower_reply.build_kind == "wall")
+assert(generated_tower_reply.build_width == 3)
+assert(generated_tower_reply.build_height == 4)
+assert(generated_tower_reply.build_material_name == "stone")
+assert(generated_tower_reply.planned_node_writes == 12)
+assert(generated_tower_reply.candidate_count >= 4)
+assert(generated_tower_trace ~= nil)
+assert(generated_tower_trace.selection_source == "model_tool_decision")
+assert(generated_tower_trace.generated_build_option_status == "validated")
+assert(generated_tower_trace.generated_candidate_id == "generated_tower_wall")
+assert(generated_tower_trace.response.generated_build_option_status == "validated")
+assert(generated_tower_trace.response.adapter_tool_trace_names[2] == "propose_build_option")
+assert(get_test_node(generated_tower_pos).name == "air")
+local discarded_generated_tower =
+	core.ai_agent_plugin.handle_command("PlannerTower", "discard plan", {})
+assert(discarded_generated_tower.ok == true)
+
+local rejected_generated_pos = test_pos(4260)
+set_test_node(rejected_generated_pos, { name = "air" })
+local rejected_generated_done
+local rejected_generated_reply
+local rejected_generated_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build an enormous tower")
+	rejected_generated_done = done
+	return true, "queued"
+end)
+local queued_rejected_generated = core.ai_agent_plugin.handle_command(
+	"PlannerRejectedTower", "build an enormous tower", {
+		pos = rejected_generated_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			rejected_generated_reply = reply
+			rejected_generated_trace = trace
+		end,
+	})
+assert(queued_rejected_generated.ok == true)
+rejected_generated_done({
+	ok = true,
+	message = "Oversized generated option should be rejected by Luanti.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 72000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "generated_tower_wall",
+		tool_decision_source = "agents_sdk_function_tool",
+		required_tool_calls = {
+			"recall_build_prompt_memory",
+			"recommend_build_option",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "recommend_build_option" },
+		},
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "generated_tower_wall",
+				decision_source = "generated_build_option_tool",
+				generated_option = {
+					option_id = "generated_tower_wall",
+					label = "Generated tower wall",
+					reason = "too large for bounded preview",
+					build_kind = "wall",
+					build_width = 30,
+					build_height = 30,
+					build_material_name = "stone",
+				},
+			},
+		},
+	},
+})
+assert(rejected_generated_reply ~= nil)
+assert(rejected_generated_reply.status == "pending_approval")
+assert(rejected_generated_reply.selected_candidate_id == "platform")
+assert(rejected_generated_reply.generated_build_option_status == "rejected")
+assert(rejected_generated_reply.generated_build_option_reason
+	== "generated_build_shape_out_of_bounds")
+assert(rejected_generated_reply.build_kind == "platform")
+assert(rejected_generated_trace ~= nil)
+assert(rejected_generated_trace.selection_source == "generated_option_rejected_fallback")
+assert(rejected_generated_trace.generated_build_option_status == "rejected")
+assert(get_test_node(rejected_generated_pos).name == "air")
+local discarded_rejected_generated =
+	core.ai_agent_plugin.handle_command("PlannerRejectedTower", "discard plan", {})
+assert(discarded_rejected_generated.ok == true)
 core.ai_agent_plugin.set_model_adapter_async(nil)
 
 local fallback_pos = test_pos(4258)
