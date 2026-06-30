@@ -1227,9 +1227,6 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
                         {"tool_name": "recall_build_prompt_memory", "result": {}},
                         {
                             "tool_name": "select_build_option",
-                            "args": {
-                                "selected_option_id": "generated_dimensioned_wall",
-                            },
                             "result": early_select_result,
                         },
                         {"tool_name": "propose_build_option", "result": propose_result},

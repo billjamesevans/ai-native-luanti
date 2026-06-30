@@ -217,6 +217,25 @@ def generated_select_before_propose(body: dict[str, Any]) -> bool:
     return False
 
 
+def select_before_required_propose(body: dict[str, Any], expected_tools: set[str]) -> bool:
+    if "propose_build_option" not in expected_tools:
+        return False
+    raw_trace = body.get("tool_trace")
+    if not isinstance(raw_trace, list):
+        return False
+    propose_seen = False
+    for item in raw_trace:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("tool_name")
+        if name == "propose_build_option":
+            propose_seen = True
+            continue
+        if name == "select_build_option" and not propose_seen:
+            return True
+    return False
+
+
 def required_tool_calls(body: dict[str, Any]) -> list[str]:
     value = body.get("required_tool_calls")
     if not isinstance(value, list):
@@ -269,6 +288,7 @@ def safe_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
     request = entry.get("request") if isinstance(entry.get("request"), dict) else {}
     response = entry.get("response") if isinstance(entry.get("response"), dict) else {}
     body = response_body(entry)
+    required = set(required_tool_calls(body))
     plan = build_action_plan(body)
     option = build_option_decision(body)
     generated_option = (
@@ -297,7 +317,8 @@ def safe_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
             "missing_required_tool_calls": missing_required_tool_calls(body),
             "required_tool_calls_satisfied": body.get("required_tool_calls_satisfied"),
             "tool_trace_names": tool_trace_names(body),
-            "generated_select_before_propose": generated_select_before_propose(body),
+            "generated_select_before_propose": generated_select_before_propose(body)
+            or select_before_required_propose(body, required),
             "build_action_plan_status": bounded_text(plan.get("status"), 80),
             "build_action_plan_step_count": plan.get("step_count"),
             "build_action_plan_build_kind": bounded_text(plan.get("build_kind"), 120),
@@ -417,8 +438,8 @@ def validate_case(case_def: dict[str, Any], entries: list[dict[str, Any]]) -> di
     if not expected_tools.issubset(trace):
         case["failures"].append("tool_trace_incomplete")
     if (
-        (selected.startswith("generated_") or "propose_build_option" in expected_tools)
-        and generated_select_before_propose(body)
+        generated_select_before_propose(body)
+        or select_before_required_propose(body, expected_tools)
     ):
         case["failures"].append("generated_select_before_propose")
     if plan.get("status") != "ready":

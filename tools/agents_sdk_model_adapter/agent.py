@@ -1731,6 +1731,25 @@ def _trace_generated_selects_before_propose(tool_trace: Any) -> bool:
     return False
 
 
+def _trace_selects_before_required_propose(
+    tool_trace: Any,
+    required_tools: list[str],
+) -> bool:
+    if "propose_build_option" not in required_tools or not isinstance(tool_trace, list):
+        return False
+    propose_seen = False
+    for entry in tool_trace:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("tool_name")
+        if name == "propose_build_option":
+            propose_seen = True
+            continue
+        if name == "select_build_option" and not propose_seen:
+            return True
+    return False
+
+
 def _missing_required_tool_names(
     request: dict[str, Any],
     tool_trace: Any,
@@ -1751,7 +1770,11 @@ def _build_contract_failure_reason(
     missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
     if missing_required_tools:
         return "agent_missing_required_tool"
-    if _trace_generated_selects_before_propose(tool_trace):
+    required_tools = _required_tool_names_for_request(request, tool_decisions)
+    if (
+        _trace_selects_before_required_propose(tool_trace, required_tools)
+        or _trace_generated_selects_before_propose(tool_trace)
+    ):
         return "agent_generated_select_before_propose"
     context = _safe_context(request.get("context"))
     if (
