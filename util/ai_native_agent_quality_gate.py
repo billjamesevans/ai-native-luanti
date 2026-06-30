@@ -23,6 +23,11 @@ import ai_native_compat_import_staging_pilot as compat_import_staging_pilot
 REPORT_KIND = "ai_native_agent_quality_gate"
 DEFAULT_MAX_BYTES = 24000
 PASSING_ADAPTER_EVAL_STATUSES = {"pass", "empty"}
+BLOCKING_ATTENTION_KINDS = {
+    "candidate_queue_not_ready",
+    "case_pack_not_ready",
+    "adapter_contract_replay_missing",
+}
 
 
 def utc_now() -> str:
@@ -251,8 +256,14 @@ def build_quality_gate(
         else:
             compat_import_status = "pass"
 
+    blocking_attention = [
+        item
+        for item in attention
+        if isinstance(item, dict) and item.get("kind") in BLOCKING_ATTENTION_KINDS
+    ]
+
     status = "pass"
-    if attention:
+    if blocking_attention:
         status = "attention"
     if violations:
         status = "fail"
@@ -300,6 +311,8 @@ def build_quality_gate(
             "manual_review_required": manual_review_required,
             "review_items_total": review_items_total,
             "review_action_items_total": review_action_items_total,
+            "attention_total": len(attention),
+            "blocking_attention_total": len(blocking_attention),
             "adapter_contract_failures_active": active_contract_failures,
             "adapter_contract_failures_resolved": _int(candidate_summary.get("adapter_contract_failures_resolved")),
             "ready_for_adapter_contract_eval": ready_for_adapter_contract_eval,
