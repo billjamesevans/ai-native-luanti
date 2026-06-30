@@ -119,9 +119,10 @@ read-only in this probe, including targeted rollback-record lookup. It then runs
 `util/ai_native_agent_prompt_eval_live_probe.py` against a disposable live `ai_runtime` world and
 writes `ai-runtime-agent-prompt-eval-live-result.json`. That probe executes the registered
 `/ai_agent_eval` command for the fire case, runs `core.ai_agent_plugin.run_prompt_eval` for
-`build a fire`, `build a wall of tnt`, and the async model-adapter case, checks request/response
-trace routes, verifies the TNT wall is not refused as dangerous, discards pending build approvals
-before mutation, and records model-adapter request/success/failure/timeout deltas. By default it
+`build a fire`, `build a wall of tnt`, ambiguous `build a small shelter` agentic planning, and the
+async model-adapter case, checks request/response trace routes, verifies the TNT wall is not refused
+as dangerous, discards pending build approvals before mutation, and records model-adapter
+request/success/failure/timeout deltas. By default it
 uses a deterministic mock async adapter and requires no model-network calls; pass
 `--agent-prompt-eval-adapter-endpoint http://127.0.0.1:8766/v1/model-adapter` to run the same
 regression gate through the loopback Agents SDK adapter. It then runs
@@ -153,7 +154,7 @@ result must stay receipt-gated, synthetic-task-state-only, task cancel/retry onl
 disposable-world-only, public-safe, rollback-backed for build and repair, explicit-approval-gated for
 build and repair mutation, operator-status-visible, no rollback execution, no import promotion execution, and bounded by
 `--agent-product-loop-live-result-max-bytes`. The Nova prompt eval live result must stay
-read-only, public-safe, pending-approval cleanup only, no world mutation, three-case complete, and
+read-only, public-safe, pending-approval cleanup only, no world mutation, four-case complete, and
 bounded by `--agent-prompt-eval-live-result-max-bytes` and
 `--agent-prompt-eval-live-timeout`; optional real adapter checks use
 `--agent-prompt-eval-adapter-endpoint` and `--agent-prompt-eval-adapter-timeout`. The compatibility import staging pilot result must

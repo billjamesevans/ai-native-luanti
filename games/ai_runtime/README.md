@@ -18,6 +18,9 @@ The profile also registers simple code-only fire and TNT nodes so `/nova build
 a fire` and `/nova build a wall of tnt` exercise the real build planner,
 approval, rollback, and trace paths without requiring private content or a
 larger game package.
+Ambiguous build prompts such as `/nova build a small shelter` route through the
+agentic build planner, which presents bounded executable candidates, can ask the
+Agents SDK sidecar for guidance, and still requires approval before mutation.
 
 Default rollback storage is enabled for this profile so rollback-backed build and repair commands can persist local rollback metadata before mutating a disposable world.
 
