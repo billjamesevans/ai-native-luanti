@@ -6108,6 +6108,166 @@ test_ai_agent_plugin_product_loop_commands()
 test_ai_agent_plugin_product_loop_commands = nil
 product_loop_records = nil
 
+rawset(_G, "test_ai_agent_plugin_last_command_diagnostic", function()
+	core.ai_agent_plugin.configure({
+		capability_profile = "clean",
+		light_node = "ai_runtime_test:stone",
+		marker_node = "ai_runtime_test:stone",
+		platform_node = "ai_runtime_test:stone",
+		wall_node = "ai_runtime_test:stone",
+		fire_node = "ai_runtime_test:fire",
+		tnt_node = "ai_runtime_test:tnt",
+		build_material_nodes = {
+			fire = "ai_runtime_test:fire",
+			tnt = "ai_runtime_test:tnt",
+		},
+		max_lights = 16,
+		agentic_build_planner_first = true,
+		auto_apply_build_approvals = true,
+		capabilities = {
+			["world.read"] = true,
+			["world.place"] = true,
+			["world.remove"] = true,
+			["entity.spawn"] = true,
+			["entity.control"] = true,
+			["task.cancel"] = true,
+			["http.llm"] = true,
+		},
+	})
+	local diagnostic_rollback_records = {}
+	core.ai_rollback_storage.configure({
+		enabled = true,
+		persist_record = function(record)
+			diagnostic_rollback_records[#diagnostic_rollback_records + 1] = record
+			return {
+				ok = true,
+				storage_ref = "rollback://diagnostic/" .. record.record_id,
+			}
+		end,
+	})
+	local diagnostic_base = test_pos(4244)
+	local async_done
+	local async_requests = {}
+	core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+		async_requests[#async_requests + 1] = request
+		async_done = done
+		assert(request.public_prompt:find("build me a fire and only a fire", 1, true))
+		assert(request.context.player_request == "build me a fire and only a fire")
+		return true, "queued"
+	end)
+	local initial_reply = core.ai_agent_plugin.handle_command(
+		"Diagnostic",
+		"build me a fire and only a fire", {
+			pos = diagnostic_base,
+			get_node = get_test_node,
+			set_node = set_test_node,
+		})
+	assert(initial_reply.status == "queued")
+	assert(initial_reply.trace_id ~= nil)
+	assert(#async_requests == 1)
+	assert(async_done ~= nil)
+	async_done({
+		ok = true,
+		message = "diagnostic planner response selected the wrong option",
+		adapter_name = "mock-diagnostic-agent",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			selected_option_id = "platform",
+			model_selected_option_id = "platform",
+			tool_decision_source = "agents_sdk_function_tool",
+			required_tool_calls = {
+				"recall_build_prompt_memory",
+				"select_build_option",
+				"plan_build_actions",
+			},
+			required_tool_calls_satisfied = true,
+			tool_trace = {
+				{ tool_name = "recall_build_prompt_memory" },
+				{ tool_name = "select_build_option" },
+				{ tool_name = "plan_build_actions" },
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "platform",
+				step_count = 1,
+				world_mutation_authority = "luanti",
+			},
+		},
+	})
+	local queued_diagnostic = core.ai_agent_plugin.get_last_command_diagnostic("Diagnostic")
+	assert(queued_diagnostic ~= nil)
+	assert(queued_diagnostic.prompt == "build me a fire and only a fire")
+	assert(queued_diagnostic.route == "agentic_build_planner")
+	assert(queued_diagnostic.selected_candidate_id == "fire")
+	assert(queued_diagnostic.model_selected_candidate_id == "platform")
+	assert(queued_diagnostic.intent_constraint_option_id == "fire")
+	assert(queued_diagnostic.intent_constraint_reason
+		== "player_request_requires_fire_only")
+	assert(queued_diagnostic.selection_source
+		== "model_tool_decision_rejected_intent_constraint")
+	assert(queued_diagnostic.planned_node_writes == 1)
+	assert(queued_diagnostic.adapter_tool_trace_names[1]
+		== "recall_build_prompt_memory")
+	assert(queued_diagnostic.adapter_required_tool_calls_satisfied == true)
+	assert(queued_diagnostic.eval_review.source_kind == "nova_request_trace")
+	assert(queued_diagnostic.eval_review.ready_for_prompt_eval == true)
+	assert(queued_diagnostic.eval_review.memory_refresh_required == true)
+	assert(queued_diagnostic.task_status == "queued")
+
+	core.step_ai_tasks()
+	local final_diagnostic = core.ai_agent_plugin.handle_command("Diagnostic", "last", {})
+	assert(final_diagnostic.ok == true)
+	assert(final_diagnostic.action == "last_command")
+	assert(final_diagnostic.status == "success")
+	assert(final_diagnostic.trace_id == queued_diagnostic.trace_id)
+	assert(final_diagnostic.prompt == "build me a fire and only a fire")
+	assert(final_diagnostic.route == "agentic_build_planner")
+	assert(final_diagnostic.planner_mode == "agentic_model_adapter")
+	assert(final_diagnostic.selected_candidate_id == "fire")
+	assert(final_diagnostic.model_selected_candidate_id == "platform")
+	assert(final_diagnostic.build_kind == "fire")
+	assert(final_diagnostic.build_material_name == "fire")
+	assert(final_diagnostic.build_material_node == "ai_runtime_test:fire")
+	assert(final_diagnostic.planned_node_writes == 1)
+	assert(final_diagnostic.actual_node_writes == 1)
+	assert(final_diagnostic.task_status == "completed")
+	assert(final_diagnostic.task_result_status == "success")
+	assert(final_diagnostic.rollback_record_id ~= nil)
+	assert(#diagnostic_rollback_records == 1)
+	assert(final_diagnostic.eval_review.ready_for_prompt_eval == true)
+	local diagnostic_chat_ok, diagnostic_chat_text =
+		core.registered_chatcommands.nova.func("Diagnostic", "diagnostics")
+	assert(diagnostic_chat_ok == true)
+	assert(diagnostic_chat_text:find("status=success action=last_command", 1, true))
+	assert(diagnostic_chat_text:find("prompt=build me a fire and only a fire", 1, true))
+	assert(diagnostic_chat_text:find("route=agentic_build_planner", 1, true))
+	assert(diagnostic_chat_text:find("selected_candidate=fire", 1, true))
+	assert(diagnostic_chat_text:find("model_selected_candidate=platform", 1, true))
+	assert(diagnostic_chat_text:find("actual_writes=1", 1, true))
+	assert(diagnostic_chat_text:find(
+		"tools=recall_build_prompt_memory, select_build_option, plan_build_actions",
+		1, true))
+	assert(diagnostic_chat_text:find("review=source=nova_request_trace prompt_eval=ready",
+		1, true))
+
+	local no_trace_reply = core.ai_agent_plugin.handle_command("NoTrace", "last", {})
+	assert(no_trace_reply.ok == false)
+	assert(no_trace_reply.status == "blocked")
+	assert(no_trace_reply.reason == "no_request_trace")
+
+	core.ai_agent_plugin.set_model_adapter_async(nil)
+	core.ai_rollback_storage.configure(nil)
+	core.ai_agent_plugin.configure({
+		agentic_build_planner_first = false,
+		auto_apply_build_approvals = false,
+		max_lights = 3,
+	})
+end)
+
+_G.test_ai_agent_plugin_last_command_diagnostic()
+rawset(_G, "test_ai_agent_plugin_last_command_diagnostic", nil)
+
 local cancel_reply = core.ai_agent_plugin.handle_command("Wills", "light", {
 	pos = test_pos(4230),
 	get_node = get_test_node,
