@@ -37,8 +37,8 @@ The Agents SDK sidecar owns:
 - `Agent` instructions and orchestration.
 - `Runner` execution.
 - `WebSearchTool` for current public web lookup when needed.
-- `function_tool` deterministic tools for runtime-capability summaries and
-  world-action classification.
+- `function_tool` deterministic tools for runtime-capability summaries,
+  world-action classification, and build-option recommendations.
 - Optional future handoffs or sandbox agents, only after the engine has a
   matching capability and approval contract.
 
@@ -172,6 +172,9 @@ Initial tools are deliberately read-only:
   already been granted.
 - `classify_world_action`: labels planned node writes as requiring preview,
   approval, and rollback before the engine may execute them.
+- `recommend_build_option`: chooses from Luanti-supplied bounded build
+  candidates for ambiguous `/nova build ...` prompts without executing world
+  mutation.
 - `WebSearchTool`: lets the agent look up current public information when the
   prompt genuinely needs it.
 

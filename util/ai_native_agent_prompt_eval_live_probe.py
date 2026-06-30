@@ -126,9 +126,12 @@ def write_probe_world(
             "    final_status = case.final_status or final_reply.status,",
             "    route = trace.route,",
             "    final_route = final_trace.route,",
-            "    build_kind = reply.build_kind,",
-            "    build_material_name = reply.build_material_name,",
-            "    planned_node_writes = reply.planned_node_writes,",
+            "    build_kind = reply.build_kind or final_reply.build_kind,",
+            "    build_material_name = reply.build_material_name or final_reply.build_material_name,",
+            "    planned_node_writes = reply.planned_node_writes or final_reply.planned_node_writes,",
+            "    planner_mode = reply.planner_mode or final_reply.planner_mode,",
+            "    selected_candidate_id = reply.selected_candidate_id or final_reply.selected_candidate_id,",
+            "    candidate_count = reply.candidate_count or final_reply.candidate_count,",
             "    cleanup_status = case.cleanup and case.cleanup.status or nil,",
             "    failure_count = #(case.failures or {}),",
             "  }",
@@ -154,6 +157,7 @@ def write_probe_world(
             "    case_ids = {",
             "      build_fire = cases.build_fire ~= nil,",
             "      tnt_wall = cases.tnt_wall ~= nil,",
+            "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
             "      model = cases.model ~= nil,",
             "    },",
             "    cases = summaries,",
@@ -175,7 +179,7 @@ def write_probe_world(
             "        elapsed_us = 1000,",
             "        response = {",
             "          agentic_execution = true,",
-            "          tools_enabled = { \"classify_world_action\" },",
+            "          tools_enabled = { \"recommend_build_option\", \"classify_world_action\" },",
             "        },",
             "      })",
             "    end)",
@@ -235,6 +239,7 @@ def write_probe_world(
             "      cases_failed = eval.cases_failed,",
             "      build_fire_checked = eval.case_ids.build_fire == true,",
             "      tnt_wall_checked = eval.case_ids.tnt_wall == true,",
+            "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
             "      model_checked = eval.case_ids.model == true,",
             "      model_adapter_requests = eval.metrics.model_adapter_requests_delta or 0,",
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
@@ -384,12 +389,12 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 3:
+    if prompt_eval.get("cases_total") != 4:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 3 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 4 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
-    for case_id in ("build_fire", "tnt_wall", "model"):
+    for case_id in ("build_fire", "tnt_wall", "agentic_build_planner", "model"):
         if case_ids.get(case_id) is not True:
             raise ValueError(f"agent prompt eval missing {case_id}")
 
@@ -406,6 +411,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     if cases:
         fire = case_map.get("build_fire", {})
         tnt = case_map.get("tnt_wall", {})
+        planner = case_map.get("agentic_build_planner", {})
         model = case_map.get("model", {})
         if fire.get("status") != "pass" or fire.get("build_kind") != "fire":
             raise ValueError("agent prompt eval fire case is invalid")
@@ -415,19 +421,29 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval TNT wall material is invalid")
         if not isinstance(tnt.get("planned_node_writes"), int) or tnt["planned_node_writes"] < 1:
             raise ValueError("agent prompt eval TNT wall write plan missing")
+        if planner.get("status") != "pass":
+            raise ValueError("agent prompt eval build planner case is invalid")
+        if planner.get("route") != "agentic_build_planner" and planner.get("final_route") != "agentic_build_planner":
+            raise ValueError("agent prompt eval build planner route is invalid")
+        if planner.get("build_kind") != "platform":
+            raise ValueError("agent prompt eval build planner candidate is invalid")
+        if planner.get("selected_candidate_id") != "platform":
+            raise ValueError("agent prompt eval build planner selected candidate is invalid")
+        if not isinstance(planner.get("candidate_count"), int) or planner["candidate_count"] < 3:
+            raise ValueError("agent prompt eval build planner candidate count is invalid")
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
             raise ValueError("agent prompt eval model route is not async")
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 3 or summary.get("cases_passed") != 3:
+    if summary.get("cases_total") != 4 or summary.get("cases_passed") != 4:
         raise ValueError("agent prompt eval summary case counts are invalid")
-    for field in ("build_fire_checked", "tnt_wall_checked", "model_checked"):
+    for field in ("build_fire_checked", "tnt_wall_checked", "agentic_build_planner_checked", "model_checked"):
         _require_bool(summary, field)
-    if summary.get("model_adapter_requests") != 1:
+    if summary.get("model_adapter_requests") != 2:
         raise ValueError("agent prompt eval model adapter request count is invalid")
-    if summary.get("model_adapter_successes") != 1:
+    if summary.get("model_adapter_successes") != 2:
         raise ValueError("agent prompt eval model adapter success count is invalid")
     if summary.get("model_adapter_failures") != 0:
         raise ValueError("agent prompt eval model adapter failures must be zero")
@@ -465,6 +481,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_passed": summary["cases_passed"],
         "agent_prompt_eval_build_fire_checked": True,
         "agent_prompt_eval_tnt_wall_checked": True,
+        "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_model_checked": True,
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
@@ -554,7 +571,10 @@ def run_probe(args) -> int:
         payload = json.loads(world_artifact.read_text(encoding="utf-8"))
         validate_live_result(payload, max_bytes=args.max_bytes)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(f"agent prompt eval live artifact invalid: {type(exc).__name__}", file=sys.stderr)
+        print(
+            f"agent prompt eval live artifact invalid: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
         return 1
     shutil.copyfile(world_artifact, output)
     print("agent prompt eval live probe captured")

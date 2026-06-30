@@ -61,6 +61,7 @@ local PRODUCT_SURFACES = {
 			"build fire",
 			"build wall width N height N",
 			"build wall of tnt",
+			"build <freeform request>",
 			"approve build",
 			"light",
 		},
@@ -293,6 +294,9 @@ local function compact_trace_context(context)
 		build_material_name = context.build_material_name,
 		build_material_node = context.build_material_node,
 		adapter_name = context.adapter_name,
+		planner_mode = context.planner_mode,
+		selected_candidate_id = context.selected_candidate_id,
+		candidate_count = context.candidate_count,
 	}
 end
 
@@ -363,6 +367,9 @@ local function finish_request_trace(trace, result, extra)
 		build_material_name = result and result.build_material_name,
 		build_material_node = result and result.build_material_node,
 		planned_node_writes = result and result.planned_node_writes,
+		planner_mode = result and result.planner_mode,
+		selected_candidate_id = result and result.selected_candidate_id,
+		candidate_count = result and result.candidate_count,
 	}
 	for key, value in pairs(extra) do
 		trace[key] = value
@@ -494,6 +501,9 @@ local function pending_approval_summary(pending)
 	if pending.build_material_node then
 		append(parts, "material=" .. tostring(pending.build_material_node))
 	end
+	if pending.selected_candidate_id then
+		append(parts, "selected_candidate=" .. tostring(pending.selected_candidate_id))
+	end
 	return table.concat(parts, " ")
 end
 
@@ -546,6 +556,12 @@ local function append_task_details(lines, result)
 	end
 	if result.reason then
 		append(lines, "reason=" .. tostring(result.reason))
+	end
+	if result.planner_mode then
+		append(lines, "planner_mode=" .. tostring(result.planner_mode))
+	end
+	if result.selected_candidate_id then
+		append(lines, "selected_candidate=" .. tostring(result.selected_candidate_id))
 	end
 	if type(result.required_capabilities) == "table" then
 		append(lines, "required_capabilities="
@@ -1115,6 +1131,9 @@ local function compact_pending_approval(pending)
 		build_height = pending.build_height,
 		build_material_name = pending.build_material_name,
 		build_material_node = pending.build_material_node,
+		planner_mode = pending.planner_mode,
+		selected_candidate_id = pending.selected_candidate_id,
+		candidate_options = pending.candidate_options,
 		repair_radius = pending.repair_radius,
 		sample_limit = pending.sample_limit,
 	}
@@ -1136,6 +1155,9 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		build_height = extra.build_height,
 		build_material_name = extra.build_material_name,
 		build_material_node = extra.build_material_node,
+		planner_mode = extra.planner_mode,
+		selected_candidate_id = extra.selected_candidate_id,
+		candidate_options = extra.candidate_options,
 		repair_radius = extra.repair_radius,
 		sample_limit = extra.sample_limit,
 	}
@@ -2159,6 +2181,17 @@ local function parse_named_build_int(lower_prompt, name)
 	return parse_build_positive_int(lower_prompt:match(name .. "%s+([%-%d]+)"))
 end
 
+local function prompt_is_explicit_marker_build(lower_prompt)
+	return lower_prompt == "build"
+		or lower_prompt == "build plan"
+		or lower_prompt == "preview build"
+		or lower_prompt == "build marker"
+		or lower_prompt == "marker"
+		or lower_prompt == "build a marker"
+		or lower_prompt == "place marker"
+		or lower_prompt:find("marker", 1, true) ~= nil
+end
+
 local function build_options_for(name, context, task_id)
 	context = context or {}
 	local kind = build_kind_for(context)
@@ -2279,7 +2312,7 @@ local function parse_build_options(raw_prompt, context)
 		parsed.build_width = width
 		parsed.build_depth = depth
 		parsed.build_height = nil
-	else
+	elseif prompt_is_explicit_marker_build(lower) then
 		parsed.build_kind = "marker"
 		parsed.build_material_name = material_name
 		parsed.build_material_node = resolve_build_material_node(
@@ -2290,6 +2323,8 @@ local function parse_build_options(raw_prompt, context)
 		parsed.build_width = nil
 		parsed.build_depth = nil
 		parsed.build_height = nil
+	else
+		return nil, "ambiguous_build_intent"
 	end
 	return parsed, nil
 end
@@ -2379,8 +2414,9 @@ local function handle_build_plan(name, context)
 	})
 end
 
-local function handle_build(name, context)
+local function create_build_pending_reply(name, context, message, extra)
 	context = context or {}
+	extra = extra or {}
 	local result, plan = build_plan_for(name, context)
 	local pending = remember_pending_approval(name, "build", plan, context, {
 		surface_id = "builder",
@@ -2391,9 +2427,13 @@ local function handle_build(name, context)
 		build_height = plan.build_height,
 		build_material_name = plan.build_material_name,
 		build_material_node = plan.build_material_node,
+		planner_mode = extra.planner_mode,
+		selected_candidate_id = extra.selected_candidate_id,
+		candidate_options = extra.candidate_options,
+		candidate_count = extra.candidate_count,
 	})
-	return public_reply(name, "build", "pending_approval",
-		"Build plan is pending approval before mutation.", {
+	local reply = public_reply(name, "build", "pending_approval",
+		message or "Build plan is pending approval before mutation.", {
 			surface_id = "builder",
 			approval_id = pending.approval_id,
 			pending_action = "build",
@@ -2406,7 +2446,314 @@ local function handle_build(name, context)
 			build_material_name = plan.build_material_name,
 			build_material_node = plan.build_material_node,
 			plan_status = result.status,
+			planner_mode = extra.planner_mode,
+			selected_candidate_id = extra.selected_candidate_id,
+			candidate_options = extra.candidate_options,
+			candidate_count = extra.candidate_count,
+			planner_model_status = extra.planner_model_status,
+			planner_model_reason = extra.planner_model_reason,
+			planner_guidance = extra.planner_guidance,
+			trace_id = extra.trace_id,
+			adapter_name = extra.adapter_name,
 		})
+	return reply, result, plan, pending
+end
+
+local function handle_build(name, context)
+	local reply = create_build_pending_reply(name, context,
+		"Build plan is pending approval before mutation.")
+	return reply
+end
+
+local function capability_csv()
+	local capabilities = {}
+	for capability, enabled in pairs(settings.capabilities or {}) do
+		if enabled then
+			capabilities[#capabilities + 1] = capability
+		end
+	end
+	table.sort(capabilities)
+	return table.concat(capabilities, ",")
+end
+
+local function agentic_build_context(base_context, fields)
+	local context = table.copy(base_context or {})
+	for key, value in pairs(fields or {}) do
+		context[key] = value
+	end
+	return context
+end
+
+local function public_candidate_option(candidate)
+	return {
+		option_id = candidate.option_id,
+		label = candidate.label,
+		reason = candidate.reason,
+		build_kind = candidate.context.build_kind,
+		build_width = candidate.context.build_width,
+		build_depth = candidate.context.build_depth,
+		build_height = candidate.context.build_height,
+		build_count = candidate.context.build_count,
+		build_material_name = candidate.context.build_material_name,
+		build_material_node = candidate.context.build_material_node,
+		planned_node_writes = candidate.planned_node_writes,
+		requires_preview = true,
+		requires_approval = true,
+		requires_rollback = true,
+		executable = true,
+	}
+end
+
+local function candidate_summary(candidates)
+	local parts = {}
+	for _, candidate in ipairs(candidates or {}) do
+		parts[#parts + 1] = string.format("%s:%s:%s:%s",
+			tostring(candidate.option_id),
+			tostring(candidate.build_kind),
+			tostring(candidate.build_material_name or "default"),
+			tostring(candidate.planned_node_writes or 0))
+	end
+	return table.concat(parts, "|")
+end
+
+local function append_agentic_build_candidate(candidates, name, base_context,
+		option_id, label, reason, fields)
+	local context = agentic_build_context(base_context, fields)
+	local ok, _result, plan = pcall(build_plan_for, name, context)
+	if not ok or not plan then
+		return
+	end
+	candidates[#candidates + 1] = {
+		option_id = option_id,
+		label = label,
+		reason = reason,
+		context = context,
+		planned_node_writes = plan.metrics and plan.metrics.planned_node_writes or 0,
+	}
+end
+
+local function select_agentic_build_candidate(candidates, lower_prompt)
+	local preferred = "platform"
+	if lower_prompt:find("tnt", 1, true) then
+		preferred = "tnt_wall"
+	elseif lower_prompt:find("fire", 1, true) or lower_prompt:find("flame", 1, true) then
+		preferred = "fire"
+	elseif lower_prompt:find("wall", 1, true) then
+		preferred = "wall"
+	elseif lower_prompt:find("marker", 1, true) or lower_prompt:find("beacon", 1, true) then
+		preferred = "marker"
+	elseif lower_prompt:find("floor", 1, true)
+			or lower_prompt:find("base", 1, true)
+			or lower_prompt:find("shelter", 1, true)
+			or lower_prompt:find("house", 1, true)
+			or lower_prompt:find("platform", 1, true) then
+		preferred = "platform"
+	end
+	for _, candidate in ipairs(candidates or {}) do
+		if candidate.option_id == preferred then
+			return candidate
+		end
+	end
+	return candidates and candidates[1] or nil
+end
+
+local function build_agentic_candidate_options(name, raw_prompt, context)
+	local lower = raw_prompt:lower()
+	local candidates = {}
+	append_agentic_build_candidate(candidates, name, context, "platform",
+		"Small platform", "safe default buildable surface", {
+			build_kind = "platform",
+			build_width = 2,
+			build_depth = 2,
+			build_material_name = nil,
+			build_material_node = settings.platform_node,
+		})
+	append_agentic_build_candidate(candidates, name, context, "marker",
+		"Marker block", "single-block visible marker", {
+			build_kind = "marker",
+			build_material_name = nil,
+			build_material_node = settings.marker_node,
+		})
+	append_agentic_build_candidate(candidates, name, context, "wall",
+		"Small wall", "bounded wall preview", {
+			build_kind = "wall",
+			build_width = 4,
+			build_height = 3,
+			build_material_name = nil,
+			build_material_node = settings.wall_node,
+		})
+	local fire_node = resolve_build_material_node("fire", settings.fire_node)
+	if fire_node then
+		append_agentic_build_candidate(candidates, name, context, "fire",
+			"Single fire", "requested as approval-gated game build", {
+				build_kind = "fire",
+				build_count = 1,
+				build_material_name = "fire",
+				build_material_node = fire_node,
+			})
+	end
+	local tnt_node = resolve_build_material_node("tnt", settings.tnt_node)
+	if tnt_node and lower:find("tnt", 1, true) then
+		append_agentic_build_candidate(candidates, name, context, "tnt_wall",
+			"Small TNT wall", "requested game material behind approval and rollback", {
+				build_kind = "wall",
+				build_width = 4,
+				build_height = 3,
+				build_material_name = "tnt",
+				build_material_node = tnt_node,
+			})
+	end
+	local public_candidates = {}
+	for _, candidate in ipairs(candidates) do
+		public_candidates[#public_candidates + 1] = public_candidate_option(candidate)
+	end
+	return candidates, public_candidates, select_agentic_build_candidate(candidates, lower)
+end
+
+local function agentic_build_planner_prompt(raw_prompt, public_candidates)
+	local lines = {
+		"Plan a Luanti build request using only the listed executable options.",
+		"Luanti will enforce capabilities, approval, rollback, and world mutation.",
+		"Player request: " .. bounded_trace_text(raw_prompt, 500),
+		"Options:",
+	}
+	for _, candidate in ipairs(public_candidates or {}) do
+		lines[#lines + 1] = string.format(
+			"- %s: %s kind=%s material=%s planned_writes=%s",
+			tostring(candidate.option_id),
+			tostring(candidate.label),
+			tostring(candidate.build_kind),
+			tostring(candidate.build_material_name or candidate.build_material_node or "default"),
+			tostring(candidate.planned_node_writes or 0))
+	end
+	lines[#lines + 1] =
+		"Return concise public guidance and name the safest option id to preview."
+	return table.concat(lines, "\n")
+end
+
+local function handle_agentic_build_planner(name, raw_prompt, context, reason)
+	context = context or {}
+	local _candidates, public_candidates, selected =
+		build_agentic_candidate_options(name, raw_prompt, context)
+	if not selected then
+		return public_reply(name, "build_plan", "blocked",
+			"No executable build options are available for this request.", {
+				surface_id = "builder",
+				reason = "no_build_candidates",
+			})
+	end
+	local adapter_name = "ai_agent_plugin.build_planner"
+	local planner_context = {
+		surface_id = "builder",
+		intent = "build_planning",
+		planner_reason = reason or "ambiguous_build_intent",
+		capabilities = capability_csv(),
+		candidate_count = #public_candidates,
+		selected_candidate_id = selected.option_id,
+		candidate_summary = candidate_summary(public_candidates),
+	}
+	local trace = start_request_trace(name, "build",
+		model_adapter_async and "agentic_build_planner"
+			or "deterministic_build_candidate_fallback",
+		raw_prompt, planner_context, {
+			surface_id = "builder",
+			agent_id = agent_id_for(name),
+			adapter_name = adapter_name,
+		})
+	local function finish_with_pending(model_result, planner_mode)
+		model_result = model_result or {}
+		local pending_reply = create_build_pending_reply(name, selected.context,
+			"Agentic build planner selected an approval-gated build option.", {
+				planner_mode = planner_mode,
+				selected_candidate_id = selected.option_id,
+				candidate_options = public_candidates,
+				candidate_count = #public_candidates,
+				planner_model_status = model_result.status,
+				planner_model_reason = model_result.reason,
+				planner_guidance = bounded_trace_text(model_result.message, 1000),
+				trace_id = trace.trace_id,
+				adapter_name = model_result.adapter_name or adapter_name,
+			})
+		return finish_request_trace(trace, pending_reply, {
+			planner_mode = planner_mode,
+			selected_candidate_id = selected.option_id,
+			candidate_count = #public_candidates,
+			adapter_name = model_result.adapter_name or adapter_name,
+		})
+	end
+	if not model_adapter_async or not core.ai_model_ops or not core.ai_model_ops.request_async then
+		return finish_with_pending({
+			status = "skipped",
+			reason = "model_adapter_async_unavailable",
+			message = "No async model adapter configured; using bounded build candidates.",
+			adapter_name = adapter_name,
+		}, "deterministic_candidate_fallback")
+	end
+	local completed = false
+	local returned_to_player = false
+	local completed_reply
+	local function complete_agentic_planner(result)
+		local planner_mode = result and result.status == "success"
+			and "agentic_model_adapter" or "agentic_model_adapter_fallback"
+		completed = true
+		completed_reply = finish_with_pending(result, planner_mode)
+		if type(context.on_agentic_build_planner_complete) == "function" then
+			local callback_ok, callback_err = pcall(context.on_agentic_build_planner_complete,
+				completed_reply, trace)
+			if not callback_ok then
+				core.log("error", "[ai_agent_plugin] build planner completion callback failed: "
+					.. tostring(callback_err))
+			end
+		end
+		if returned_to_player and core.chat_send_player then
+			core.chat_send_player(name, plugin.format_reply(completed_reply))
+		end
+	end
+	local queued, queue_reason = core.ai_model_ops.request_async(
+		agentic_build_planner_prompt(raw_prompt, public_candidates), {
+			agent_id = agent_id_for(name),
+			owner = name,
+			task_id = "ai-agent-build-planner:" .. tostring(trace.trace_id),
+			adapter_async = model_adapter_async,
+			adapter_name = adapter_name,
+			context = planner_context,
+			max_context_keys = 24,
+		}, complete_agentic_planner)
+	if not queued then
+		return finish_with_pending({
+			status = "blocked",
+			reason = queue_reason or "model_adapter_queue_failed",
+			message = "Model-backed build planning was unavailable; using bounded build candidates.",
+			adapter_name = adapter_name,
+		}, "agentic_model_adapter_fallback")
+	end
+	if completed then
+		return completed_reply
+	end
+	local queued_reply = public_reply(name, "build_plan", "queued",
+		"Agentic build planner request queued.", {
+			surface_id = "builder",
+			reason = "agentic_build_planner_queued",
+			trace_id = trace.trace_id,
+			adapter_name = adapter_name,
+			planner_mode = "agentic_model_adapter",
+			selected_candidate_id = selected.option_id,
+			candidate_options = public_candidates,
+			candidate_count = #public_candidates,
+		})
+	trace.response = {
+		ok = true,
+		status = "queued",
+		action = "build_plan",
+		reason = "agentic_build_planner_queued",
+		message = "Agentic build planner request queued.",
+		trace_id = trace.trace_id,
+		planner_mode = "agentic_model_adapter",
+		selected_candidate_id = selected.option_id,
+		candidate_count = #public_candidates,
+	}
+	returned_to_player = true
+	return queued_reply
 end
 
 local function compact_repair_plan(plan)
@@ -3059,7 +3406,10 @@ local function handle_pending_plan(name)
 		build_height = pending.build_height,
 		build_material_name = pending.build_material_name,
 		build_material_node = pending.build_material_node,
-	})
+		planner_mode = pending.planner_mode,
+		selected_candidate_id = pending.selected_candidate_id,
+		candidate_options = pending.candidate_options,
+		})
 end
 
 local function update_build_pending_plan(name, pending, raw_prompt)
@@ -3470,18 +3820,25 @@ function plugin.handle_command(name, param, context)
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
 			and prompt_has_build_surface(prompt) then
-		local trace = start_request_trace(name, "build_plan",
-			"deterministic_build_parser", raw_prompt, context, {
-				surface_id = "builder",
-			})
 		local build_context, reason = parse_build_options(raw_prompt, context)
 		if not build_context then
+			if reason == "ambiguous_build_intent" then
+				return handle_agentic_build_planner(name, raw_prompt, context, reason)
+			end
+			local trace = start_request_trace(name, "build_plan",
+				"deterministic_build_parser", raw_prompt, context, {
+					surface_id = "builder",
+				})
 			return finish_request_trace(trace, public_reply(name, "build_plan", "blocked",
 				"Build plan parameters are outside the configured bounds.", {
 					surface_id = "builder",
 					reason = reason,
 				}))
 		end
+		local trace = start_request_trace(name, "build_plan",
+			"deterministic_build_parser", raw_prompt, context, {
+				surface_id = "builder",
+			})
 		trace.context = compact_trace_context(build_context)
 		return finish_request_trace(trace, handle_build_plan(name, build_context), {
 			selected_intent = build_context.build_kind,
@@ -3520,18 +3877,25 @@ function plugin.handle_command(name, param, context)
 		return handle_import_plan(name, context)
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
-		local trace = start_request_trace(name, "build",
-			"deterministic_build_parser", raw_prompt, context, {
-				surface_id = "builder",
-			})
 		local build_context, reason = parse_build_options(raw_prompt, context)
 		if not build_context then
+			if reason == "ambiguous_build_intent" then
+				return handle_agentic_build_planner(name, raw_prompt, context, reason)
+			end
+			local trace = start_request_trace(name, "build",
+				"deterministic_build_parser", raw_prompt, context, {
+					surface_id = "builder",
+				})
 			return finish_request_trace(trace, public_reply(name, "build", "blocked",
 				"Build parameters are outside the configured bounds.", {
 					surface_id = "builder",
 					reason = reason,
 				}))
 		end
+		local trace = start_request_trace(name, "build",
+			"deterministic_build_parser", raw_prompt, context, {
+				surface_id = "builder",
+			})
 		trace.context = compact_trace_context(build_context)
 		return finish_request_trace(trace, handle_build(name, build_context), {
 			selected_intent = build_context.build_kind,
@@ -3542,7 +3906,7 @@ function plugin.handle_command(name, param, context)
 end
 
 local EVAL_DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
-local EVAL_DEFAULT_CASES = { "build_fire", "tnt_wall", "model" }
+local EVAL_DEFAULT_CASES = { "build_fire", "tnt_wall", "agentic_build_planner", "model" }
 local EVAL_MAX_OUTPUT_BYTES = 12000
 
 local function eval_metric_delta(before, after, key)
@@ -3583,6 +3947,9 @@ local function compact_eval_reply(reply)
 		build_material_name = reply.build_material_name,
 		build_material_node = reply.build_material_node,
 		planned_node_writes = reply.planned_node_writes,
+		planner_mode = reply.planner_mode,
+		selected_candidate_id = reply.selected_candidate_id,
+		candidate_count = reply.candidate_count,
 		adapter_name = reply.adapter_name,
 		async_model_request = reply.async_model_request,
 	}
@@ -3610,6 +3977,9 @@ local function compact_eval_trace(trace)
 			build_material_name = response.build_material_name,
 			build_material_node = response.build_material_node,
 			planned_node_writes = response.planned_node_writes,
+			planner_mode = response.planner_mode,
+			selected_candidate_id = response.selected_candidate_id,
+			candidate_count = response.candidate_count,
 		},
 		context = {
 			build_kind = context.build_kind,
@@ -3629,6 +3999,8 @@ local function eval_checks_status(checks)
 	table.sort(failures)
 	return #failures == 0, failures
 end
+
+local trace_private_context_retained
 
 local function eval_context(options)
 	local context = table.copy(options.context or {})
@@ -3690,6 +4062,108 @@ local function run_build_eval_case(report, owner, case_id, prompt, context, expe
 	})
 end
 
+local function finish_agentic_build_eval_case(case_report, final_reply, final_trace)
+	final_trace = final_trace or trace_by_id(case_report.trace_id) or latest_request_trace()
+	local cleanup
+	if final_reply and final_reply.status == "pending_approval" then
+		cleanup = plugin.handle_command(case_report.owner, "discard plan", {})
+	end
+	case_report.final_reply = compact_eval_reply(final_reply)
+	case_report.final_trace = compact_eval_trace(final_trace)
+	case_report.cleanup = cleanup and {
+		action = cleanup.action,
+		status = cleanup.status,
+		reason = cleanup.reason,
+	} or nil
+	case_report.final_status = final_reply and final_reply.status
+	case_report.final_reason = final_reply and final_reply.reason
+	case_report.checks.final_reply_ok = final_reply and final_reply.ok == true
+	case_report.checks.final_action = final_reply and final_reply.action == "build"
+	case_report.checks.final_status = final_reply and final_reply.status == "pending_approval"
+	case_report.checks.approval_required = final_reply and final_reply.approval_id ~= nil
+	case_report.checks.planner_mode = final_reply
+		and final_reply.planner_mode == "agentic_model_adapter"
+	case_report.checks.selected_candidate = final_reply
+		and final_reply.selected_candidate_id == "platform"
+	case_report.checks.multiple_options = final_reply
+		and (final_reply.candidate_count or 0) >= 3
+	case_report.checks.build_kind = final_reply and final_reply.build_kind == "platform"
+	case_report.checks.planned_writes = final_reply
+		and (final_reply.planned_node_writes or 0) == 4
+	case_report.checks.trace_route = final_trace
+		and final_trace.route == "agentic_build_planner"
+	case_report.checks.trace_status = final_trace and final_trace.response
+		and final_trace.response.status == "pending_approval"
+	case_report.checks.trace_prompt = final_trace
+		and final_trace.public_prompt == case_report.prompt
+	case_report.checks.no_trace_private_context =
+		not trace_private_context_retained(final_trace)
+	case_report.checks.cleanup_discarded = cleanup
+		and cleanup.action == "discard_approval"
+		and cleanup.status == "success"
+	local ok, failures = eval_checks_status(case_report.checks)
+	case_report.ok = ok
+	case_report.status = ok and "pass" or "fail"
+	case_report.failures = failures
+	case_report.owner = nil
+end
+
+local function run_agentic_build_eval_case(report, owner, prompt, context, async_done)
+	local case_report = {
+		case_id = "agentic_build_planner",
+		owner = owner,
+		prompt = prompt,
+		checks = {},
+	}
+	report.cases[#report.cases + 1] = case_report
+	local planner_context = table.copy(context or {})
+	planner_context.on_agentic_build_planner_complete = function(final_reply, final_trace)
+		case_report.completed_by_hook = true
+		finish_agentic_build_eval_case(case_report, final_reply, final_trace)
+		if case_report.initial_recorded then
+			async_done()
+		end
+	end
+	local initial_reply = plugin.handle_command(owner, prompt, planner_context)
+	local initial_trace = initial_reply and initial_reply.trace_id
+		and trace_by_id(initial_reply.trace_id) or latest_request_trace()
+	case_report.trace_id = initial_reply and initial_reply.trace_id
+		or (initial_trace and initial_trace.trace_id)
+	case_report.initial_reply = compact_eval_reply(initial_reply)
+	case_report.initial_trace = compact_eval_trace(initial_trace)
+	case_report.queued_status = initial_reply and initial_reply.status
+	case_report.queued_reason = initial_reply and initial_reply.reason
+	case_report.checks.initial_action = initial_reply
+		and initial_reply.action == "build_plan"
+	case_report.checks.initial_trace_id = case_report.trace_id ~= nil
+	case_report.checks.initial_queued = initial_reply
+		and (initial_reply.status == "queued"
+			or initial_reply.status == "pending_approval")
+	case_report.checks.initial_planner_mode = initial_reply
+		and (initial_reply.planner_mode == "agentic_model_adapter"
+			or initial_reply.planner_mode == "deterministic_candidate_fallback")
+	case_report.checks.initial_multiple_options = initial_reply
+		and (initial_reply.candidate_count or 0) >= 3
+	case_report.checks.initial_selected_candidate = initial_reply
+		and initial_reply.selected_candidate_id == "platform"
+	case_report.checks.initial_trace_route = initial_trace
+		and (initial_trace.route == "agentic_build_planner"
+			or initial_trace.route == "deterministic_build_candidate_fallback")
+	case_report.checks.no_initial_trace_private_context =
+		not trace_private_context_retained(initial_trace)
+	case_report.initial_recorded = true
+	if initial_reply and initial_reply.status == "queued"
+			and not case_report.completed_by_hook then
+		case_report.status = "queued"
+		return true
+	end
+	if case_report.completed_by_hook then
+		return false
+	end
+	finish_agentic_build_eval_case(case_report, initial_reply, initial_trace)
+	return false
+end
+
 local function audit_payload_retained(records)
 	for _, record in ipairs(records or {}) do
 		if record.private_payload ~= nil or record.payload_retained == true then
@@ -3699,7 +4173,7 @@ local function audit_payload_retained(records)
 	return false
 end
 
-local function trace_private_context_retained(trace)
+function trace_private_context_retained(trace)
 	return trace and trace.context and trace.context.private_prompt ~= nil
 end
 
@@ -3727,7 +4201,7 @@ local function finish_model_eval_case(case_report, final_reply, final_trace)
 	case_report.failures = failures
 end
 
-local function run_model_eval_case(report, owner, prompt, context, finish_report)
+local function run_model_eval_case(report, owner, prompt, context, async_done)
 	local case_report = {
 		case_id = "model",
 		prompt = prompt,
@@ -3741,7 +4215,7 @@ local function run_model_eval_case(report, owner, prompt, context, finish_report
 		case_report.completed_by_hook = true
 		finish_model_eval_case(case_report, final_reply, final_trace)
 		if case_report.initial_recorded then
-			finish_report()
+			async_done()
 		end
 	end
 	local initial_reply = plugin.handle_command(owner, prompt, model_context)
@@ -3768,9 +4242,7 @@ local function run_model_eval_case(report, owner, prompt, context, finish_report
 		case_report.status = "queued"
 		return true
 	end
-	if case_report.completed_by_hook then
-		finish_report()
-	elseif not case_report.completed_by_hook then
+	if not case_report.completed_by_hook then
 		finish_model_eval_case(case_report, initial_reply, initial_trace)
 	end
 	return false
@@ -3784,6 +4256,9 @@ local function normalize_eval_case(value)
 		return "build_fire"
 	elseif value == "tnt" or value == "walltnt" or value == "tntwall" then
 		return "tnt_wall"
+	elseif value == "agentic" or value == "planner" or value == "buildplanner"
+			or value == "agenticbuildplanner" or value == "shelter" then
+		return "agentic_build_planner"
 	elseif value == "model" or value == "unknown" or value == "adapter" then
 		return "model"
 	end
@@ -3872,8 +4347,16 @@ function plugin.run_prompt_eval(options, callback)
 		end
 		callback(report)
 	end
+	local pending_async_count = 0
+	local function async_case_done()
+		if pending_async_count > 0 then
+			pending_async_count = pending_async_count - 1
+		end
+		if pending_async_count == 0 then
+			finish_report()
+		end
+	end
 	local context = eval_context(options)
-	local pending_async = false
 	for _, case_id in ipairs(cases) do
 		if case_id == "build_fire" then
 			run_build_eval_case(report, owner, case_id, "build a fire", context, {
@@ -3889,13 +4372,20 @@ function plugin.run_prompt_eval(options, callback)
 				build_material_node = settings.tnt_node,
 				min_planned_node_writes = 1,
 			})
+		elseif case_id == "agentic_build_planner" then
+			if run_agentic_build_eval_case(report, owner, "build a small shelter",
+					context, async_case_done) then
+				pending_async_count = pending_async_count + 1
+			end
 		elseif case_id == "model" then
-			pending_async = run_model_eval_case(report, owner,
+			if run_model_eval_case(report, owner,
 				options.model_prompt or EVAL_DEFAULT_MODEL_PROMPT,
-				context, finish_report) or pending_async
+				context, async_case_done) then
+				pending_async_count = pending_async_count + 1
+			end
 		end
 	end
-	if pending_async and not finished then
+	if pending_async_count > 0 and not finished then
 		return true, "queued"
 	end
 	finish_report()

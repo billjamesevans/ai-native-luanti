@@ -122,6 +122,12 @@ Implemented deterministic commands:
   before approval. Requested game materials such as TNT are allowed when the
   node exists and the request fits the server's capability, protection,
   budget, approval, and rollback gates.
+- Ambiguous build prompts such as `build a small shelter` use the agentic build
+  planner instead of silently becoming a marker. The planner returns multiple
+  executable bounded candidates, asks the async Agents SDK model adapter for
+  public-safe guidance when configured, selects one preview candidate, records
+  the route in request traces, and still requires player approval before the
+  rollback-backed `build_agent` task is queued.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair plan radius N`, `repair radius N`: plans a bounded wider repair
   area before approval. `N` must be within the configured `max_repair_radius`

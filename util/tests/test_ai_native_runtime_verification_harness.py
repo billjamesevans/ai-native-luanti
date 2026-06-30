@@ -438,12 +438,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "status": "pass",
                 "ok": True,
                 "owner": "PromptEvalLive",
-                "cases_total": 3,
-                "cases_passed": 3,
+                "cases_total": 4,
+                "cases_passed": 4,
                 "cases_failed": 0,
                 "case_ids": {
                     "build_fire": True,
                     "tnt_wall": True,
+                    "agentic_build_planner": True,
                     "model": True,
                 },
                 "cases": [
@@ -476,6 +477,23 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "failure_count": 0,
                     },
                     {
+                        "case_id": "agentic_build_planner",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "build a small shelter",
+                        "action": "build",
+                        "reply_status": "queued",
+                        "final_status": "pending_approval",
+                        "route": "agentic_build_planner",
+                        "final_route": "agentic_build_planner",
+                        "build_kind": "platform",
+                        "selected_candidate_id": "platform",
+                        "candidate_count": 4,
+                        "planned_node_writes": 4,
+                        "cleanup_status": "success",
+                        "failure_count": 0,
+                    },
+                    {
                         "case_id": "model",
                         "status": "pass",
                         "ok": True,
@@ -489,8 +507,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     },
                 ],
                 "metrics": {
-                    "model_adapter_requests_delta": 1,
-                    "model_adapter_successes_delta": 1,
+                    "model_adapter_requests_delta": 2,
+                    "model_adapter_successes_delta": 2,
                     "model_adapter_failures_delta": 0,
                     "model_adapter_timeouts_delta": 0,
                 },
@@ -499,14 +517,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 },
             },
             "summary": {
-                "cases_total": 3,
-                "cases_passed": 3,
+                "cases_total": 4,
+                "cases_passed": 4,
                 "cases_failed": 0,
                 "build_fire_checked": True,
                 "tnt_wall_checked": True,
+                "agentic_build_planner_checked": True,
                 "model_checked": True,
-                "model_adapter_requests": 1,
-                "model_adapter_successes": 1,
+                "model_adapter_requests": 2,
+                "model_adapter_successes": 2,
                 "model_adapter_failures": 0,
                 "model_adapter_timeouts": 0,
             },
@@ -1518,7 +1537,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
-                3,
+                4,
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -1532,6 +1551,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_agentic_build_planner_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_checked"
                 ]
             )
@@ -1539,13 +1563,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_requests"
                 ],
-                1,
+                2,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_successes"
                 ],
-                1,
+                2,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][

@@ -60,6 +60,15 @@ TOOL_POWER_MANIFEST = (
         "engine_authority": "luanti_task_preview_approval_rollback",
     },
     {
+        "name": "recommend_build_option",
+        "kind": "function_tool",
+        "runtime_power": "build_option_recommendation",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_task_preview_approval_rollback",
+    },
+    {
         "name": "WebSearchTool",
         "kind": "hosted_tool",
         "runtime_power": "public_web_lookup",
@@ -152,11 +161,70 @@ def classify_world_action(action: str, planned_node_writes: int) -> dict[str, An
     }
 
 
+def recommend_build_option_payload(candidate_summary: str, player_request: str) -> dict[str, Any]:
+    """Choose one bounded build candidate from Luanti's public-safe summary."""
+
+    request = str(player_request or "").lower()
+    candidates: list[dict[str, Any]] = []
+    for raw_entry in str(candidate_summary or "").split("|"):
+        parts = raw_entry.split(":")
+        if len(parts) != 4:
+            continue
+        option_id, build_kind, material, writes = parts
+        try:
+            planned_node_writes = max(0, int(writes))
+        except ValueError:
+            planned_node_writes = 0
+        candidates.append(
+            {
+                "option_id": option_id,
+                "build_kind": build_kind,
+                "material": material,
+                "planned_node_writes": planned_node_writes,
+            }
+        )
+
+    preferred = "platform"
+    if "tnt" in request:
+        preferred = "tnt_wall"
+    elif "fire" in request or "flame" in request:
+        preferred = "fire"
+    elif "wall" in request:
+        preferred = "wall"
+    elif "marker" in request or "beacon" in request:
+        preferred = "marker"
+
+    selected = next((item for item in candidates if item["option_id"] == preferred), None)
+    if selected is None and candidates:
+        selected = candidates[0]
+    return {
+        "selected_option_id": selected["option_id"] if selected else None,
+        "candidate_count": len(candidates),
+        "alternatives": [item["option_id"] for item in candidates[:6]],
+        "requires_preview": True,
+        "requires_approval": True,
+        "requires_rollback": True,
+        "direct_world_mutation": False,
+        "policy": "luanti_executes_only_after_player_approval",
+    }
+
+
+@function_tool
+def recommend_build_option(candidate_summary: str, player_request: str) -> dict[str, Any]:
+    """Recommend one of Luanti's bounded build candidates without mutating the world."""
+
+    return recommend_build_option_payload(candidate_summary, player_request)
+
+
 def build_agent(model: str | None = None) -> Any:
     if not _sdk_available():
         raise RuntimeError("openai-agents is not installed")
 
-    tools: list[Any] = [summarize_runtime_capabilities, classify_world_action]
+    tools: list[Any] = [
+        summarize_runtime_capabilities,
+        classify_world_action,
+        recommend_build_option,
+    ]
     if WebSearchTool is not None:
         tools.append(WebSearchTool())
 
@@ -168,7 +236,8 @@ def build_agent(model: str | None = None) -> Any:
             "runtime. The Luanti engine is authoritative for capabilities, "
             "world mutation, rollback, audit, and task execution. Use hosted "
             "web search only when current public information is needed. Use "
-            "function tools to classify capabilities and world-action policy. "
+            "function tools to classify capabilities, world-action policy, "
+            "and bounded build-option recommendations. "
             "Return public-safe, bounded guidance. Do not return provider raw "
             "payloads, credentials, private prompts, private world coordinates, "
             "or asset payloads."
@@ -207,6 +276,9 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             f"surface_id: {surface_id}",
             f"capabilities: {capability_csv}",
             f"public_prompt: {prompt}",
+            f"planner_reason: {context.get('planner_reason', '')}",
+            f"candidate_summary: {context.get('candidate_summary', '')}",
+            f"selected_candidate_id: {context.get('selected_candidate_id', '')}",
             "Return concise public-safe guidance for the player or operator.",
         ]
     )
