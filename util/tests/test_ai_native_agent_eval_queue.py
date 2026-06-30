@@ -933,6 +933,38 @@ class AgentEvalQueueTests(unittest.TestCase):
             ],
         )
 
+    def test_verified_live_probe_reader_ignores_prompt_eval_live_artifact(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            probe_dir = root / "live-probes"
+            probe_dir.mkdir()
+            (probe_dir / "nova-auto-apply.json").write_text(
+                json.dumps(verified_live_probe_payload()),
+                encoding="utf-8",
+            )
+            (probe_dir / "ai-agent-prompt-eval-live-latest.json").write_text(
+                json.dumps({
+                    "live_result_kind": "ai_native_agent_prompt_eval_live_result",
+                    "status": "pass",
+                    "summary": {"cases_total": 5, "cases_passed": 5},
+                }),
+                encoding="utf-8",
+            )
+
+            payload = module.build_eval_candidate_queue(
+                verified_live_probe_paths=[probe_dir],
+                generated_at="2026-06-30T15:00:00Z",
+            )
+
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["source_summary"]["verified_live_probe_files_read"], 1)
+        self.assertEqual(payload["source_summary"]["verified_live_probe_cases_read"], 3)
+        self.assertFalse(any(
+            item["kind"] == "invalid_verified_live_probe_kind"
+            for item in payload["violations"]
+        ))
+
     def test_prompt_label_does_not_relabel_verified_live_probe_case_family(self):
         module = load_queue_module()
         simple_fire = verified_live_probe_payload()["cases"][0]
