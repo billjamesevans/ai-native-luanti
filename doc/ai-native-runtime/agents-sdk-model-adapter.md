@@ -130,8 +130,12 @@ label can match by exact candidate id or public prompt and can only promote
 build-output expectations that the runtime prompt-eval runner can replay.
 Adapter traces that miss required SDK tools are also marked
 `ready_for_adapter_contract_eval = true` and counted under
-`adapter_contract_failures`, even when the expected build-output behavior still
-needs an operator label.
+`adapter_contract_failures` while active, even when the expected build-output
+behavior still needs an operator label. Later passing evidence for the same
+public prompt keeps the failed candidate in the queue but marks it resolved;
+operators can distinguish `adapter_contract_failures_active`,
+`adapter_contract_failures_total`, and `adapter_contract_failures_resolved` in
+the refresh summary.
 
 Passing Nova auto-apply live probe artifacts can also feed the queue through
 `--verified-live-probe`. Those cases are treated as reviewed evidence only when
