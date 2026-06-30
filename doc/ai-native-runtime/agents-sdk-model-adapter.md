@@ -96,11 +96,14 @@ prompt fields, provider raw payloads, credentials, headers, and asset payloads.
 
 The sidecar log is an input to the eval backlog, not just a debug file. After a
 bad or surprising Nova interaction, pair the sidecar JSONL with the Luanti
-action/debug log and build a bounded candidate queue:
+action/debug log, and optionally include product-side Nova sidecar request logs
+that already contain public-safe prompt contracts, corrections, actions, and
+tool traces:
 
 ```bash
 python3 util/ai_native_agent_eval_queue.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
   --output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --generated-at 2026-06-30T00:00:00Z
@@ -128,6 +131,7 @@ operator path for sidecar memory:
 ```bash
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
