@@ -415,12 +415,16 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         model = case_map.get("model", {})
         if fire.get("status") != "pass" or fire.get("build_kind") != "fire":
             raise ValueError("agent prompt eval fire case is invalid")
+        if fire.get("build_material_name") != "fire":
+            raise ValueError("agent prompt eval fire material is invalid")
+        if fire.get("planned_node_writes") != 1:
+            raise ValueError("agent prompt eval fire must plan exactly one node write")
         if tnt.get("status") != "pass" or tnt.get("build_kind") != "wall":
             raise ValueError("agent prompt eval TNT wall case is invalid")
         if tnt.get("build_material_name") != "tnt":
             raise ValueError("agent prompt eval TNT wall material is invalid")
-        if not isinstance(tnt.get("planned_node_writes"), int) or tnt["planned_node_writes"] < 1:
-            raise ValueError("agent prompt eval TNT wall write plan missing")
+        if tnt.get("planned_node_writes") != 12:
+            raise ValueError("agent prompt eval TNT wall must plan exactly twelve node writes")
         if planner.get("status") != "pass":
             raise ValueError("agent prompt eval build planner case is invalid")
         if planner.get("route") != "agentic_build_planner" and planner.get("final_route") != "agentic_build_planner":
@@ -431,6 +435,8 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval build planner selected candidate is invalid")
         if not isinstance(planner.get("candidate_count"), int) or planner["candidate_count"] < 3:
             raise ValueError("agent prompt eval build planner candidate count is invalid")
+        if planner.get("planned_node_writes") != 4:
+            raise ValueError("agent prompt eval build planner must plan exactly four node writes")
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
@@ -483,6 +489,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_tnt_wall_checked": True,
         "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_model_checked": True,
+        "agent_prompt_eval_fire_planned_node_writes": 1,
+        "agent_prompt_eval_tnt_wall_planned_node_writes": 12,
+        "agent_prompt_eval_agentic_build_planner_planned_node_writes": 4,
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],

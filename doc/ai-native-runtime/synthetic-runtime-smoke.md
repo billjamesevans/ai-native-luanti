@@ -121,7 +121,8 @@ writes `ai-runtime-agent-prompt-eval-live-result.json`. That probe executes the 
 `/ai_agent_eval` command for the fire case, runs `core.ai_agent_plugin.run_prompt_eval` for
 `build a fire`, `build a wall of tnt`, ambiguous `build a small shelter` agentic planning, and the
 async model-adapter case, checks request/response trace routes, verifies the TNT wall is not refused
-as dangerous, discards pending build approvals before mutation, and records model-adapter
+as dangerous, enforces exact preview sizes for one fire node, twelve TNT wall nodes, and the four-node
+agentic shelter platform, discards pending build approvals before mutation, and records model-adapter
 request/success/failure/timeout deltas. By default it
 uses a deterministic mock async adapter and requires no model-network calls; pass
 `--agent-prompt-eval-adapter-endpoint http://127.0.0.1:8766/v1/model-adapter` to run the same

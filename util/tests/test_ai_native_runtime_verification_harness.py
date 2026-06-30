@@ -26,6 +26,15 @@ def load_harness_module():
     return module
 
 
+def load_agent_prompt_eval_module():
+    path = ROOT / "util" / "ai_native_agent_prompt_eval_live_probe.py"
+    assert path.is_file(), f"missing {path}"
+    spec = importlib.util.spec_from_file_location("ai_native_agent_prompt_eval_live_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class AIRuntimeVerificationHarnessTests(unittest.TestCase):
     def write_operator_status_artifact(self, path, *, payload=None, source="live_command"):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -1120,6 +1129,23 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
 
         return run_step
 
+    def test_agent_prompt_eval_validator_requires_exact_build_write_counts(self):
+        probe = load_agent_prompt_eval_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact = pathlib.Path(tmpdir) / "agent-prompt-eval.json"
+            self.write_agent_prompt_eval_live_artifact(artifact)
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+            fire_structure = json.loads(json.dumps(payload))
+            fire_structure["prompt_eval"]["cases"][0]["planned_node_writes"] = 2
+            with self.assertRaisesRegex(ValueError, "fire must plan exactly one node write"):
+                probe.validate_live_result(fire_structure)
+
+            tnt_underplanned = json.loads(json.dumps(payload))
+            tnt_underplanned["prompt_eval"]["cases"][1]["planned_node_writes"] = 1
+            with self.assertRaisesRegex(ValueError, "TNT wall must plan exactly twelve node writes"):
+                probe.validate_live_result(tnt_underplanned)
+
     def test_success_manifest_is_bounded_private_safe_and_records_artifacts(self):
         harness = load_harness_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1558,6 +1584,24 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_checked"
                 ]
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_fire_planned_node_writes"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_tnt_wall_planned_node_writes"
+                ],
+                12,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_agentic_build_planner_planned_node_writes"
+                ],
+                4,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
