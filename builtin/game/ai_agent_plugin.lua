@@ -107,6 +107,10 @@ local PRODUCT_SURFACES = {
 			"task <task_id>",
 			"traces",
 			"feedback last",
+			"feedback fire",
+			"feedback tnt wall",
+			"wrong <expected build>",
+			"teach <expected build>",
 			"pending plan",
 			"edit plan",
 			"discard plan",
@@ -2758,6 +2762,135 @@ local function expected_from_feedback_params(params)
 	return expected
 end
 
+function plugin._planned_feedback_writes_for(context)
+	local kind = build_kind_for(context)
+	if kind == "wall" then
+		return build_width_for(context) * build_height_for(context)
+	end
+	if kind == "platform" then
+		return build_width_for(context) * build_depth_for(context)
+	end
+	if kind == "fire" then
+		return build_count_for(context)
+	end
+	return 1
+end
+
+function plugin._feedback_material_name_for(context)
+	if context.build_material_name and context.build_material_name ~= "" then
+		return context.build_material_name
+	end
+	if build_kind_for(context) == "fire" then
+		return "fire"
+	end
+	return "stone"
+end
+
+function plugin._feedback_case_hint_for(context, material_name)
+	local kind = build_kind_for(context)
+	if kind == "fire" and material_name == "fire" and build_count_for(context) == 1 then
+		return "fire_only_strict"
+	end
+	if kind == "wall" and material_name == "tnt" then
+		return "tnt_wall"
+	end
+	return tostring(material_name or "default"):gsub("[^%w_%-]+", "_")
+		.. "_" .. tostring(kind or "build")
+end
+
+function plugin._structured_feedback_param(raw)
+	local text = tostring(raw or ""):trim()
+	if text == "" then
+		return nil
+	end
+	local lower = text:lower()
+	if not text:find("=", 1, true) and not text:find(";", 1, true)
+			and lower ~= "last" then
+		return nil
+	end
+	if lower ~= "last"
+			and not lower:match("^last[%s;]")
+			and not lower:find("trace=", 1, true)
+			and not lower:find("trace_id=", 1, true)
+			and not lower:find("prompt=", 1, true)
+			and not lower:find("public_prompt=", 1, true) then
+		return "last; " .. text
+	end
+	return text
+end
+
+function plugin._natural_feedback_param(raw)
+	local text = tostring(raw or ""):trim()
+	if text == "" then
+		return nil, "feedback_expected_behavior_required"
+	end
+	local lower = text:lower()
+	if lower:match("^last%s+") then
+		text = text:sub(6):trim()
+		lower = text:lower()
+	end
+	if text == "" then
+		return nil, "feedback_expected_behavior_required"
+	end
+	local parsed, reason = parse_build_options(text, {})
+	if not parsed and reason == "ambiguous_build_intent" then
+		parsed, reason = parse_build_options("build " .. text, {})
+	end
+	if not parsed then
+		return nil, reason
+	end
+
+	local material_name = plugin._feedback_material_name_for(parsed)
+	local planned_writes = plugin._planned_feedback_writes_for(parsed)
+	local pieces = {
+		"last",
+		"case=" .. plugin._feedback_case_hint_for(parsed, material_name),
+		"build_kind=" .. build_kind_for(parsed),
+		"material=" .. material_name,
+		"planned_writes=" .. tostring(planned_writes),
+		"route=agentic_build_planner",
+		"danger_refusal_allowed=false",
+		"forbidden_extra_structure=true",
+	}
+	if parsed.build_material_node then
+		pieces[#pieces + 1] = "node=" .. tostring(parsed.build_material_node)
+	end
+	return table.concat(pieces, "; "), nil
+end
+
+function plugin._nova_feedback_payload(raw_prompt)
+	local text = tostring(raw_prompt or ""):trim()
+	local command, rest = text:match("^(%S+)%s*(.*)$")
+	if not command then
+		return nil
+	end
+	command = command:lower()
+	if command == "feedback" or command == "wrong"
+			or command == "bad" or command == "teach" then
+		return tostring(rest or ""):trim()
+	end
+	return nil
+end
+
+function plugin._handle_nova_feedback(name, raw_payload, context)
+	local param = plugin._structured_feedback_param(raw_payload)
+	local reason
+	if not param then
+		param, reason = plugin._natural_feedback_param(raw_payload)
+	end
+	if not param then
+		return public_reply(name, "agent_feedback", "blocked",
+			"Feedback expected behavior was incomplete.", {
+				surface_id = "guide",
+				reason = reason,
+				no_world_mutation = true,
+			})
+	end
+	local feedback_context = table.copy(context or {})
+	feedback_context.review_source = "nova_feedback_chatcommand"
+	return plugin.record_operator_feedback(name, param, feedback_context)
+end
+
 function plugin.record_operator_feedback(name, param, context)
 	name = normalize_player_name(name)
 	context = context or {}
@@ -2816,7 +2949,8 @@ function plugin.record_operator_feedback(name, param, context)
 		expected = expected,
 		review = {
 			operator_reviewed = true,
-			review_source = "ai_agent_feedback_chatcommand",
+			review_source = bounded_trace_text(
+				context.review_source or "ai_agent_feedback_chatcommand", 120),
 			no_world_mutation = true,
 		},
 	}
@@ -4224,6 +4358,10 @@ local function handle_guide(name)
 			"task <task_id>",
 			"traces",
 			"feedback last",
+			"feedback fire",
+			"feedback tnt wall",
+			"wrong <expected build>",
+			"teach <expected build>",
 			"pending plan",
 			"edit plan",
 			"edit plan platform width N depth N",
@@ -5044,6 +5182,10 @@ function plugin.handle_command(name, param, context)
 	if prompt == "traces" or prompt == "trace" or prompt == "logs"
 			or prompt == "model traces" or prompt == "request traces" then
 		return handle_request_traces(name)
+	end
+	local feedback_payload = plugin._nova_feedback_payload(raw_prompt)
+	if feedback_payload ~= nil then
+		return plugin._handle_nova_feedback(name, feedback_payload, context)
 	end
 	local requested_audit_task_id = raw_prompt:match("^[Aa][Uu][Dd][Ii][Tt]%s+(.+)$")
 		or raw_prompt:match("^[Hh][Ii][Ss][Tt][Oo][Rr][Yy]%s+(.+)$")

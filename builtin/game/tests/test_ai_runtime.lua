@@ -6656,6 +6656,48 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(stored_feedback.feedback.expected.build_kind == "platform")
 	assert(stored_feedback.feedback.review.no_world_mutation == true)
 
+	local nova_fire_seed_reply =
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "build a fire", {})
+	assert(nova_fire_seed_reply.status == "queued"
+		or nova_fire_seed_reply.status == "pending_approval")
+	if nova_fire_seed_reply.status == "pending_approval" then
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "discard plan", {})
+	end
+	local nova_fire_feedback =
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "feedback fire", {})
+	assert(nova_fire_feedback.action == "agent_feedback")
+	assert(nova_fire_feedback.status == "success")
+	assert(nova_fire_feedback.no_world_mutation == true)
+	assert(nova_fire_feedback.prompt == "build a fire")
+	assert(nova_fire_feedback.case_hint == "fire_only_strict")
+	assert(nova_fire_feedback.expected.build_kind == "fire")
+	assert(nova_fire_feedback.expected.build_material_name == "fire")
+	assert(nova_fire_feedback.expected.planned_node_writes == 1)
+	assert(nova_fire_feedback.expected.route == "agentic_build_planner")
+	assert(nova_fire_feedback.expected.danger_refusal_allowed == false)
+	assert(nova_fire_feedback.expected.forbidden_extra_structure == true)
+	local nova_fire_stored = core.ai_agent_plugin.get_operator_feedback({ limit = 1 })[1]
+	assert(nova_fire_stored.feedback.review.review_source == "nova_feedback_chatcommand")
+
+	local nova_tnt_seed_reply =
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "build a wall of tnt", {})
+	assert(nova_tnt_seed_reply.status == "queued"
+		or nova_tnt_seed_reply.status == "pending_approval")
+	if nova_tnt_seed_reply.status == "pending_approval" then
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "discard plan", {})
+	end
+	local nova_tnt_feedback =
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "wrong tnt wall", {})
+	assert(nova_tnt_feedback.action == "agent_feedback")
+	assert(nova_tnt_feedback.status == "success")
+	assert(nova_tnt_feedback.prompt == "build a wall of tnt")
+	assert(nova_tnt_feedback.case_hint == "tnt_wall")
+	assert(nova_tnt_feedback.expected.build_kind == "wall")
+	assert(nova_tnt_feedback.expected.build_material_name == "tnt")
+	assert(nova_tnt_feedback.expected.planned_node_writes == 12)
+	assert(nova_tnt_feedback.expected.danger_refusal_allowed == false)
+	assert(nova_tnt_feedback.expected.forbidden_extra_structure == true)
+
 	local custom_eval_reports = {}
 	local custom_queued, custom_reason = core.ai_agent_plugin.run_prompt_eval({
 		owner = "EvalTester",
