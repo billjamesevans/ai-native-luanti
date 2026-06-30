@@ -73,6 +73,26 @@ public-safe `ai_native_agent_eval_operator_labels` artifact and pass it with
 eval can replay. Use the builder so reviewed corrections come from the candidate
 queue instead of hand-written JSON:
 
+```text
+/ai_agent_feedback last; case=stone_bridge_platform; build_kind=platform; material=stone; planned_writes=12; route=agentic_build_planner
+```
+
+The `/ai_agent_feedback` chat command is server-privileged and records a
+public-safe reviewed event for the latest request trace without mutating the
+world. The feedback packet can then consume that event directly from the Luanti
+action log:
+
+```bash
+python3 util/ai_native_agent_feedback_packet.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --from-operator-feedback \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --operator-label-output local/benchmarks/ai-agent-operator-labels.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
 ```bash
 python3 util/ai_native_agent_feedback_packet.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \

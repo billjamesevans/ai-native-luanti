@@ -135,6 +135,20 @@ python3 util/ai_native_agent_feedback_packet.py \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json
 ```
 
+If the correction was recorded in-game with `/ai_agent_feedback`, consume the
+server-side `ai_agent_operator_feedback` event instead of repeating the prompt
+and expected fields on the command line:
+
+```bash
+python3 util/ai_native_agent_feedback_packet.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --from-operator-feedback \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --operator-label-output local/benchmarks/ai-agent-operator-labels.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json
+```
+
 Replay adapter-contract failures against the loopback sidecar with:
 
 ```bash

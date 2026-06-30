@@ -80,6 +80,12 @@ Agent Improvement Loop failures: the chat command stays limited to built-ins,
 while replayable case packs can exercise the same preview, approval cleanup,
 request trace, and metric checks in disposable worlds.
 
+The plugin also registers `/ai_agent_feedback` for operators with `server`
+privilege. It records public-safe reviewed feedback for the latest request trace
+or a named trace, logs an `ai_agent_operator_feedback` event, and never mutates
+the world. This lets a bad `/nova` answer become a reviewed eval/case-pack input
+from the server log instead of a hand-written JSON correction.
+
 Implemented deterministic commands:
 
 - `status`: returns current state, runtime metrics, product-surface readiness,
@@ -238,7 +244,8 @@ world mutations.
 When the expected build output is known at review time,
 `util/ai_native_agent_feedback_packet.py` is the preferred operator path: it
 builds the candidate queue from logs, writes the reviewed label artifact, and
-refreshes the prompt-memory case pack in one public-safe command.
+refreshes the prompt-memory case pack in one public-safe command. It can also
+consume `/ai_agent_feedback` log events with `--from-operator-feedback`.
 
 ## Configuration
 
