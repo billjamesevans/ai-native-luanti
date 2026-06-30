@@ -161,6 +161,31 @@ def _case_pack_summary(case_pack: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _promotable_case_keys(candidates: list[Any]) -> set[tuple[str, str]]:
+    keys: set[tuple[str, str]] = set()
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        case = eval_promote.case_from_candidate(candidate)
+        if case is None:
+            continue
+        keys.add((str(case.get("case_hint") or ""), str(case.get("prompt") or "")))
+    return keys
+
+
+def _case_pack_case_keys(case_pack: dict[str, Any]) -> set[tuple[str, str]]:
+    cases = case_pack.get("cases") if isinstance(case_pack.get("cases"), list) else []
+    keys: set[tuple[str, str]] = set()
+    for case in cases:
+        if not isinstance(case, dict):
+            continue
+        case_hint = case.get("case_hint")
+        prompt = case.get("prompt")
+        if isinstance(case_hint, str) and isinstance(prompt, str):
+            keys.add((case_hint, prompt))
+    return keys
+
+
 def build_review_queue(
     candidate_queue: dict[str, Any],
     case_pack: dict[str, Any] | None = None,
@@ -213,6 +238,9 @@ def build_review_queue(
     ready_for_prompt_eval = int(source_summary.get("ready_for_prompt_eval") or 0)
     case_summary = _case_pack_summary(case_pack)
     cases_total = int(case_summary.get("cases_total") or 0)
+    promotable_case_keys = _promotable_case_keys(raw_candidates)
+    promoted_case_keys = _case_pack_case_keys(case_pack)
+    unpromoted_case_keys = promotable_case_keys - promoted_case_keys
 
     if active_contract_failures or ready_for_adapter_contract_eval:
         action_items.append({
@@ -228,11 +256,11 @@ def build_review_queue(
                 1 for item in items if item["review_reason"] == "manual_review_required"
             )),
         })
-    if ready_for_prompt_eval > cases_total:
+    if unpromoted_case_keys:
         action_items.append({
             "action": "refresh_prompt_eval_case_pack",
-            "reason": "ready_candidates_exceed_promoted_cases",
-            "candidate_count": ready_for_prompt_eval - cases_total,
+            "reason": "unique_ready_cases_missing_from_case_pack",
+            "candidate_count": len(unpromoted_case_keys),
         })
     if cases_total == 0 and raw_candidates:
         action_items.append({
@@ -263,6 +291,7 @@ def build_review_queue(
             "review_items_retained": len(items),
             "manual_review_required": manual_review_required,
             "ready_for_prompt_eval": ready_for_prompt_eval,
+            "unique_ready_for_prompt_eval": len(promotable_case_keys),
             "ready_for_adapter_contract_eval": ready_for_adapter_contract_eval,
             "adapter_contract_failures_active": active_contract_failures,
             "adapter_contract_failures_resolved": source_summary.get(
@@ -276,6 +305,7 @@ def build_review_queue(
             ),
             "operator_labels_applied": source_summary.get("operator_labels_applied", 0),
             "case_pack_cases_total": cases_total,
+            "case_pack_unique_cases_total": len(promoted_case_keys),
             "action_items_total": len(action_items),
         },
         "action_items": action_items,

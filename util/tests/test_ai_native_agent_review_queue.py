@@ -183,6 +183,26 @@ class AgentReviewQueueTests(unittest.TestCase):
         self.assertEqual(report["summary"]["action_items_total"], 0)
         self.assertEqual(report["case_pack"]["case_hints"], ["build_fire"])
 
+    def test_duplicate_ready_candidates_do_not_create_refresh_attention(self):
+        module = load_review_module()
+        queue = candidate_queue_payload(attention=False)
+        duplicate = json.loads(json.dumps(queue["candidates"][0]))
+        duplicate["candidate_id"] = "agent-eval-candidate:fire-retry"
+        queue["candidates"].append(duplicate)
+        queue["source_summary"]["candidates_total"] = 2
+        queue["source_summary"]["ready_for_prompt_eval"] = 2
+
+        report = module.build_review_queue(
+            queue,
+            case_pack_payload(),
+            generated_at="2026-06-30T16:25:00Z",
+        )
+
+        self.assertEqual(report["status"], "ready")
+        self.assertEqual(report["summary"]["ready_for_prompt_eval"], 2)
+        self.assertEqual(report["summary"]["unique_ready_for_prompt_eval"], 1)
+        self.assertEqual(report["summary"]["action_items_total"], 0)
+
     def test_cli_writes_review_queue(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)
