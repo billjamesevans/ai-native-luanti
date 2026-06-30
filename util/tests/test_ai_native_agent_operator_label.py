@@ -240,6 +240,12 @@ class AgentOperatorLabelTests(unittest.TestCase):
                     "12",
                     "--route",
                     "agentic_build_planner",
+                    "--selected-candidate-id",
+                    "stone_bridge_platform",
+                    "--build-width",
+                    "6",
+                    "--build-height",
+                    "2",
                     "--output",
                     str(output),
                     "--generated-at",
@@ -259,6 +265,9 @@ class AgentOperatorLabelTests(unittest.TestCase):
         self.assertTrue(summary["matched"])
         self.assertEqual(payload["labels"][0]["expected"]["build_material_name"], "stone")
         self.assertEqual(payload["labels"][0]["expected"]["planned_node_writes"], 12)
+        self.assertEqual(payload["labels"][0]["expected"]["selected_candidate_id"], "stone_bridge_platform")
+        self.assertEqual(payload["labels"][0]["expected"]["build_width"], 6)
+        self.assertEqual(payload["labels"][0]["expected"]["build_height"], 2)
 
 
 if __name__ == "__main__":

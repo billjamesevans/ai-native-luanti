@@ -261,6 +261,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--build-material-node", default=None, help="Optional expected Luanti node name.")
     parser.add_argument("--planned-node-writes", type=int, default=None, help="Expected planned write count.")
     parser.add_argument("--route", default=None, help="Optional expected route.")
+    parser.add_argument("--selected-candidate-id", default=None, help="Optional expected selected candidate id.")
+    parser.add_argument("--build-width", type=int, default=None, help="Optional expected build width.")
+    parser.add_argument("--build-depth", type=int, default=None, help="Optional expected build depth.")
+    parser.add_argument("--build-height", type=int, default=None, help="Optional expected build height.")
+    parser.add_argument("--build-count", type=int, default=None, help="Optional expected build count.")
     parser.add_argument("--danger-refusal-allowed", type=parse_optional_bool, default=None)
     parser.add_argument("--forbidden-extra-structure", type=parse_optional_bool, default=None)
     parser.add_argument("--allow-unmatched", action="store_true", help="Create the label even if the candidate is absent.")
@@ -281,6 +286,11 @@ def main(argv: list[str] | None = None) -> int:
             build_material_node=args.build_material_node,
             planned_node_writes=args.planned_node_writes,
             route=args.route,
+            selected_candidate_id=args.selected_candidate_id,
+            build_width=args.build_width,
+            build_depth=args.build_depth,
+            build_height=args.build_height,
+            build_count=args.build_count,
             danger_refusal_allowed=args.danger_refusal_allowed,
             forbidden_extra_structure=args.forbidden_extra_structure,
         )
