@@ -54,6 +54,8 @@ core.ai_agent_plugin.configure({
 	max_follow_stop_distance = 1,
 	max_follow_wall_time_ms = 250,
 	agentic_build_planner_first = true,
+	auto_apply_build_approvals =
+		core.settings:get_bool("ai_runtime.auto_apply_build_approvals", false),
 	capabilities = {
 		["world.read"] = true,
 		["world.place"] = true,

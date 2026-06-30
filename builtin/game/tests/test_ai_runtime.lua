@@ -5037,6 +5037,40 @@ end
 local completed_tnt_wall = core.get_ai_task(approved_tnt_wall.task_id)
 assert(completed_tnt_wall.status == "completed")
 assert(completed_tnt_wall.last_result.metrics.node_writes == 12)
+
+core.ai_agent_plugin.configure({ auto_apply_build_approvals = true })
+local auto_fire_pos = test_pos(4238)
+set_test_node(auto_fire_pos, { name = "air" })
+local auto_fire = core.ai_agent_plugin.handle_command(
+	"Wills", "build me a fire and only a fire", {
+		pos = auto_fire_pos,
+		world_id = "product-loop-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+	})
+assert(auto_fire.ok == true)
+assert(auto_fire.action == "build")
+assert(auto_fire.status == "queued")
+assert(auto_fire.auto_applied_approval == true)
+assert(auto_fire.auto_apply_policy == "ai_runtime.auto_apply_build_approvals")
+assert(auto_fire.approved_action == "build")
+assert(auto_fire.approval_id ~= nil)
+assert(auto_fire.task_id ~= nil)
+assert(auto_fire.build_kind == "fire")
+assert(auto_fire.build_material_name == "fire")
+assert(auto_fire.build_material_node == "ai_runtime_test:fire")
+assert(auto_fire.planned_node_writes == 1)
+assert(get_test_node(auto_fire_pos).name == "air")
+local no_auto_pending = core.ai_agent_plugin.handle_command("Wills", "pending plan", {})
+assert(no_auto_pending.ok == false)
+assert(no_auto_pending.reason == "no_pending_approval")
+core.step_ai_tasks()
+assert(get_test_node(auto_fire_pos).name == "ai_runtime_test:fire")
+local completed_auto_fire = core.get_ai_task(auto_fire.task_id)
+assert(completed_auto_fire.status == "completed")
+assert(completed_auto_fire.last_result.metrics.node_writes == 1)
+assert(completed_auto_fire.last_result.rollback_record_id ~= nil)
+core.ai_agent_plugin.configure({ auto_apply_build_approvals = false })
 end)
 
 _G.test_ai_agent_plugin_freeform_build_intents()
@@ -5480,6 +5514,102 @@ local discarded_fire_override = core.ai_agent_plugin.handle_command("PlannerFire
 assert(discarded_fire_override.ok == true)
 assert(discarded_fire_override.action == "discard_approval")
 assert(get_test_node(fire_override_pos).name == "air")
+
+core.ai_agent_plugin.configure({ auto_apply_build_approvals = true })
+local agentic_auto_fire_pos = test_pos(42565)
+set_test_node(agentic_auto_fire_pos, { name = "air" })
+local agentic_auto_fire_done
+local agentic_auto_fire_reply
+local agentic_auto_fire_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build me a fire and only a fire")
+	agentic_auto_fire_done = done
+	return true, "queued"
+end)
+local queued_agentic_auto_fire = core.ai_agent_plugin.handle_command(
+	"PlannerAutoFire", "build me a fire and only a fire", {
+		pos = agentic_auto_fire_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			agentic_auto_fire_reply = reply
+			agentic_auto_fire_trace = trace
+		end,
+	})
+assert(queued_agentic_auto_fire.ok == true)
+assert(queued_agentic_auto_fire.action == "build_plan")
+assert(queued_agentic_auto_fire.status == "queued")
+assert(queued_agentic_auto_fire.selected_candidate_id == "fire")
+agentic_auto_fire_done({
+	ok = true,
+	message = "Use only the single fire option.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 72000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "fire",
+		tool_decision_source = "agents_sdk_function_tool",
+		required_tool_calls = {
+			"recall_build_prompt_memory",
+			"select_build_option",
+			"plan_build_actions",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "select_build_option" },
+			{ tool_name = "plan_build_actions" },
+		},
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "fire",
+				candidate_count = 5,
+				decision_source = "agent_selected_build_option",
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "fire",
+				step_count = 4,
+				world_mutation_authority = "luanti",
+			},
+		},
+	},
+})
+assert(agentic_auto_fire_reply ~= nil)
+assert(agentic_auto_fire_reply.ok == true)
+assert(agentic_auto_fire_reply.action == "build")
+assert(agentic_auto_fire_reply.status == "queued")
+assert(agentic_auto_fire_reply.auto_applied_approval == true)
+assert(agentic_auto_fire_reply.approved_action == "build")
+assert(agentic_auto_fire_reply.approval_id ~= nil)
+assert(agentic_auto_fire_reply.task_id ~= nil)
+assert(agentic_auto_fire_reply.planner_mode == "agentic_model_adapter")
+assert(agentic_auto_fire_reply.selected_candidate_id == "fire")
+assert(agentic_auto_fire_reply.build_kind == "fire")
+assert(agentic_auto_fire_reply.build_material_name == "fire")
+assert(agentic_auto_fire_reply.build_material_node == "ai_runtime_test:fire")
+assert(agentic_auto_fire_reply.planned_node_writes == 1)
+assert(agentic_auto_fire_reply.adapter_build_action_plan_status == "ready")
+assert(agentic_auto_fire_trace ~= nil)
+assert(agentic_auto_fire_trace.response.status == "queued")
+assert(agentic_auto_fire_trace.response.auto_applied_approval == true)
+assert(agentic_auto_fire_trace.response.selected_candidate_id == "fire")
+assert(get_test_node(agentic_auto_fire_pos).name == "air")
+local no_agentic_auto_pending =
+	core.ai_agent_plugin.handle_command("PlannerAutoFire", "pending plan", {})
+assert(no_agentic_auto_pending.ok == false)
+assert(no_agentic_auto_pending.reason == "no_pending_approval")
+core.step_ai_tasks()
+assert(get_test_node(agentic_auto_fire_pos).name == "ai_runtime_test:fire")
+local completed_agentic_auto_fire =
+	core.get_ai_task(agentic_auto_fire_reply.task_id)
+assert(completed_agentic_auto_fire.status == "completed")
+assert(completed_agentic_auto_fire.last_result.metrics.node_writes == 1)
+assert(completed_agentic_auto_fire.last_result.rollback_record_id ~= nil)
+core.ai_agent_plugin.configure({ auto_apply_build_approvals = false })
 
 local generated_tower_pos = test_pos(4257)
 for x = 0, 2 do
