@@ -131,6 +131,58 @@ def safe_string_list(value: Any, *, max_items: int = 8, max_bytes: int = 80) -> 
     ][:max_items]
 
 
+def safe_build_option_summaries(value: Any, *, max_items: int = 5) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    summaries: list[dict[str, Any]] = []
+    for option in value:
+        if not isinstance(option, dict):
+            continue
+        actions = option.get("actions") if isinstance(option.get("actions"), list) else []
+        action_count = safe_int(option.get("action_count"), minimum=0, maximum=10000)
+        if action_count is None and actions:
+            action_count = len(actions)
+        summary = {
+            "option_id": safe_scalar(option.get("option_id"), 120),
+            "source": safe_scalar(option.get("source"), 120),
+            "label": safe_scalar(option.get("label"), 160),
+            "build_kind": safe_scalar(option.get("build_kind"), 120),
+            "build_material_name": safe_scalar(option.get("build_material_name"), 120),
+            "planned_node_writes": safe_int(option.get("planned_node_writes"), minimum=0),
+            "contract_satisfied": option.get("contract_satisfied"),
+            "action_count": action_count,
+        }
+        summaries.append({
+            key: item
+            for key, item in summary.items()
+            if item is not None
+        })
+        if len(summaries) >= max_items:
+            break
+    return summaries
+
+
+def safe_reviewed_prompt_memory(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    allowed = {
+        "case_hint": 120,
+        "matched_case_id": 180,
+        "match_quality": 80,
+        "memory_available": 80,
+        "source": 120,
+    }
+    result: dict[str, Any] = {}
+    for key, max_bytes in allowed.items():
+        if key in value:
+            result[key] = safe_scalar(value.get(key), max_bytes)
+    return {
+        key: item
+        for key, item in result.items()
+        if item is not None
+    }
+
+
 def normalized_prompt(value: Any) -> str:
     return " ".join(str(value or "").strip().lower().split())
 
@@ -458,6 +510,11 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
     observed = candidate.get("observed") if isinstance(candidate.get("observed"), dict) else {}
     route = candidate.get("route") or observed.get("route")
     verified_live_probe = candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND
+    agentic_nova_sidecar = (
+        candidate.get("source_kind") == "nova_agent_sidecar_request_response"
+        and isinstance(route, str)
+        and route.startswith("agents_sdk")
+    )
 
     if "fire" in lower and "only" in lower:
         return {
@@ -469,7 +526,11 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
                 "build_kind": "fire",
                 "build_material_name": "fire",
                 "planned_node_writes": 1,
-                "route": "agentic_build_planner" if verified_live_probe else "deterministic_build_parser",
+                "route": (
+                    "agentic_build_planner"
+                    if verified_live_probe or agentic_nova_sidecar
+                    else "deterministic_build_parser"
+                ),
                 "forbidden_extra_structure": True,
             },
         }
@@ -552,6 +613,9 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
         status = "pass"
     if satisfied is False or missing or decision_source == "adapter_fallback_after_agent_missing_required_tool":
         status = "fail"
+    expected_decision_source = "agents_sdk_function_tool"
+    if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
+        expected_decision_source = "agents_sdk_submit_nova_plan_tool"
 
     return {
         "status": status,
@@ -564,7 +628,7 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
             "required_tool_calls": required,
             "missing_required_tool_calls": [],
             "required_tool_calls_satisfied": True,
-            "tool_decision_source": "agents_sdk_function_tool",
+            "tool_decision_source": expected_decision_source,
         },
     }
 
@@ -1055,6 +1119,8 @@ def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any]
     first_action = _first_action(entry)
     prompt_contract = entry.get("prompt_contract") if isinstance(entry.get("prompt_contract"), dict) else {}
     tool_trace = entry.get("tool_trace") if isinstance(entry.get("tool_trace"), list) else []
+    build_options = safe_build_option_summaries(entry.get("build_options"))
+    reviewed_prompt_memory = safe_reviewed_prompt_memory(entry.get("reviewed_prompt_memory"))
     correction_source = safe_scalar(entry.get("correction_source"))
     contract_satisfied = entry.get("contract_satisfied")
     observed_status = "success" if entry.get("ok") is True else "failed"
@@ -1078,11 +1144,18 @@ def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any]
         "observed_reason": correction_source,
         "observed": {
             "source": safe_scalar(entry.get("source")),
+            "tool_decision_source": safe_scalar(entry.get("tool_decision_source")),
             "label": safe_scalar(entry.get("label"), 200),
             "action": safe_scalar(first_action.get("type")),
             "build_kind": safe_scalar(_build_kind_from_sidecar_action(entry, first_action)),
             "build_material_name": safe_scalar(first_action.get("material")),
             "planned_node_writes": _planned_node_writes_from_actions(entry),
+            "selected_option_id": safe_scalar(entry.get("selected_option_id"), 120),
+            "selected_candidate_id": safe_scalar(entry.get("selected_option_id"), 120),
+            "decision_reason": safe_scalar(entry.get("decision_reason"), 300),
+            "required_tool_calls": safe_string_list(entry.get("required_tool_calls"), max_items=12),
+            "missing_required_tool_calls": safe_string_list(entry.get("missing_required_tool_calls"), max_items=12),
+            "required_tool_calls_satisfied": entry.get("required_tool_calls_satisfied"),
             "contract_kind": safe_scalar(prompt_contract.get("contract_kind")),
             "contract_satisfied": contract_satisfied,
             "correction_source": correction_source,
@@ -1090,8 +1163,19 @@ def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any]
                 bounded_text(item.get("tool_name"), 80)
                 for item in tool_trace
                 if isinstance(item, dict) and isinstance(item.get("tool_name"), str)
-            ][:8],
+            ][:12],
             "action_count": len(entry.get("actions")) if isinstance(entry.get("actions"), list) else 0,
+            "build_options": build_options,
+            "build_option_count": len(build_options),
+            "reviewed_prompt_memory": reviewed_prompt_memory,
+            "reviewed_prompt_memory_matched_case_id": safe_scalar(
+                reviewed_prompt_memory.get("matched_case_id"),
+                180,
+            ),
+            "reviewed_prompt_memory_case_hint": safe_scalar(
+                reviewed_prompt_memory.get("case_hint"),
+                120,
+            ),
         },
     })
     return finalize_candidate(candidate)

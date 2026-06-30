@@ -176,16 +176,44 @@ def nova_agent_log_entry():
         "player": "Eval",
         "prompt": "build a wall of tnt",
         "model": "gpt-5-nano",
-        "source": "agents_sdk",
+        "source": "agents_sdk_tool_plan",
+        "tool_decision_source": "agents_sdk_submit_nova_plan_tool",
+        "required_tool_calls": [
+            "recall_build_prompt_memory",
+            "analyze_build_intent",
+            "draft_build_options",
+            "validate_plan_contract",
+            "submit_nova_plan",
+        ],
+        "missing_required_tool_calls": [],
+        "required_tool_calls_satisfied": True,
         "ok": True,
         "label": "tnt wall",
         "message": "Building a tnt wall.",
+        "selected_option_id": "prompt_contract",
+        "decision_reason": "TNT is a valid in-game material and the prompt asks for a wall.",
         "correction_source": "prompt_contract",
         "contract_satisfied": True,
         "prompt_contract": {
             "contract_kind": "tnt_wall",
             "contract_required": True,
         },
+        "reviewed_prompt_memory": {
+            "matched_case_id": "promoted_tnt_wall_123",
+            "case_hint": "tnt_wall",
+        },
+        "build_options": [
+            {
+                "option_id": "prompt_contract",
+                "source": "prompt_contract",
+                "label": "tnt wall",
+                "build_kind": "wall",
+                "build_material_name": "tnt",
+                "planned_node_writes": 75,
+                "contract_satisfied": True,
+                "action_count": 1,
+            }
+        ],
         "actions": [
             {
                 "type": "fill_box",
@@ -194,8 +222,11 @@ def nova_agent_log_entry():
             }
         ],
         "tool_trace": [
+            {"tool_name": "recall_build_prompt_memory"},
             {"tool_name": "analyze_build_intent"},
+            {"tool_name": "draft_build_options"},
             {"tool_name": "validate_plan_contract"},
+            {"tool_name": "submit_nova_plan"},
         ],
     }
 
@@ -483,6 +514,14 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(queue["source_summary"]["ready_for_prompt_eval"], 1)
         self.assertEqual(queue["candidates"][0]["source_kind"], "nova_agent_sidecar_request_response")
         self.assertEqual(queue["candidates"][0]["observed"]["contract_kind"], "tnt_wall")
+        self.assertEqual(queue["candidates"][0]["observed"]["selected_option_id"], "prompt_contract")
+        self.assertEqual(
+            queue["candidates"][0]["observed"]["decision_reason"],
+            "TNT is a valid in-game material and the prompt asks for a wall.",
+        )
+        self.assertEqual(queue["candidates"][0]["observed"]["build_options"][0]["option_id"], "prompt_contract")
+        self.assertIn("draft_build_options", queue["candidates"][0]["observed"]["tool_trace_names"])
+        self.assertEqual(queue["candidates"][0]["adapter_tool_contract"]["status"], "pass")
         self.assertEqual(pack["status"], "ready")
         self.assertEqual(pack["summary"]["cases_total"], 1)
         self.assertEqual(pack["cases"][0]["case_hint"], "tnt_wall")
