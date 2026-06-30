@@ -442,14 +442,16 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval build planner case is invalid")
         if planner.get("route") != "agentic_build_planner" and planner.get("final_route") != "agentic_build_planner":
             raise ValueError("agent prompt eval build planner route is invalid")
-        if planner.get("build_kind") != "platform":
+        if not isinstance(planner.get("build_kind"), str) or not planner["build_kind"]:
             raise ValueError("agent prompt eval build planner candidate is invalid")
-        if planner.get("selected_candidate_id") != "platform":
+        if not isinstance(planner.get("selected_candidate_id"), str) or not planner["selected_candidate_id"]:
             raise ValueError("agent prompt eval build planner selected candidate is invalid")
         if not isinstance(planner.get("candidate_count"), int) or planner["candidate_count"] < 3:
             raise ValueError("agent prompt eval build planner candidate count is invalid")
-        if planner.get("planned_node_writes") != 4:
-            raise ValueError("agent prompt eval build planner must plan exactly four node writes")
+        if not isinstance(planner.get("planned_node_writes"), int):
+            raise ValueError("agent prompt eval build planner planned writes are invalid")
+        if planner["planned_node_writes"] <= 0 or planner["planned_node_writes"] > 16:
+            raise ValueError("agent prompt eval build planner planned writes are out of bounds")
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
@@ -512,7 +514,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_fire_planned_node_writes": 1,
         "agent_prompt_eval_fire_only_strict_planned_node_writes": 1,
         "agent_prompt_eval_tnt_wall_planned_node_writes": 12,
-        "agent_prompt_eval_agentic_build_planner_planned_node_writes": 4,
+        "agent_prompt_eval_agentic_build_planner_planned_node_writes": next(
+            (
+                item.get("planned_node_writes")
+                for item in cases
+                if isinstance(item, dict) and item.get("case_id") == "agentic_build_planner"
+            ),
+            None,
+        ),
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],

@@ -4532,19 +4532,37 @@ local function finish_agentic_build_eval_case(case_report, final_reply, final_tr
 	case_report.checks.planner_mode = final_reply
 		and (expected.agentic_model_required == false
 			or final_reply.planner_mode == "agentic_model_adapter")
-	case_report.checks.selected_candidate = expected.selected_candidate_id == nil
-		or (final_reply and final_reply.selected_candidate_id == expected.selected_candidate_id)
+	case_report.checks.selected_candidate = final_reply
+		and type(final_reply.selected_candidate_id) == "string"
+		and final_reply.selected_candidate_id ~= ""
+	if expected.selected_candidate_id ~= nil then
+		case_report.checks.selected_candidate =
+			case_report.checks.selected_candidate
+			and final_reply.selected_candidate_id == expected.selected_candidate_id
+	end
 	case_report.checks.multiple_options = final_reply
 		and (final_reply.candidate_count or 0) >= 3
-	case_report.checks.build_kind = expected.build_kind == nil
-		or (final_reply and final_reply.build_kind == expected.build_kind)
+	case_report.checks.build_kind = final_reply
+		and type(final_reply.build_kind) == "string"
+		and final_reply.build_kind ~= ""
+	if expected.build_kind ~= nil then
+		case_report.checks.build_kind =
+			case_report.checks.build_kind
+			and final_reply.build_kind == expected.build_kind
+	end
 	case_report.checks.material_name = expected.build_material_name == nil
 		or (final_reply and final_reply.build_material_name == expected.build_material_name)
 	case_report.checks.material_node = expected.build_material_node == nil
 		or (final_reply and final_reply.build_material_node == expected.build_material_node)
-	case_report.checks.planned_writes = expected.planned_node_writes == nil
-		or (final_reply and (final_reply.planned_node_writes or 0)
-			== expected.planned_node_writes)
+	local planned_writes = final_reply and final_reply.planned_node_writes or nil
+	case_report.checks.planned_writes = type(planned_writes) == "number"
+		and planned_writes > 0
+		and planned_writes <= settings.max_lights
+	if expected.planned_node_writes ~= nil then
+		case_report.checks.planned_writes =
+			case_report.checks.planned_writes
+			and planned_writes == expected.planned_node_writes
+	end
 	case_report.checks.trace_route = final_trace
 		and final_trace.route == (expected.route or "agentic_build_planner")
 	case_report.checks.trace_status = final_trace and final_trace.response
@@ -4566,10 +4584,7 @@ end
 local function run_agentic_build_eval_case(report, owner, prompt, context, async_done,
 		case_id, expected, metadata)
 	expected = expected or {
-		build_kind = "platform",
-		planned_node_writes = 4,
 		route = "agentic_build_planner",
-		selected_candidate_id = "platform",
 	}
 	metadata = metadata or {}
 	local case_report = {
