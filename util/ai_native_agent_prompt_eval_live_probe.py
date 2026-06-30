@@ -132,6 +132,17 @@ def write_probe_world(
             "    planner_mode = reply.planner_mode or final_reply.planner_mode,",
             "    selected_candidate_id = reply.selected_candidate_id or final_reply.selected_candidate_id,",
             "    candidate_count = reply.candidate_count or final_reply.candidate_count,",
+            "    adapter_tool_decision_source = reply.adapter_tool_decision_source or final_reply.adapter_tool_decision_source,",
+            "    adapter_required_tool_calls = reply.adapter_required_tool_calls or final_reply.adapter_required_tool_calls,",
+            "    adapter_missing_required_tool_calls = reply.adapter_missing_required_tool_calls or final_reply.adapter_missing_required_tool_calls,",
+            "    adapter_required_tool_calls_satisfied = reply.adapter_required_tool_calls_satisfied or final_reply.adapter_required_tool_calls_satisfied,",
+            "    adapter_tool_trace_names = reply.adapter_tool_trace_names or final_reply.adapter_tool_trace_names,",
+            "    adapter_build_action_plan_status = reply.adapter_build_action_plan_status or final_reply.adapter_build_action_plan_status,",
+            "    adapter_build_action_plan_step_count = reply.adapter_build_action_plan_step_count or final_reply.adapter_build_action_plan_step_count,",
+            "    adapter_build_action_plan_world_mutation_authority = reply.adapter_build_action_plan_world_mutation_authority or final_reply.adapter_build_action_plan_world_mutation_authority,",
+            "    adapter_selected_candidate_id = reply.adapter_selected_candidate_id or final_reply.adapter_selected_candidate_id,",
+            "    model_selected_candidate_id = reply.model_selected_candidate_id or final_reply.model_selected_candidate_id,",
+            "    build_option_decision_source = reply.build_option_decision_source or final_reply.build_option_decision_source,",
             "    cleanup_status = case.cleanup and case.cleanup.status or nil,",
             "    failure_count = #(case.failures or {}),",
             "  }",
@@ -357,6 +368,51 @@ def _require_bool(mapping: dict, field: str, expected: bool = True) -> None:
         raise ValueError(f"agent prompt eval {field} is not {expected}")
 
 
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _require_agentic_tool_case(case: dict, case_id: str) -> None:
+    if case.get("route") != "agentic_build_planner" and case.get("final_route") != "agentic_build_planner":
+        raise ValueError(f"agent prompt eval {case_id} route is not agentic")
+    if case.get("adapter_tool_decision_source") != "agents_sdk_function_tool":
+        raise ValueError(f"agent prompt eval {case_id} did not use Agents SDK function tools")
+    if case.get("adapter_required_tool_calls_satisfied") is not True:
+        raise ValueError(f"agent prompt eval {case_id} required tool calls were not satisfied")
+    if _string_list(case.get("adapter_missing_required_tool_calls")):
+        raise ValueError(f"agent prompt eval {case_id} has missing required tool calls")
+    required = set(_string_list(case.get("adapter_required_tool_calls")))
+    trace_names = set(_string_list(case.get("adapter_tool_trace_names")))
+    expected = {
+        "recall_build_prompt_memory",
+        "select_build_option",
+        "plan_build_actions",
+    }
+    missing_required = expected - required
+    if missing_required:
+        raise ValueError(f"agent prompt eval {case_id} required tool metadata is incomplete")
+    missing_trace = expected - trace_names
+    if missing_trace:
+        raise ValueError(f"agent prompt eval {case_id} tool trace is incomplete")
+    if case.get("adapter_build_action_plan_status") != "ready":
+        raise ValueError(f"agent prompt eval {case_id} build-action plan was not ready")
+    if case.get("adapter_build_action_plan_world_mutation_authority") != "luanti":
+        raise ValueError(f"agent prompt eval {case_id} mutation authority is invalid")
+    if not isinstance(case.get("adapter_build_action_plan_step_count"), int) \
+            or case["adapter_build_action_plan_step_count"] <= 0:
+        raise ValueError(f"agent prompt eval {case_id} build-action plan step count is invalid")
+    if not isinstance(case.get("selected_candidate_id"), str) or not case["selected_candidate_id"]:
+        raise ValueError(f"agent prompt eval {case_id} selected candidate missing")
+    if case.get("adapter_selected_candidate_id") != case.get("selected_candidate_id"):
+        raise ValueError(f"agent prompt eval {case_id} adapter-selected candidate mismatch")
+    if not isinstance(case.get("model_selected_candidate_id"), str) or not case["model_selected_candidate_id"]:
+        raise ValueError(f"agent prompt eval {case_id} model-selected candidate missing")
+    if not isinstance(case.get("candidate_count"), int) or case["candidate_count"] < 3:
+        raise ValueError(f"agent prompt eval {case_id} candidate count is invalid")
+
+
 def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> dict:
     if not isinstance(payload, dict):
         raise ValueError("agent prompt eval result must be an object")
@@ -379,6 +435,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agents_sdk_sidecar",
     }:
         raise ValueError("agent prompt eval adapter mode is invalid")
+    adapter_mode = runtime_context["adapter_mode"]
     for field in ("requires_live_pi", "requires_private_world", "requires_private_assets"):
         if runtime_context.get(field) is not False:
             raise ValueError(f"agent prompt eval {field} must be false")
@@ -414,6 +471,8 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         cases = []
     if not isinstance(cases, list):
         raise ValueError("agent prompt eval cases summary is invalid")
+    if adapter_mode == "agents_sdk_sidecar" and not cases:
+        raise ValueError("agent prompt eval sidecar mode requires untruncated case evidence")
     case_map = {
         item.get("case_id"): item
         for item in cases
@@ -466,6 +525,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
             raise ValueError("agent prompt eval model route is not async")
+        if adapter_mode == "agents_sdk_sidecar":
+            for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner"):
+                _require_agentic_tool_case(case_map.get(case_id, {}), case_id)
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     if summary.get("cases_total") != 5 or summary.get("cases_passed") != 5:
@@ -510,6 +572,16 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval bounds are invalid")
     if output_bytes > declared_max or output_bytes > max_bytes:
         raise ValueError("agent prompt eval output exceeds max bytes")
+    if adapter_mode == "agents_sdk_sidecar" and bounds.get("truncated") is True:
+        raise ValueError("agent prompt eval sidecar evidence was truncated")
+
+    agentic_tool_cases = 0
+    if cases:
+        for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner"):
+            case = case_map.get(case_id, {})
+            if case.get("adapter_tool_decision_source") == "agents_sdk_function_tool" \
+                    and case.get("adapter_required_tool_calls_satisfied") is True:
+                agentic_tool_cases += 1
 
     return {
         "agent_prompt_eval_status": "pass",
@@ -536,6 +608,8 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],
         "agent_prompt_eval_requires_model_network": runtime_context.get("requires_model_network") is True,
+        "agent_prompt_eval_agentic_tool_cases": agentic_tool_cases,
+        "agent_prompt_eval_agentic_tool_cases_required": 4 if adapter_mode == "agents_sdk_sidecar" else 0,
         "agent_prompt_eval_world_mutation": False,
     }
 

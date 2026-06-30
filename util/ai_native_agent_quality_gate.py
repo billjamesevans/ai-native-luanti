@@ -224,9 +224,10 @@ def build_quality_gate(
         if _violations(adapter_eval):
             violations.append({"kind": "adapter_contract_eval_violations", "details": str(len(_violations(adapter_eval)))})
     live_prompt_eval_status = None
+    live_prompt_evidence: dict[str, Any] = {}
     if live_prompt_eval:
         try:
-            prompt_eval_live_probe.validate_live_result(live_prompt_eval)
+            live_prompt_evidence = prompt_eval_live_probe.validate_live_result(live_prompt_eval)
         except ValueError as exc:
             live_prompt_eval_status = "fail"
             violations.append({
@@ -280,6 +281,12 @@ def build_quality_gate(
             "live_prompt_eval_cases_passed": _int(live_prompt_summary.get("cases_passed")),
             "live_prompt_eval_cases_failed": _int(live_prompt_summary.get("cases_failed")),
             "live_prompt_eval_model_adapter_requests": _int(live_prompt_summary.get("model_adapter_requests")),
+            "live_prompt_eval_agentic_tool_cases": _int(
+                live_prompt_evidence.get("agent_prompt_eval_agentic_tool_cases")
+            ),
+            "live_prompt_eval_agentic_tool_cases_required": _int(
+                live_prompt_evidence.get("agent_prompt_eval_agentic_tool_cases_required")
+            ),
             "candidates_total": _int(candidate_summary.get("candidates_total"), _list_len(candidate_queue.get("candidates"))),
             "ready_for_prompt_eval": _int(candidate_summary.get("ready_for_prompt_eval")),
             "unique_ready_for_prompt_eval": _int(review_summary.get("unique_ready_for_prompt_eval")),

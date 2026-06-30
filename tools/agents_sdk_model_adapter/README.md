@@ -181,6 +181,10 @@ items as `attention` while treating adapter-contract replay failures or a failed
 latest live prompt eval as `fail`. When supplied, the compatibility staging pilot
 must also pass: it proves dry-run import planning, bounded disposable-world apply,
 rollback, and refusal gates without touching the family server or private assets.
+In `agents_sdk_sidecar` mode, the live prompt eval must also retain untruncated
+case evidence showing that each build case used `agents_sdk_function_tool`,
+satisfied `recall_build_prompt_memory`, `select_build_option`, and
+`plan_build_actions`, and left world mutation authority with Luanti.
 
 For a reviewed correction where the expected build output is known, create the
 candidate queue, label artifact, and prompt-memory case pack together:

@@ -177,6 +177,26 @@ def live_prompt_eval_payload(**overrides):
                     "build_kind": "fire",
                     "build_material_name": "fire",
                     "planned_node_writes": 1,
+                    "selected_candidate_id": "fire",
+                    "adapter_selected_candidate_id": "fire",
+                    "model_selected_candidate_id": "fire",
+                    "candidate_count": 4,
+                    "adapter_tool_decision_source": "agents_sdk_function_tool",
+                    "adapter_required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_missing_required_tool_calls": [],
+                    "adapter_required_tool_calls_satisfied": True,
+                    "adapter_tool_trace_names": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_build_action_plan_status": "ready",
+                    "adapter_build_action_plan_step_count": 3,
+                    "adapter_build_action_plan_world_mutation_authority": "luanti",
                 },
                 {
                     "case_id": "fire_only_strict",
@@ -187,6 +207,26 @@ def live_prompt_eval_payload(**overrides):
                     "build_kind": "fire",
                     "build_material_name": "fire",
                     "planned_node_writes": 1,
+                    "selected_candidate_id": "fire",
+                    "adapter_selected_candidate_id": "fire",
+                    "model_selected_candidate_id": "fire",
+                    "candidate_count": 4,
+                    "adapter_tool_decision_source": "agents_sdk_function_tool",
+                    "adapter_required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_missing_required_tool_calls": [],
+                    "adapter_required_tool_calls_satisfied": True,
+                    "adapter_tool_trace_names": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_build_action_plan_status": "ready",
+                    "adapter_build_action_plan_step_count": 3,
+                    "adapter_build_action_plan_world_mutation_authority": "luanti",
                 },
                 {
                     "case_id": "tnt_wall",
@@ -197,6 +237,26 @@ def live_prompt_eval_payload(**overrides):
                     "build_kind": "wall",
                     "build_material_name": "tnt",
                     "planned_node_writes": 12,
+                    "selected_candidate_id": "tnt_wall",
+                    "adapter_selected_candidate_id": "tnt_wall",
+                    "model_selected_candidate_id": "tnt_wall",
+                    "candidate_count": 5,
+                    "adapter_tool_decision_source": "agents_sdk_function_tool",
+                    "adapter_required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_missing_required_tool_calls": [],
+                    "adapter_required_tool_calls_satisfied": True,
+                    "adapter_tool_trace_names": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_build_action_plan_status": "ready",
+                    "adapter_build_action_plan_step_count": 4,
+                    "adapter_build_action_plan_world_mutation_authority": "luanti",
                 },
                 {
                     "case_id": "agentic_build_planner",
@@ -208,7 +268,25 @@ def live_prompt_eval_payload(**overrides):
                     "build_material_name": "stone",
                     "planned_node_writes": 8,
                     "selected_candidate_id": "generated_stone_wall",
+                    "adapter_selected_candidate_id": "generated_stone_wall",
+                    "model_selected_candidate_id": "generated_stone_wall",
                     "candidate_count": 3,
+                    "adapter_tool_decision_source": "agents_sdk_function_tool",
+                    "adapter_required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_missing_required_tool_calls": [],
+                    "adapter_required_tool_calls_satisfied": True,
+                    "adapter_tool_trace_names": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_build_action_plan_status": "ready",
+                    "adapter_build_action_plan_step_count": 4,
+                    "adapter_build_action_plan_world_mutation_authority": "luanti",
                 },
                 {
                     "case_id": "model",
@@ -230,8 +308,8 @@ def live_prompt_eval_payload(**overrides):
             "tnt_wall_checked": True,
             "agentic_build_planner_checked": True,
             "model_checked": True,
-            "model_adapter_requests": 2,
-            "model_adapter_successes": 2,
+            "model_adapter_requests": 5,
+            "model_adapter_successes": 5,
             "model_adapter_failures": 0,
             "model_adapter_timeouts": 0,
         },
@@ -286,7 +364,9 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 5)
-        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 2)
+        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 4)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 4)
 
     def test_live_prompt_eval_failure_fails_gate(self):
         module = load_quality_gate_module()

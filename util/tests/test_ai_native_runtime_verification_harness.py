@@ -599,6 +599,43 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "truncated": False,
             },
         }
+        agentic_case_metadata = {
+            "build_fire": ("fire", 4, 3),
+            "fire_only_strict": ("fire", 4, 3),
+            "tnt_wall": ("tnt_wall", 5, 4),
+            "agentic_build_planner": ("wall", 4, 4),
+        }
+        for case in payload["prompt_eval"]["cases"]:
+            case_id = case.get("case_id")
+            if case_id not in agentic_case_metadata:
+                continue
+            selected_candidate, candidate_count, step_count = agentic_case_metadata[case_id]
+            case["route"] = "agentic_build_planner"
+            case.setdefault("selected_candidate_id", selected_candidate)
+            case["adapter_selected_candidate_id"] = case["selected_candidate_id"]
+            case["model_selected_candidate_id"] = case["selected_candidate_id"]
+            case["candidate_count"] = candidate_count
+            case["adapter_tool_decision_source"] = "agents_sdk_function_tool"
+            case["adapter_required_tool_calls"] = [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+            ]
+            case["adapter_missing_required_tool_calls"] = []
+            case["adapter_required_tool_calls_satisfied"] = True
+            case["adapter_tool_trace_names"] = [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+            ]
+            case["adapter_build_action_plan_status"] = "ready"
+            case["adapter_build_action_plan_step_count"] = step_count
+            case["adapter_build_action_plan_world_mutation_authority"] = "luanti"
+        if adapter_mode == "agents_sdk_sidecar":
+            payload["prompt_eval"]["metrics"]["model_adapter_requests_delta"] = 5
+            payload["prompt_eval"]["metrics"]["model_adapter_successes_delta"] = 5
+            payload["summary"]["model_adapter_requests"] = 5
+            payload["summary"]["model_adapter_successes"] = 5
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -1445,6 +1482,32 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             tnt_underplanned["prompt_eval"]["cases"][2]["planned_node_writes"] = 1
             with self.assertRaisesRegex(ValueError, "TNT wall must plan exactly twelve node writes"):
                 probe.validate_live_result(tnt_underplanned)
+
+    def test_agent_prompt_eval_sidecar_validator_requires_tool_evidence(self):
+        probe = load_agent_prompt_eval_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact = pathlib.Path(tmpdir) / "agent-prompt-eval.json"
+            self.write_agent_prompt_eval_live_artifact(artifact, adapter_mode="agents_sdk_sidecar")
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+            evidence = probe.validate_live_result(payload)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 4)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 4)
+
+            missing_tool = json.loads(json.dumps(payload))
+            missing_tool["prompt_eval"]["cases"][0]["adapter_tool_trace_names"] = [
+                "recall_build_prompt_memory",
+                "select_build_option",
+            ]
+            with self.assertRaisesRegex(ValueError, "tool trace is incomplete"):
+                probe.validate_live_result(missing_tool)
+
+            fallback_source = json.loads(json.dumps(payload))
+            fallback_source["prompt_eval"]["cases"][1][
+                "adapter_tool_decision_source"
+            ] = "adapter_fallback_after_agent_missing_required_tool"
+            with self.assertRaisesRegex(ValueError, "did not use Agents SDK function tools"):
+                probe.validate_live_result(fallback_source)
 
     def test_nova_auto_apply_validator_requires_exact_build_write_counts(self):
         probe = load_nova_auto_apply_module()
