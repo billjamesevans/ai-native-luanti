@@ -32,6 +32,35 @@ When benchmark evidence or target scoring changes, also run:
 python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks
 ```
 
+When a PR changes player-facing agent behavior, the pre-PR packet must also
+prove live in-engine behavior through the Agents SDK model adapter. Run the live
+prompt eval, then make the combined quality gate require that artifact:
+
+```bash
+python3 util/ai_native_agent_prompt_eval_live_probe.py \
+  --root . \
+  --server-bin bin/luantiserver \
+  --output local/benchmarks/ai-agent-prompt-eval-live-latest.json \
+  --generated-at 2026-06-30T00:00:00Z \
+  --adapter-endpoint http://127.0.0.1:8766/v1/model-adapter
+
+python3 util/ai_native_agent_quality_gate.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --case-pack local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --review-queue local/benchmarks/ai-agent-review-queue.json \
+  --adapter-contract-eval local/benchmarks/ai-agent-adapter-contract-eval.json \
+  --live-prompt-eval local/benchmarks/ai-agent-prompt-eval-live-latest.json \
+  --require-live-prompt-eval \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
+  --compat-import-staging-pilot local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json \
+  --output local/benchmarks/ai-agent-quality-gate.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The agent quality gate is promotion-blocking when the live prompt eval is
+missing, when the fire-only or TNT-wall request/response cases fail, or when
+the Agents SDK response lacks the required build-planning tool evidence.
+
 The alpha gate emits a machine-readable `project_operating_loop` section with
 the expected cadence, ranked next-issue queue, and public boundary. Local
 artifacts belong under `local/benchmarks` unless a maintainer explicitly
@@ -279,8 +308,8 @@ Keep this ranked next-issue queue current after every milestone slice:
 2. #254 First-party AI agent productization lane.
    Use for parallel local work while Pi evidence is occupied. Gate: live
    product-loop probe, streamed Agents SDK build-planning tool evidence,
-   request/response log gate, the agent quality gate, and one-command local
-   verifier.
+   request/response log gate, required live prompt eval, the agent quality
+   gate, and one-command local verifier.
 3. #255 Compatibility import scale-up after staged apply pilot.
    Use after runtime, quick Pi evidence, and product-loop evidence remain
    clean. Gate: dry-run or approval-gated apply with rollback metadata.

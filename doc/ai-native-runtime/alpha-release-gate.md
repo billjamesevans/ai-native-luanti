@@ -39,13 +39,16 @@ command, evidence retention, and public-safe promotion decision.
 4. Run the product-profile hygiene gate.
 5. Run the alpha release-package gate, which includes clean-profile package
    hygiene and the fresh-checkout command plan.
-6. Run the Minecraft-parity harness against accepted local and low-power
+6. For any release candidate that changes agent behavior, run the live
+   in-engine prompt eval through the Agents SDK model adapter and then run the
+   combined agent quality gate with `--require-live-prompt-eval`.
+7. Run the Minecraft-parity harness against accepted local and low-power
    baselines when benchmark evidence changes.
-7. Keep compatibility import work in dry-run or preview mode unless a separate
+8. Keep compatibility import work in dry-run or preview mode unless a separate
    apply-phase review explicitly enables mutation.
-8. Publish release notes using the template that separates engine/runtime
+9. Publish release notes using the template that separates engine/runtime
    changes, optional plugin changes, and family-server content.
-9. Follow the operator runbook before promoting a Pi-backed alpha candidate.
+10. Follow the operator runbook before promoting a Pi-backed alpha candidate.
 
 ## Public Boundary
 

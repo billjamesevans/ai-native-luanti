@@ -78,6 +78,10 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             "request/response log gate",
             queue_by_issue["#254"]["gate"],
         )
+        self.assertIn(
+            "required live prompt eval",
+            queue_by_issue["#254"]["gate"],
+        )
         self.assertEqual(
             operating_loop["maintenance_invariants"][0]["name"],
             "operating_loop_maintenance",
@@ -97,7 +101,15 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         cadence_names = [entry["name"] for entry in operating_loop["cadence"]]
         self.assertEqual(
             cadence_names,
-            ["pre_pr_local_gate", "benchmark_review", "pi_promotion"],
+            ["pre_pr_local_gate", "benchmark_review", "agent_quality_promotion", "pi_promotion"],
+        )
+        agent_cadence = next(
+            entry for entry in operating_loop["cadence"]
+            if entry["name"] == "agent_quality_promotion"
+        )
+        self.assertIn(
+            "--require-live-prompt-eval",
+            agent_cadence["commands"][1],
         )
         checklist = report["release_candidate_checklist"]
         self.assertEqual(
@@ -110,10 +122,23 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             [
                 "clean_checkout_package",
                 "local_runtime_evidence",
+                "agent_quality_promotion",
                 "compatibility_and_parity_review",
                 "pi_side_by_side_promotion",
                 "release_closeout",
             ],
+        )
+        agent_phase = next(
+            phase for phase in checklist["phases"]
+            if phase["name"] == "agent_quality_promotion"
+        )
+        self.assertIn(
+            "--require-live-prompt-eval",
+            agent_phase["required_commands"][1],
+        )
+        self.assertIn(
+            "local/benchmarks/ai-agent-prompt-eval-live-latest.json",
+            agent_phase["retained_artifacts"],
         )
         pi_phase = next(
             phase for phase in checklist["phases"]
@@ -188,6 +213,8 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
 
         self.assertIn("python3 util/ai_native_alpha_release_gate.py", readme)
         self.assertIn("python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime", pr_template)
+        self.assertIn("--require-live-prompt-eval", readme)
+        self.assertIn("--require-live-prompt-eval", pr_template)
         self.assertIn("spacebase", pr_template)
         self.assertIn("themepark", pr_template)
         self.assertIn("disneyland100", pr_template)

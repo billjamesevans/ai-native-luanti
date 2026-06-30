@@ -153,6 +153,36 @@ child process. A passing result proves loopback service wiring, `/health`,
 credentials. Live provider execution is a separate operator action after
 server-local secrets are configured.
 
+When a release candidate changes player-facing agent behavior, prove the live
+path with an in-engine prompt eval before promotion. This gate must use the
+real loopback model adapter and then require that live artifact in the combined
+quality gate:
+
+```sh
+python3 util/ai_native_agent_prompt_eval_live_probe.py \
+  --root . \
+  --server-bin bin/luantiserver \
+  --output local/benchmarks/ai-agent-prompt-eval-live-latest.json \
+  --generated-at "<utc-timestamp>" \
+  --adapter-endpoint http://127.0.0.1:8766/v1/model-adapter
+
+python3 util/ai_native_agent_quality_gate.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --case-pack local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --review-queue local/benchmarks/ai-agent-review-queue.json \
+  --adapter-contract-eval local/benchmarks/ai-agent-adapter-contract-eval.json \
+  --live-prompt-eval local/benchmarks/ai-agent-prompt-eval-live-latest.json \
+  --require-live-prompt-eval \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
+  --compat-import-staging-pilot local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json \
+  --output local/benchmarks/ai-agent-quality-gate.json \
+  --generated-at "<utc-timestamp>"
+```
+
+The promotion packet must show `live_prompt_eval_required = true`, a passing
+live prompt eval, a passing request/response log gate for the known fire/TNT
+regressions, and no missing required Agents SDK build-planning tool calls.
+
 ## Evidence Retention
 
 Attach these evidence classes to a release candidate:
@@ -163,6 +193,10 @@ Attach these evidence classes to a release candidate:
   `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime`
 - Agents SDK sidecar readiness:
   `python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode managed-http --port 8766`
+- Live in-engine prompt eval:
+  `python3 util/ai_native_agent_prompt_eval_live_probe.py --root . --server-bin bin/luantiserver --output local/benchmarks/ai-agent-prompt-eval-live-latest.json --generated-at "<utc-timestamp>" --adapter-endpoint http://127.0.0.1:8766/v1/model-adapter`
+- Required-live agent quality gate:
+  `python3 util/ai_native_agent_quality_gate.py --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json --case-pack local/benchmarks/ai-agent-prompt-eval-case-pack.json --review-queue local/benchmarks/ai-agent-review-queue.json --adapter-contract-eval local/benchmarks/ai-agent-adapter-contract-eval.json --live-prompt-eval local/benchmarks/ai-agent-prompt-eval-live-latest.json --require-live-prompt-eval --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json --compat-import-staging-pilot local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json --output local/benchmarks/ai-agent-quality-gate.json --generated-at "<utc-timestamp>"`
 - Low-power evidence:
   `python3 util/ai_native_low_power_pi_evidence.py --ssh-target "$AI_NATIVE_PI_SSH_TARGET" --confirm-backup-first --backup-artifact-label "$BACKUP_ARTIFACT_LABEL" --backup-sha256 "$BACKUP_SHA256" --soak-target quick`
 - Promoted low-power evidence after quick proof:
@@ -206,6 +240,8 @@ Promote an alpha candidate only when:
 - The branch has no unrelated worktree changes.
 - The alpha gate passes.
 - The local clean-profile verifier passes.
+- Player-facing agent changes have a passing live in-engine prompt eval and a
+  passing agent quality gate with `--require-live-prompt-eval`.
 - The Pi evidence lane proves the side-by-side split after a backup-first
   deploy.
 - The parity harness has no new fail/warn actions for accepted evidence lanes,

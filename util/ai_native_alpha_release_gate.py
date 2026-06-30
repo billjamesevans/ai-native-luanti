@@ -21,6 +21,45 @@ ONE_COMMAND_LOCAL_VERIFIER = [
     "ai_runtime",
 ]
 
+LIVE_PROMPT_EVAL_COMMAND = [
+    "python3",
+    "util/ai_native_agent_prompt_eval_live_probe.py",
+    "--root",
+    ".",
+    "--server-bin",
+    "bin/luantiserver",
+    "--output",
+    "local/benchmarks/ai-agent-prompt-eval-live-latest.json",
+    "--generated-at",
+    "<utc-timestamp>",
+    "--adapter-endpoint",
+    "http://127.0.0.1:8766/v1/model-adapter",
+]
+
+AGENT_QUALITY_GATE_COMMAND = [
+    "python3",
+    "util/ai_native_agent_quality_gate.py",
+    "--candidate-queue",
+    "local/benchmarks/ai-agent-eval-candidate-queue.json",
+    "--case-pack",
+    "local/benchmarks/ai-agent-prompt-eval-case-pack.json",
+    "--review-queue",
+    "local/benchmarks/ai-agent-review-queue.json",
+    "--adapter-contract-eval",
+    "local/benchmarks/ai-agent-adapter-contract-eval.json",
+    "--live-prompt-eval",
+    "local/benchmarks/ai-agent-prompt-eval-live-latest.json",
+    "--require-live-prompt-eval",
+    "--request-response-log-gate",
+    "local/benchmarks/ai-agent-request-response-log-gate.json",
+    "--compat-import-staging-pilot",
+    "local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json",
+    "--output",
+    "local/benchmarks/ai-agent-quality-gate.json",
+    "--generated-at",
+    "<utc-timestamp>",
+]
+
 REQUIRED_DOCS = [
     {
         "path": "doc/ai-native-runtime/alpha-release-gate.md",
@@ -30,6 +69,7 @@ REQUIRED_DOCS = [
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
             "operator-alpha-release-runbook.md",
             "deployment lane, not a replacement for the family server",
+            "--require-live-prompt-eval",
             "spacebase",
             "themepark",
             "disneyland100",
@@ -47,6 +87,7 @@ REQUIRED_DOCS = [
             "rollback stops only the fork alpha lane",
             "Release Candidate Contents",
             "Evidence Retention",
+            "--require-live-prompt-eval",
             "spacebase",
             "themepark",
             "disneyland100",
@@ -94,6 +135,7 @@ REQUIRED_DOCS = [
             "python3 util/ai_native_alpha_release_gate.py",
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
             "python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks",
+            "--require-live-prompt-eval",
             "#253",
             "#254",
             "#255",
@@ -136,6 +178,14 @@ PROJECT_OPERATING_LOOP = {
             "purpose": "keep Minecraft-parity targets current without retaining proprietary benchmark payloads",
         },
         {
+            "name": "agent_quality_promotion",
+            "commands": [
+                LIVE_PROMPT_EVAL_COMMAND,
+                AGENT_QUALITY_GATE_COMMAND,
+            ],
+            "purpose": "prove live in-engine Agents SDK prompt behavior before promoting agent changes",
+        },
+        {
             "name": "pi_promotion",
             "commands": [
                 [
@@ -162,7 +212,7 @@ PROJECT_OPERATING_LOOP = {
             "issue": "#254",
             "title": "First-party AI agent productization lane",
             "when": "parallel local work while Pi evidence is occupied",
-            "gate": "live product-loop probe, streamed Agents SDK build-planning evidence, request/response log gate, agent quality gate, and one-command local verifier",
+            "gate": "live product-loop probe, streamed Agents SDK build-planning evidence, request/response log gate, required live prompt eval, agent quality gate, and one-command local verifier",
         },
         {
             "issue": "#255",
@@ -224,6 +274,23 @@ RELEASE_CANDIDATE_CHECKLIST = {
                 "local clean-profile verifier passes",
                 "TestAIRuntime passes",
                 "agent product-loop evidence is public-safe and bounded",
+            ],
+        },
+        {
+            "name": "agent_quality_promotion",
+            "required_commands": [
+                LIVE_PROMPT_EVAL_COMMAND,
+                AGENT_QUALITY_GATE_COMMAND,
+            ],
+            "retained_artifacts": [
+                "local/benchmarks/ai-agent-prompt-eval-live-latest.json",
+                "local/benchmarks/ai-agent-request-response-log-gate.json",
+                "local/benchmarks/ai-agent-quality-gate.json",
+            ],
+            "done_when": [
+                "live in-engine prompt eval passes through the Agents SDK model adapter",
+                "request/response log gate passes for the player-facing regression cases",
+                "agent quality gate passes with live_prompt_eval_required set to true",
             ],
         },
         {
@@ -334,6 +401,7 @@ REQUIRED_REPO_FILES = [
             "spacebase",
             "themepark",
             "disneyland100",
+            "--require-live-prompt-eval",
             "family-server content",
         ],
     },
@@ -347,6 +415,7 @@ REQUIRED_REPO_FILES = [
             "public-safe-sample-data-policy.md",
             "release-notes-template.md",
             "python3 util/ai_native_alpha_release_gate.py",
+            "--require-live-prompt-eval",
         ],
     },
 ]
