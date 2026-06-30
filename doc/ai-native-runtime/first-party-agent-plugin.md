@@ -62,6 +62,15 @@ The plugin registers three aliases:
 - `/nova <message>`
 - `/aibot <message>`
 
+The plugin also registers `/ai_agent_eval` for operators with `server`
+privilege. It runs a bounded public-safe prompt evaluation covering `build a
+fire`, `build a wall of tnt`, and an unknown prompt routed through the
+configured model adapter. The report is JSON, is logged with the prompt trace
+ids and model-adapter metric deltas, requires approval for build plans instead
+of mutating the world, and discards those approvals after recording the result.
+Use `/ai_agent_eval case=fire`, `/ai_agent_eval case=tnt`, `/ai_agent_eval
+case=model`, or `/ai_agent_eval model <prompt>` for narrower checks.
+
 Implemented deterministic commands:
 
 - `status`: returns current state, runtime metrics, product-surface readiness,

@@ -187,6 +187,15 @@
       "mutation_scope": "receipt_gated_task_queue_only",
       "loaded_by_default_product_profile": true,
       "public_safe_output_required": true
+    },
+    {
+      "name": "ai_agent_prompt_eval",
+      "source_file": "builtin/game/ai_agent_plugin.lua",
+      "command": "ai_agent_eval",
+      "privilege": "server",
+      "mutation_scope": "read_only_prompt_eval",
+      "loaded_by_default_product_profile": true,
+      "public_safe_output_required": true
     }
   ],
   "test_only_files": [
