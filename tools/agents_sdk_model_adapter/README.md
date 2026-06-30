@@ -78,6 +78,7 @@ Luanti bridge:
 
 ```text
 ai_runtime.enable_agents_sdk_adapter = true
+ai_runtime.agents_sdk_adapter_timeout = 60
 secure.http_mods = ai_runtime_agents_sdk_bridge
 /ai_agents_sdk_adapter_probe
 ```

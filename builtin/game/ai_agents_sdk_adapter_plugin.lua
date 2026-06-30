@@ -18,9 +18,22 @@ if adapter_enabled and core.request_http_api then
 	http_api = core.request_http_api()
 end
 
+local function bounded_number(value, fallback, minimum, maximum)
+	local result = tonumber(value)
+	if not result then
+		result = fallback
+	end
+	result = math.max(minimum, math.min(result, maximum))
+	return result
+end
+
 local config = {
 	endpoint = core.settings:get("ai_runtime.agents_sdk_adapter_endpoint") or DEFAULT_ENDPOINT,
-	timeout = DEFAULT_TIMEOUT,
+	timeout = bounded_number(
+		core.settings:get("ai_runtime.agents_sdk_adapter_timeout"),
+		DEFAULT_TIMEOUT,
+		1,
+		120),
 	max_poll_attempts = DEFAULT_MAX_POLL_ATTEMPTS,
 	fetcher = nil,
 	http_api = http_api,

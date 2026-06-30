@@ -63,6 +63,7 @@ these settings before startup:
 ```conf
 ai_runtime.enable_agents_sdk_adapter = true
 ai_runtime.agents_sdk_adapter_endpoint = http://127.0.0.1:8766/v1/model-adapter
+ai_runtime.agents_sdk_adapter_timeout = 60
 secure.http_mods = ai_runtime_agents_sdk_bridge
 ```
 
