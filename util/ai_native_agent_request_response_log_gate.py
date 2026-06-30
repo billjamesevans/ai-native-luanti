@@ -81,6 +81,12 @@ CASE_DEFS = (
         "expected_selected_option_prefix": "generated_",
         "required_tools": sorted(BASE_REQUIRED_TOOLS | {"propose_build_option"}),
     },
+    {
+        "case_id": "generated_dimensioned_wall",
+        "prompt": "build a 6 wide 2 high lookout wall",
+        "expected_selected_option_id": "generated_dimensioned_wall",
+        "required_tools": sorted(BASE_REQUIRED_TOOLS | {"propose_build_option"}),
+    },
 )
 
 

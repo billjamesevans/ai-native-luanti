@@ -120,6 +120,10 @@ def passing_entries() -> list[dict]:
         log_entry(prompt="build me a fire and only a fire", selected_option_id="fire"),
         log_entry(prompt="build a wall of tnt", selected_option_id="tnt_wall"),
         log_entry(prompt="build a small shelter", selected_option_id="generated_shelter_floor"),
+        log_entry(
+            prompt="build a 6 wide 2 high lookout wall",
+            selected_option_id="generated_dimensioned_wall",
+        ),
     ]
 
 
@@ -143,8 +147,8 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
             )
 
         self.assertEqual(report["status"], "pass", report)
-        self.assertEqual(report["source_summary"]["cases_passed"], 4)
-        self.assertEqual(report["source_summary"]["entries_read"], 4)
+        self.assertEqual(report["source_summary"]["cases_passed"], 5)
+        self.assertEqual(report["source_summary"]["entries_read"], 5)
         by_id = {case["case_id"]: case for case in report["cases"]}
         self.assertEqual(
             by_id["fire_only_strict"]["observed"]["response"]["selected_option_id"],
@@ -157,6 +161,10 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
         self.assertEqual(
             by_id["generated_build_option"]["observed"]["response"]["selected_option_id"],
             "generated_shelter_floor",
+        )
+        self.assertEqual(
+            by_id["generated_dimensioned_wall"]["observed"]["response"]["selected_option_id"],
+            "generated_dimensioned_wall",
         )
 
     def test_fails_when_fire_only_selects_generic_structure(self):
@@ -286,7 +294,7 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
             summary = json.loads(completed.stdout)
 
         self.assertEqual(report["artifact_kind"], "ai_native_agent_request_response_log_gate")
-        self.assertEqual(summary["cases_passed"], 4)
+        self.assertEqual(summary["cases_passed"], 5)
 
 
 if __name__ == "__main__":
