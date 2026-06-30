@@ -186,11 +186,14 @@ python3 util/ai_native_agent_quality_gate.py \
 ```
 
 The quality gate is intentionally artifact-only: it does not mutate the world,
-does not include provider prompts or credentials, and treats unresolved review
-items as `attention` while treating adapter-contract replay failures or a failed
-latest live prompt eval as `fail`. When supplied, the compatibility staging pilot
-must also pass: it proves dry-run import planning, bounded disposable-world apply,
-rollback, and refusal gates without touching the family server or private assets.
+does not include provider prompts or credentials, and keeps unresolved review
+items in the `attention` list without making them deploy-blocking when the core
+execution gates pass. Core artifact readiness, missing adapter-contract replay,
+adapter-contract replay failures, a failed latest live prompt eval, or a failed
+compatibility staging pilot remain deploy-blocking. When supplied, the
+compatibility staging pilot proves dry-run import planning, bounded
+disposable-world apply, rollback, and refusal gates without touching the family
+server or private assets.
 In `agents_sdk_sidecar` mode, the live prompt eval must also retain untruncated
 case evidence showing that each build case used an accepted agent tool-contract
 source, satisfied `recall_build_prompt_memory`, `select_build_option`, and
