@@ -155,6 +155,12 @@ def _case_pack_summary(case_pack: dict[str, Any]) -> dict[str, Any]:
         "status": bounded_text(case_pack.get("status"), 80),
         "cases_total": summary.get("cases_total") if isinstance(summary.get("cases_total"), int) else len(cases),
         "ready_for_runtime_prompt_eval": summary.get("ready_for_runtime_prompt_eval"),
+        "default_gate_eligible_cases": summary.get("default_gate_eligible_cases")
+        if isinstance(summary.get("default_gate_eligible_cases"), int) else 0,
+        "review_required_cases": summary.get("review_required_cases")
+        if isinstance(summary.get("review_required_cases"), int) else len(cases),
+        "auto_default_gate_min_sources": summary.get("auto_default_gate_min_sources")
+        if isinstance(summary.get("auto_default_gate_min_sources"), int) else None,
         "requires_maintainer_review_before_default_gate":
             summary.get("requires_maintainer_review_before_default_gate") is True,
         "case_hints": case_hints[:50],
@@ -306,6 +312,12 @@ def build_review_queue(
             "operator_labels_applied": source_summary.get("operator_labels_applied", 0),
             "case_pack_cases_total": cases_total,
             "case_pack_unique_cases_total": len(promoted_case_keys),
+            "case_pack_default_gate_eligible_cases": case_summary.get(
+                "default_gate_eligible_cases", 0
+            ),
+            "case_pack_review_required_cases": case_summary.get(
+                "review_required_cases", cases_total
+            ),
             "action_items_total": len(action_items),
         },
         "action_items": action_items,

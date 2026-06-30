@@ -20,7 +20,14 @@ ROOT = Path(__file__).resolve().parents[1]
 CASE_PACK_KIND = "ai_native_agent_prompt_eval_case_pack"
 DEFAULT_MAX_BYTES = 24000
 DEFAULT_MAX_CASES = 25
+DEFAULT_AUTO_DEFAULT_GATE_MIN_SOURCES = 2
 READY_REVIEW_STATUSES = {"candidate_ready", "operator_labeled_candidate_ready"}
+AUTO_DEFAULT_GATE_REVIEW_STATUSES = {"candidate_ready"}
+AUTO_DEFAULT_GATE_SOURCE_KINDS = {
+    "agents_sdk_request_response",
+    "nova_agent_sidecar_request_response",
+    eval_queue.VERIFIED_LIVE_PROBE_KIND,
+}
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[^\s\"']+"),
@@ -107,7 +114,93 @@ def _candidate_selected(candidate: dict[str, Any], selected_ids: set[str] | None
     return str(candidate.get("candidate_id") or "") in selected_ids
 
 
-def case_from_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
+def _case_evidence_key(case: dict[str, Any]) -> tuple[str, str, str]:
+    expected = case.get("expected") if isinstance(case.get("expected"), dict) else {}
+    return (
+        str(case.get("case_hint") or ""),
+        str(case.get("prompt") or ""),
+        json.dumps(expected, sort_keys=True),
+    )
+
+
+def _candidate_tool_contract_passes(candidate: dict[str, Any]) -> bool:
+    contract = candidate.get("adapter_tool_contract")
+    if not isinstance(contract, dict):
+        return False
+    if contract.get("status") != "pass":
+        return False
+    if contract.get("required_tool_calls_satisfied") is not True:
+        return False
+    missing = contract.get("missing_required_tool_calls")
+    return not missing
+
+
+def _default_gate_evidence_entry(candidate: dict[str, Any]) -> dict[str, str]:
+    return {
+        "candidate_id": bounded_text(candidate.get("candidate_id"), 180),
+        "source_kind": bounded_text(candidate.get("source_kind"), 120),
+        "observed_at": bounded_text(candidate.get("observed_at"), 120),
+    }
+
+
+def _build_default_gate_evidence(
+    candidates: list[Any],
+    *,
+    selected_candidate_ids: set[str] | None,
+    min_sources: int,
+) -> dict[tuple[str, str, str], dict[str, Any]]:
+    raw_evidence: dict[tuple[str, str, str], list[dict[str, str]]] = {}
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if not _candidate_selected(candidate, selected_candidate_ids):
+            continue
+        if candidate.get("review_status") not in AUTO_DEFAULT_GATE_REVIEW_STATUSES:
+            continue
+        if candidate.get("source_kind") not in AUTO_DEFAULT_GATE_SOURCE_KINDS:
+            continue
+        if not _candidate_tool_contract_passes(candidate):
+            continue
+        case = case_from_candidate(candidate)
+        if case is None:
+            continue
+        raw_evidence.setdefault(_case_evidence_key(case), []).append(
+            _default_gate_evidence_entry(candidate)
+        )
+
+    result: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for key, entries in raw_evidence.items():
+        sources = sorted({
+            str(entry.get("source_kind") or "")
+            for entry in entries
+            if entry.get("source_kind")
+        })
+        source_count = len(sources)
+        result[key] = {
+            "default_gate_eligible": source_count >= max(1, min_sources),
+            "reason": (
+                "verified_repeat_agent_tool_contract"
+                if source_count >= max(1, min_sources)
+                else "insufficient_independent_agent_tool_evidence"
+            ),
+            "evidence_count": len(entries),
+            "independent_source_count": source_count,
+            "required_independent_source_count": max(1, min_sources),
+            "source_kinds": sources,
+            "candidate_ids": [
+                entry["candidate_id"]
+                for entry in entries
+                if entry.get("candidate_id")
+            ][:8],
+        }
+    return result
+
+
+def case_from_candidate(
+    candidate: dict[str, Any],
+    *,
+    default_gate_evidence: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
     if candidate.get("ready_for_prompt_eval") is not True:
         return None
     review_status = candidate.get("review_status")
@@ -137,6 +230,26 @@ def case_from_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
         if review_status == "operator_labeled_candidate_ready"
         else "candidate_ready_only"
     )
+    default_gate_evidence = default_gate_evidence or {}
+    default_gate_eligible = default_gate_evidence.get("default_gate_eligible") is True
+    promotion = {
+        "mode": promotion_mode,
+        "review_status": review_status,
+        "requires_maintainer_review_before_default_gate": not default_gate_eligible,
+        "default_gate_eligible": default_gate_eligible,
+    }
+    if default_gate_evidence:
+        promotion["default_gate_evidence"] = {
+            "reason": default_gate_evidence.get("reason"),
+            "evidence_count": default_gate_evidence.get("evidence_count", 0),
+            "independent_source_count": default_gate_evidence.get("independent_source_count", 0),
+            "required_independent_source_count": default_gate_evidence.get(
+                "required_independent_source_count",
+                DEFAULT_AUTO_DEFAULT_GATE_MIN_SOURCES,
+            ),
+            "source_kinds": default_gate_evidence.get("source_kinds", []),
+            "candidate_ids": default_gate_evidence.get("candidate_ids", []),
+        }
     return {
         "case_id": prompt_case_id(case_hint, candidate_id, prompt),
         "case_hint": bounded_text(case_hint, 120),
@@ -145,11 +258,7 @@ def case_from_candidate(candidate: dict[str, Any]) -> dict[str, Any] | None:
         "prompt": bounded_text(prompt, 1000),
         "action": "build",
         "expected": sanitized_expected,
-        "promotion": {
-            "mode": promotion_mode,
-            "review_status": review_status,
-            "requires_maintainer_review_before_default_gate": True,
-        },
+        "promotion": promotion,
     }
 
 
@@ -165,6 +274,15 @@ def _dedupe_cases(cases: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def _default_gate_eligible_case_count(cases: list[dict[str, Any]]) -> int:
+    return sum(
+        1
+        for case in cases
+        if isinstance(case.get("promotion"), dict)
+        and case["promotion"].get("default_gate_eligible") is True
+    )
+
+
 def build_case_pack(
     candidate_queue: dict[str, Any],
     *,
@@ -173,6 +291,7 @@ def build_case_pack(
     selected_candidate_ids: set[str] | None = None,
     max_cases: int = DEFAULT_MAX_CASES,
     max_bytes: int = DEFAULT_MAX_BYTES,
+    auto_default_gate_min_sources: int = DEFAULT_AUTO_DEFAULT_GATE_MIN_SOURCES,
 ) -> dict[str, Any]:
     generated_at = generated_at or utc_now()
     violations: list[dict[str, str]] = []
@@ -194,6 +313,11 @@ def build_case_pack(
         raw_candidates = []
         violations.append({"kind": "missing_candidates", "details": "candidates"})
 
+    default_gate_evidence = _build_default_gate_evidence(
+        raw_candidates,
+        selected_candidate_ids=selected_candidate_ids,
+        min_sources=auto_default_gate_min_sources,
+    )
     cases: list[dict[str, Any]] = []
     ignored_not_ready = 0
     ignored_unselected = 0
@@ -204,7 +328,9 @@ def build_case_pack(
         if not _candidate_selected(candidate, selected_candidate_ids):
             ignored_unselected += 1
             continue
-        case = case_from_candidate(candidate)
+        base_case = case_from_candidate(candidate)
+        evidence = default_gate_evidence.get(_case_evidence_key(base_case)) if base_case else None
+        case = case_from_candidate(candidate, default_gate_evidence=evidence)
         if case is None:
             ignored_not_ready += 1
             continue
@@ -213,6 +339,8 @@ def build_case_pack(
     cases = _dedupe_cases(cases)
     truncated = len(cases) > max_cases
     cases = cases[:max(0, max_cases)]
+    default_gate_eligible_cases = _default_gate_eligible_case_count(cases)
+    review_required_cases = len(cases) - default_gate_eligible_cases
     status = "ready" if cases and not violations else "empty"
     if violations and cases:
         status = "attention"
@@ -232,13 +360,18 @@ def build_case_pack(
             "ignored_not_ready": ignored_not_ready,
             "ignored_unselected": ignored_unselected,
             "ready_for_runtime_prompt_eval": len(cases),
-            "requires_maintainer_review_before_default_gate": True,
+            "default_gate_eligible_cases": default_gate_eligible_cases,
+            "review_required_cases": review_required_cases,
+            "requires_maintainer_review_before_default_gate": review_required_cases > 0,
+            "auto_default_gate_min_sources": max(1, auto_default_gate_min_sources),
         },
         "cases": cases,
         "violations": violations,
         "safety": {
             "public_safe_output": True,
             "review_required_before_default_gate": True,
+            "auto_default_gate_requires_verified_repeat": True,
+            "auto_default_gate_requires_agent_tool_contract": True,
             "no_world_mutation": True,
             "no_raw_assets": True,
             "no_provider_prompts": True,
@@ -264,6 +397,14 @@ def build_case_pack(
         payload["bounds"]["truncated"] = True
         payload["summary"]["cases_total"] = len(payload["cases"])
         payload["summary"]["ready_for_runtime_prompt_eval"] = len(payload["cases"])
+        default_gate_eligible_cases = _default_gate_eligible_case_count(payload["cases"])
+        payload["summary"]["default_gate_eligible_cases"] = default_gate_eligible_cases
+        payload["summary"]["review_required_cases"] = (
+            len(payload["cases"]) - default_gate_eligible_cases
+        )
+        payload["summary"]["requires_maintainer_review_before_default_gate"] = (
+            payload["summary"]["review_required_cases"] > 0
+        )
         raw = json.dumps(payload, sort_keys=True)
     payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
     if payload["bounds"]["output_bytes"] > max_bytes:
@@ -293,6 +434,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--candidate-id", action="append", default=[], help="Only promote this candidate id; repeatable.")
     parser.add_argument("--max-cases", type=int, default=DEFAULT_MAX_CASES)
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
+    parser.add_argument(
+        "--auto-default-gate-min-sources",
+        type=int,
+        default=DEFAULT_AUTO_DEFAULT_GATE_MIN_SOURCES,
+        help="Independent trusted source kinds required before a case is default-gate eligible.",
+    )
     return parser.parse_args(argv)
 
 
@@ -328,6 +475,7 @@ def main(argv: list[str] | None = None) -> int:
             selected_candidate_ids=selected,
             max_cases=max(0, args.max_cases),
             max_bytes=max(1000, args.max_bytes),
+            auto_default_gate_min_sources=max(1, args.auto_default_gate_min_sources),
         )
 
     output.parent.mkdir(parents=True, exist_ok=True)

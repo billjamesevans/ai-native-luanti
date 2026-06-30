@@ -205,6 +205,16 @@ The Pi fork sidecar mounts the refreshed case pack as read-only prompt memory
 through `AI_NATIVE_AGENT_CASE_PACK_PATH`; it still cannot bypass Luanti preview,
 approval, rollback, or task gates.
 
+Prompt memory has two promotion levels. A single reviewed candidate can be
+replayed by custom prompt-eval harnesses and mounted as read-only sidecar
+memory, but it remains marked `requires_maintainer_review_before_default_gate`.
+When the same public-safe behavior is observed from at least two trusted source
+kinds, and each observation has a passing required-tool contract, the case pack
+marks that case `default_gate_eligible`. This is the normal self-improvement
+path for repeated verified behavior: the agent can learn from live evidence
+without letting a single model answer, private artifact, or direct world mutation
+change the default gate.
+
 Ambiguous build behavior must be improved through the same loop. The Agents SDK
 sidecar can reason and call read-only tools, but Luanti only changes an
 executable pending build when the sidecar returns a structured

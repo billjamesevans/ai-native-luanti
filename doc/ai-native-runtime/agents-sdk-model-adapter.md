@@ -203,6 +203,15 @@ python3 util/ai_native_agent_memory_refresh.py \
   --generated-at 2026-06-30T00:00:00Z
 ```
 
+The promotion artifact separates replayable memory from default-gate memory.
+Ready cases are safe to replay and mount as read-only `recall_build_prompt_memory`
+input, but they remain review-gated unless repeated trusted evidence proves the
+same behavior. By default, `ai_native_agent_eval_promote.py` and
+`ai_native_agent_memory_refresh.py` require two independent trusted source kinds
+with passing required-tool contracts before a case is marked
+`default_gate_eligible`; the threshold is explicit as
+`--auto-default-gate-min-sources`.
+
 Adapter-contract regressions can be replayed against the live loopback sidecar:
 
 ```bash
