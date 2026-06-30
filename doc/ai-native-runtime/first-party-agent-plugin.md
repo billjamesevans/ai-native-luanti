@@ -134,22 +134,31 @@ Implemented deterministic commands:
 - Ambiguous build prompts such as `build a small shelter` use the agentic build
   planner instead of silently becoming a marker. The planner returns multiple
   executable bounded candidates, asks the async Agents SDK model adapter for
-  public-safe guidance when configured, consumes the adapter's structured
+  public-safe guidance when configured, and lets the adapter propose one
+  generated option through the read-only `propose_build_option` tool when the
+  fixed candidates are too generic. Generated options must be returned through
+  the build-option tool contract for Luanti validation; the plugin accepts them
+  only when `append_generated_agentic_build_candidate` can validate the proposed
+  kind, material, dimensions, and write budget through the same
+  `core.build_agent.plan` preview path. The planner consumes the adapter's structured
   `response.selected_option_id` or
   `response.tool_decisions.build_option.selected_option_id` when it matches a
-  known executable candidate, records the route in request traces, and still
-  requires player approval before the rollback-backed `build_agent` task is
-  queued. Healthy live agent runs should label the selection as
+  known executable candidate or a validated generated candidate, records the
+  route in request traces, and still requires player approval before the
+  rollback-backed `build_agent` task is queued. Healthy live agent runs should
+  label the selection as
   `tool_decision_source = agents_sdk_function_tool`; missing tool calls are
   fallback/eval signals. The pending plan and bounded `nova_request_trace`
   response retain `adapter_tool_decision_source`,
   `adapter_required_tool_calls`, `adapter_missing_required_tool_calls`,
   `adapter_required_tool_calls_satisfied`, `build_option_decision_source`,
-  `adapter_memory_matched_case_id`, and `adapter_tool_trace_names` so reviewed
-  prompt-memory matches and missing required tools can be promoted into the eval
-  queue without storing raw provider payloads. Invalid or missing model
-  selections fall back to the deterministic preselected candidate rather than
-  inventing a build shape.
+  `adapter_memory_matched_case_id`, `adapter_tool_trace_names`,
+  `generated_build_option_status`, `generated_build_option_reason`, and
+  `generated_candidate_id` so reviewed prompt-memory matches, missing required
+  tools, and rejected generated options can be promoted into the eval queue
+  without storing raw provider payloads. Invalid, oversized, unsupported, or
+  missing model selections fall back to the deterministic preselected candidate
+  rather than inventing a build shape.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair plan radius N`, `repair radius N`: plans a bounded wider repair
   area before approval. `N` must be within the configured `max_repair_radius`
@@ -331,8 +340,9 @@ payloads, or raw asset payloads are blocked with `adapter_payload_rejected`.
 
 - Follow uses a small bounded waypoint slice: each queued task step recomputes the player target, optionally asks a pathfinder for waypoints, moves no more than the configured step distance, stops inside the configured follow distance, and blocks when the total movement budget would be exceeded. Richer obstacle-aware navigation remains opt-in so default clean-profile playtests stay deterministic.
 - Come remains a one-shot bounded helper-entity move.
-- Build remains small lights, marker tasks, and bounded platforms, not a
-  showcase structure system.
+- Build remains small lights, marker tasks, bounded platforms, wall/fire plans,
+  and validated generated options for a few compact shapes such as tower walls,
+  bridge/path platforms, and shelter floors, not a showcase structure system.
 - Repair only applies configured repair rules around the requested target position.
 - Build and repair commands now create pending previews first; players can
   review, edit, or discard the current pending plan, and explicit approval

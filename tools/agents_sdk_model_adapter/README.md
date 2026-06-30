@@ -16,6 +16,8 @@ The sidecar owns:
 - hosted web search through `WebSearchTool`;
 - deterministic function tools through `function_tool`;
 - reviewed prompt-memory lookup through an optional case pack;
+- bounded generated build-option proposals that Luanti validates before any
+  preview or task;
 - a structured `tool_powers` manifest for readiness and release evidence;
 - conversion back to the provider-neutral
   `ai_native_model_adapter_response` envelope.
@@ -70,6 +72,10 @@ availability, bounded public-safe response metadata,
 
 For build-planning requests, live responses should include
 `tool_decision_source = agents_sdk_function_tool` plus a bounded `tool_trace`.
+For open-ended build requests, the `propose_build_option` function tool may
+return a generated option such as a tower wall, bridge platform, path platform,
+or shelter floor. That proposal is still read-only: Luanti validates the kind,
+material, dimensions, and write budget before creating a pending preview.
 If the model does not call the required tools, the adapter labels the executable
 choice as `adapter_fallback_after_agent_missing_required_tool`, records
 `missing_required_tool_calls`, and sets `required_tool_calls_satisfied = false`
