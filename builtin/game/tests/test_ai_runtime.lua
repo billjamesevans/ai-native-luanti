@@ -6148,6 +6148,7 @@ run_model_adapter_plugin_probe_tests();
 	local captured_adapter_request
 	core.ai_agents_sdk_adapter_plugin.configure({
 		endpoint = "http://127.0.0.1:8766/v1/model-adapter",
+		timeout = 42,
 		fetcher = function(http_request)
 			captured_http_request = table.copy(http_request)
 			captured_adapter_request = core.parse_json(http_request.data)
@@ -6194,9 +6195,11 @@ run_model_adapter_plugin_probe_tests();
 	assert(sdk_probe.reason == "model_response")
 	assert(sdk_probe.config.loopback_endpoint == true)
 	assert(sdk_probe.config.has_fetcher == true)
+	assert(sdk_probe.config.timeout == 42)
 	assert(captured_http_request ~= nil)
 	assert(captured_http_request.url == "http://127.0.0.1:8766/v1/model-adapter")
 	assert(captured_http_request.method == "POST")
+	assert(captured_http_request.timeout == 42)
 	assert(captured_http_request.data ~= nil)
 	assert(captured_http_request.data:find("Should the runtime use a real agent sidecar?", 1, true))
 	assert(captured_adapter_request.schema_version == 1)

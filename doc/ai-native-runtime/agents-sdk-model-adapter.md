@@ -125,6 +125,7 @@ The Lua adapter is disabled by default and is loaded only when:
 
 ```text
 ai_runtime.enable_agents_sdk_adapter = true
+ai_runtime.agents_sdk_adapter_timeout = 60
 ```
 
 For real server use, grant HTTP access to the profile bridge mod, not to
