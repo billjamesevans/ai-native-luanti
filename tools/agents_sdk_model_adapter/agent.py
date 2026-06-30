@@ -434,6 +434,22 @@ def _first_prompt_int(pattern: str, request: str) -> int | None:
     return value if value >= 1 else None
 
 
+def _requested_wall_dimensions(request: str) -> tuple[int, int] | None:
+    if "wall" not in request:
+        return None
+    width = (
+        _first_prompt_int(r"(\d+)\s+(?:wide|width)", request)
+        or _first_prompt_int(r"(?:width|wide)\s+(\d+)", request)
+    )
+    height = (
+        _first_prompt_int(r"(\d+)\s+(?:high|height|tall)", request)
+        or _first_prompt_int(r"(?:height|high|tall)\s+(\d+)", request)
+    )
+    if width is None or height is None:
+        return None
+    return width, height
+
+
 def _positive_tool_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
@@ -661,7 +677,24 @@ def propose_build_option_payload(
         }
 
     option: dict[str, Any] | None = None
-    if "tower" in request or "tall" in request:
+    requested_wall_dimensions = _requested_wall_dimensions(request)
+    if requested_wall_dimensions is not None:
+        width, height = _bounded_generated_dims(
+            requested_wall_dimensions[0],
+            requested_wall_dimensions[1],
+            budget,
+        )
+        option = {
+            "option_id": "generated_dimensioned_wall",
+            "label": "Generated dimensioned wall",
+            "reason": "player specified wall dimensions that need a generated bounded candidate",
+            "build_kind": "wall",
+            "build_width": width,
+            "build_height": height,
+            "build_material_name": "stone",
+            "planned_node_writes": width * height,
+        }
+    elif "tower" in request or "tall" in request:
         width = _first_prompt_int(r"(?:width|wide)\s+(\d+)", request) or 3
         height = (
             _first_prompt_int(r"(?:height|high|tall)\s+(\d+)", request)
@@ -807,6 +840,32 @@ def _find_generated_option(
     return None
 
 
+def _required_generated_option_for_request(
+    player_request: str,
+    generated_options: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    if not generated_options:
+        return None
+    request = str(player_request or "").lower()
+    if _requested_wall_dimensions(request) is not None:
+        return generated_options[0]
+    if any(word in request for word in (
+        "tower",
+        "tall",
+        "bridge",
+        "road",
+        "path",
+        "walkway",
+        "shelter",
+        "house",
+        "base",
+        "floor",
+        "room",
+    )):
+        return generated_options[0]
+    return None
+
+
 def select_build_option_payload(
     candidate_summary: str,
     selected_option_id: str,
@@ -822,6 +881,10 @@ def select_build_option_payload(
     generated = propose_build_option_payload(candidate_summary, player_request)
     generated_option_list = _combined_generated_options(generated, generated_options)
     generated_option = _find_generated_option(generated_option_list, selected_id)
+    required_generated_option = _required_generated_option_for_request(
+        player_request,
+        generated_option_list,
+    )
     selected = next((item for item in candidates if item["option_id"] == selected_id), None)
     decision_source = "agent_selected_build_option"
     locked_option = _locked_build_option_for_request(player_request, candidates)
@@ -862,6 +925,31 @@ def select_build_option_payload(
             "generated_option_status": generated_status,
             "generated_option_reason": generated_reason,
             "generated_option": generated_option if isinstance(generated_option, dict) else None,
+            "requires_preview": True,
+            "requires_approval": True,
+            "requires_rollback": True,
+            "direct_world_mutation": False,
+            "policy": "luanti_executes_only_after_player_approval",
+        }
+
+    if (
+        isinstance(required_generated_option, dict)
+        and selected_id != required_generated_option.get("option_id")
+    ):
+        return {
+            "selected_option_id": None,
+            "selection_status": "rejected",
+            "selection_reason": _bounded_text(selection_reason, 400),
+            "rejection_reason": "selection_violates_player_request_constraints",
+            "required_option_id": required_generated_option.get("option_id"),
+            "required_option_reason": "player_request_requires_generated_option",
+            "candidate_count": len(candidates),
+            "alternatives": alternatives,
+            "decision_source": "agent_selection_rejected",
+            "memory_match": memory,
+            "generated_option_status": "ready",
+            "generated_option_reason": required_generated_option.get("reason"),
+            "generated_option": required_generated_option,
             "requires_preview": True,
             "requires_approval": True,
             "requires_rollback": True,
