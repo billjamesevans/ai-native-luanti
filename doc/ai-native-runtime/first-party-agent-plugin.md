@@ -235,6 +235,10 @@ build output, then reruns the memory refresh with `--operator-labels`. The label
 overlay can only promote build-output cases that `core.ai_agent_plugin.run_prompt_eval`
 can replay; it cannot import private content, raw provider payloads, or direct
 world mutations.
+When the expected build output is known at review time,
+`util/ai_native_agent_feedback_packet.py` is the preferred operator path: it
+builds the candidate queue from logs, writes the reviewed label artifact, and
+refreshes the prompt-memory case pack in one public-safe command.
 
 ## Configuration
 

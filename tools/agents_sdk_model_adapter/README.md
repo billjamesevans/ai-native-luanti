@@ -117,6 +117,24 @@ Unknown prompts stay in manual review until a maintainer supplies a public-safe
 `ai_native_agent_eval_operator_labels` file with a replayable build-output
 expectation.
 
+For a reviewed correction where the expected build output is known, create the
+candidate queue, label artifact, and prompt-memory case pack together:
+
+```bash
+python3 util/ai_native_agent_feedback_packet.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --prompt "build a bridge" \
+  --case-hint stone_bridge_platform \
+  --build-kind platform \
+  --build-material-name stone \
+  --planned-node-writes 12 \
+  --route agentic_build_planner \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --operator-label-output local/benchmarks/ai-agent-operator-labels.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json
+```
+
 Replay adapter-contract failures against the loopback sidecar with:
 
 ```bash

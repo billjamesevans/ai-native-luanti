@@ -553,6 +553,7 @@ class AgentEvalQueueTests(unittest.TestCase):
         bodies = [path.read_text(encoding="utf-8") for path in (README, OPERATING_LOOP, ADAPTER_DOC)]
         combined = "\n".join(bodies)
         self.assertIn("ai_native_agent_eval_queue.py", combined)
+        self.assertIn("ai_native_agent_feedback_packet.py", combined)
         self.assertIn("Agent Improvement Loop", combined)
         self.assertIn("agents-sdk-model-adapter.jsonl", combined)
         self.assertIn("--operator-labels", combined)
