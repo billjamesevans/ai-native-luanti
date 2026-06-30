@@ -143,7 +143,9 @@ def build_report(root: pathlib.Path | str) -> dict:
         for phrase in [
             "provider-neutral",
             "core.ai_model_ops.request",
+            "core.ai_model_ops.request_async",
             "core.ai_agent_plugin.set_model_adapter",
+            "core.ai_agent_plugin.set_model_adapter_async",
             "public_prompt",
             "adapter_payload_rejected",
         ]:
@@ -155,7 +157,15 @@ def build_report(root: pathlib.Path | str) -> dict:
         "status": "pass" if not violations else "fail",
         "contract": {
             "runtime_entrypoint": "core.ai_model_ops.request",
+            "runtime_entrypoints": [
+                "core.ai_model_ops.request",
+                "core.ai_model_ops.request_async",
+            ],
             "agent_plugin_entrypoint": "core.ai_agent_plugin.set_model_adapter",
+            "agent_plugin_entrypoints": [
+                "core.ai_agent_plugin.set_model_adapter",
+                "core.ai_agent_plugin.set_model_adapter_async",
+            ],
             "request_example": REQUEST_EXAMPLE.as_posix(),
             "response_example": RESPONSE_EXAMPLE.as_posix(),
             "request_schema": REQUEST_SCHEMA.as_posix(),

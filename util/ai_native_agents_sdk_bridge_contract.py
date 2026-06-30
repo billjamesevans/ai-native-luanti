@@ -117,7 +117,9 @@ def validate_contract() -> dict:
         "http://127.0.0.1:8766/v1/model-adapter",
         "endpoint_is_loopback",
         "core.ai_agent_plugin.set_model_adapter",
+        "core.ai_agent_plugin.set_model_adapter_async",
         "core.ai_model_ops.request",
+        "core.ai_model_ops.request_async",
         "ai_native_model_adapter_response",
         "sidecar_executes_world_mutation = false",
     ):

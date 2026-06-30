@@ -47,7 +47,9 @@ The plugin uses:
 - `core.ai_player_ops.defend` for bounded defensive actions when a profile grants `combat.defend`.
 - `core.ai_world_ops` indirectly through build and repair task surfaces.
 - `core.ai_entity_ops` for spawning and moving the player's bounded helper entity during one-shot and continuous follow tasks.
-- `core.record_ai_runtime_audit` for model-adapter requests without retaining private prompts.
+- `core.ai_model_ops.request` and `core.ai_model_ops.request_async` for
+  model-adapter requests without retaining private prompts.
+- `core.record_ai_runtime_audit` for model-adapter request/result events.
 - `core.get_ai_runtime_metrics`, `core.get_ai_task`, and `core.get_ai_runtime_audit` for status, task, audit, and rollback-review views.
 
 The plugin does not call raw `core.set_node`, `core.remove_node`, `core.bulk_set_node`, or hard-coded showcase builders.
@@ -155,21 +157,25 @@ approval id, and still requires explicit approval before any rollback-backed
 build or repair task is queued.
 
 Unknown prompts go to the configured model adapter. The adapter boundary is
-explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)`.
-The first-party provider path should be the Agents SDK bridge documented in
+explicit and testable through `core.ai_agent_plugin.set_model_adapter(fn)` for
+sync/offline adapters and `core.ai_agent_plugin.set_model_adapter_async(fn)` for
+live adapters that should not block the server step. The first-party provider
+path should be the Agents SDK bridge documented in
 [`agents-sdk-model-adapter.md`](agents-sdk-model-adapter.md), so unknown
 prompts can become real agent runs with hosted web search and deterministic
 tools while Luanti remains the task, capability, audit, rollback, and mutation
 authority.
 The Lua bridge is explicit opt-in through `ai_runtime.enable_agents_sdk_adapter`
-and uses `/ai_agents_sdk_adapter_probe` for public-safe verification.
+and uses `/ai_agents_sdk_adapter_probe_async` for live public-safe verification.
 
 Nova request traces are intentionally separate from provider payload retention.
 `core.ai_agent_plugin.get_request_traces({ limit = N })` and the chat-facing
 `traces` command keep bounded public prompt/response summaries for debugging bad
 agent behavior. They are meant to answer "why did Nova do that?" after a player
 command, without storing private prompts, raw API responses, credentials, or
-unbounded media data.
+unbounded media data. Async model requests first record a queued trace with a
+trace id, then overwrite that same trace with the final bounded model response
+when the adapter callback returns.
 
 ## Configuration
 
