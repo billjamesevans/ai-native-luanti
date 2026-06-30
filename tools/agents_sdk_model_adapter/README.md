@@ -145,6 +145,27 @@ python3 util/ai_native_agent_review_queue.py \
   --output local/benchmarks/ai-agent-review-queue.json
 ```
 
+After the review queue is refreshed, build one pass/attention/fail quality gate
+artifact for the agent loop:
+
+```bash
+python3 util/ai_native_agent_adapter_contract_eval.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-adapter-contract-eval.json \
+  --endpoint http://127.0.0.1:8766/v1/model-adapter
+
+python3 util/ai_native_agent_quality_gate.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --case-pack local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --review-queue local/benchmarks/ai-agent-review-queue.json \
+  --adapter-contract-eval local/benchmarks/ai-agent-adapter-contract-eval.json \
+  --output local/benchmarks/ai-agent-quality-gate.json
+```
+
+The quality gate is intentionally artifact-only: it does not mutate the world,
+does not include provider prompts or credentials, and treats unresolved review
+items as `attention` while treating adapter-contract replay failures as `fail`.
+
 For a reviewed correction where the expected build output is known, create the
 candidate queue, label artifact, and prompt-memory case pack together:
 
