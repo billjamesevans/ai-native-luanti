@@ -361,6 +361,14 @@ class AgentEvalQueueTests(unittest.TestCase):
             contract["expected"]["tool_decision_source"],
             "agents_sdk_function_tool",
         )
+        replay_request = candidate["adapter_replay_request"]
+        self.assertEqual(replay_request["request_kind"], "ai_native_model_adapter_request")
+        self.assertEqual(replay_request["adapter_contract"], "provider_neutral_v1")
+        self.assertEqual(replay_request["context"]["intent"], "build_planning")
+        self.assertEqual(replay_request["context"]["player_request"], "build me a tower")
+        self.assertIn("candidate_summary", replay_request["context"])
+        self.assertTrue(replay_request["safety"]["public_safe_request"])
+        self.assertFalse(PRIVATE_PATTERNS.search(json.dumps(replay_request, sort_keys=True)))
 
     def test_queue_counts_adapter_contract_failures(self):
         module = load_queue_module()
