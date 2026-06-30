@@ -200,13 +200,28 @@ def _base_candidate(source_kind: str, observed_at: str | None, prompt: str) -> d
     }
 
 
+def _agents_sdk_candidate_prompt(request: dict[str, Any]) -> tuple[str | None, str]:
+    context = request.get("context") if isinstance(request.get("context"), dict) else {}
+    player_request = context.get("player_request")
+    if isinstance(player_request, str) and player_request.strip():
+        return player_request, "context.player_request"
+    public_prompt = request.get("public_prompt")
+    if isinstance(public_prompt, str) and public_prompt.strip():
+        return public_prompt, "request.public_prompt"
+    return None, "missing"
+
+
 def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | None:
     request = entry.get("request") if isinstance(entry.get("request"), dict) else {}
     response = entry.get("response") if isinstance(entry.get("response"), dict) else {}
-    prompt = request.get("public_prompt")
+    prompt, prompt_source = _agents_sdk_candidate_prompt(request)
     if not isinstance(prompt, str) or not prompt.strip():
         return None
     nested = response.get("response") if isinstance(response.get("response"), dict) else {}
+    tool_decisions = nested.get("tool_decisions") if isinstance(nested.get("tool_decisions"), dict) else {}
+    build_option = tool_decisions.get("build_option") if isinstance(tool_decisions.get("build_option"), dict) else {}
+    memory_match = build_option.get("memory_match") if isinstance(build_option.get("memory_match"), dict) else {}
+    tool_trace = nested.get("tool_trace") if isinstance(nested.get("tool_trace"), list) else []
     candidate = _base_candidate(
         "agents_sdk_request_response",
         safe_scalar(entry.get("created_at")),
@@ -218,6 +233,7 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
         "task_id": safe_scalar(request.get("task_id")),
         "route": "model_adapter_async",
         "action": "model",
+        "prompt_source": prompt_source,
         "observed_ok": response.get("ok") is True,
         "observed_status": "success" if response.get("ok") is True else "failed",
         "observed_reason": safe_scalar(response.get("reason")),
@@ -226,10 +242,21 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             "adapter_name": safe_scalar(response.get("adapter_name")),
             "agentic_execution": nested.get("agentic_execution"),
             "world_mutation_authority": safe_scalar(nested.get("world_mutation_authority")),
+            "selected_option_id": safe_scalar(nested.get("selected_option_id")),
+            "tool_decision_source": safe_scalar(nested.get("tool_decision_source")),
+            "build_option_decision_source": safe_scalar(build_option.get("decision_source")),
+            "build_option_selected_option_id": safe_scalar(build_option.get("selected_option_id")),
+            "memory_available": memory_match.get("memory_available"),
+            "memory_matched_case_id": safe_scalar(memory_match.get("matched_case_id")),
             "tools_enabled": [
                 bounded_text(item, 80)
                 for item in nested.get("tools_enabled", [])
                 if isinstance(item, str)
+            ][:8],
+            "tool_trace_names": [
+                bounded_text(item.get("tool_name"), 80)
+                for item in tool_trace
+                if isinstance(item, dict) and isinstance(item.get("tool_name"), str)
             ][:8],
         },
     })
