@@ -15,11 +15,12 @@ Defender, and Importer role agents. In this clean profile, Builder, Repair,
 and Guide can receive only their relevant clean grants; Defender does not get
 `combat.defend`, and Importer does not get `import.assets` by default.
 The profile also registers simple code-only fire and TNT nodes so `/nova build
-a fire` and `/nova build a wall of tnt` exercise the real build planner,
-approval, rollback, and trace paths without requiring private content or a
-larger game package. The prompt-eval verifier treats these as exact behavior
-contracts: fire must preview exactly one node write, and the default TNT wall
-must preview exactly twelve node writes.
+a fire`, `/nova build me a fire and only a fire`, and `/nova build a wall of
+tnt` exercise the real build planner, approval, rollback, and trace paths
+without requiring private content or a larger game package. The prompt-eval
+verifier treats these as exact behavior contracts: both fire prompts must
+preview exactly one node write, and the default TNT wall must preview exactly
+twelve node writes.
 Ambiguous build prompts such as `/nova build a small shelter` route through the
 agentic build planner, which presents bounded executable candidates, can ask the
 Agents SDK sidecar for guidance, and still requires approval before mutation.
@@ -33,6 +34,8 @@ the builtin Agents SDK adapter when a server explicitly enables that adapter.
 Server operators must still grant HTTP access with `secure.http_mods` and run a
 loopback sidecar with server-local secrets outside the repository. The sidecar
 returns bounded model-adapter responses; the engine remains the only world
-mutation authority.
+mutation authority. Operators can enable `AI_NATIVE_AGENT_LOG_PATH` on the
+sidecar service to retain public-safe JSONL request/response logs for reviewing
+bad agent behavior.
 
 Runtime unit tests, synthetic smoke scenarios, and benchmark fixtures stay outside this profile. Use this profile for disposable local worlds and future low-power proving-ground checks after the one-command verification harness passes.

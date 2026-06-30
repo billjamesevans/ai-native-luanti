@@ -62,7 +62,8 @@ builtin/game/ai_agents_sdk_adapter_plugin.lua
 Important files:
 
 - `agent.py`: Agents SDK adapter, tools, offline smoke path, and response
-  envelope conversion.
+  envelope conversion. When `AI_NATIVE_AGENT_LOG_PATH` is set, it appends
+  bounded public-safe JSONL request/response entries for post-incident review.
 - `main.py`: HTTP service with `GET /health` and `POST /v1/model-adapter`.
 - `pyproject.toml`: declares `openai-agents`.
 
@@ -82,6 +83,10 @@ uv run python main.py --host 127.0.0.1 --port 8766
 
 Live mode requires `OPENAI_API_KEY`. The key belongs in server-local secret
 configuration, never in the repository, runtime manifests, or public evidence.
+Set `AI_NATIVE_AGENT_LOG_PATH=/path/to/agents-sdk-model-adapter.jsonl` to retain
+public-safe sidecar request/response logs. The log records the public prompt,
+safe context, status, reason, elapsed time, and tool metadata; it drops private
+prompt fields, provider raw payloads, credentials, headers, and asset payloads.
 
 Managed readiness probe, without provider credentials:
 
@@ -118,6 +123,11 @@ and requires provider-backed `agentic_execution = true`,
 bounded public-safe response metadata, and `world_mutation_authority = luanti`.
 It is the evidence path for proving the sidecar is actually running Agents SDK
 agents with hosted web lookup instead of only publishing the offline contract.
+The Pi fork deploy script sets the live sidecar log to:
+
+```text
+/opt/ai-native-luanti/logs/agents-sdk-model-adapter.jsonl
+```
 
 ## Luanti Adapter
 

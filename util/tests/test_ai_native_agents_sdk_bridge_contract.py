@@ -1,7 +1,10 @@
 import importlib.util
+import json
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -64,6 +67,42 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(result["requires_rollback"])
         self.assertFalse(result["direct_world_mutation"])
         self.assertEqual(result["policy"], "luanti_executes_only_after_player_approval")
+
+    def test_request_response_log_is_public_safe_jsonl(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = pathlib.Path(tmpdir) / "agents-sdk-model-adapter.jsonl"
+            old_log_path = os.environ.get("AI_NATIVE_AGENT_LOG_PATH")
+            os.environ["AI_NATIVE_AGENT_LOG_PATH"] = str(log_path)
+            try:
+                request = module.sample_request()
+                request["context"]["private_prompt"] = "must-not-log"
+                request["context"]["api_key"] = "must-not-log"
+                response = module.run_model_adapter_request(request, force_offline=True)
+            finally:
+                if old_log_path is None:
+                    os.environ.pop("AI_NATIVE_AGENT_LOG_PATH", None)
+                else:
+                    os.environ["AI_NATIVE_AGENT_LOG_PATH"] = old_log_path
+
+            self.assertTrue(response["ok"])
+            lines = log_path.read_text(encoding="utf-8").splitlines()
+            self.assertEqual(len(lines), 1)
+            entry = json.loads(lines[0])
+            raw_entry = json.dumps(entry, sort_keys=True)
+            self.assertEqual(entry["event_kind"], "ai_native_agents_sdk_request_response")
+            self.assertEqual(entry["adapter_name"], "openai-agents-sdk-model-adapter")
+            self.assertEqual(entry["request"]["request_kind"], "ai_native_model_adapter_request")
+            self.assertEqual(entry["response"]["response_kind"], "ai_native_model_adapter_response")
+            self.assertNotIn("must-not-log", raw_entry)
+            self.assertNotIn("OPENAI_API_KEY", raw_entry)
+            self.assertNotIn("private_prompt", raw_entry)
+            self.assertNotIn("api_key", entry["request"]["context"])
 
     def test_cli_contract_passes(self):
         completed = subprocess.run(

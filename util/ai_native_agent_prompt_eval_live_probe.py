@@ -156,6 +156,7 @@ def write_probe_world(
             "    cases_failed = #(report.cases or {}) - passed,",
             "    case_ids = {",
             "      build_fire = cases.build_fire ~= nil,",
+            "      fire_only_strict = cases.fire_only_strict ~= nil,",
             "      tnt_wall = cases.tnt_wall ~= nil,",
             "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
             "      model = cases.model ~= nil,",
@@ -238,6 +239,7 @@ def write_probe_world(
             "      cases_passed = eval.cases_passed,",
             "      cases_failed = eval.cases_failed,",
             "      build_fire_checked = eval.case_ids.build_fire == true,",
+            "      fire_only_strict_checked = eval.case_ids.fire_only_strict == true,",
             "      tnt_wall_checked = eval.case_ids.tnt_wall == true,",
             "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
             "      model_checked = eval.case_ids.model == true,",
@@ -389,12 +391,12 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 4:
+    if prompt_eval.get("cases_total") != 5:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 4 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 5 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
-    for case_id in ("build_fire", "tnt_wall", "agentic_build_planner", "model"):
+    for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner", "model"):
         if case_ids.get(case_id) is not True:
             raise ValueError(f"agent prompt eval missing {case_id}")
 
@@ -410,6 +412,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     }
     if cases:
         fire = case_map.get("build_fire", {})
+        fire_only = case_map.get("fire_only_strict", {})
         tnt = case_map.get("tnt_wall", {})
         planner = case_map.get("agentic_build_planner", {})
         model = case_map.get("model", {})
@@ -419,6 +422,16 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval fire material is invalid")
         if fire.get("planned_node_writes") != 1:
             raise ValueError("agent prompt eval fire must plan exactly one node write")
+        if fire_only.get("status") != "pass" or fire_only.get("build_kind") != "fire":
+            raise ValueError("agent prompt eval fire-only strict case is invalid")
+        if fire_only.get("prompt") != "build me a fire and only a fire":
+            raise ValueError("agent prompt eval fire-only strict prompt is invalid")
+        if fire_only.get("build_material_name") != "fire":
+            raise ValueError("agent prompt eval fire-only strict material is invalid")
+        if fire_only.get("planned_node_writes") != 1:
+            raise ValueError("agent prompt eval fire-only strict must plan exactly one node write")
+        if fire_only.get("route") != "deterministic_build_parser":
+            raise ValueError("agent prompt eval fire-only strict route is invalid")
         if tnt.get("status") != "pass" or tnt.get("build_kind") != "wall":
             raise ValueError("agent prompt eval TNT wall case is invalid")
         if tnt.get("build_material_name") != "tnt":
@@ -443,9 +456,15 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval model route is not async")
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 4 or summary.get("cases_passed") != 4:
+    if summary.get("cases_total") != 5 or summary.get("cases_passed") != 5:
         raise ValueError("agent prompt eval summary case counts are invalid")
-    for field in ("build_fire_checked", "tnt_wall_checked", "agentic_build_planner_checked", "model_checked"):
+    for field in (
+        "build_fire_checked",
+        "fire_only_strict_checked",
+        "tnt_wall_checked",
+        "agentic_build_planner_checked",
+        "model_checked",
+    ):
         _require_bool(summary, field)
     if summary.get("model_adapter_requests") != 2:
         raise ValueError("agent prompt eval model adapter request count is invalid")
@@ -486,10 +505,12 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_cases": summary["cases_total"],
         "agent_prompt_eval_passed": summary["cases_passed"],
         "agent_prompt_eval_build_fire_checked": True,
+        "agent_prompt_eval_fire_only_strict_checked": True,
         "agent_prompt_eval_tnt_wall_checked": True,
         "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_model_checked": True,
         "agent_prompt_eval_fire_planned_node_writes": 1,
+        "agent_prompt_eval_fire_only_strict_planned_node_writes": 1,
         "agent_prompt_eval_tnt_wall_planned_node_writes": 12,
         "agent_prompt_eval_agentic_build_planner_planned_node_writes": 4,
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],

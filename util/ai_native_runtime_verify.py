@@ -1678,7 +1678,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "Operator status uses a disposable ai_runtime live command probe by default.",
             "First-party agent product-loop proof uses a disposable ai_runtime world and synthetic public nodes.",
             "Compatibility import pilot runs public-safe inventory, dry-run, reviewed staging apply, rollback, and refusal gates in a disposable ai_runtime world.",
-            "Nova prompt eval runs /ai_agent_eval for fire, TNT wall, agentic build-planner, and async model-adapter regression coverage.",
+            "Nova prompt eval runs /ai_agent_eval for fire, strict fire-only, TNT wall, agentic build-planner, and async model-adapter regression coverage.",
         ]
         + (
             [
