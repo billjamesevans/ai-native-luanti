@@ -17,6 +17,7 @@ import ai_native_agent_eval_promote as eval_promote
 import ai_native_agent_eval_queue as eval_queue
 import ai_native_agent_prompt_eval_live_probe as prompt_eval_live_probe
 import ai_native_agent_review_queue as review_queue
+import ai_native_compat_import_staging_pilot as compat_import_staging_pilot
 
 
 REPORT_KIND = "ai_native_agent_quality_gate"
@@ -124,17 +125,20 @@ def build_quality_gate(
     review: dict[str, Any],
     adapter_eval: dict[str, Any] | None = None,
     live_prompt_eval: dict[str, Any] | None = None,
+    compat_import_pilot: dict[str, Any] | None = None,
     generated_at: str | None = None,
     candidate_queue_path: str | None = None,
     case_pack_path: str | None = None,
     review_queue_path: str | None = None,
     adapter_contract_eval_path: str | None = None,
     live_prompt_eval_path: str | None = None,
+    compat_import_pilot_path: str | None = None,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> dict[str, Any]:
     generated_at = generated_at or utc_now()
     adapter_eval = adapter_eval or {}
     live_prompt_eval = live_prompt_eval or {}
+    compat_import_pilot = compat_import_pilot or {}
     violations: list[dict[str, str]] = []
     attention: list[dict[str, Any]] = []
 
@@ -156,6 +160,7 @@ def build_quality_gate(
         ("review_queue", review),
         ("adapter_contract_eval", adapter_eval),
         ("live_prompt_eval", live_prompt_eval),
+        ("compat_import_staging_pilot", compat_import_pilot),
     ):
         if payload and _artifact_private(payload):
             violations.append({"kind": f"{name}_not_public_safe", "details": "private or forbidden content"})
@@ -231,6 +236,20 @@ def build_quality_gate(
         else:
             live_prompt_eval_status = "pass"
 
+    compat_import_status = None
+    compat_import_evidence: dict[str, Any] = {}
+    if compat_import_pilot:
+        try:
+            compat_import_evidence = compat_import_staging_pilot.validate_live_result(compat_import_pilot)
+        except ValueError as exc:
+            compat_import_status = "fail"
+            violations.append({
+                "kind": "compat_import_staging_pilot_not_passing",
+                "details": bounded_text(exc, 240) or "invalid compat import staging pilot",
+            })
+        else:
+            compat_import_status = "pass"
+
     status = "pass"
     if attention:
         status = "attention"
@@ -248,6 +267,7 @@ def build_quality_gate(
             "review_queue_path": review_queue_path,
             "adapter_contract_eval_path": adapter_contract_eval_path,
             "live_prompt_eval_path": live_prompt_eval_path,
+            "compat_import_staging_pilot_path": compat_import_pilot_path,
         },
         "summary": {
             "candidate_queue_status": bounded_text(candidate_queue.get("status"), 80),
@@ -255,6 +275,7 @@ def build_quality_gate(
             "review_queue_status": bounded_text(review.get("status"), 80),
             "adapter_contract_eval_status": bounded_text(adapter_eval_status, 80),
             "live_prompt_eval_status": bounded_text(live_prompt_eval_status, 80),
+            "compat_import_staging_pilot_status": bounded_text(compat_import_status, 80),
             "live_prompt_eval_cases_total": _int(live_prompt_summary.get("cases_total")),
             "live_prompt_eval_cases_passed": _int(live_prompt_summary.get("cases_passed")),
             "live_prompt_eval_cases_failed": _int(live_prompt_summary.get("cases_failed")),
@@ -275,6 +296,16 @@ def build_quality_gate(
             "verified_live_probe_cases_read": _int(candidate_summary.get("verified_live_probe_cases_read")),
             "operator_feedback_events_read": _int(candidate_summary.get("operator_feedback_events_read")),
             "operator_labels_applied": _int(candidate_summary.get("operator_labels_applied")),
+            "compat_import_node_writes": _int(compat_import_evidence.get("compat_import_node_writes")),
+            "compat_import_mapblock_churn": _int(compat_import_evidence.get("compat_import_mapblock_churn")),
+            "compat_import_apply_chunks": _int(compat_import_evidence.get("compat_import_apply_chunks")),
+            "compat_import_refusal_gates": _int(compat_import_evidence.get("compat_import_refusal_gates")),
+            "compat_import_rollback_records": _int(compat_import_evidence.get("compat_import_rollback_records")),
+            "compat_import_world_mutation": compat_import_evidence.get("compat_import_world_mutation"),
+            "compat_import_mutation_scope": bounded_text(
+                compat_import_evidence.get("compat_import_mutation_scope"),
+                120,
+            ),
         },
         "attention": attention,
         "violations": violations,
@@ -326,6 +357,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--review-queue", required=True, help="Agent review queue JSON path.")
     parser.add_argument("--adapter-contract-eval", default=None, help="Optional adapter-contract replay result JSON path.")
     parser.add_argument("--live-prompt-eval", default=None, help="Optional latest live prompt-eval probe result JSON path.")
+    parser.add_argument(
+        "--compat-import-staging-pilot",
+        default=None,
+        help="Optional compatibility import staging pilot JSON path.",
+    )
     parser.add_argument("--output", required=True, help="Output quality-gate JSON path.")
     parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
@@ -346,6 +382,10 @@ def main(argv: list[str] | None = None) -> int:
         resolve_path(root, args.live_prompt_eval)
         if args.live_prompt_eval else None
     )
+    compat_import_pilot_path = (
+        resolve_path(root, args.compat_import_staging_pilot)
+        if args.compat_import_staging_pilot else None
+    )
     output = resolve_path(root, args.output)
 
     payloads: dict[str, dict[str, Any]] = {}
@@ -356,6 +396,7 @@ def main(argv: list[str] | None = None) -> int:
         ("review_queue", review_queue_path),
         ("adapter_contract_eval", adapter_contract_eval_path),
         ("live_prompt_eval", live_prompt_eval_path),
+        ("compat_import_staging_pilot", compat_import_pilot_path),
     ):
         if path is None:
             payloads[name] = {}
@@ -371,12 +412,14 @@ def main(argv: list[str] | None = None) -> int:
         review=payloads["review_queue"],
         adapter_eval=payloads["adapter_contract_eval"],
         live_prompt_eval=payloads["live_prompt_eval"],
+        compat_import_pilot=payloads["compat_import_staging_pilot"],
         generated_at=args.generated_at,
         candidate_queue_path=relative_label(root, candidate_queue_path),
         case_pack_path=relative_label(root, case_pack_path),
         review_queue_path=relative_label(root, review_queue_path),
         adapter_contract_eval_path=relative_label(root, adapter_contract_eval_path),
         live_prompt_eval_path=relative_label(root, live_prompt_eval_path),
+        compat_import_pilot_path=relative_label(root, compat_import_pilot_path),
         max_bytes=max(1000, args.max_bytes),
     )
     if load_errors:
@@ -392,6 +435,7 @@ def main(argv: list[str] | None = None) -> int:
         "review_queue_status": report.get("summary", {}).get("review_queue_status"),
         "adapter_contract_eval_status": report.get("summary", {}).get("adapter_contract_eval_status"),
         "live_prompt_eval_status": report.get("summary", {}).get("live_prompt_eval_status"),
+        "compat_import_staging_pilot_status": report.get("summary", {}).get("compat_import_staging_pilot_status"),
     }, sort_keys=True))
     return 1 if report.get("status") == "fail" else 0
 

@@ -9,6 +9,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 QUALITY_GATE = ROOT / "util" / "ai_native_agent_quality_gate.py"
+COMPAT_PILOT_TEST = ROOT / "util" / "tests" / "test_ai_native_compat_import_staging_pilot.py"
 
 
 def load_quality_gate_module():
@@ -16,6 +17,18 @@ def load_quality_gate_module():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def compat_import_staging_pilot_payload(**overrides):
+    spec = importlib.util.spec_from_file_location(
+        "ai_native_compat_import_staging_pilot_fixture",
+        COMPAT_PILOT_TEST,
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    payload = module.sample_payload()
+    payload.update(overrides)
+    return payload
 
 
 def candidate_queue_payload(**overrides):
@@ -298,6 +311,50 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["status"], "fail")
         self.assertTrue(any(item["kind"] == "live_prompt_eval_not_passing" for item in report["violations"]))
 
+    def test_compat_import_staging_pilot_pass_is_recorded(self):
+        module = load_quality_gate_module()
+
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            live_prompt_eval=live_prompt_eval_payload(),
+            compat_import_pilot=compat_import_staging_pilot_payload(),
+            generated_at="2026-06-30T18:05:00Z",
+        )
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["compat_import_staging_pilot_status"], "pass")
+        self.assertEqual(report["summary"]["compat_import_node_writes"], 18)
+        self.assertEqual(report["summary"]["compat_import_mapblock_churn"], 10)
+        self.assertEqual(report["summary"]["compat_import_refusal_gates"], 5)
+        self.assertEqual(
+            report["summary"]["compat_import_mutation_scope"],
+            "disposable_synthetic_ai_runtime_staging_world",
+        )
+
+    def test_compat_import_staging_pilot_failure_fails_gate(self):
+        module = load_quality_gate_module()
+        failed_pilot = compat_import_staging_pilot_payload()
+        failed_pilot["benchmark_coverage"]["actual_node_writes"] = 17
+
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            live_prompt_eval=live_prompt_eval_payload(),
+            compat_import_pilot=failed_pilot,
+            generated_at="2026-06-30T18:05:00Z",
+        )
+
+        self.assertEqual(report["status"], "fail")
+        self.assertTrue(any(
+            item["kind"] == "compat_import_staging_pilot_not_passing"
+            for item in report["violations"]
+        ))
+
     def test_review_queue_attention_keeps_gate_attention_not_fail(self):
         module = load_quality_gate_module()
 
@@ -373,12 +430,14 @@ class AgentQualityGateTests(unittest.TestCase):
             review_queue = root / "review-queue.json"
             adapter_eval = root / "adapter-contract-eval.json"
             live_eval = root / "live-prompt-eval.json"
+            compat_pilot = root / "compat-import-staging-pilot.json"
             output = root / "quality-gate.json"
             candidate_queue.write_text(json.dumps(candidate_queue_payload()), encoding="utf-8")
             case_pack.write_text(json.dumps(case_pack_payload()), encoding="utf-8")
             review_queue.write_text(json.dumps(review_queue_payload()), encoding="utf-8")
             adapter_eval.write_text(json.dumps(adapter_eval_payload()), encoding="utf-8")
             live_eval.write_text(json.dumps(live_prompt_eval_payload()), encoding="utf-8")
+            compat_pilot.write_text(json.dumps(compat_import_staging_pilot_payload()), encoding="utf-8")
 
             completed = subprocess.run(
                 [
@@ -396,6 +455,8 @@ class AgentQualityGateTests(unittest.TestCase):
                     str(adapter_eval),
                     "--live-prompt-eval",
                     str(live_eval),
+                    "--compat-import-staging-pilot",
+                    str(compat_pilot),
                     "--output",
                     str(output),
                     "--generated-at",
@@ -412,6 +473,7 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
         self.assertEqual(summary["quality_gate_status"], "pass")
         self.assertEqual(summary["live_prompt_eval_status"], "pass")
+        self.assertEqual(summary["compat_import_staging_pilot_status"], "pass")
         self.assertEqual(report["status"], "pass")
 
 

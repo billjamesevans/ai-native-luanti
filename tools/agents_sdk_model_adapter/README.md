@@ -160,19 +160,27 @@ python3 util/ai_native_agent_adapter_contract_eval.py \
   --output local/benchmarks/ai-agent-adapter-contract-eval.json \
   --endpoint http://127.0.0.1:8766/v1/model-adapter
 
+python3 util/ai_native_compat_import_staging_pilot.py \
+  --root . \
+  --server-bin bin/luantiserver \
+  --output local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json
+
 python3 util/ai_native_agent_quality_gate.py \
   --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack local/benchmarks/ai-agent-prompt-eval-case-pack.json \
   --review-queue local/benchmarks/ai-agent-review-queue.json \
   --adapter-contract-eval local/benchmarks/ai-agent-adapter-contract-eval.json \
   --live-prompt-eval local/benchmarks/ai-agent-prompt-eval-live-latest.json \
+  --compat-import-staging-pilot local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json \
   --output local/benchmarks/ai-agent-quality-gate.json
 ```
 
 The quality gate is intentionally artifact-only: it does not mutate the world,
 does not include provider prompts or credentials, and treats unresolved review
 items as `attention` while treating adapter-contract replay failures or a failed
-latest live prompt eval as `fail`.
+latest live prompt eval as `fail`. When supplied, the compatibility staging pilot
+must also pass: it proves dry-run import planning, bounded disposable-world apply,
+rollback, and refusal gates without touching the family server or private assets.
 
 For a reviewed correction where the expected build output is known, create the
 candidate queue, label artifact, and prompt-memory case pack together:
