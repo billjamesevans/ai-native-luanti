@@ -37,6 +37,7 @@ def build_memory_artifacts(
     agents_sdk_logs: list[Path] | None = None,
     nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
+    verified_live_probe_paths: list[Path] | None = None,
     operator_label_files: list[Path] | None = None,
     from_operator_feedback: bool = False,
     feedback_id: str | None = None,
@@ -65,6 +66,7 @@ def build_memory_artifacts(
         agents_sdk_logs=agents_sdk_logs or [],
         nova_agent_logs=nova_agent_logs or [],
         action_logs=action_logs or [],
+        verified_live_probe_paths=verified_live_probe_paths or [],
         operator_label_files=operator_label_files or [],
         operator_label_payloads=operator_label_payloads,
         generated_at=generated_at,
@@ -91,6 +93,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
     parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
+    parser.add_argument("--verified-live-probe", action="append", default=[], help="Verified Nova auto-apply live probe JSON file or directory.")
     parser.add_argument("--operator-labels", action="append", default=[], help="Reviewed operator label JSON path.")
     parser.add_argument(
         "--from-operator-feedback",
@@ -114,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
     agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
     nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
     action_logs = [resolve_path(root, path) for path in args.action_log]
+    verified_live_probe_paths = [resolve_path(root, path) for path in args.verified_live_probe]
     operator_label_files = [resolve_path(root, path) for path in args.operator_labels]
     candidate_queue_output = resolve_path(root, args.candidate_queue_output)
     case_pack_output = resolve_path(root, args.case_pack_output)
@@ -122,6 +126,7 @@ def main(argv: list[str] | None = None) -> int:
         agents_sdk_logs=agents_sdk_logs,
         nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
+        verified_live_probe_paths=verified_live_probe_paths,
         operator_label_files=operator_label_files,
         from_operator_feedback=args.from_operator_feedback,
         feedback_id=args.feedback_id,
@@ -155,6 +160,15 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "operator_feedback_labels_generated": candidate_queue.get("source_summary", {}).get(
             "operator_feedback_labels_generated", 0
+        ),
+        "verified_live_probe_files_read": candidate_queue.get("source_summary", {}).get(
+            "verified_live_probe_files_read", 0
+        ),
+        "verified_live_probe_cases_read": candidate_queue.get("source_summary", {}).get(
+            "verified_live_probe_cases_read", 0
+        ),
+        "verified_live_probe_candidates_added": candidate_queue.get("source_summary", {}).get(
+            "verified_live_probe_candidates_added", 0
         ),
         "case_pack": relative_label(root, case_pack_output),
         "case_pack_status": case_pack.get("status"),

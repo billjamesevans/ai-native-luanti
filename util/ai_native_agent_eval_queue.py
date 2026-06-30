@@ -16,6 +16,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_KIND = "ai_native_agent_eval_candidate_queue"
 OPERATOR_LABEL_KIND = "ai_native_agent_eval_operator_labels"
+VERIFIED_LIVE_PROBE_KIND = "disposable_live_ai_runtime_nova_auto_apply_probe"
+VERIFIED_LIVE_RESULT_KIND = "ai_native_nova_auto_apply_live_result"
 DEFAULT_MAX_BYTES = 32000
 DEFAULT_MAX_CANDIDATES = 50
 
@@ -285,7 +287,10 @@ def generated_option_from_tool_trace(tool_trace: Any) -> dict[str, Any]:
 
 
 def generated_expected_outcome(candidate: dict[str, Any], observed: dict[str, Any]) -> dict[str, Any] | None:
-    if candidate.get("source_kind") != "agents_sdk_request_response":
+    if candidate.get("source_kind") not in {
+        "agents_sdk_request_response",
+        VERIFIED_LIVE_PROBE_KIND,
+    }:
         return None
     selected_id = observed.get("selected_option_id") or observed.get("build_option_selected_option_id")
     if not isinstance(selected_id, str) or not selected_id.startswith("generated_"):
@@ -444,6 +449,7 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
     lower = prompt.lower()
     observed = candidate.get("observed") if isinstance(candidate.get("observed"), dict) else {}
     route = candidate.get("route") or observed.get("route")
+    verified_live_probe = candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND
 
     if "fire" in lower and "only" in lower:
         return {
@@ -455,7 +461,7 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
                 "build_kind": "fire",
                 "build_material_name": "fire",
                 "planned_node_writes": 1,
-                "route": "deterministic_build_parser",
+                "route": "agentic_build_planner" if verified_live_probe else "deterministic_build_parser",
                 "forbidden_extra_structure": True,
             },
         }
@@ -931,6 +937,226 @@ def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any]
     return finalize_candidate(candidate)
 
 
+def _path_list_from_live_probe_inputs(paths: list[Path]) -> list[Path]:
+    result: list[Path] = []
+    for path in paths:
+        if path.is_dir():
+            result.extend(sorted(child for child in path.glob("*.json") if child.is_file()))
+        else:
+            result.append(path)
+    return result
+
+
+def _live_probe_checks_pass(case: dict[str, Any]) -> bool:
+    checks = case.get("checks")
+    if not isinstance(checks, dict) or not checks:
+        return False
+    return all(value is True for value in checks.values())
+
+
+def _tool_trace_contains(tool_trace_names: list[str], required: list[str]) -> bool:
+    cursor = 0
+    for name in tool_trace_names:
+        if cursor < len(required) and name == required[cursor]:
+            cursor += 1
+    return cursor == len(required)
+
+
+def candidate_from_verified_live_probe_case(
+    payload: dict[str, Any],
+    case: dict[str, Any],
+) -> dict[str, Any] | None:
+    if payload.get("live_result_kind") != VERIFIED_LIVE_RESULT_KIND:
+        return None
+    if payload.get("ok") is not True or payload.get("status") != "pass":
+        return None
+    if case.get("ok") is not True or case.get("status") != "pass":
+        return None
+    if not _live_probe_checks_pass(case):
+        return None
+
+    prompt = case.get("prompt")
+    reply = case.get("reply") if isinstance(case.get("reply"), dict) else {}
+    trace = case.get("trace") if isinstance(case.get("trace"), dict) else {}
+    if not isinstance(prompt, str) or not prompt.strip():
+        return None
+    if reply.get("ok") is not True:
+        return None
+    if reply.get("action") != "build" or reply.get("status") != "queued":
+        return None
+    if reply.get("planner_mode") != "agentic_model_adapter":
+        return None
+    if reply.get("approved_action") != "build" or reply.get("auto_applied_approval") is not True:
+        return None
+    if reply.get("selected_candidate_id") != case.get("expected_candidate"):
+        return None
+    if reply.get("adapter_tool_decision_source") != "agents_sdk_function_tool":
+        return None
+    if reply.get("adapter_required_tool_calls_satisfied") is not True:
+        return None
+    missing_required = safe_string_list(reply.get("adapter_missing_required_tool_calls"))
+    if missing_required:
+        return None
+    if reply.get("adapter_build_action_plan_status") != "ready":
+        return None
+    if reply.get("adapter_build_action_plan_world_mutation_authority") != "luanti":
+        return None
+
+    expected_writes = safe_int(case.get("expected_writes"), minimum=0)
+    planned_writes = safe_int(reply.get("planned_node_writes"), minimum=0)
+    if expected_writes is not None and planned_writes != expected_writes:
+        return None
+    if not isinstance(reply.get("build_kind"), str) or not reply.get("build_kind"):
+        return None
+    if not isinstance(reply.get("build_material_name"), str) or not reply.get("build_material_name"):
+        return None
+
+    tool_trace_names = safe_string_list(reply.get("adapter_tool_trace_names"), max_items=12)
+    selected_id = safe_scalar(reply.get("selected_candidate_id"))
+    required_tools = ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"]
+    generated_status = None
+    if isinstance(selected_id, str) and selected_id.startswith("generated_"):
+        required_tools = [
+            "recall_build_prompt_memory",
+            "propose_build_option",
+            "select_build_option",
+            "plan_build_actions",
+        ]
+        if reply.get("agentic_tool_success_required") is False:
+            return None
+        if reply.get("generated_candidate_id") != selected_id:
+            return None
+        if reply.get("generated_build_option_status") not in {"ready", "validated"}:
+            return None
+        generated_status = "ready"
+    if not _tool_trace_contains(tool_trace_names, required_tools):
+        return None
+
+    candidate = _base_candidate(
+        VERIFIED_LIVE_PROBE_KIND,
+        safe_scalar(payload.get("generated_at")),
+        prompt,
+    )
+    candidate.update({
+        "owner": "LiveProbe",
+        "agent_id": "nova_agent:live_probe",
+        "task_id": safe_scalar(case.get("case_id")),
+        "route": safe_scalar(trace.get("route") or "agentic_build_planner"),
+        "action": "build",
+        "prompt_source": "verified_live_probe.case.prompt",
+        "observed_ok": True,
+        "observed_status": "queued",
+        "observed_reason": None,
+        "observed": {
+            "action": "build",
+            "status": "queued",
+            "route": safe_scalar(trace.get("route") or "agentic_build_planner"),
+            "build_kind": safe_scalar(reply.get("build_kind")),
+            "build_material_name": safe_scalar(reply.get("build_material_name")),
+            "build_material_node": safe_scalar(reply.get("build_material_node")),
+            "build_width": safe_int(reply.get("build_width"), minimum=1),
+            "build_depth": safe_int(reply.get("build_depth"), minimum=1),
+            "build_height": safe_int(reply.get("build_height"), minimum=1),
+            "build_count": safe_int(reply.get("build_count"), minimum=1),
+            "planned_node_writes": planned_writes,
+            "planner_mode": "agentic_model_adapter",
+            "selected_option_id": selected_id,
+            "selected_candidate_id": selected_id,
+            "tool_decision_source": "agents_sdk_function_tool",
+            "required_tool_calls": required_tools,
+            "missing_required_tool_calls": [],
+            "required_tool_calls_satisfied": True,
+            "tool_trace_names": tool_trace_names,
+            "build_action_plan_status": "ready",
+            "build_action_plan_selected_option_id": selected_id,
+            "build_action_plan_step_count": safe_int(
+                reply.get("adapter_build_action_plan_step_count"),
+                minimum=0,
+            ),
+            "build_action_plan_world_mutation_authority": "luanti",
+            "generated_option_id": safe_scalar(reply.get("generated_candidate_id")),
+            "generated_option_status": generated_status,
+            "generated_option_build_kind": safe_scalar(reply.get("build_kind")),
+            "generated_option_build_material_name": safe_scalar(reply.get("build_material_name")),
+            "generated_option_build_width": safe_int(reply.get("build_width"), minimum=1),
+            "generated_option_build_depth": safe_int(reply.get("build_depth"), minimum=1),
+            "generated_option_build_height": safe_int(reply.get("build_height"), minimum=1),
+            "generated_option_build_count": safe_int(reply.get("build_count"), minimum=1),
+            "generated_option_planned_node_writes": planned_writes,
+            "live_probe_case_id": safe_scalar(case.get("case_id")),
+            "live_probe_node_count": safe_int(case.get("node_count"), minimum=0),
+            "live_probe_non_air_count": safe_int(case.get("non_air_count"), minimum=0),
+        },
+    })
+    return finalize_candidate(candidate)
+
+
+def _read_verified_live_probe_candidates(
+    paths: list[Path],
+    violations: list[dict[str, str]],
+) -> tuple[list[dict[str, Any]], int, int, int]:
+    candidates: list[dict[str, Any]] = []
+    files_read = 0
+    cases_read = 0
+    skipped_private = 0
+    for path in _path_list_from_live_probe_inputs(paths):
+        if not path.is_file():
+            violations.append({"kind": "missing_verified_live_probe", "details": str(path)})
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            violations.append({"kind": "invalid_verified_live_probe_json", "details": str(path)})
+            continue
+        if not isinstance(payload, dict):
+            violations.append({"kind": "invalid_verified_live_probe_payload", "details": str(path)})
+            continue
+        if payload.get("live_result_kind") != VERIFIED_LIVE_RESULT_KIND:
+            violations.append({
+                "kind": "invalid_verified_live_probe_kind",
+                "details": str(payload.get("live_result_kind")),
+            })
+            continue
+        files_read += 1
+        if has_private_content(payload) or has_forbidden_key(payload):
+            skipped_private += 1
+            violations.append({
+                "kind": "skipped_private_verified_live_probe",
+                "details": str(path),
+            })
+            continue
+        if payload.get("ok") is not True or payload.get("status") != "pass":
+            violations.append({
+                "kind": "verified_live_probe_not_passed",
+                "details": str(path),
+            })
+            continue
+        raw_cases = payload.get("cases")
+        if not isinstance(raw_cases, list):
+            violations.append({
+                "kind": "verified_live_probe_missing_cases",
+                "details": str(path),
+            })
+            continue
+        for index, case in enumerate(raw_cases, start=1):
+            if not isinstance(case, dict):
+                violations.append({
+                    "kind": "invalid_verified_live_probe_case",
+                    "details": f"{path}:{index}",
+                })
+                continue
+            cases_read += 1
+            candidate = candidate_from_verified_live_probe_case(payload, case)
+            if candidate:
+                candidates.append(candidate)
+            else:
+                violations.append({
+                    "kind": "verified_live_probe_case_not_promotable",
+                    "details": bounded_text(case.get("case_id") or index, 120),
+                })
+    return candidates, files_read, cases_read, skipped_private
+
+
 def _read_jsonl_candidates(paths: list[Path], violations: list[dict[str, str]]) -> tuple[list[dict[str, Any]], int, int]:
     candidates: list[dict[str, Any]] = []
     read_entries = 0
@@ -1075,6 +1301,7 @@ def build_eval_candidate_queue(
     agents_sdk_logs: list[Path] | None = None,
     nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
+    verified_live_probe_paths: list[Path] | None = None,
     operator_label_files: list[Path] | None = None,
     operator_label_payloads: list[dict[str, Any]] | None = None,
     generated_at: str | None = None,
@@ -1085,6 +1312,7 @@ def build_eval_candidate_queue(
     agents_sdk_logs = agents_sdk_logs or []
     nova_agent_logs = nova_agent_logs or []
     action_logs = action_logs or []
+    verified_live_probe_paths = verified_live_probe_paths or []
     operator_label_files = operator_label_files or []
     operator_label_payloads = operator_label_payloads or []
     generated_at = generated_at or utc_now()
@@ -1095,8 +1323,13 @@ def build_eval_candidate_queue(
         violations,
     )
     trace_candidates, trace_entries, trace_private = _read_action_log_candidates(action_logs, violations)
+    live_probe_candidates, live_probe_files, live_probe_cases, live_probe_private = (
+        _read_verified_live_probe_candidates(verified_live_probe_paths, violations)
+    )
     file_label_payloads = read_operator_label_payloads(operator_label_files, violations)
-    candidates = _dedupe_candidates(sdk_candidates + nova_agent_candidates + trace_candidates)
+    candidates = _dedupe_candidates(
+        sdk_candidates + nova_agent_candidates + trace_candidates + live_probe_candidates
+    )
     label_summary = apply_operator_labels(candidates, file_label_payloads + operator_label_payloads, violations)
     candidates.sort(key=_candidate_sort_key)
     truncated = len(candidates) > max_candidates
@@ -1128,7 +1361,10 @@ def build_eval_candidate_queue(
             "agents_sdk_log_entries_read": sdk_entries,
             "nova_agent_log_entries_read": nova_agent_entries,
             "nova_request_traces_read": trace_entries,
-            "entries_skipped_private": sdk_private + nova_agent_private + trace_private,
+            "verified_live_probe_files_read": live_probe_files,
+            "verified_live_probe_cases_read": live_probe_cases,
+            "verified_live_probe_candidates_added": len(live_probe_candidates),
+            "entries_skipped_private": sdk_private + nova_agent_private + trace_private + live_probe_private,
             "candidates_total": len(candidates),
             "ready_for_prompt_eval": ready_count,
             "ready_for_adapter_contract_eval": adapter_contract_ready_count,
@@ -1147,7 +1383,7 @@ def build_eval_candidate_queue(
             "no_raw_assets": True,
             "no_provider_prompts": True,
             "no_family_world_coordinates": True,
-            "private_entries_skipped": sdk_private + nova_agent_private + trace_private,
+            "private_entries_skipped": sdk_private + nova_agent_private + trace_private + live_probe_private,
         },
         "bounds": {
             "max_candidates": max_candidates,
@@ -1207,6 +1443,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
     parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
+    parser.add_argument("--verified-live-probe", action="append", default=[], help="Verified Nova auto-apply live probe JSON file or directory.")
     parser.add_argument("--operator-labels", action="append", default=[], help="Reviewed operator label JSON path.")
     parser.add_argument("--output", required=True, help="Output candidate queue JSON path.")
     parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
@@ -1221,6 +1458,7 @@ def main(argv: list[str] | None = None) -> int:
     agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
     nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
     action_logs = [resolve_path(root, path) for path in args.action_log]
+    verified_live_probe_paths = [resolve_path(root, path) for path in args.verified_live_probe]
     operator_label_files = [resolve_path(root, path) for path in args.operator_labels]
     output = resolve_path(root, args.output)
 
@@ -1228,6 +1466,7 @@ def main(argv: list[str] | None = None) -> int:
         agents_sdk_logs=agents_sdk_logs,
         nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
+        verified_live_probe_paths=verified_live_probe_paths,
         operator_label_files=operator_label_files,
         generated_at=args.generated_at,
         max_candidates=max(0, args.max_candidates),

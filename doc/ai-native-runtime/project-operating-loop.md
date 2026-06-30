@@ -64,6 +64,7 @@ python3 util/ai_native_agent_eval_queue.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --verified-live-probe local/logs/live-probes \
   --output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --generated-at 2026-06-30T00:00:00Z
 ```
@@ -75,6 +76,12 @@ Agents SDK required-tool calls as high-priority adapter-contract regressions wit
 `ready_for_adapter_contract_eval = true`, so a bad agent trace is not buried as
 generic manual review. This keeps improvement tied to observed failures while
 preserving the public/private boundary.
+
+Verified Nova auto-apply live probe artifacts can be passed with
+`--verified-live-probe`. Only passing disposable-world cases with satisfied
+Agents SDK tool calls, a ready Luanti action plan, and successful rollback/no
+extra-node checks are promoted; failed or incomplete probe cases stay out of
+prompt memory.
 
 When a maintainer knows the expected build output for an unknown prompt, create a
 public-safe `ai_native_agent_eval_operator_labels` artifact and pass it with
@@ -164,6 +171,7 @@ python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --verified-live-probe local/logs/live-probes \
   --from-operator-feedback \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
