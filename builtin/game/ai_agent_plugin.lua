@@ -35,6 +35,7 @@ local settings = {
 	max_navigation_nodes = 64,
 	max_repair_radius = 2,
 	max_defend_distance = 8,
+	agentic_build_planner_first = false,
 	capabilities = table.copy(default_capabilities),
 }
 
@@ -974,6 +975,10 @@ function plugin.configure(options)
 	end
 	if options.max_defend_distance then
 		settings.max_defend_distance = options.max_defend_distance
+	end
+	if options.agentic_build_planner_first ~= nil then
+		settings.agentic_build_planner_first =
+			options.agentic_build_planner_first == true
 	end
 	if options.capabilities then
 		assert(type(options.capabilities) == "table", "Capabilities must be a table")
@@ -2640,7 +2645,17 @@ local function append_agentic_build_candidate(candidates, name, base_context,
 	return candidate
 end
 
-local function select_agentic_build_candidate(candidates, lower_prompt)
+local function select_agentic_build_candidate(candidates, lower_prompt, parsed_candidate)
+	if parsed_candidate
+			and (lower_prompt:find("width", 1, true)
+				or lower_prompt:find("wide", 1, true)
+				or lower_prompt:find("height", 1, true)
+				or lower_prompt:find("high", 1, true)
+				or lower_prompt:find("tall", 1, true)
+				or lower_prompt:match("%d+%s*[xX]%s*%d+")
+				or lower_prompt:match("%d+%s+fires?")) then
+		return parsed_candidate
+	end
 	local preferred = "platform"
 	if lower_prompt:find("tnt", 1, true) then
 		preferred = "tnt_wall"
@@ -2663,6 +2678,30 @@ local function select_agentic_build_candidate(candidates, lower_prompt)
 		end
 	end
 	return candidates and candidates[1] or nil
+end
+
+local function build_context_matches_candidate(candidate, context)
+	if type(candidate) ~= "table" or type(candidate.context) ~= "table"
+			or type(context) ~= "table" then
+		return false
+	end
+	local candidate_context = candidate.context
+	return candidate_context.build_kind == context.build_kind
+		and candidate_context.build_width == context.build_width
+		and candidate_context.build_depth == context.build_depth
+		and candidate_context.build_height == context.build_height
+		and candidate_context.build_count == context.build_count
+		and candidate_context.build_material_name == context.build_material_name
+		and candidate_context.build_material_node == context.build_material_node
+end
+
+local function find_matching_agentic_build_candidate(candidates, context)
+	for _, candidate in ipairs(candidates or {}) do
+		if build_context_matches_candidate(candidate, context) then
+			return candidate
+		end
+	end
+	return nil
 end
 
 local function find_agentic_build_candidate(candidates, option_id)
@@ -2918,6 +2957,7 @@ end
 local function build_agentic_candidate_options(name, raw_prompt, context)
 	local lower = raw_prompt:lower()
 	local candidates = {}
+	local parsed_context = parse_build_options(raw_prompt, context)
 	append_agentic_build_candidate(candidates, name, context, "platform",
 		"Small platform", "safe default buildable surface", {
 			build_kind = "platform",
@@ -2961,8 +3001,16 @@ local function build_agentic_candidate_options(name, raw_prompt, context)
 				build_material_node = tnt_node,
 			})
 	end
+	local parsed_candidate = find_matching_agentic_build_candidate(candidates, parsed_context)
+	if parsed_context and not parsed_candidate then
+		parsed_candidate = append_agentic_build_candidate(candidates, name, context,
+			"parsed_request", "Parsed player request",
+			"exact bounded command parsed from the player request",
+			parsed_context)
+	end
 	local public_candidates = public_candidate_options(candidates)
-	return candidates, public_candidates, select_agentic_build_candidate(candidates, lower)
+	return candidates, public_candidates,
+		select_agentic_build_candidate(candidates, lower, parsed_candidate)
 end
 
 local function agentic_build_planner_prompt(raw_prompt, public_candidates)
@@ -3187,6 +3235,13 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 	log_request_trace(trace, "queued")
 	returned_to_player = true
 	return queued_reply
+end
+
+local function agentic_build_planner_available()
+	return settings.agentic_build_planner_first == true
+		and model_adapter_async ~= nil
+		and core.ai_model_ops ~= nil
+		and core.ai_model_ops.request_async ~= nil
 end
 
 local function compact_repair_plan(plan)
@@ -4264,6 +4319,10 @@ function plugin.handle_command(name, param, context)
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
 			and prompt_has_build_surface(prompt) then
+		if agentic_build_planner_available() then
+			return handle_agentic_build_planner(name, raw_prompt, context,
+				"agentic_build_planner_first")
+		end
 		local build_context, reason = parse_build_options(raw_prompt, context)
 		if not build_context then
 			if reason == "ambiguous_build_intent" then
@@ -4321,6 +4380,10 @@ function plugin.handle_command(name, param, context)
 		return handle_import_plan(name, context)
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
+		if agentic_build_planner_available() then
+			return handle_agentic_build_planner(name, raw_prompt, context,
+				"agentic_build_planner_first")
+		end
 		local build_context, reason = parse_build_options(raw_prompt, context)
 		if not build_context then
 			if reason == "ambiguous_build_intent" then
@@ -4625,8 +4688,18 @@ local function run_agentic_build_eval_case(report, owner, prompt, context, async
 			or initial_reply.planner_mode == "deterministic_candidate_fallback")
 	case_report.checks.initial_multiple_options = initial_reply
 		and (initial_reply.candidate_count or 0) >= 3
+	local expected_initial_candidate = expected.initial_selected_candidate_id
+	if expected_initial_candidate == nil and expected.selected_candidate_id == nil then
+		expected_initial_candidate = "platform"
+	end
 	case_report.checks.initial_selected_candidate = initial_reply
-		and initial_reply.selected_candidate_id == "platform"
+		and type(initial_reply.selected_candidate_id) == "string"
+		and initial_reply.selected_candidate_id ~= ""
+	if expected_initial_candidate ~= nil then
+		case_report.checks.initial_selected_candidate =
+			case_report.checks.initial_selected_candidate
+			and initial_reply.selected_candidate_id == expected_initial_candidate
+	end
 	case_report.checks.initial_trace_route = initial_trace
 		and (initial_trace.route == "agentic_build_planner"
 			or initial_trace.route == "deterministic_build_candidate_fallback")
@@ -4886,27 +4959,60 @@ function plugin.run_prompt_eval(options, callback)
 	end
 	for _, case_id in ipairs(cases) do
 		if case_id == "build_fire" then
-			run_build_eval_case(report, owner, case_id, "build a fire", context, {
+			local expected = {
 				build_kind = "fire",
 				build_material_name = "fire",
 				build_material_node = settings.fire_node,
 				planned_node_writes = 1,
-			})
+				selected_candidate_id = "fire",
+			}
+			if agentic_build_planner_available() then
+				expected.route = "agentic_build_planner"
+				if run_agentic_build_eval_case(report, owner, "build a fire",
+						context, async_case_done, case_id, expected) then
+					pending_async_count = pending_async_count + 1
+				end
+			else
+				run_build_eval_case(report, owner, case_id, "build a fire",
+					context, expected)
+			end
 		elseif case_id == "fire_only_strict" then
-			run_build_eval_case(report, owner, case_id,
-				"build me a fire and only a fire", context, {
-					build_kind = "fire",
-					build_material_name = "fire",
-					build_material_node = settings.fire_node,
-					planned_node_writes = 1,
-				})
+			local expected = {
+				build_kind = "fire",
+				build_material_name = "fire",
+				build_material_node = settings.fire_node,
+				planned_node_writes = 1,
+				selected_candidate_id = "fire",
+			}
+			if agentic_build_planner_available() then
+				expected.route = "agentic_build_planner"
+				if run_agentic_build_eval_case(report, owner,
+						"build me a fire and only a fire", context,
+						async_case_done, case_id, expected) then
+					pending_async_count = pending_async_count + 1
+				end
+			else
+				run_build_eval_case(report, owner, case_id,
+					"build me a fire and only a fire", context, expected)
+			end
 		elseif case_id == "tnt_wall" then
-			run_build_eval_case(report, owner, case_id, "build a wall of tnt", context, {
+			local expected = {
 				build_kind = "wall",
 				build_material_name = "tnt",
 				build_material_node = settings.tnt_node,
 				planned_node_writes = 12,
-			})
+				selected_candidate_id = "tnt_wall",
+			}
+			if agentic_build_planner_available() then
+				expected.route = "agentic_build_planner"
+				if run_agentic_build_eval_case(report, owner, "build a wall of tnt",
+						context, async_case_done, case_id, expected) then
+					pending_async_count = pending_async_count + 1
+				end
+			else
+				run_build_eval_case(report, owner, case_id, "build a wall of tnt",
+					context, expected)
+			end
 		elseif case_id == "agentic_build_planner" then
 			if run_agentic_build_eval_case(report, owner, "build a small shelter",
 					context, async_case_done) then
