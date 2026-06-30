@@ -99,6 +99,50 @@ def safe_string_list(value: Any, *, max_items: int = 8, max_bytes: int = 80) -> 
     ][:max_items]
 
 
+def safe_context_subset(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        return {}
+    allowed = {
+        "capabilities",
+        "candidate_summary",
+        "intent",
+        "player_request",
+        "selected_candidate_id",
+        "surface_id",
+    }
+    result: dict[str, Any] = {}
+    for key in sorted(allowed):
+        if key not in value:
+            continue
+        item = value[key]
+        if isinstance(item, (str, int, float, bool)) or item is None:
+            result[key] = safe_scalar(item, 1600 if key == "candidate_summary" else 400)
+    return result
+
+
+def adapter_replay_request_from_agents_sdk_request(
+    request: dict[str, Any],
+    prompt: str,
+) -> dict[str, Any]:
+    context = safe_context_subset(request.get("context"))
+    if "player_request" not in context:
+        context["player_request"] = bounded_text(prompt, 400)
+    public_prompt = request.get("public_prompt")
+    if not isinstance(public_prompt, str) or not public_prompt.strip():
+        public_prompt = f"Player request: {prompt}"
+    return {
+        "request_kind": "ai_native_model_adapter_request",
+        "adapter_contract": safe_scalar(request.get("adapter_contract")) or "provider_neutral_v1",
+        "agent_id": safe_scalar(request.get("agent_id")) or "nova_agent:adapter_contract_eval",
+        "owner": safe_scalar(request.get("owner")) or "AdapterContractEval",
+        "task_id": safe_scalar(request.get("task_id")) or "adapter-contract-eval",
+        "public_prompt": bounded_text(public_prompt, 2000),
+        "context": context,
+        "safety": {"public_safe_request": True},
+        "bounds": {"max_response_bytes": 4000},
+    }
+
+
 def stable_candidate_id(candidate: dict[str, Any]) -> str:
     seed = {
         "source_kind": candidate.get("source_kind"),
@@ -337,6 +381,7 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
                 if isinstance(item, dict) and isinstance(item.get("tool_name"), str)
             ][:8],
         },
+        "adapter_replay_request": adapter_replay_request_from_agents_sdk_request(request, prompt),
     })
     return finalize_candidate(candidate)
 
