@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
 import ai_native_agent_product_loop_live_probe
+import ai_native_agent_improvement_loop_verify
 import ai_native_agent_prompt_eval_live_probe
 import ai_native_nova_auto_apply_live_probe
 import ai_native_compat_import_staging_pilot
@@ -36,6 +37,7 @@ OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.j
 OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-receipt.json"
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
 AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME = "ai-runtime-agent-product-loop-live-result.json"
+AGENT_IMPROVEMENT_LOOP_RESULT_NAME = "ai-runtime-agent-improvement-loop-result.json"
 AGENT_PROMPT_EVAL_LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-result.json"
 NOVA_AUTO_APPLY_LIVE_RESULT_NAME = "ai-runtime-nova-auto-apply-live-result.json"
 COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME = "ai-runtime-compat-import-staging-pilot-result.json"
@@ -180,6 +182,10 @@ def operator_action_execution_result_artifact_path(args) -> Path:
 
 def agent_product_loop_live_result_artifact_path(args) -> Path:
     return physical_run_dir(args) / AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME
+
+
+def agent_improvement_loop_result_artifact_path(args) -> Path:
+    return physical_run_dir(args) / AGENT_IMPROVEMENT_LOOP_RESULT_NAME
 
 
 def agent_prompt_eval_live_result_artifact_path(args) -> Path:
@@ -337,6 +343,7 @@ def build_steps(args) -> list[CommandStep]:
         ),
         build_operator_status_step(args),
         build_agent_product_loop_live_step(args),
+        build_agent_improvement_loop_step(args),
         build_agent_prompt_eval_live_step(args),
         build_nova_auto_apply_live_step(args),
         build_compat_import_staging_pilot_step(args),
@@ -495,6 +502,36 @@ def build_agent_product_loop_live_step(args) -> CommandStep:
             str(args.agent_product_loop_live_result_max_bytes),
             "--timeout",
             str(args.agent_product_loop_live_timeout),
+        ),
+    )
+
+
+def build_agent_improvement_loop_step(args) -> CommandStep:
+    return CommandStep(
+        "agent_improvement_loop_verify",
+        "Agent improvement loop log-to-memory verification",
+        [
+            args.python,
+            "util/ai_native_agent_improvement_loop_verify.py",
+            "--root",
+            ".",
+            "--output",
+            str(agent_improvement_loop_result_artifact_path(args)),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.agent_improvement_loop_result_max_bytes),
+        ],
+        python_manifest_command(
+            "util/ai_native_agent_improvement_loop_verify.py",
+            "--root",
+            ".",
+            "--output",
+            logical_path(args, AGENT_IMPROVEMENT_LOOP_RESULT_NAME),
+            "--generated-at",
+            operator_status_generated_at(args),
+            "--max-bytes",
+            str(args.agent_improvement_loop_result_max_bytes),
         ),
     )
 
@@ -1495,6 +1532,35 @@ def agent_product_loop_live_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def agent_improvement_loop_evidence(args) -> tuple[dict, list[str]]:
+    path = agent_improvement_loop_result_artifact_path(args)
+    source_path = logical_path(args, AGENT_IMPROVEMENT_LOOP_RESULT_NAME)
+    evidence = {
+        "agent_improvement_loop_status": "fail",
+        "agent_improvement_loop_path": source_path,
+        "source_kind": "synthetic_public_safe_agent_improvement_loop",
+        "direct_command_execution": True,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("agent_improvement_loop_verify artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        evidence.update(
+            ai_native_agent_improvement_loop_verify.validate_report(
+                payload,
+                max_bytes=args.agent_improvement_loop_result_max_bytes,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"agent_improvement_loop_verify artifact invalid: {type(exc).__name__}")
+    evidence["agent_improvement_loop_status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def agent_prompt_eval_live_evidence(args) -> tuple[dict, list[str]]:
     path = agent_prompt_eval_live_result_artifact_path(args)
     source_path = logical_path(args, AGENT_PROMPT_EVAL_LIVE_RESULT_NAME)
@@ -1678,6 +1744,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME,
             )
+        if step.id == "agent_improvement_loop_verify":
+            artifact_paths["agent_improvement_loop_result"] = logical_path(
+                args,
+                AGENT_IMPROVEMENT_LOOP_RESULT_NAME,
+            )
         if step.id == "agent_prompt_eval_live_probe":
             artifact_paths["agent_prompt_eval_live_result"] = logical_path(
                 args,
@@ -1725,6 +1796,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
     if any(step.id == "agent_product_loop_live_probe" for step, _ in command_results):
         agent_product_loop_live, agent_product_loop_failures = agent_product_loop_live_evidence(args)
         failure_reasons.extend(agent_product_loop_failures)
+
+    agent_improvement_loop = None
+    if any(step.id == "agent_improvement_loop_verify" for step, _ in command_results):
+        agent_improvement_loop, agent_improvement_failures = agent_improvement_loop_evidence(args)
+        failure_reasons.extend(agent_improvement_failures)
 
     agent_prompt_eval_live = None
     if any(step.id == "agent_prompt_eval_live_probe" for step, _ in command_results):
@@ -1778,6 +1854,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "Use the low-power lane only after backup-first readiness is confirmed.",
             "Operator status uses a disposable ai_runtime live command probe by default.",
             "First-party agent product-loop proof uses a disposable ai_runtime world and synthetic public nodes.",
+            "Agent improvement-loop proof converts public-safe sidecar/action logs into eval candidates, prompt memory, and adapter-contract replay candidates.",
             "Compatibility import pilot runs public-safe inventory, dry-run, reviewed staging apply, rollback, and refusal gates in a disposable ai_runtime world.",
             "Nova prompt eval runs /ai_agent_eval for fire, strict fire-only, TNT wall, agentic build-planner, and async model-adapter regression coverage.",
             "Nova auto-apply proof runs /nova-style commands for strict fire-only and TNT-wall mutations through the agentic build-planner and rollback-backed task path.",
@@ -1798,6 +1875,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         manifest["operator_status_evidence"] = operator_evidence
     if agent_product_loop_live is not None:
         manifest["agent_product_loop_live_evidence"] = agent_product_loop_live
+    if agent_improvement_loop is not None:
+        manifest["agent_improvement_loop_evidence"] = agent_improvement_loop
     if agent_prompt_eval_live is not None:
         manifest["agent_prompt_eval_live_evidence"] = agent_prompt_eval_live
     if nova_auto_apply_live is not None:
@@ -1988,6 +2067,12 @@ def parse_args(argv=None):
         type=float,
         default=20.0,
         help="Seconds to wait for the disposable first-party agent product-loop live probe.",
+    )
+    parser.add_argument(
+        "--agent-improvement-loop-result-max-bytes",
+        type=int,
+        default=32000,
+        help="Maximum byte budget for the agent improvement-loop verification artifact.",
     )
     parser.add_argument(
         "--agent-prompt-eval-live-result-max-bytes",
