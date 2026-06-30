@@ -191,6 +191,33 @@ def operator_feedback_line(prompt="build a bridge"):
     return "[ai_agent_plugin] operator_feedback=" + json.dumps(payload, sort_keys=True)
 
 
+def nova_request_trace_line(prompt="build a bridge"):
+    payload = {
+        "schema_version": 1,
+        "event_kind": "nova_request_trace",
+        "event": "completed",
+        "trace": {
+            "trace_id": "nova_trace:11",
+            "owner": "Eval",
+            "agent_id": "nova_agent:Eval:builder",
+            "action": "build",
+            "route": "agentic_build_planner",
+            "public_prompt": prompt,
+            "completed_us": 123456,
+            "response": {
+                "ok": True,
+                "status": "pending_approval",
+                "action": "build",
+                "build_kind": "platform",
+                "build_material_name": "stone",
+                "planned_node_writes": 12,
+                "adapter_tool_trace_names": None,
+            },
+        },
+    }
+    return "[ai_agent_plugin] request_trace=" + json.dumps(payload, sort_keys=True)
+
+
 class AgentMemoryRefreshTests(unittest.TestCase):
     def test_builds_queue_and_case_pack_from_sidecar_player_request(self):
         module = load_refresh_module()
@@ -313,6 +340,36 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(queue["source_summary"]["operator_labels_applied"], 1)
         self.assertEqual(queue["candidates"][0]["review_status"], "operator_labeled_candidate_ready")
         self.assertEqual(queue["candidates"][0]["expected"]["build_kind"], "platform")
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 1)
+        self.assertEqual(pack["cases"][0]["case_hint"], "stone_bridge_platform")
+
+    def test_refresh_tolerates_live_action_log_null_tool_traces(self):
+        module = load_refresh_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            action_log = root / "debug.log"
+            action_log.write_text(
+                nova_request_trace_line("build a bridge")
+                + "\n"
+                + operator_feedback_line("build a bridge")
+                + "\n",
+                encoding="utf-8",
+            )
+
+            queue, pack = module.build_memory_artifacts(
+                action_logs=[action_log],
+                from_operator_feedback=True,
+                generated_at="2026-06-30T13:45:00Z",
+                candidate_queue_source_path="local/benchmarks/ai-agent-eval-candidate-queue.json",
+            )
+
+        self.assertEqual(queue["status"], "ready")
+        self.assertEqual(queue["source_summary"]["nova_request_traces_read"], 1)
+        self.assertEqual(queue["source_summary"]["operator_feedback_events_read"], 1)
+        self.assertEqual(queue["source_summary"]["operator_feedback_labels_generated"], 1)
+        self.assertEqual(queue["source_summary"]["operator_labels_applied"], 1)
+        self.assertEqual(queue["candidates"][0]["observed"]["adapter_tool_trace_names"], [])
         self.assertEqual(pack["status"], "ready")
         self.assertEqual(pack["summary"]["cases_total"], 1)
         self.assertEqual(pack["cases"][0]["case_hint"], "stone_bridge_platform")

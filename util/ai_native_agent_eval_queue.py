@@ -551,11 +551,7 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             ),
             "memory_available": memory_match.get("memory_available"),
             "memory_matched_case_id": safe_scalar(memory_match.get("matched_case_id")),
-            "tools_enabled": [
-                bounded_text(item, 80)
-                for item in nested.get("tools_enabled", [])
-                if isinstance(item, str)
-            ][:8],
+            "tools_enabled": safe_string_list(nested.get("tools_enabled")),
             "required_tool_calls": safe_string_list(nested.get("required_tool_calls")),
             "missing_required_tool_calls": safe_string_list(nested.get("missing_required_tool_calls")),
             "required_tool_calls_satisfied": nested.get("required_tool_calls_satisfied"),
@@ -637,11 +633,9 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             "adapter_memory_available": response.get("adapter_memory_available"),
             "adapter_memory_matched_case_id": safe_scalar(response.get("adapter_memory_matched_case_id")),
             "adapter_memory_case_hint": safe_scalar(response.get("adapter_memory_case_hint")),
-            "adapter_tool_trace_names": [
-                bounded_text(item, 80)
-                for item in response.get("adapter_tool_trace_names", [])
-                if isinstance(item, str)
-            ][:8],
+            "adapter_tool_trace_names": safe_string_list(
+                response.get("adapter_tool_trace_names")
+            ),
             "adapter_build_action_plan_status": safe_scalar(
                 response.get("adapter_build_action_plan_status")
             ),
@@ -858,7 +852,14 @@ def _read_action_log_candidates(paths: list[Path], violations: list[dict[str, st
                     "details": f"{path}:{line_number}",
                 })
                 continue
-            candidate = candidate_from_nova_trace(payload)
+            try:
+                candidate = candidate_from_nova_trace(payload)
+            except (AttributeError, TypeError, ValueError) as exc:
+                violations.append({
+                    "kind": "skipped_invalid_nova_request_trace",
+                    "details": f"{path}:{line_number}:{type(exc).__name__}",
+                })
+                continue
             if candidate:
                 candidates.append(candidate)
     return candidates, read_entries, skipped_private
