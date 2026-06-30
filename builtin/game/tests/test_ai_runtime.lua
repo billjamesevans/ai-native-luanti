@@ -5609,6 +5609,76 @@ local completed_agentic_auto_fire =
 assert(completed_agentic_auto_fire.status == "completed")
 assert(completed_agentic_auto_fire.last_result.metrics.node_writes == 1)
 assert(completed_agentic_auto_fire.last_result.rollback_record_id ~= nil)
+
+local generated_timeout_pos = test_pos(42566)
+for x = 0, 5 do
+	for y = 0, 1 do
+		set_test_node(vector.add(generated_timeout_pos, { x = x, y = y, z = 0 }), {
+			name = "air",
+		})
+	end
+end
+local generated_timeout_done
+local generated_timeout_reply
+local generated_timeout_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build a 6 wide 2 high lookout wall")
+	generated_timeout_done = done
+	return true, "queued"
+end)
+local queued_generated_timeout = core.ai_agent_plugin.handle_command(
+	"PlannerGeneratedTimeout", "build a 6 wide 2 high lookout wall", {
+		pos = generated_timeout_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			generated_timeout_reply = reply
+			generated_timeout_trace = trace
+		end,
+	})
+assert(queued_generated_timeout.ok == true)
+assert(queued_generated_timeout.status == "queued")
+assert(queued_generated_timeout.selected_candidate_id == "parsed_request")
+assert(generated_timeout_done ~= nil)
+generated_timeout_done({
+	ok = false,
+	timeout = true,
+	message = "Agents SDK sidecar request timed out.",
+	reason = "sidecar_timeout",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 20000000,
+})
+assert(generated_timeout_reply ~= nil)
+assert(generated_timeout_reply.ok == false)
+assert(generated_timeout_reply.action == "build_plan")
+assert(generated_timeout_reply.status == "blocked")
+assert(generated_timeout_reply.reason == "agentic_build_planner_timeout")
+assert(generated_timeout_reply.planner_mode == "agentic_model_adapter_fallback")
+assert(generated_timeout_reply.selected_candidate_id == "parsed_request")
+assert(generated_timeout_reply.agentic_tool_success_required == true)
+assert(generated_timeout_reply.agentic_planner_fallback_blocked == true)
+assert(generated_timeout_reply.fallback_blocked_reason == "agentic_build_planner_timeout")
+assert(generated_timeout_reply.planner_model_status == "blocked")
+assert(generated_timeout_reply.planner_model_reason == "sidecar_timeout")
+assert(generated_timeout_reply.approval_id == nil)
+assert(generated_timeout_reply.task_id == nil)
+assert(generated_timeout_trace ~= nil)
+assert(generated_timeout_trace.response.status == "blocked")
+assert(generated_timeout_trace.response.reason == "agentic_build_planner_timeout")
+assert(generated_timeout_trace.response.planner_model_status == "blocked")
+assert(generated_timeout_trace.response.planner_model_reason == "sidecar_timeout")
+assert(generated_timeout_trace.response.agentic_tool_success_required == true)
+assert(generated_timeout_trace.response.agentic_planner_fallback_blocked == true)
+assert(generated_timeout_trace.response.selected_candidate_id == "parsed_request")
+assert(generated_timeout_trace.response.task_id == nil)
+assert(get_test_node(generated_timeout_pos).name == "air")
+local no_generated_timeout_pending =
+	core.ai_agent_plugin.handle_command("PlannerGeneratedTimeout", "pending plan", {})
+assert(no_generated_timeout_pending.ok == false)
+assert(no_generated_timeout_pending.reason == "no_pending_approval")
+
 core.ai_agent_plugin.configure({ auto_apply_build_approvals = false })
 
 local generated_tower_pos = test_pos(4257)

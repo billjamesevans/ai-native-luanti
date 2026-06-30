@@ -430,24 +430,32 @@ local function finish_request_trace(trace, result, extra)
 		adapter_required_tool_calls = result and result.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls =
 			result and result.adapter_missing_required_tool_calls,
-			adapter_required_tool_calls_satisfied =
-				result and result.adapter_required_tool_calls_satisfied,
-			build_option_decision_source = result and result.build_option_decision_source,
-			adapter_memory_available = result and result.adapter_memory_available,
-			adapter_memory_matched_case_id = result and result.adapter_memory_matched_case_id,
-			adapter_memory_case_hint = result and result.adapter_memory_case_hint,
-			adapter_tool_trace_names = result and result.adapter_tool_trace_names,
-			adapter_build_action_plan_status =
-				result and result.adapter_build_action_plan_status,
-			adapter_build_action_plan_selected_candidate_id =
-				result and result.adapter_build_action_plan_selected_candidate_id,
-			adapter_build_action_plan_step_count =
-				result and result.adapter_build_action_plan_step_count,
-			adapter_build_action_plan_world_mutation_authority =
-				result and result.adapter_build_action_plan_world_mutation_authority,
-			generated_build_option_status = result and result.generated_build_option_status,
-			generated_build_option_reason = result and result.generated_build_option_reason,
-			generated_candidate_id = result and result.generated_candidate_id,
+		adapter_required_tool_calls_satisfied =
+			result and result.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = result and result.build_option_decision_source,
+		adapter_memory_available = result and result.adapter_memory_available,
+		adapter_memory_matched_case_id =
+			result and result.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = result and result.adapter_memory_case_hint,
+		adapter_tool_trace_names = result and result.adapter_tool_trace_names,
+		adapter_build_action_plan_status =
+			result and result.adapter_build_action_plan_status,
+		adapter_build_action_plan_selected_candidate_id =
+			result and result.adapter_build_action_plan_selected_candidate_id,
+		adapter_build_action_plan_step_count =
+			result and result.adapter_build_action_plan_step_count,
+		adapter_build_action_plan_world_mutation_authority =
+			result and result.adapter_build_action_plan_world_mutation_authority,
+		generated_build_option_status = result and result.generated_build_option_status,
+		generated_build_option_reason = result and result.generated_build_option_reason,
+		generated_candidate_id = result and result.generated_candidate_id,
+		planner_model_status = result and result.planner_model_status,
+		planner_model_reason = result and result.planner_model_reason,
+		agentic_tool_success_required =
+			result and result.agentic_tool_success_required,
+		agentic_planner_fallback_blocked =
+			result and result.agentic_planner_fallback_blocked,
+		fallback_blocked_reason = result and result.fallback_blocked_reason,
 		}
 	for key, value in pairs(extra) do
 		trace[key] = value
@@ -3153,6 +3161,8 @@ function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
 	queued.generated_build_option_status = pending.generated_build_option_status
 	queued.generated_build_option_reason = pending.generated_build_option_reason
 	queued.generated_candidate_id = pending.generated_candidate_id
+	queued.agentic_tool_success_required =
+		pending.agentic_tool_success_required
 	return queued
 end
 
@@ -3203,6 +3213,8 @@ local function create_build_pending_reply(name, context, message, extra)
 			generated_build_option_status = extra.generated_build_option_status,
 			generated_build_option_reason = extra.generated_build_option_reason,
 			generated_candidate_id = extra.generated_candidate_id,
+			agentic_tool_success_required =
+				extra.agentic_tool_success_required,
 		})
 	local reply = public_reply(name, "build", "pending_approval",
 		message or "Build plan is pending approval before mutation.", {
@@ -3233,29 +3245,31 @@ local function create_build_pending_reply(name, context, message, extra)
 			adapter_rejected_model_selected_candidate_id =
 				extra.adapter_rejected_model_selected_candidate_id,
 			adapter_required_tool_calls = extra.adapter_required_tool_calls,
-				adapter_missing_required_tool_calls =
-					extra.adapter_missing_required_tool_calls,
-				adapter_required_tool_calls_satisfied =
-					extra.adapter_required_tool_calls_satisfied,
-				build_option_decision_source = extra.build_option_decision_source,
-				adapter_memory_available = extra.adapter_memory_available,
-				adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
-				adapter_memory_case_hint = extra.adapter_memory_case_hint,
-				adapter_tool_trace_names = extra.adapter_tool_trace_names,
-				adapter_build_action_plan_status =
-					extra.adapter_build_action_plan_status,
-				adapter_build_action_plan_selected_candidate_id =
-					extra.adapter_build_action_plan_selected_candidate_id,
-				adapter_build_action_plan_step_count =
-					extra.adapter_build_action_plan_step_count,
-				adapter_build_action_plan_world_mutation_authority =
-					extra.adapter_build_action_plan_world_mutation_authority,
-				generated_build_option_status = extra.generated_build_option_status,
-				generated_build_option_reason = extra.generated_build_option_reason,
-				generated_candidate_id = extra.generated_candidate_id,
-				planner_model_status = extra.planner_model_status,
+			adapter_missing_required_tool_calls =
+				extra.adapter_missing_required_tool_calls,
+			adapter_required_tool_calls_satisfied =
+				extra.adapter_required_tool_calls_satisfied,
+			build_option_decision_source = extra.build_option_decision_source,
+			adapter_memory_available = extra.adapter_memory_available,
+			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+			adapter_memory_case_hint = extra.adapter_memory_case_hint,
+			adapter_tool_trace_names = extra.adapter_tool_trace_names,
+			adapter_build_action_plan_status =
+				extra.adapter_build_action_plan_status,
+			adapter_build_action_plan_selected_candidate_id =
+				extra.adapter_build_action_plan_selected_candidate_id,
+			adapter_build_action_plan_step_count =
+				extra.adapter_build_action_plan_step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				extra.adapter_build_action_plan_world_mutation_authority,
+			generated_build_option_status = extra.generated_build_option_status,
+			generated_build_option_reason = extra.generated_build_option_reason,
+			generated_candidate_id = extra.generated_candidate_id,
+			agentic_tool_success_required =
+				extra.agentic_tool_success_required,
+			planner_model_status = extra.planner_model_status,
 			planner_model_reason = extra.planner_model_reason,
-				planner_guidance = extra.planner_guidance,
+			planner_guidance = extra.planner_guidance,
 			trace_id = extra.trace_id,
 			adapter_name = extra.adapter_name,
 		})
@@ -3884,6 +3898,57 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 					or "intent_constraint_preselection"
 			end
 		end
+		local agentic_tool_success_required =
+			final_selected.option_id == "parsed_request"
+				or generated_option_status == "validated"
+		if planner_mode == "agentic_model_adapter_fallback"
+				and agentic_tool_success_required then
+			local fallback_blocked_reason = "agentic_build_planner_failed"
+			if model_result.timeout == true
+					or model_result.status == "timeout"
+					or model_result.reason == "sidecar_timeout"
+					or model_result.reason == "timeout" then
+				fallback_blocked_reason = "agentic_build_planner_timeout"
+			end
+			local blocked_reply = public_reply(name, "build_plan", "blocked",
+				"Agentic build planner did not complete; custom builds require a successful tool-validated agent plan before mutation.", {
+					surface_id = "builder",
+					reason = fallback_blocked_reason,
+					planner_mode = planner_mode,
+					selected_candidate_id = final_selected.option_id,
+					adapter_selected_candidate_id = adapter_selected_id,
+					model_selected_candidate_id = model_selected_id,
+					selection_source = selection_source,
+					intent_constraint_option_id = locked_candidate_id,
+					intent_constraint_reason = locked_candidate_reason,
+					candidate_options = public_candidates,
+					candidate_count = #public_candidates,
+					planner_model_status = model_result.status,
+					planner_model_reason = model_result.reason,
+					planner_guidance = bounded_trace_text(model_result.message, 1000),
+					agentic_tool_success_required = true,
+					agentic_planner_fallback_blocked = true,
+					fallback_blocked_reason = fallback_blocked_reason,
+					adapter_name = model_result.adapter_name or adapter_name,
+					trace_id = trace.trace_id,
+				})
+			return finish_request_trace(trace, blocked_reply, {
+				planner_mode = planner_mode,
+				selected_candidate_id = final_selected.option_id,
+				adapter_selected_candidate_id = adapter_selected_id,
+				model_selected_candidate_id = model_selected_id,
+				selection_source = selection_source,
+				intent_constraint_option_id = locked_candidate_id,
+				intent_constraint_reason = locked_candidate_reason,
+				candidate_count = #public_candidates,
+				adapter_name = model_result.adapter_name or adapter_name,
+				planner_model_status = model_result.status,
+				planner_model_reason = model_result.reason,
+				agentic_tool_success_required = true,
+				agentic_planner_fallback_blocked = true,
+				fallback_blocked_reason = fallback_blocked_reason,
+			})
+		end
 		local pending_reply = create_build_pending_reply(name, final_selected.context,
 			"Agentic build planner selected an approval-gated build option.", {
 				planner_mode = planner_mode,
@@ -3931,6 +3996,7 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 					generated_build_option_status = generated_option_status,
 					generated_build_option_reason = generated_option_reason,
 					generated_candidate_id = generated_candidate_id,
+					agentic_tool_success_required = agentic_tool_success_required,
 					trace_id = trace.trace_id,
 				adapter_name = model_result.adapter_name or adapter_name,
 		})
