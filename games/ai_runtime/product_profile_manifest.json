@@ -2,6 +2,7 @@
   "schema_version": 1,
   "gameid": "ai_runtime",
   "product_mods": [
+    "ai_runtime_agents_sdk_bridge",
     "ai_runtime_base"
   ],
   "startup_inventory": [
@@ -20,6 +21,14 @@
       "loaded_by_default_product_profile": true,
       "requires_explicit_dev_or_test_lane": false,
       "purpose": "minimal first-party runtime profile, helper entity, and capability policy"
+    },
+    {
+      "name": "ai_runtime_agents_sdk_bridge",
+      "category": "first_party_plugin",
+      "path": "games/ai_runtime/mods/ai_runtime_agents_sdk_bridge",
+      "loaded_by_default_product_profile": true,
+      "requires_explicit_dev_or_test_lane": false,
+      "purpose": "optional HTTP handle provider for the explicitly enabled Agents SDK model-adapter bridge"
     },
     {
       "name": "ai_runtime_core",
