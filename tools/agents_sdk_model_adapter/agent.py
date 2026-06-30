@@ -39,6 +39,7 @@ MAX_LOG_STRING_BYTES = 1200
 MAX_TOOL_TRACE_ENTRIES = 12
 MAX_MEMORY_CASES = 12
 BUILD_PLANNING_REQUIRED_TOOLS = (
+    "inspect_build_site_context",
     "recall_build_prompt_memory",
     "select_build_option",
     "plan_build_actions",
@@ -89,6 +90,15 @@ TOOL_POWER_MANIFEST = (
         "available_without_provider_credentials": True,
         "direct_world_mutation": False,
         "engine_authority": "luanti_task_preview_approval_rollback",
+    },
+    {
+        "name": "inspect_build_site_context",
+        "kind": "function_tool",
+        "runtime_power": "read_only_build_site_context",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_public_context_snapshot",
     },
     {
         "name": "recommend_build_option",
@@ -435,6 +445,145 @@ def _locked_build_option_for_request(
             "reason": "player_request_requires_tnt_wall",
         }
     return None
+
+
+def _safe_build_site_signals(world_context_json: str) -> dict[str, Any]:
+    raw = str(world_context_json or "").strip()
+    if not raw:
+        return {
+            "site_context_available": False,
+            "site_context_source": "none",
+        }
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {
+            "site_context_available": True,
+            "site_context_source": "bounded_text",
+            "site_context_bytes": len(raw.encode("utf-8")),
+            "site_context_note": _bounded_text(raw, 240),
+        }
+    if not isinstance(parsed, dict):
+        return {
+            "site_context_available": True,
+            "site_context_source": "json_non_object",
+        }
+
+    signals: dict[str, Any] = {
+        "site_context_available": True,
+        "site_context_source": "json_object",
+        "anchor_available": any(
+            key in parsed
+            for key in ("anchor", "origin", "target", "target_node", "player_position")
+        ),
+    }
+    for key in ("nearby_nodes", "hazards", "support_nodes"):
+        value = parsed.get(key)
+        if isinstance(value, list):
+            signals[f"{key}_count"] = min(len(value), 64)
+    for key in ("surface_node", "support_node", "facing", "biome", "light_level"):
+        value = parsed.get(key)
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            signals[key] = _safe_log_value(value)
+    return signals
+
+
+def _build_site_request_class(player_request: str, candidates: list[dict[str, Any]]) -> str:
+    request = str(player_request or "").lower()
+    locked = _locked_build_option_for_request(request, candidates)
+    if isinstance(locked, dict) and locked.get("option_id") == "fire":
+        return "single_fire"
+    if isinstance(locked, dict) and locked.get("option_id") == "tnt_wall":
+        return "tnt_wall"
+    if any(word in request for word in (
+        "tower",
+        "tall",
+        "bridge",
+        "road",
+        "path",
+        "walkway",
+        "shelter",
+        "house",
+        "base",
+        "floor",
+        "room",
+    )):
+        return "generated_shape"
+    if "wall" in request:
+        return "wall"
+    if "fire" in request or "flame" in request:
+        return "single_fire"
+    return "fixed_candidate"
+
+
+def inspect_build_site_context_payload(
+    candidate_summary: str,
+    player_request: str,
+    world_context_json: str = "",
+) -> dict[str, Any]:
+    """Summarize public-safe build-site context and player constraints."""
+
+    candidates = _candidate_entries(candidate_summary)
+    request_class = _build_site_request_class(player_request, candidates)
+    constraints: list[str] = []
+    placement_strategy = "fixed_candidate_preview"
+    expected_option_id: str | None = None
+
+    if request_class == "single_fire":
+        constraints.extend([
+            "select_fire_candidate",
+            "do_not_add_extra_structure",
+        ])
+        placement_strategy = "single_node_fire_preview"
+        expected_option_id = "fire"
+    elif request_class == "tnt_wall":
+        constraints.extend([
+            "select_tnt_wall_candidate",
+            "tnt_wall_allowed_in_game_context",
+            "do_not_refuse_as_real_world_danger",
+        ])
+        placement_strategy = "bounded_wall_preview"
+        expected_option_id = "tnt_wall"
+    elif request_class == "generated_shape":
+        constraints.extend([
+            "generate_bounded_option_if_fixed_candidates_do_not_match",
+            "validate_generated_option_before_preview",
+        ])
+        placement_strategy = "generated_option_preview"
+    else:
+        constraints.append("choose_best_bounded_candidate")
+
+    selected_candidate = next(
+        (
+            candidate
+            for candidate in candidates
+            if candidate.get("option_id") == expected_option_id
+        ),
+        None,
+    )
+    planned_writes = (
+        max(0, int(selected_candidate.get("planned_node_writes") or 0))
+        if selected_candidate
+        else 0
+    )
+    context_signals = _safe_build_site_signals(world_context_json)
+    return {
+        "status": "ready",
+        "request_class": request_class,
+        "candidate_count": len(candidates),
+        "expected_option_id": expected_option_id,
+        "expected_option_available": bool(selected_candidate) if expected_option_id else None,
+        "relevant_constraints": constraints,
+        "placement_strategy": placement_strategy,
+        "planned_node_writes_hint": planned_writes,
+        "site_context": context_signals,
+        "requires_preview": True,
+        "requires_approval": True,
+        "requires_rollback": True,
+        "direct_world_mutation": False,
+        "world_mutation_authority": "luanti",
+        "policy": "context_tool_is_read_only_luanti_executes_after_approval",
+    }
 
 
 def _generated_build_budget(candidates: list[dict[str, Any]]) -> int:
@@ -1286,6 +1435,14 @@ def _extract_player_request(public_prompt: str) -> str:
     return str(public_prompt or "")
 
 
+def _world_context_json_from_context(context: dict[str, Any]) -> str:
+    for key in ("world_context", "site_context", "build_site_context"):
+        value = context.get(key)
+        if isinstance(value, str) and value.strip():
+            return _bounded_text(value, 2000)
+    return ""
+
+
 def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
     context = _safe_context(request.get("context"))
     decisions: dict[str, Any] = {}
@@ -1293,6 +1450,11 @@ def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
         player_request = str(context.get("player_request") or "").strip()
         if not player_request:
             player_request = _extract_player_request(str(request.get("public_prompt") or ""))
+        decisions["build_site_context"] = inspect_build_site_context_payload(
+            str(context.get("candidate_summary") or ""),
+            player_request,
+            _world_context_json_from_context(context),
+        )
         decisions["build_option"] = recommend_build_option_payload(
             str(context.get("candidate_summary") or ""),
             player_request,
@@ -1326,6 +1488,20 @@ def _local_build_tool_contract_result(
         return None
 
     tool_trace: list[dict[str, Any]] = []
+    build_site_context = inspect_build_site_context_payload(
+        candidate_summary,
+        player_request,
+        _world_context_json_from_context(context),
+    )
+    tool_trace.append({
+        "tool_name": "inspect_build_site_context",
+        "args": {
+            "candidate_summary": candidate_summary,
+            "player_request": player_request,
+            "world_context_json": _world_context_json_from_context(context),
+        },
+        "result": _safe_log_value(build_site_context),
+    })
     memory = recall_build_prompt_memory_payload(player_request, candidate_summary)
     tool_trace.append({
         "tool_name": "recall_build_prompt_memory",
@@ -1436,6 +1612,7 @@ def _local_build_tool_contract_result(
         "final_output": "Local tool-contract fallback selected a bounded Luanti build plan.",
         "tool_trace": _safe_log_value(tool_trace),
         "tool_decisions": {
+            "build_site_context": build_site_context,
             "build_option": selection,
             "build_action_plan": plan,
         },
@@ -1542,9 +1719,11 @@ def _repair_request_for_contract_failure(
             f"Missing function tools: {missing}.",
             f"Previous selected option id: {selected}.",
             "Call the required tools in this pass before final output. "
-            "For fire-only requests select fire. For TNT wall requests select "
-            "tnt_wall. For generated shapes call propose_build_option before "
-            "select_build_option, then call plan_build_actions.",
+            "For build planning call inspect_build_site_context before memory, "
+            "selection, and planning. For fire-only requests select fire. For "
+            "TNT wall requests select tnt_wall. For generated shapes call "
+            "propose_build_option before select_build_option, then call "
+            "plan_build_actions.",
         ]
     )
     return repair
@@ -1626,6 +1805,31 @@ def _build_decision_fallback_reason(
     if locked and selected != locked["option_id"]:
         return "agent_violated_player_request_constraints"
     return None
+
+
+@function_tool
+def inspect_build_site_context(
+    candidate_summary: str,
+    player_request: str,
+    world_context_json: str = "",
+) -> dict[str, Any]:
+    """Inspect public-safe build context and player constraints without mutating the world."""
+
+    result = inspect_build_site_context_payload(
+        candidate_summary,
+        player_request,
+        world_context_json,
+    )
+    _record_tool_call(
+        "inspect_build_site_context",
+        {
+            "candidate_summary": candidate_summary,
+            "player_request": player_request,
+            "world_context_json": world_context_json,
+        },
+        result,
+    )
+    return result
 
 
 @function_tool
@@ -1767,6 +1971,7 @@ def build_agent(model: str | None = None) -> Any:
     tools: list[Any] = [
         summarize_runtime_capabilities,
         classify_world_action,
+        inspect_build_site_context,
         recall_build_prompt_memory,
         propose_build_option,
         select_build_option,
@@ -1785,10 +1990,12 @@ def build_agent(model: str | None = None) -> Any:
             "world mutation, rollback, audit, and task execution. Use hosted "
             "web search only when current public information is needed. Use "
             "function tools to classify capabilities, world-action policy, "
-            "reviewed prompt memory, generated build-option proposals, and "
-            "agent-selected build-option validation. "
-            "For build planning, call recall_build_prompt_memory and "
-            "then choose among the listed options yourself; call "
+            "public-safe build-site context, reviewed prompt memory, generated "
+            "build-option proposals, and agent-selected build-option "
+            "validation. "
+            "For build planning, call inspect_build_site_context first, then "
+            "call recall_build_prompt_memory, and then choose among the listed "
+            "options yourself from the inspected player constraints; call "
             "propose_build_option when the listed fixed candidates are too "
             "generic for the player request. When you propose a custom "
             "bounded option, pass a generated option_id plus build_kind, "
@@ -1849,9 +2056,11 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             f"player_request: {context.get('player_request', '')}",
             f"candidate_summary: {context.get('candidate_summary', '')}",
             f"selected_candidate_id: {context.get('selected_candidate_id', '')}",
+            f"world_context: {_world_context_json_from_context(context)}",
             "Return concise public-safe guidance for the player or operator. "
-            "For build planning, first call recall_build_prompt_memory, then "
-            "decide which executable option best matches the player request. "
+            "For build planning, first call inspect_build_site_context, then "
+            "call recall_build_prompt_memory, then decide which executable "
+            "option best matches the player request and inspected constraints. "
             "Call propose_build_option when the fixed candidates are too "
             "generic; for custom generated options pass a generated option_id, "
             "build_kind, material, bounded dimensions, and reason. If reviewed "
@@ -1874,7 +2083,9 @@ def _tool_decisions_from_trace(tool_trace: list[dict[str, Any]]) -> dict[str, An
     fallback: dict[str, Any] | None = None
     for entry in tool_trace:
         result = entry.get("result")
-        if entry.get("tool_name") == "select_build_option" and isinstance(result, dict):
+        if entry.get("tool_name") == "inspect_build_site_context" and isinstance(result, dict):
+            decisions["build_site_context"] = result
+        elif entry.get("tool_name") == "select_build_option" and isinstance(result, dict):
             decisions["build_option"] = result
         elif entry.get("tool_name") == "plan_build_actions" and isinstance(result, dict):
             decisions["build_action_plan"] = result

@@ -137,6 +137,7 @@ def _tool_powers_safe(tool_powers: Any) -> bool:
         "WebSearchTool",
         "summarize_runtime_capabilities",
         "classify_world_action",
+        "inspect_build_site_context",
         "recall_build_prompt_memory",
         "select_build_option",
         "plan_build_actions",
@@ -229,6 +230,8 @@ def _offline_smoke(report: dict[str, Any]) -> dict[str, Any]:
         report["checks"]["required_tool_calls_satisfied"] = (
             report["response"].get("required_tool_calls_satisfied") is True
             and not report["response"].get("missing_required_tool_calls")
+            and "inspect_build_site_context" in report["response"].get("required_tool_calls", [])
+            and "inspect_build_site_context" in report["response"].get("tool_trace_names", [])
             and "plan_build_actions" in report["response"].get("required_tool_calls", [])
             and "plan_build_actions" in report["response"].get("tool_trace_names", [])
             and report["response"].get("build_action_plan_status") == "ready"
@@ -335,6 +338,8 @@ def _probe_http(
         report["checks"]["required_tool_calls_satisfied"] = (
             report["response"].get("required_tool_calls_satisfied") is True
             and not report["response"].get("missing_required_tool_calls")
+            and "inspect_build_site_context" in report["response"].get("required_tool_calls", [])
+            and "inspect_build_site_context" in report["response"].get("tool_trace_names", [])
             and "plan_build_actions" in report["response"].get("required_tool_calls", [])
             and "plan_build_actions" in report["response"].get("tool_trace_names", [])
             and report["response"].get("build_action_plan_status") == "ready"

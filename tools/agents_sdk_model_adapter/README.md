@@ -76,13 +76,15 @@ availability, bounded public-safe response metadata,
 For build-planning requests, live responses should include a healthy
 tool-contract source (`agents_sdk_function_tool`,
 `agents_sdk_repair_function_tool`, or `local_agent_tool_contract_fast_path`)
-plus a bounded `tool_trace` containing `recall_build_prompt_memory`,
-`select_build_option`, and `plan_build_actions`. The local fast path is only for
-bounded build-planning requests after the live SDK path or repair path failed;
-it keeps the game responsive while preserving explicit evidence that the model
-path needed recovery. The action-plan tool is read-only; it records the intended
-Luanti workflow and confirms that the engine, not the sidecar, owns preview,
-approval, rollback, task execution, and improvement evidence.
+plus a bounded `tool_trace` containing `inspect_build_site_context`,
+`recall_build_prompt_memory`, `select_build_option`, and
+`plan_build_actions`. The local fast path is only for bounded build-planning
+requests after the live SDK path or repair path failed; it keeps the game
+responsive while preserving explicit evidence that the model path needed
+recovery. The context-inspection and action-plan tools are read-only; they
+record player constraints, site-context availability, the intended Luanti
+workflow, and confirm that the engine, not the sidecar, owns preview, approval,
+rollback, task execution, and improvement evidence.
 When the installed Agents SDK exposes `Runner.run_streamed`, the sidecar uses
 the streamed runner and returns as soon as the required build-planning tools
 produce a ready Luanti action plan. It cancels the remaining stream instead of

@@ -28,6 +28,7 @@ def log_entry(
     message: str = "Selected a bounded Luanti build option.",
 ) -> dict:
     required = [
+        "inspect_build_site_context",
         "recall_build_prompt_memory",
         "select_build_option",
         "plan_build_actions",

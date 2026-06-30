@@ -265,6 +265,7 @@ read-only tool decision:
     "selected_option_id": "fire",
     "tool_decision_source": "agents_sdk_function_tool",
     "required_tool_calls": [
+      "inspect_build_site_context",
       "recall_build_prompt_memory",
       "select_build_option",
       "plan_build_actions",
@@ -273,6 +274,9 @@ read-only tool decision:
     "missing_required_tool_calls": [],
     "required_tool_calls_satisfied": true,
     "tool_trace": [
+      {
+        "tool_name": "inspect_build_site_context"
+      },
       {
         "tool_name": "recall_build_prompt_memory"
       },
@@ -331,18 +335,19 @@ guidance; the structured `tool_decisions` field is the execution contract that
 can change the pending preview plan.
 For healthy live agent evidence, generated-option decisions require an explicit
 `propose_build_option` entry in `tool_trace`. Fixed options such as strict fire
-or TNT wall still require `recall_build_prompt_memory` and
-`select_build_option`, and every healthy build-planning response requires
-`plan_build_actions` so the sidecar records the Luanti preview, approval,
-rollback, task, and improvement-evidence workflow. Generated options add
-`propose_build_option` to `required_tool_calls`. If a live run selects a
+or TNT wall still require `inspect_build_site_context`,
+`recall_build_prompt_memory`, and `select_build_option`, and every healthy
+build-planning response requires `plan_build_actions` so the sidecar records the
+Luanti preview, approval, rollback, task, and improvement-evidence workflow.
+Generated options add `propose_build_option` to `required_tool_calls`. If a live run selects a
 generated option without that tool call, the adapter labels the response as
 `adapter_fallback_after_agent_missing_required_tool` and records
 `missing_required_tool_calls = ["propose_build_option"]`.
 In live mode the adapter prefers streamed Agents SDK execution. Once
-`recall_build_prompt_memory`, `select_build_option`, and `plan_build_actions`
-have yielded a valid build decision and ready action plan, the sidecar cancels
-the remaining stream and returns that tool output as the execution contract.
+`inspect_build_site_context`, `recall_build_prompt_memory`,
+`select_build_option`, and `plan_build_actions` have yielded a valid build
+decision and ready action plan, the sidecar cancels the remaining stream and
+returns that tool output as the execution contract.
 The model can still reason and use web/tool powers, but late prose is not
 allowed to override the structured plan.
 If a live agent does not call the required function tools, the adapter still
@@ -474,6 +479,10 @@ Initial tools are deliberately read-only:
   already been granted.
 - `classify_world_action`: labels planned node writes as requiring preview,
   approval, and rollback before the engine may execute them.
+- `inspect_build_site_context`: converts public-safe site context and the player
+  request into auditable constraints such as strict single-fire requests or
+  TNT-wall requests. It does not expose private coordinates and never mutates the
+  world.
 - `recall_build_prompt_memory`: checks an optional reviewed prompt-eval case pack
   for exact public prompt regressions, then returns only a bounded option id and
   case id.

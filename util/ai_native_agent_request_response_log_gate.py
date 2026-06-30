@@ -20,6 +20,7 @@ ACCEPTED_TOOL_DECISION_SOURCES = {
     "local_agent_tool_contract_fast_path",
 }
 BASE_REQUIRED_TOOLS = {
+    "inspect_build_site_context",
     "recall_build_prompt_memory",
     "select_build_option",
     "plan_build_actions",
