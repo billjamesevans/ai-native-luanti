@@ -250,7 +250,9 @@ python3 util/ai_native_low_power_pi_evidence.py \
 ```
 
 Promote to one-hour evidence only after quick proof is clean. Promote to
-overnight evidence only after one-hour evidence is clean.
+overnight evidence only after one-hour evidence is clean. Named soak targets
+default to their recommended cadence; use explicit `--soak-iterations` and
+`--soak-interval-seconds` only when deliberately overriding the target cadence.
 
 ## Ranked Next-Issue Queue
 

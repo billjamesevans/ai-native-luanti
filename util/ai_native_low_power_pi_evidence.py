@@ -779,8 +779,22 @@ def parse_args(argv=None):
     parser.add_argument("--headless-player-timeout", type=float, default=2.0)
     parser.add_argument("--soak-target", choices=tuple(SOAK_TARGETS), default="quick", help="Named soak gate target to record and enforce.")
     parser.add_argument("--soak-min-duration-seconds", type=float, help="Optional extra minimum duration; cannot lower the named target.")
-    parser.add_argument("--soak-iterations", type=int, default=1, help="Number of repeated low-power verifier samples to collect.")
-    parser.add_argument("--soak-interval-seconds", type=float, default=0.0, help="Delay between soak iterations.")
+    parser.add_argument(
+        "--soak-iterations",
+        type=int,
+        help=(
+            "Number of repeated low-power verifier samples to collect. Defaults "
+            "to the recommended count for --soak-target."
+        ),
+    )
+    parser.add_argument(
+        "--soak-interval-seconds",
+        type=float,
+        help=(
+            "Delay between soak iterations. Defaults to the recommended interval "
+            "for --soak-target."
+        ),
+    )
     parser.add_argument("--max-avg-cpu-percent", type=float, default=85.0)
     parser.add_argument("--max-interval-cpu-percent", type=float, default=160.0)
     parser.add_argument("--max-rss-mb", type=float, default=1024.0)
@@ -794,6 +808,11 @@ def parse_args(argv=None):
     parser.add_argument("--ssh-timeout", type=int, default=60)
     parser.add_argument("--remote-verify-timeout", type=int, default=600)
     args = parser.parse_args(argv)
+    target = SOAK_TARGETS[args.soak_target]
+    if args.soak_iterations is None:
+        args.soak_iterations = int(target["recommended_iterations"])
+    if args.soak_interval_seconds is None:
+        args.soak_interval_seconds = float(target["recommended_interval_seconds"])
     if args.soak_iterations < 1:
         parser.error("--soak-iterations must be at least 1")
     if args.soak_interval_seconds < 0:

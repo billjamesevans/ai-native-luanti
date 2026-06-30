@@ -101,9 +101,7 @@ python3 util/ai_native_low_power_pi_evidence.py \
   --confirm-backup-first \
   --backup-artifact-label "<backup-archive-name>" \
   --backup-sha256 "<backup-sha256>" \
-  --soak-target one-hour \
-  --soak-iterations 13 \
-  --soak-interval-seconds 300
+  --soak-target one-hour
 ```
 
 The overnight path uses the same gate after the one-hour target is clean:
@@ -114,10 +112,13 @@ python3 util/ai_native_low_power_pi_evidence.py \
   --confirm-backup-first \
   --backup-artifact-label "<backup-archive-name>" \
   --backup-sha256 "<backup-sha256>" \
-  --soak-target overnight \
-  --soak-iterations 17 \
-  --soak-interval-seconds 1800
+  --soak-target overnight
 ```
+
+Named soak targets default to their recommended cadence. Override with
+`--soak-iterations 13 --soak-interval-seconds 300` for one-hour or
+`--soak-iterations 17 --soak-interval-seconds 1800` for overnight only when
+intentionally changing the sampling plan.
 
 Default low-power budgets are explicit and can be tightened per run:
 

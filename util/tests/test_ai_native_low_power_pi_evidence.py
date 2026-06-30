@@ -147,6 +147,27 @@ class FakeRunner:
 
 
 class LowPowerPiEvidenceTests(unittest.TestCase):
+    def test_named_soak_targets_default_to_recommended_cadence(self):
+        module = load_module()
+
+        quick = module.parse_args(["--ssh-target", "bill@minecraftpi.home"])
+        one_hour = module.parse_args([
+            "--ssh-target",
+            "bill@minecraftpi.home",
+            "--soak-target",
+            "one-hour",
+        ])
+        overnight = module.parse_args([
+            "--ssh-target",
+            "bill@minecraftpi.home",
+            "--soak-target",
+            "overnight",
+        ])
+
+        self.assertEqual((quick.soak_iterations, quick.soak_interval_seconds), (1, 0.0))
+        self.assertEqual((one_hour.soak_iterations, one_hour.soak_interval_seconds), (13, 300.0))
+        self.assertEqual((overnight.soak_iterations, overnight.soak_interval_seconds), (17, 1800.0))
+
     def test_collects_public_safe_low_power_manifest_from_remote_verifier_and_services(self):
         module = load_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -535,6 +556,8 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
                     "one-hour",
                     "--soak-iterations",
                     "2",
+                    "--soak-interval-seconds",
+                    "0",
                 ]
             )
             fake_runner = FakeRunner(module)

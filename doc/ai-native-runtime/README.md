@@ -100,7 +100,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Optional model adapter scaffold: enable `ai_runtime.enable_model_adapter_probe_command` and run `/ai_model_adapter_probe`
 - One-command local pre-PR verification with clean-profile workload evidence: `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime`
 - Low-power Pi evidence lane: `python3 util/ai_native_low_power_pi_evidence.py --ssh-target "<operator-supplied-target>" --confirm-backup-first --soak-target quick`
-  - Promoted targets: add `--soak-target one-hour --soak-iterations 13 --soak-interval-seconds 300`; after that is clean, use `--soak-target overnight --soak-iterations 17 --soak-interval-seconds 1800`.
+  - Promoted targets: use `--soak-target one-hour`; after that is clean, use `--soak-target overnight`. Named targets default to their recommended cadence (`--soak-iterations 13 --soak-interval-seconds 300` for one-hour, `--soak-iterations 17 --soak-interval-seconds 1800` for overnight) unless explicitly overridden.
   - The Pi lane requires a strict `headless_client_load` probe with at least two attempted/connected synthetic players, join-log latency proxy evidence, and `ai_runtime_scale_gate=pass`.
 - Synthetic-only utility fallback: add `--game-profile sample-synthetic`
 - Strict headless-player verification: add `--require-headless-player-probe` with a disposable `--headless-player-command`

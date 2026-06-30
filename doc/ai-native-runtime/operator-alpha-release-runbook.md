@@ -166,9 +166,12 @@ Attach these evidence classes to a release candidate:
 - Low-power evidence:
   `python3 util/ai_native_low_power_pi_evidence.py --ssh-target "$AI_NATIVE_PI_SSH_TARGET" --confirm-backup-first --backup-artifact-label "$BACKUP_ARTIFACT_LABEL" --backup-sha256 "$BACKUP_SHA256" --soak-target quick`
 - Promoted low-power evidence after quick proof:
-  add `--soak-target one-hour --soak-iterations 13 --soak-interval-seconds 300`
+  add `--soak-target one-hour`
 - Overnight evidence after the one-hour target is clean:
-  add `--soak-target overnight --soak-iterations 17 --soak-interval-seconds 1800`
+  add `--soak-target overnight`
+- Named soak targets default to their recommended cadence:
+  `--soak-iterations 13 --soak-interval-seconds 300` for one-hour, and
+  `--soak-iterations 17 --soak-interval-seconds 1800` for overnight.
 - Minecraft-parity scorecard:
   `python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks`
 - Privacy/public-safety scan status from the verifier and evidence manifests.
