@@ -36,6 +36,10 @@ MAX_RESPONSE_BYTES = 4000
 MAX_LOG_STRING_BYTES = 1200
 MAX_TOOL_TRACE_ENTRIES = 12
 MAX_MEMORY_CASES = 12
+BUILD_PLANNING_REQUIRED_TOOLS = (
+    "recall_build_prompt_memory",
+    "recommend_build_option",
+)
 FORBIDDEN_RESPONSE_KEYS = {
     "raw_provider_request",
     "raw_provider_response",
@@ -463,6 +467,34 @@ def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
     return decisions
 
 
+def _required_tool_names_for_request(request: dict[str, Any]) -> list[str]:
+    context = _safe_context(request.get("context"))
+    if context.get("intent") == "build_planning" and context.get("candidate_summary"):
+        return list(BUILD_PLANNING_REQUIRED_TOOLS)
+    return []
+
+
+def _tool_trace_names(tool_trace: Any) -> list[str]:
+    if not isinstance(tool_trace, list):
+        return []
+    names: list[str] = []
+    for entry in tool_trace:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("tool_name")
+        if isinstance(name, str) and name:
+            names.append(name)
+    return names
+
+
+def _missing_required_tool_names(request: dict[str, Any], tool_trace: Any) -> list[str]:
+    required = _required_tool_names_for_request(request)
+    if not required:
+        return []
+    called = set(_tool_trace_names(tool_trace))
+    return [name for name in required if name not in called]
+
+
 def _selected_option_id(decisions: dict[str, Any]) -> str | None:
     build_option = decisions.get("build_option")
     if isinstance(build_option, dict):
@@ -613,6 +645,7 @@ async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> d
 def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
     prompt = _bounded_text(request.get("public_prompt"), 400)
     tool_decisions = _tool_decisions_for_request(request)
+    required_tools = _required_tool_names_for_request(request)
     return {
         "schema_version": 1,
         "response_kind": "ai_native_model_adapter_response",
@@ -630,6 +663,9 @@ def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
             "tool_decisions": tool_decisions,
             "tool_decision_source": "offline_adapter_fallback",
             "selected_option_id": _selected_option_id(tool_decisions),
+            "required_tool_calls": required_tools,
+            "missing_required_tool_calls": required_tools,
+            "required_tool_calls_satisfied": not required_tools,
             "world_mutation_authority": "luanti",
             "guidance": (
                 "The sidecar is configured for Agents SDK execution. Set "
@@ -695,7 +731,14 @@ def run_model_adapter_request(
     tool_trace = agent_result.get("tool_trace") if isinstance(agent_result, dict) else []
     tool_decisions = agent_result.get("tool_decisions") if isinstance(agent_result, dict) else {}
     decision_source = "agents_sdk_function_tool"
-    if not tool_decisions:
+    required_tools = _required_tool_names_for_request(request)
+    missing_required_tools = _missing_required_tool_names(request, tool_trace)
+    if missing_required_tools:
+        fallback_decisions = _tool_decisions_for_request(request)
+        if fallback_decisions:
+            tool_decisions = fallback_decisions
+        decision_source = "adapter_fallback_after_agent_missing_required_tool"
+    elif not tool_decisions:
         tool_decisions = _tool_decisions_for_request(request)
         decision_source = "adapter_fallback_after_agent_no_tool"
 
@@ -716,6 +759,9 @@ def run_model_adapter_request(
             "tool_decisions": tool_decisions,
             "tool_decision_source": decision_source,
             "selected_option_id": _selected_option_id(tool_decisions),
+            "required_tool_calls": required_tools,
+            "missing_required_tool_calls": missing_required_tools,
+            "required_tool_calls_satisfied": not missing_required_tools,
             "world_mutation_authority": "luanti",
         },
     })

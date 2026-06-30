@@ -161,7 +161,16 @@ read-only tool decision:
   "response": {
     "selected_option_id": "fire",
     "tool_decision_source": "agents_sdk_function_tool",
+    "required_tool_calls": [
+      "recall_build_prompt_memory",
+      "recommend_build_option"
+    ],
+    "missing_required_tool_calls": [],
+    "required_tool_calls_satisfied": true,
     "tool_trace": [
+      {
+        "tool_name": "recall_build_prompt_memory"
+      },
       {
         "tool_name": "recommend_build_option"
       }
@@ -183,8 +192,11 @@ kept as player guidance; the structured `tool_decisions` field is the execution
 contract that can change the pending preview plan.
 If a live agent does not call the required function tools, the adapter still
 returns a bounded fallback decision but labels it with
-`tool_decision_source = adapter_fallback_after_agent_no_tool` so the run can be
-promoted into evals instead of being mistaken for healthy agent behavior.
+`tool_decision_source = adapter_fallback_after_agent_missing_required_tool`,
+sets `required_tool_calls_satisfied = false`, and records
+`missing_required_tool_calls` so the run can be promoted into evals instead of
+being mistaken for healthy agent behavior. If no tool decision is returned at
+all, the source is `adapter_fallback_after_agent_no_tool`.
 
 Managed readiness probe, without provider credentials:
 
@@ -212,13 +224,15 @@ uv run --project tools/agents_sdk_model_adapter \
   --mode managed-http \
   --port 8766 \
   --require-live-agent \
+  --require-build-planning-tools \
   --output local/benchmarks/agents-sdk-sidecar-live-readiness.json
 ```
 
 That mode keeps the endpoint loopback-only, does not print or retain the key,
 and requires provider-backed `agentic_execution = true`,
 `web_search_tool_available = true`, `live_web_lookup_available = true`,
-bounded public-safe response metadata, and `world_mutation_authority = luanti`.
+bounded public-safe response metadata, `required_tool_calls_satisfied = true`
+for the build-planning probe, and `world_mutation_authority = luanti`.
 It is the evidence path for proving the sidecar is actually running Agents SDK
 agents with hosted web lookup instead of only publishing the offline contract.
 The Pi fork deploy script sets the live sidecar log to:

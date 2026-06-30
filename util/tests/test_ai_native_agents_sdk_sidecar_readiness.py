@@ -35,6 +35,16 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
                 "direct_world_mutation": False,
             },
             {
+                "name": "recall_build_prompt_memory",
+                "kind": "function_tool",
+                "direct_world_mutation": False,
+            },
+            {
+                "name": "recommend_build_option",
+                "kind": "function_tool",
+                "direct_world_mutation": False,
+            },
+            {
                 "name": "WebSearchTool",
                 "kind": "hosted_tool",
                 "direct_world_mutation": False,
@@ -129,9 +139,23 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
                     "tools_enabled": [
                         "summarize_runtime_capabilities",
                         "classify_world_action",
+                        "recall_build_prompt_memory",
+                        "recommend_build_option",
                         "WebSearchTool",
                     ],
                     "tool_powers": tool_powers,
+                    "tool_decision_source": "agents_sdk_function_tool",
+                    "selected_option_id": "tnt_wall",
+                    "required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "recommend_build_option",
+                    ],
+                    "missing_required_tool_calls": [],
+                    "required_tool_calls_satisfied": True,
+                    "tool_trace": [
+                        {"tool_name": "recall_build_prompt_memory"},
+                        {"tool_name": "recommend_build_option"},
+                    ],
                     "world_mutation_authority": "luanti",
                 },
             }
@@ -149,6 +173,7 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
                 endpoint="http://127.0.0.1:8766/v1/model-adapter",
                 require_live_agent=True,
                 live_public_prompt="public live probe",
+                require_build_planning_tools=True,
             )
 
         self.assertEqual(report["status"], "pass", report)
@@ -159,7 +184,72 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
         self.assertTrue(report["checks"]["live_agent_execution"])
         self.assertTrue(report["checks"]["live_web_lookup_available"])
         self.assertTrue(report["checks"]["bounded_response"])
+        self.assertTrue(report["checks"]["required_tool_calls_satisfied"])
+        self.assertEqual(report["response"]["selected_option_id"], "tnt_wall")
+        self.assertEqual(
+            report["response"]["tool_trace_names"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
         self.assertEqual(report["response"]["world_mutation_authority"], "luanti")
+
+    def test_existing_http_live_agent_fails_when_required_build_tools_missing(self):
+        module = load_readiness_module()
+        tool_powers = self.tool_powers()
+
+        def fake_http_json(method, url, payload=None, *, timeout_seconds):
+            if method == "GET":
+                return 200, {
+                    "service": "ai-native-luanti-agents-sdk-model-adapter",
+                    "status": "ready",
+                    "agents_sdk_available": True,
+                    "openai_api_key_present": True,
+                    "web_search_tool_available": True,
+                    "tool_powers": tool_powers,
+                    "world_mutation_authority": "luanti",
+                    "adapter_name": "openai-agents-sdk-model-adapter",
+                    "contract": "provider_neutral_v1",
+                }
+            return 200, {
+                "ok": True,
+                "response_kind": "ai_native_model_adapter_response",
+                "adapter_contract": "provider_neutral_v1",
+                "adapter_name": "openai-agents-sdk-model-adapter",
+                "message": "Live public-safe guidance.",
+                "response": {
+                    "agentic_execution": True,
+                    "web_search_available": True,
+                    "tools_enabled": ["WebSearchTool"],
+                    "tool_powers": tool_powers,
+                    "tool_decision_source": "adapter_fallback_after_agent_missing_required_tool",
+                    "required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "recommend_build_option",
+                    ],
+                    "missing_required_tool_calls": ["recommend_build_option"],
+                    "required_tool_calls_satisfied": False,
+                    "tool_trace": [{"tool_name": "recall_build_prompt_memory"}],
+                    "world_mutation_authority": "luanti",
+                },
+            }
+
+        fake_agent_module = mock.Mock()
+        fake_agent_module.sample_request.return_value = {
+            "request_kind": "ai_native_model_adapter_request",
+            "public_prompt": "public prompt",
+        }
+
+        with mock.patch.object(module, "_http_json", side_effect=fake_http_json), \
+                mock.patch.object(module, "_load_agent_module", return_value=fake_agent_module):
+            report = module.run_readiness(
+                mode="existing-http",
+                endpoint="http://127.0.0.1:8766/v1/model-adapter",
+                require_live_agent=True,
+                require_build_planning_tools=True,
+            )
+
+        self.assertEqual(report["status"], "fail", report)
+        self.assertFalse(report["checks"]["required_tool_calls_satisfied"])
+        self.assertEqual(report["response"]["missing_required_tool_calls"], ["recommend_build_option"])
 
     def test_cli_writes_output_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
