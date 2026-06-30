@@ -74,6 +74,25 @@ eval can replay. Use the builder so reviewed corrections come from the candidate
 queue instead of hand-written JSON:
 
 ```bash
+python3 util/ai_native_agent_feedback_packet.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --prompt "build a bridge" \
+  --case-hint stone_bridge_platform \
+  --build-kind platform \
+  --build-material-name stone \
+  --planned-node-writes 12 \
+  --route agentic_build_planner \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --operator-label-output local/benchmarks/ai-agent-operator-labels.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+When the queue already exists and only the reviewed label artifact is needed,
+use the lower-level label builder:
+
+```bash
 python3 util/ai_native_agent_operator_label.py \
   --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
   --prompt "build a bridge" \
