@@ -2438,6 +2438,7 @@ end
 
 local function parse_named_build_int(lower_prompt, name)
 	return parse_build_positive_int(lower_prompt:match(name .. "%s+([%-%d]+)"))
+		or parse_build_positive_int(lower_prompt:match("([%-%d]+)%s+" .. name))
 end
 
 local function prompt_is_explicit_marker_build(lower_prompt)
@@ -2511,11 +2512,15 @@ local function parse_build_options(raw_prompt, context)
 		end
 		local x_width, x_height = lower:match("(%d+)%s*x%s*(%d+)")
 		local width = parse_named_build_int(lower, "width")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+wide"))
 			or parse_named_build_int(lower, "wide")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+length"))
 			or parse_named_build_int(lower, "length")
 			or parse_build_positive_int(x_width or "4")
 		local height = parse_named_build_int(lower, "height")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+high"))
 			or parse_named_build_int(lower, "high")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+tall"))
 			or parse_named_build_int(lower, "tall")
 			or parse_build_positive_int(x_height or "3")
 		if not width or not height then
@@ -2690,6 +2695,28 @@ local function parse_operator_feedback_params(raw)
 				if not params.planned_node_writes then
 					return nil, "invalid_feedback_planned_writes"
 				end
+			elseif key == "selected_candidate" or key == "selected_candidate_id" then
+				params.selected_candidate_id = bounded_trace_text(value, 120)
+			elseif key == "width" or key == "build_width" then
+				params.build_width = parse_build_positive_int(value)
+				if not params.build_width then
+					return nil, "invalid_feedback_width"
+				end
+			elseif key == "depth" or key == "build_depth" then
+				params.build_depth = parse_build_positive_int(value)
+				if not params.build_depth then
+					return nil, "invalid_feedback_depth"
+				end
+			elseif key == "height" or key == "build_height" then
+				params.build_height = parse_build_positive_int(value)
+				if not params.build_height then
+					return nil, "invalid_feedback_height"
+				end
+			elseif key == "build_count" then
+				params.build_count = parse_build_positive_int(value)
+				if not params.build_count then
+					return nil, "invalid_feedback_count"
+				end
 			elseif key == "route" then
 				params.route = bounded_trace_text(value, 120)
 			elseif key == "danger_refusal_allowed" then
@@ -2752,6 +2779,21 @@ local function expected_from_feedback_params(params)
 	end
 	if params.route then
 		expected.route = params.route
+	end
+	if params.selected_candidate_id then
+		expected.selected_candidate_id = params.selected_candidate_id
+	end
+	if params.build_width then
+		expected.build_width = params.build_width
+	end
+	if params.build_depth then
+		expected.build_depth = params.build_depth
+	end
+	if params.build_height then
+		expected.build_height = params.build_height
+	end
+	if params.build_count then
+		expected.build_count = params.build_count
 	end
 	if params.danger_refusal_allowed ~= nil then
 		expected.danger_refusal_allowed = params.danger_refusal_allowed
@@ -2854,6 +2896,18 @@ function plugin._natural_feedback_param(raw)
 	}
 	if parsed.build_material_node then
 		pieces[#pieces + 1] = "node=" .. tostring(parsed.build_material_node)
+	end
+	if parsed.build_width then
+		pieces[#pieces + 1] = "width=" .. tostring(parsed.build_width)
+	end
+	if parsed.build_depth then
+		pieces[#pieces + 1] = "depth=" .. tostring(parsed.build_depth)
+	end
+	if parsed.build_height then
+		pieces[#pieces + 1] = "height=" .. tostring(parsed.build_height)
+	end
+	if parsed.build_count then
+		pieces[#pieces + 1] = "build_count=" .. tostring(parsed.build_count)
 	end
 	return table.concat(pieces, "; "), nil
 end
@@ -5402,7 +5456,9 @@ local function compact_eval_reply(reply)
 		trace_id = reply.trace_id,
 		build_kind = reply.build_kind,
 		build_width = reply.build_width,
+		build_depth = reply.build_depth,
 		build_height = reply.build_height,
+		build_count = reply.build_count,
 		build_material_name = reply.build_material_name,
 		build_material_node = reply.build_material_node,
 		planned_node_writes = reply.planned_node_writes,
@@ -5433,6 +5489,10 @@ local function compact_eval_trace(trace)
 			reason = response.reason,
 			message = bounded_trace_text(response.message, 400),
 			build_kind = response.build_kind,
+			build_width = response.build_width,
+			build_depth = response.build_depth,
+			build_height = response.build_height,
+			build_count = response.build_count,
 			build_material_name = response.build_material_name,
 			build_material_node = response.build_material_node,
 			planned_node_writes = response.planned_node_writes,
@@ -5442,6 +5502,10 @@ local function compact_eval_trace(trace)
 		},
 		context = {
 			build_kind = context.build_kind,
+			build_width = context.build_width,
+			build_depth = context.build_depth,
+			build_height = context.build_height,
+			build_count = context.build_count,
 			build_material_name = context.build_material_name,
 			build_material_node = context.build_material_node,
 		},
@@ -5515,6 +5579,14 @@ local function run_build_eval_case(report, owner, case_id, prompt, context, expe
 				or (reply and reply.build_material_name == expected.build_material_name),
 			material_node = expected.build_material_node == nil
 				or (reply and reply.build_material_node == expected.build_material_node),
+			build_width = expected.build_width == nil
+				or (reply and reply.build_width == expected.build_width),
+			build_depth = expected.build_depth == nil
+				or (reply and reply.build_depth == expected.build_depth),
+			build_height = expected.build_height == nil
+				or (reply and reply.build_height == expected.build_height),
+			build_count = expected.build_count == nil
+				or (reply and reply.build_count == expected.build_count),
 			planned_writes = expected.planned_node_writes == nil
 				or (reply and reply.planned_node_writes == expected.planned_node_writes),
 			cleanup_discarded = cleanup == nil
@@ -5569,6 +5641,14 @@ local function finish_agentic_build_eval_case(case_report, final_reply, final_tr
 		or (final_reply and final_reply.build_material_name == expected.build_material_name)
 	case_report.checks.material_node = expected.build_material_node == nil
 		or (final_reply and final_reply.build_material_node == expected.build_material_node)
+	case_report.checks.build_width = expected.build_width == nil
+		or (final_reply and final_reply.build_width == expected.build_width)
+	case_report.checks.build_depth = expected.build_depth == nil
+		or (final_reply and final_reply.build_depth == expected.build_depth)
+	case_report.checks.build_height = expected.build_height == nil
+		or (final_reply and final_reply.build_height == expected.build_height)
+	case_report.checks.build_count = expected.build_count == nil
+		or (final_reply and final_reply.build_count == expected.build_count)
 	local planned_writes = final_reply and final_reply.planned_node_writes or nil
 	case_report.checks.planned_writes = type(planned_writes) == "number"
 		and planned_writes > 0

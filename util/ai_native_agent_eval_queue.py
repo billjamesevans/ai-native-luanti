@@ -22,10 +22,15 @@ DEFAULT_MAX_CANDIDATES = 50
 ALLOWED_LABEL_EXPECTED_KEYS = {
     "action",
     "build_kind",
+    "build_count",
+    "build_depth",
+    "build_height",
     "build_material_name",
     "build_material_node",
+    "build_width",
     "planned_node_writes",
     "route",
+    "selected_candidate_id",
     "danger_refusal_allowed",
     "forbidden_extra_structure",
 }
@@ -101,6 +106,18 @@ def safe_scalar(value: Any, max_bytes: int = 1000) -> str | int | float | bool |
     return bounded_text(value, max_bytes)
 
 
+def safe_int(value: Any, *, minimum: int = 0, maximum: int = 10000) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        result = int(value)
+    except (TypeError, ValueError):
+        return None
+    if result < minimum or result > maximum:
+        return None
+    return result
+
+
 def safe_string_list(value: Any, *, max_items: int = 8, max_bytes: int = 80) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -133,14 +150,23 @@ def safe_expected_from_operator_label(expected: Any) -> dict[str, Any] | None:
         return None
     if not isinstance(result.get("build_material_name"), str) or not result["build_material_name"].strip():
         return None
-    if "planned_node_writes" in result:
-        try:
-            writes = int(result["planned_node_writes"])
-        except (TypeError, ValueError):
+    selected_candidate_id = result.get("selected_candidate_id")
+    if selected_candidate_id is not None:
+        if not isinstance(selected_candidate_id, str) or not selected_candidate_id.strip():
             return None
-        if writes < 0 or writes > 10000:
+        result["selected_candidate_id"] = selected_candidate_id.strip()
+    if "planned_node_writes" in result:
+        writes = safe_int(result["planned_node_writes"], minimum=0)
+        if writes is None:
             return None
         result["planned_node_writes"] = writes
+    for dimension_key in ("build_width", "build_depth", "build_height", "build_count"):
+        if dimension_key not in result:
+            continue
+        dimension = safe_int(result[dimension_key], minimum=1)
+        if dimension is None:
+            return None
+        result[dimension_key] = dimension
     return result
 
 
@@ -233,6 +259,97 @@ def operator_label_matches(candidate: dict[str, Any], label: dict[str, Any]) -> 
     if isinstance(label_source_kind, str) and label_source_kind:
         return candidate.get("source_kind") == label_source_kind
     return True
+
+
+def generated_option_from_sources(*sources: Any) -> dict[str, Any]:
+    for source in sources:
+        if not isinstance(source, dict):
+            continue
+        option = source.get("generated_option")
+        if isinstance(option, dict):
+            return option
+    return {}
+
+
+def generated_option_from_tool_trace(tool_trace: Any) -> dict[str, Any]:
+    if not isinstance(tool_trace, list):
+        return {}
+    for item in tool_trace:
+        if not isinstance(item, dict):
+            continue
+        result = item.get("result") if isinstance(item.get("result"), dict) else {}
+        option = generated_option_from_sources(result)
+        if option:
+            return option
+    return {}
+
+
+def generated_expected_outcome(candidate: dict[str, Any], observed: dict[str, Any]) -> dict[str, Any] | None:
+    if candidate.get("source_kind") != "agents_sdk_request_response":
+        return None
+    selected_id = observed.get("selected_option_id") or observed.get("build_option_selected_option_id")
+    if not isinstance(selected_id, str) or not selected_id.startswith("generated_"):
+        return None
+    tool_trace_names = {
+        item for item in observed.get("tool_trace_names", [])
+        if isinstance(item, str)
+    }
+    required_trace = {
+        "recall_build_prompt_memory",
+        "propose_build_option",
+        "select_build_option",
+        "plan_build_actions",
+    }
+    if not required_trace.issubset(tool_trace_names):
+        return None
+    if observed.get("tool_decision_source") != "agents_sdk_function_tool":
+        return None
+    if observed.get("required_tool_calls_satisfied") is not True:
+        return None
+    if observed.get("missing_required_tool_calls"):
+        return None
+    if observed.get("build_action_plan_status") != "ready":
+        return None
+    if observed.get("build_action_plan_world_mutation_authority") != "luanti":
+        return None
+    if observed.get("generated_option_status") != "ready":
+        return None
+    generated_id = observed.get("generated_option_id")
+    if not isinstance(generated_id, str) or generated_id != selected_id:
+        return None
+    build_kind = observed.get("generated_option_build_kind")
+    material = observed.get("generated_option_build_material_name")
+    writes = safe_int(observed.get("generated_option_planned_node_writes"), minimum=1)
+    if not isinstance(build_kind, str) or not build_kind.strip():
+        return None
+    if not isinstance(material, str) or not material.strip():
+        return None
+    if writes is None:
+        return None
+    expected: dict[str, Any] = {
+        "action": "build",
+        "route": "agentic_build_planner",
+        "selected_candidate_id": selected_id,
+        "build_kind": build_kind.strip(),
+        "build_material_name": material.strip(),
+        "planned_node_writes": writes,
+        "forbidden_extra_structure": True,
+    }
+    for source_key, expected_key in (
+        ("generated_option_build_width", "build_width"),
+        ("generated_option_build_depth", "build_depth"),
+        ("generated_option_build_height", "build_height"),
+        ("generated_option_build_count", "build_count"),
+    ):
+        dimension = safe_int(observed.get(source_key), minimum=1)
+        if dimension is not None:
+            expected[expected_key] = dimension
+    return {
+        "case_hint": selected_id,
+        "ready_for_prompt_eval": True,
+        "review_status": "candidate_ready",
+        "expected": expected,
+    }
 
 
 def apply_operator_labels(
@@ -367,6 +484,9 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
                 "planned_node_writes": 1,
             },
         }
+    generated = generated_expected_outcome(candidate, observed)
+    if generated is not None:
+        return generated
     if route == "agentic_build_planner":
         return {
             "case_hint": "agentic_build_planner_review",
@@ -509,8 +629,14 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             if isinstance(tool_decisions.get("build_action_plan"), dict)
             else {}
         )
-    memory_match = build_option.get("memory_match") if isinstance(build_option.get("memory_match"), dict) else {}
     tool_trace = nested.get("tool_trace") if isinstance(nested.get("tool_trace"), list) else []
+    generated_option = generated_option_from_sources(
+        build_option,
+        build_action_plan,
+        nested,
+        generated_option_from_tool_trace(tool_trace),
+    )
+    memory_match = build_option.get("memory_match") if isinstance(build_option.get("memory_match"), dict) else {}
     candidate = _base_candidate(
         "agents_sdk_request_response",
         safe_scalar(entry.get("created_at")),
@@ -541,6 +667,9 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             "tool_decision_source": safe_scalar(nested.get("tool_decision_source")),
             "build_option_decision_source": safe_scalar(build_option.get("decision_source")),
             "build_option_selected_option_id": safe_scalar(build_option.get("selected_option_id")),
+            "build_option_generated_option_status": safe_scalar(
+                build_option.get("generated_option_status")
+            ),
             "build_action_plan_status": safe_scalar(build_action_plan.get("status")),
             "build_action_plan_selected_option_id": safe_scalar(
                 build_action_plan.get("selected_option_id")
@@ -548,6 +677,35 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             "build_action_plan_step_count": safe_scalar(build_action_plan.get("step_count")),
             "build_action_plan_world_mutation_authority": safe_scalar(
                 build_action_plan.get("world_mutation_authority")
+            ),
+            "build_action_plan_build_kind": safe_scalar(build_action_plan.get("build_kind")),
+            "build_action_plan_build_material_name": safe_scalar(
+                build_action_plan.get("build_material_name")
+            ),
+            "build_action_plan_planned_node_writes": safe_scalar(
+                build_action_plan.get("planned_node_writes")
+            ),
+            "generated_option_id": safe_scalar(generated_option.get("option_id")),
+            "generated_option_status": safe_scalar(
+                build_option.get("generated_option_status")
+                or nested.get("generated_option_status")
+            ),
+            "generated_option_reason": safe_scalar(
+                generated_option.get("reason")
+                or build_option.get("generated_option_reason")
+                or nested.get("generated_option_reason")
+            ),
+            "generated_option_build_kind": safe_scalar(generated_option.get("build_kind")),
+            "generated_option_build_material_name": safe_scalar(
+                generated_option.get("build_material_name")
+            ),
+            "generated_option_build_width": safe_int(generated_option.get("build_width"), minimum=1),
+            "generated_option_build_depth": safe_int(generated_option.get("build_depth"), minimum=1),
+            "generated_option_build_height": safe_int(generated_option.get("build_height"), minimum=1),
+            "generated_option_build_count": safe_int(generated_option.get("build_count"), minimum=1),
+            "generated_option_planned_node_writes": safe_int(
+                generated_option.get("planned_node_writes"),
+                minimum=0,
             ),
             "memory_available": memory_match.get("memory_available"),
             "memory_matched_case_id": safe_scalar(memory_match.get("matched_case_id")),
@@ -606,6 +764,10 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             "status": safe_scalar(response.get("status")),
             "build_kind": safe_scalar(response.get("build_kind")),
             "build_material_name": safe_scalar(response.get("build_material_name")),
+            "build_width": safe_int(response.get("build_width"), minimum=1),
+            "build_depth": safe_int(response.get("build_depth"), minimum=1),
+            "build_height": safe_int(response.get("build_height"), minimum=1),
+            "build_count": safe_int(response.get("build_count"), minimum=1),
             "planned_node_writes": safe_scalar(response.get("planned_node_writes")),
             "planner_mode": safe_scalar(response.get("planner_mode")),
             "selected_candidate_id": safe_scalar(response.get("selected_candidate_id")),
@@ -630,6 +792,10 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             ),
             "adapter_required_tool_calls_satisfied": response.get("adapter_required_tool_calls_satisfied"),
             "build_option_decision_source": safe_scalar(response.get("build_option_decision_source")),
+            "generated_build_option_status": safe_scalar(
+                response.get("generated_build_option_status")
+            ),
+            "generated_candidate_id": safe_scalar(response.get("generated_candidate_id")),
             "adapter_memory_available": response.get("adapter_memory_available"),
             "adapter_memory_matched_case_id": safe_scalar(response.get("adapter_memory_matched_case_id")),
             "adapter_memory_case_hint": safe_scalar(response.get("adapter_memory_case_hint")),
@@ -644,6 +810,9 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             ),
             "adapter_build_action_plan_step_count": safe_scalar(
                 response.get("adapter_build_action_plan_step_count")
+            ),
+            "adapter_build_action_plan_world_mutation_authority": safe_scalar(
+                response.get("adapter_build_action_plan_world_mutation_authority")
             ),
         },
     })

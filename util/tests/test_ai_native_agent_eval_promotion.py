@@ -67,6 +67,74 @@ def agents_sdk_log_entry(prompt="build me a fire and only a fire"):
     }
 
 
+def agents_sdk_generated_option_entry():
+    entry = agents_sdk_log_entry("AI-native Luanti model adapter request.")
+    entry["request"]["context"].update({
+        "intent": "build_planning",
+        "player_request": "build a 6 wide 2 high lookout wall",
+        "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+    })
+    generated = {
+        "option_id": "generated_dimensioned_wall",
+        "build_kind": "wall",
+        "build_width": 6,
+        "build_height": 2,
+        "build_material_name": "stone",
+        "planned_node_writes": 12,
+    }
+    select_result = {
+        "selected_option_id": "generated_dimensioned_wall",
+        "selection_status": "accepted",
+        "candidate_count": 3,
+        "decision_source": "agent_selected_generated_build_option",
+        "generated_option_status": "ready",
+        "generated_option": generated,
+        "direct_world_mutation": False,
+    }
+    plan_result = {
+        "status": "ready",
+        "selected_option_id": "generated_dimensioned_wall",
+        "step_count": 4,
+        "direct_world_mutation": False,
+        "world_mutation_authority": "luanti",
+    }
+    entry["response"]["response"].update({
+        "agentic_execution": True,
+        "tools_enabled": [
+            "recall_build_prompt_memory",
+            "propose_build_option",
+            "select_build_option",
+            "plan_build_actions",
+        ],
+        "selected_option_id": "generated_dimensioned_wall",
+        "tool_decision_source": "agents_sdk_function_tool",
+        "required_tool_calls": [
+            "recall_build_prompt_memory",
+            "select_build_option",
+            "plan_build_actions",
+            "propose_build_option",
+        ],
+        "missing_required_tool_calls": [],
+        "required_tool_calls_satisfied": True,
+        "world_mutation_authority": "luanti",
+        "tool_trace": [
+            {"tool_name": "recall_build_prompt_memory", "result": {}},
+            {
+                "tool_name": "propose_build_option",
+                "result": {"status": "ready", "generated_option": generated},
+            },
+            {"tool_name": "select_build_option", "result": select_result},
+            {"tool_name": "plan_build_actions", "result": plan_result},
+        ],
+        "build_action_plan": plan_result,
+        "tool_decisions": {
+            "build_option": select_result,
+            "build_action_plan": plan_result,
+        },
+    })
+    return entry
+
+
 def nova_trace_line(prompt="build a wall of tnt"):
     payload = {
         "schema_version": 1,
@@ -171,6 +239,39 @@ class AgentEvalPromotionTests(unittest.TestCase):
         self.assertEqual(tnt["expected"]["build_material_name"], "tnt")
         self.assertEqual(tnt["expected"]["planned_node_writes"], 12)
         self.assertFalse(tnt["expected"]["danger_refusal_allowed"])
+
+    def test_promotes_generated_option_dimensions_to_runtime_case_pack(self):
+        promote = load_module(PROMOTE, "ai_native_agent_eval_promote_generated")
+        queue = load_module(QUEUE, "ai_native_agent_eval_queue_generated_fixture")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            sidecar_log.write_text(
+                json.dumps(agents_sdk_generated_option_entry()) + "\n",
+                encoding="utf-8",
+            )
+            queue_payload = queue.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T12:30:00Z",
+            )
+
+        pack = promote.build_case_pack(
+            queue_payload,
+            generated_at="2026-06-30T13:00:00Z",
+        )
+
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 1)
+        case = pack["cases"][0]
+        self.assertEqual(case["case_hint"], "generated_dimensioned_wall")
+        self.assertEqual(case["prompt"], "build a 6 wide 2 high lookout wall")
+        self.assertEqual(case["expected"]["route"], "agentic_build_planner")
+        self.assertEqual(case["expected"]["selected_candidate_id"], "generated_dimensioned_wall")
+        self.assertEqual(case["expected"]["build_kind"], "wall")
+        self.assertEqual(case["expected"]["build_material_name"], "stone")
+        self.assertEqual(case["expected"]["planned_node_writes"], 12)
+        self.assertEqual(case["expected"]["build_width"], 6)
+        self.assertEqual(case["expected"]["build_height"], 2)
 
     def test_selected_candidate_filter_promotes_only_requested_candidate(self):
         promote = load_module(PROMOTE, "ai_native_agent_eval_promote_selected")

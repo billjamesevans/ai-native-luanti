@@ -128,6 +128,11 @@ def expected_build_behavior(
     build_material_node: str | None = None,
     planned_node_writes: int | None = None,
     route: str | None = None,
+    selected_candidate_id: str | None = None,
+    build_width: int | None = None,
+    build_depth: int | None = None,
+    build_height: int | None = None,
+    build_count: int | None = None,
     danger_refusal_allowed: bool | None = None,
     forbidden_extra_structure: bool | None = None,
 ) -> dict[str, Any]:
@@ -142,6 +147,16 @@ def expected_build_behavior(
         expected["planned_node_writes"] = planned_node_writes
     if route:
         expected["route"] = route
+    if selected_candidate_id:
+        expected["selected_candidate_id"] = selected_candidate_id
+    if build_width is not None:
+        expected["build_width"] = build_width
+    if build_depth is not None:
+        expected["build_depth"] = build_depth
+    if build_height is not None:
+        expected["build_height"] = build_height
+    if build_count is not None:
+        expected["build_count"] = build_count
     if danger_refusal_allowed is not None:
         expected["danger_refusal_allowed"] = danger_refusal_allowed
     if forbidden_extra_structure is not None:
