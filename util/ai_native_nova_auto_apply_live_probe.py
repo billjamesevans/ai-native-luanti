@@ -172,6 +172,11 @@ def write_probe_world(
             "    planned_node_writes = reply.planned_node_writes,",
             "    candidate_count = reply.candidate_count,",
             "    adapter_tool_decision_source = reply.adapter_tool_decision_source,",
+            "    adapter_agent_repair_attempted = reply.adapter_agent_repair_attempted,",
+            "    adapter_agent_repair_succeeded = reply.adapter_agent_repair_succeeded,",
+            "    adapter_agent_repair_reason = reply.adapter_agent_repair_reason,",
+            "    adapter_initial_missing_required_tool_calls =",
+            "      reply.adapter_initial_missing_required_tool_calls,",
             "    adapter_required_tool_calls_satisfied = reply.adapter_required_tool_calls_satisfied,",
             "    adapter_missing_required_tool_calls = reply.adapter_missing_required_tool_calls,",
             "    adapter_tool_trace_names = reply.adapter_tool_trace_names,",
@@ -812,7 +817,10 @@ def _validate_case(
         raise ValueError(f"nova auto-apply {case_id} was not auto-applied")
     if reply.get("auto_apply_policy") != "ai_runtime.auto_apply_build_approvals":
         raise ValueError(f"nova auto-apply {case_id} policy is invalid")
-    if reply.get("adapter_tool_decision_source") != "agents_sdk_function_tool":
+    if reply.get("adapter_tool_decision_source") not in {
+        "agents_sdk_function_tool",
+        "agents_sdk_repair_function_tool",
+    }:
         raise ValueError(f"nova auto-apply {case_id} did not use agent tool decision")
     if reply.get("adapter_required_tool_calls_satisfied") is not True:
         raise ValueError(f"nova auto-apply {case_id} required tools were not satisfied")

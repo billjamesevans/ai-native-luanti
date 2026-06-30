@@ -931,8 +931,17 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             "adapter_model_selected_candidate_id": safe_scalar(
                 response.get("adapter_model_selected_candidate_id")
             ),
+            "adapter_initial_model_selected_candidate_id": safe_scalar(
+                response.get("adapter_initial_model_selected_candidate_id")
+            ),
             "adapter_rejected_model_selected_candidate_id": safe_scalar(
                 response.get("adapter_rejected_model_selected_candidate_id")
+            ),
+            "adapter_agent_repair_attempted": response.get("adapter_agent_repair_attempted"),
+            "adapter_agent_repair_succeeded": response.get("adapter_agent_repair_succeeded"),
+            "adapter_agent_repair_reason": safe_scalar(response.get("adapter_agent_repair_reason")),
+            "adapter_initial_missing_required_tool_calls": safe_string_list(
+                response.get("adapter_initial_missing_required_tool_calls")
             ),
             "adapter_required_tool_calls": safe_string_list(response.get("adapter_required_tool_calls")),
             "adapter_missing_required_tool_calls": safe_string_list(
