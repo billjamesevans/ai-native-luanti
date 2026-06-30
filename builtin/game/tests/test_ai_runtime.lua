@@ -6148,6 +6148,8 @@ rawset(_G, "test_ai_agent_plugin_last_command_diagnostic", function()
 	local diagnostic_base = test_pos(4244)
 	local async_done
 	local async_requests = {}
+	local auto_apply_reply
+	local auto_apply_trace
 	core.ai_agent_plugin.set_model_adapter_async(function(request, done)
 		async_requests[#async_requests + 1] = request
 		async_done = done
@@ -6161,6 +6163,10 @@ rawset(_G, "test_ai_agent_plugin_last_command_diagnostic", function()
 			pos = diagnostic_base,
 			get_node = get_test_node,
 			set_node = set_test_node,
+			on_agentic_build_planner_complete = function(reply, trace)
+				auto_apply_reply = reply
+				auto_apply_trace = trace
+			end,
 		})
 	assert(initial_reply.status == "queued")
 	assert(initial_reply.trace_id ~= nil)
@@ -6195,6 +6201,17 @@ rawset(_G, "test_ai_agent_plugin_last_command_diagnostic", function()
 			},
 		},
 	})
+	assert(auto_apply_reply ~= nil)
+	assert(auto_apply_trace ~= nil)
+	assert(auto_apply_reply.status == "queued")
+	assert(auto_apply_reply.selected_candidate_id == "fire")
+	assert(auto_apply_reply.model_selected_candidate_id == "platform")
+	assert(auto_apply_reply.adapter_tool_trace_names[1]
+		== "recall_build_prompt_memory")
+	assert(auto_apply_reply.adapter_tool_trace_names[2]
+		== "select_build_option")
+	assert(auto_apply_reply.adapter_tool_trace_names[3]
+		== "plan_build_actions")
 	local queued_diagnostic = core.ai_agent_plugin.get_last_command_diagnostic("Diagnostic")
 	assert(queued_diagnostic ~= nil)
 	assert(queued_diagnostic.prompt == "build me a fire and only a fire")

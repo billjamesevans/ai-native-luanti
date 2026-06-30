@@ -630,6 +630,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "node": True,
                     "planned_writes": True,
                     "required_tools": True,
+                    "tool_trace_names": True,
                     "action_plan_ready": True,
                     "world_mutation_authority": True,
                     "task_completed": True,
@@ -667,6 +668,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "adapter_tool_decision_source": "agents_sdk_function_tool",
                     "adapter_required_tool_calls_satisfied": True,
                     "adapter_missing_required_tool_calls": [],
+                    "adapter_tool_trace_names": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
                     "adapter_build_action_plan_status": "ready",
                     "adapter_build_action_plan_step_count": 4,
                     "adapter_build_action_plan_world_mutation_authority": "luanti",
@@ -1406,6 +1412,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             no_auto_apply["cases"][0]["reply"]["auto_applied_approval"] = False
             with self.assertRaisesRegex(ValueError, "fire_only_strict was not auto-applied"):
                 probe.validate_live_result(no_auto_apply)
+
+            missing_tool_trace = json.loads(json.dumps(payload))
+            missing_tool_trace["cases"][0]["reply"]["adapter_tool_trace_names"] = []
+            with self.assertRaisesRegex(ValueError, "fire_only_strict tool trace names are invalid"):
+                probe.validate_live_result(missing_tool_trace)
 
     def test_agent_improvement_loop_validator_requires_memory_and_contract_evidence(self):
         verifier = load_agent_improvement_module()

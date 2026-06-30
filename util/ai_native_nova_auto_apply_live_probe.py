@@ -481,6 +481,11 @@ def write_probe_world(
             "            and reply.planned_node_writes == spec.expected_writes",
             "          case_result.checks.required_tools = reply",
             "            and reply.adapter_required_tool_calls_satisfied == true",
+            "          local tool_names = reply and reply.adapter_tool_trace_names or {}",
+            "          case_result.checks.tool_trace_names = type(tool_names) == \"table\"",
+            "            and tool_names[1] == \"recall_build_prompt_memory\"",
+            "            and tool_names[2] == \"select_build_option\"",
+            "            and tool_names[3] == \"plan_build_actions\"",
             "          case_result.checks.action_plan_ready = reply",
             "            and reply.adapter_build_action_plan_status == \"ready\"",
             "          case_result.checks.world_mutation_authority = reply",
@@ -600,6 +605,7 @@ def _validate_case(case: dict, *, case_id: str, candidate: str, node: str, write
         "node",
         "planned_writes",
         "required_tools",
+        "tool_trace_names",
         "action_plan_ready",
         "world_mutation_authority",
         "task_completed",
@@ -626,6 +632,12 @@ def _validate_case(case: dict, *, case_id: str, candidate: str, node: str, write
         raise ValueError(f"nova auto-apply {case_id} did not use agent tool decision")
     if reply.get("adapter_required_tool_calls_satisfied") is not True:
         raise ValueError(f"nova auto-apply {case_id} required tools were not satisfied")
+    if reply.get("adapter_tool_trace_names") != [
+        "recall_build_prompt_memory",
+        "select_build_option",
+        "plan_build_actions",
+    ]:
+        raise ValueError(f"nova auto-apply {case_id} tool trace names are invalid")
     if reply.get("adapter_build_action_plan_status") != "ready":
         raise ValueError(f"nova auto-apply {case_id} action plan was not ready")
     if reply.get("adapter_build_action_plan_world_mutation_authority") != "luanti":

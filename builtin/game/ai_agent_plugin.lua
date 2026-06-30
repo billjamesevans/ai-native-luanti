@@ -1356,6 +1356,9 @@ local function compact_pending_approval(pending)
 				pending.adapter_build_action_plan_step_count,
 			adapter_build_action_plan_world_mutation_authority =
 				pending.adapter_build_action_plan_world_mutation_authority,
+			generated_build_option_status = pending.generated_build_option_status,
+			generated_build_option_reason = pending.generated_build_option_reason,
+			generated_candidate_id = pending.generated_candidate_id,
 			repair_radius = pending.repair_radius,
 			sample_limit = pending.sample_limit,
 		}
@@ -1407,6 +1410,9 @@ local function remember_pending_approval(name, action, plan, context, extra)
 				extra.adapter_build_action_plan_step_count,
 			adapter_build_action_plan_world_mutation_authority =
 				extra.adapter_build_action_plan_world_mutation_authority,
+			generated_build_option_status = extra.generated_build_option_status,
+			generated_build_option_reason = extra.generated_build_option_reason,
+			generated_candidate_id = extra.generated_candidate_id,
 			repair_radius = extra.repair_radius,
 			sample_limit = extra.sample_limit,
 		}
@@ -2932,11 +2938,22 @@ function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
 	queued.adapter_selected_candidate_id = pending.adapter_selected_candidate_id
 	queued.model_selected_candidate_id = pending.model_selected_candidate_id
 	queued.selection_source = pending.selection_source
+	queued.intent_constraint_option_id = pending.intent_constraint_option_id
+	queued.intent_constraint_reason = pending.intent_constraint_reason
 	queued.adapter_tool_decision_source = pending.adapter_tool_decision_source
+	queued.adapter_model_selected_candidate_id =
+		pending.adapter_model_selected_candidate_id
+	queued.adapter_rejected_model_selected_candidate_id =
+		pending.adapter_rejected_model_selected_candidate_id
 	queued.adapter_required_tool_calls = pending.adapter_required_tool_calls
 	queued.adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls
 	queued.adapter_required_tool_calls_satisfied =
 		pending.adapter_required_tool_calls_satisfied
+	queued.build_option_decision_source = pending.build_option_decision_source
+	queued.adapter_memory_available = pending.adapter_memory_available
+	queued.adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id
+	queued.adapter_memory_case_hint = pending.adapter_memory_case_hint
+	queued.adapter_tool_trace_names = pending.adapter_tool_trace_names
 	queued.adapter_build_action_plan_status =
 		pending.adapter_build_action_plan_status
 	queued.adapter_build_action_plan_selected_candidate_id =
@@ -2945,6 +2962,9 @@ function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
 		pending.adapter_build_action_plan_step_count
 	queued.adapter_build_action_plan_world_mutation_authority =
 		pending.adapter_build_action_plan_world_mutation_authority
+	queued.generated_build_option_status = pending.generated_build_option_status
+	queued.generated_build_option_reason = pending.generated_build_option_reason
+	queued.generated_candidate_id = pending.generated_candidate_id
 	return queued
 end
 
