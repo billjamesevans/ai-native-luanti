@@ -64,14 +64,14 @@ def missing_required_tool_entry():
                 "tool_decision_source": "adapter_fallback_after_agent_missing_required_tool",
                 "required_tool_calls": [
                     "recall_build_prompt_memory",
-                    "recommend_build_option",
+                    "select_build_option",
                     "propose_build_option",
                 ],
                 "missing_required_tool_calls": ["propose_build_option"],
                 "required_tool_calls_satisfied": False,
                 "tool_trace": [
                     {"tool_name": "recall_build_prompt_memory"},
-                    {"tool_name": "recommend_build_option"},
+                    {"tool_name": "select_build_option"},
                 ],
                 "tool_decisions": {
                     "build_option": {
@@ -111,7 +111,7 @@ def fixed_good_response(request):
             "tool_decision_source": "agents_sdk_function_tool",
             "required_tool_calls": [
                 "recall_build_prompt_memory",
-                "recommend_build_option",
+                "select_build_option",
                 "propose_build_option",
             ],
             "missing_required_tool_calls": [],
@@ -119,12 +119,12 @@ def fixed_good_response(request):
             "tool_trace": [
                 {"tool_name": "recall_build_prompt_memory"},
                 {"tool_name": "propose_build_option"},
-                {"tool_name": "recommend_build_option"},
+                {"tool_name": "select_build_option"},
             ],
             "tool_decisions": {
                 "build_option": {
                     "selected_option_id": "generated_tower_wall",
-                    "decision_source": "generated_build_option_tool",
+                    "decision_source": "agent_selected_generated_build_option",
                 },
             },
             "world_mutation_authority": "luanti",

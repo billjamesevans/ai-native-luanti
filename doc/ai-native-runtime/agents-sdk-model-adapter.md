@@ -117,7 +117,11 @@ fields, credentials, raw provider payloads, private prompts, asset payloads, or
 private world references. Known regressions such as `build me a fire and only a
 fire` and `build a wall of tnt` are labeled with ready prompt-eval assertions;
 unknown prompts stay in `needs_operator_label` until a maintainer records the
-expected behavior. Adapter traces that miss required SDK tools are also marked
+expected behavior. Maintainers record that behavior with a public-safe
+`ai_native_agent_eval_operator_labels` file passed as `--operator-labels`; a
+label can match by exact candidate id or public prompt and can only promote
+build-output expectations that the runtime prompt-eval runner can replay.
+Adapter traces that miss required SDK tools are also marked
 `ready_for_adapter_contract_eval = true` and counted under
 `adapter_contract_failures`, even when the expected build-output behavior still
 needs an operator label.
@@ -139,6 +143,7 @@ python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
   --generated-at 2026-06-30T00:00:00Z
@@ -189,7 +194,8 @@ read-only tool decision:
     "tool_decision_source": "agents_sdk_function_tool",
     "required_tool_calls": [
       "recall_build_prompt_memory",
-      "recommend_build_option"
+      "select_build_option",
+      "propose_build_option"
     ],
     "missing_required_tool_calls": [],
     "required_tool_calls_satisfied": true,
@@ -201,13 +207,13 @@ read-only tool decision:
         "tool_name": "propose_build_option"
       },
       {
-        "tool_name": "recommend_build_option"
+        "tool_name": "select_build_option"
       }
     ],
     "tool_decisions": {
       "build_option": {
         "selected_option_id": "generated_tower_wall",
-        "decision_source": "generated_build_option_tool",
+        "decision_source": "agent_selected_generated_build_option",
         "generated_option_status": "ready",
         "generated_option": {
           "option_id": "generated_tower_wall",
@@ -234,7 +240,7 @@ can change the pending preview plan.
 For healthy live agent evidence, generated-option decisions require an explicit
 `propose_build_option` entry in `tool_trace`. Fixed options such as strict fire
 or TNT wall still require `recall_build_prompt_memory` and
-`recommend_build_option`; generated options add `propose_build_option` to
+`select_build_option`; generated options add `propose_build_option` to
 `required_tool_calls`. If a live run selects a generated option without that
 tool call, the adapter labels the response as
 `adapter_fallback_after_agent_missing_required_tool` and records
@@ -349,9 +355,14 @@ Initial tools are deliberately read-only:
 - `propose_build_option`: creates a bounded generated build option for
   open-ended player requests such as towers, bridges, paths, or shelter floors;
   it is read-only and Luanti may reject it before preview.
-- `recommend_build_option`: chooses from Luanti-supplied bounded build
-  candidates, or selects a generated option produced by the tool contract, for
-  ambiguous `/nova build ...` prompts without executing world mutation.
+- `select_build_option`: validates the option id the live agent selected from
+  Luanti-supplied bounded candidates or a validated generated proposal. This is
+  the required live build-planning tool because the model chooses and the tool
+  binds that choice to an auditable execution contract.
+- `recommend_build_option`: compatibility fallback that can choose from
+  Luanti-supplied bounded build candidates when the live agent path is missing
+  or fails required tool-call evidence. It is not the primary live intelligence
+  path.
 - `WebSearchTool`: lets the agent look up current public information when the
   prompt genuinely needs it.
 

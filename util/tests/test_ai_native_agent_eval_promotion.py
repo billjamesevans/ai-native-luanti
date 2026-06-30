@@ -60,7 +60,7 @@ def agents_sdk_log_entry(prompt="build me a fire and only a fire"):
             "adapter_name": "openai-agents-sdk-model-adapter",
             "response": {
                 "agentic_execution": True,
-                "tools_enabled": ["recommend_build_option"],
+                "tools_enabled": ["select_build_option", "recommend_build_option"],
                 "world_mutation_authority": "luanti",
             },
         },
@@ -93,7 +93,28 @@ def nova_trace_line(prompt="build a wall of tnt"):
     return "[ai_agent_plugin] request_trace=" + json.dumps(payload, sort_keys=True)
 
 
-def candidate_queue_payload():
+def operator_labels_payload(prompt="build a bridge"):
+    return {
+        "schema_version": 1,
+        "artifact_kind": "ai_native_agent_eval_operator_labels",
+        "labels": [
+            {
+                "label_id": "reviewed_stone_bridge_platform",
+                "prompt": prompt,
+                "case_hint": "stone_bridge_platform",
+                "expected": {
+                    "action": "build",
+                    "build_kind": "platform",
+                    "build_material_name": "stone",
+                    "planned_node_writes": 12,
+                    "route": "agentic_build_planner",
+                },
+            }
+        ],
+    }
+
+
+def candidate_queue_payload(operator_label_payloads=None):
     queue = load_module(QUEUE, "ai_native_agent_eval_queue_for_promotion")
     with tempfile.TemporaryDirectory() as tmpdir:
         root = pathlib.Path(tmpdir)
@@ -110,6 +131,7 @@ def candidate_queue_payload():
         return queue.build_eval_candidate_queue(
             agents_sdk_logs=[sidecar_log],
             action_logs=[action_log],
+            operator_label_payloads=operator_label_payloads or [],
             generated_at="2026-06-30T12:30:00Z",
         )
 
@@ -170,6 +192,39 @@ class AgentEvalPromotionTests(unittest.TestCase):
         self.assertEqual(pack["cases"][0]["source_candidate_id"], fire_candidate_id)
         self.assertEqual(pack["cases"][0]["case_hint"], "fire_only_strict")
 
+    def test_promotes_operator_labeled_candidate_with_overlay_provenance(self):
+        promote = load_module(PROMOTE, "ai_native_agent_eval_promote_operator_label")
+        queue = load_module(QUEUE, "ai_native_agent_eval_queue_operator_label_fixture")
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            sidecar_log.write_text(
+                json.dumps(agents_sdk_log_entry("build a bridge")) + "\n",
+                encoding="utf-8",
+            )
+            queue_payload = queue.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                operator_label_payloads=[operator_labels_payload()],
+                generated_at="2026-06-30T12:30:00Z",
+            )
+
+        pack = promote.build_case_pack(
+            queue_payload,
+            generated_at="2026-06-30T13:00:00Z",
+        )
+
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 1)
+        case = pack["cases"][0]
+        self.assertEqual(case["case_hint"], "stone_bridge_platform")
+        self.assertEqual(case["prompt"], "build a bridge")
+        self.assertEqual(case["expected"]["build_kind"], "platform")
+        self.assertEqual(case["expected"]["build_material_name"], "stone")
+        self.assertEqual(case["expected"]["planned_node_writes"], 12)
+        self.assertEqual(case["promotion"]["mode"], "operator_label_overlay")
+        self.assertEqual(case["promotion"]["review_status"], "operator_labeled_candidate_ready")
+        self.assertFalse(PRIVATE_PATTERNS.search(json.dumps(pack, sort_keys=True)))
+
     def test_private_candidate_queue_fails_public_safety(self):
         promote = load_module(PROMOTE, "ai_native_agent_eval_promote_private")
         queue_payload = candidate_queue_payload()
@@ -224,6 +279,8 @@ class AgentEvalPromotionTests(unittest.TestCase):
         self.assertIn("ai_native_agent_eval_promote.py", combined)
         self.assertIn("ai_native_agent_prompt_eval_case_pack", combined)
         self.assertIn("custom_cases", combined)
+        self.assertIn("--operator-labels", combined)
+        self.assertIn("ai_native_agent_eval_operator_labels", combined)
         loop_sections = []
         for body in bodies:
             if "Agent Improvement Loop" not in body:

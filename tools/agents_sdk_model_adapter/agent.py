@@ -39,7 +39,7 @@ MAX_TOOL_TRACE_ENTRIES = 12
 MAX_MEMORY_CASES = 12
 BUILD_PLANNING_REQUIRED_TOOLS = (
     "recall_build_prompt_memory",
-    "recommend_build_option",
+    "select_build_option",
 )
 FORBIDDEN_RESPONSE_KEYS = {
     "raw_provider_request",
@@ -99,6 +99,15 @@ TOOL_POWER_MANIFEST = (
         "available_without_provider_credentials": True,
         "direct_world_mutation": False,
         "engine_authority": "luanti_generated_option_validator",
+    },
+    {
+        "name": "select_build_option",
+        "kind": "function_tool",
+        "runtime_power": "agent_selected_build_option_validation",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_task_preview_approval_rollback",
     },
     {
         "name": "recall_build_prompt_memory",
@@ -485,6 +494,80 @@ def _expected_option_from_case(
     return None
 
 
+def select_build_option_payload(
+    candidate_summary: str,
+    selected_option_id: str,
+    player_request: str,
+    selection_reason: str = "",
+) -> dict[str, Any]:
+    """Validate the option id selected by the agent without mutating the world."""
+
+    candidates = _candidate_entries(candidate_summary)
+    selected_id = str(selected_option_id or "").strip()
+    memory = recall_build_prompt_memory_payload(player_request, candidate_summary)
+    generated = propose_build_option_payload(candidate_summary, player_request)
+    generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
+    selected = next((item for item in candidates if item["option_id"] == selected_id), None)
+    decision_source = "agent_selected_build_option"
+
+    if selected is None and isinstance(generated_option, dict) and selected_id == generated_option.get("option_id"):
+        selected = {
+            "option_id": selected_id,
+            "build_kind": generated_option.get("build_kind"),
+            "material": generated_option.get("build_material_name") or "default",
+            "planned_node_writes": generated_option.get("planned_node_writes") or 0,
+        }
+        decision_source = "agent_selected_generated_build_option"
+
+    alternatives = [item["option_id"] for item in candidates[:6]]
+    if isinstance(generated_option, dict):
+        alternatives.append(str(generated_option.get("option_id") or "generated_agent_option"))
+
+    if selected is None:
+        return {
+            "selected_option_id": None,
+            "selection_status": "rejected",
+            "selection_reason": _bounded_text(selection_reason, 400),
+            "rejection_reason": "selected_option_not_executable",
+            "candidate_count": len(candidates),
+            "alternatives": alternatives,
+            "decision_source": "agent_selection_rejected",
+            "memory_match": memory,
+            "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
+            "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
+            "generated_option": generated_option if isinstance(generated_option, dict) else None,
+            "requires_preview": True,
+            "requires_approval": True,
+            "requires_rollback": True,
+            "direct_world_mutation": False,
+            "policy": "luanti_executes_only_after_player_approval",
+        }
+
+    return {
+        "selected_option_id": selected["option_id"],
+        "selection_status": "accepted",
+        "selection_reason": _bounded_text(selection_reason, 400),
+        "candidate_count": len(candidates),
+        "alternatives": alternatives,
+        "decision_source": decision_source,
+        "memory_match": memory,
+        "selected_build_kind": selected.get("build_kind"),
+        "selected_material": selected.get("material"),
+        "selected_planned_node_writes": selected.get("planned_node_writes"),
+        "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
+        "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
+        "generated_option": generated_option
+            if isinstance(generated_option, dict)
+            and selected["option_id"] == generated_option.get("option_id")
+            else None,
+        "requires_preview": True,
+        "requires_approval": True,
+        "requires_rollback": True,
+        "direct_world_mutation": False,
+        "policy": "luanti_executes_only_after_player_approval",
+    }
+
+
 def recall_build_prompt_memory_payload(
     player_request: str,
     candidate_summary: str,
@@ -548,7 +631,7 @@ def recall_build_prompt_memory_payload(
 
 
 def recommend_build_option_payload(candidate_summary: str, player_request: str) -> dict[str, Any]:
-    """Choose one bounded build candidate or generated option for Luanti validation."""
+    """Compatibility fallback that chooses one bounded build candidate for Luanti validation."""
 
     request = str(player_request or "").lower()
     candidates = _candidate_entries(candidate_summary)
@@ -574,35 +657,30 @@ def recommend_build_option_payload(candidate_summary: str, player_request: str) 
         preferred = "marker"
 
     selected = next((item for item in candidates if item["option_id"] == preferred), None)
-    if selected is None and isinstance(generated_option, dict) and preferred == generated_option.get("option_id"):
-        selected = {
-            "option_id": preferred,
-            "build_kind": generated_option.get("build_kind"),
-            "material": generated_option.get("build_material_name") or "default",
-            "planned_node_writes": generated_option.get("planned_node_writes") or 0,
-        }
-    if selected is None and candidates:
-        selected = candidates[0]
     decision_source = "agent_build_option_tool"
     if memory.get("selected_option_id"):
         decision_source = "reviewed_prompt_memory"
     elif isinstance(generated_option, dict) and selected and selected["option_id"] == generated_option.get("option_id"):
         decision_source = "generated_build_option_tool"
+    elif isinstance(generated_option, dict) and preferred == generated_option.get("option_id"):
+        decision_source = "generated_build_option_tool"
+
+    if selected is None and candidates and not isinstance(generated_option, dict):
+        preferred = str(candidates[0].get("option_id") or "")
+    selected_result = select_build_option_payload(
+        candidate_summary,
+        preferred,
+        player_request,
+        "compatibility fallback selected an executable build option",
+    )
+    selected_result["decision_source"] = decision_source
+    selected_result["memory_match"] = memory
+    selected_result["generated_option_status"] = generated.get("status") if isinstance(generated, dict) else None
+    selected_result["generated_option_reason"] = generated.get("reason") if isinstance(generated, dict) else None
+    selected_result["generated_option"] = generated_option if isinstance(generated_option, dict) else None
     return {
-        "selected_option_id": selected["option_id"] if selected else None,
-        "candidate_count": len(candidates),
-        "alternatives": [item["option_id"] for item in candidates[:6]]
-        + ([generated_option["option_id"]] if isinstance(generated_option, dict) else []),
-        "decision_source": decision_source,
+        **selected_result,
         "memory_match": memory,
-        "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
-        "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
-        "generated_option": generated_option if isinstance(generated_option, dict) else None,
-        "requires_preview": True,
-        "requires_approval": True,
-        "requires_rollback": True,
-        "direct_world_mutation": False,
-        "policy": "luanti_executes_only_after_player_approval",
     }
 
 
@@ -637,8 +715,8 @@ def _build_option_uses_generated(tool_decisions: dict[str, Any] | None) -> bool:
     selected = build_option.get("selected_option_id")
     return (
         isinstance(build_option.get("generated_option"), dict)
-        or build_option.get("generated_option_status") == "ready"
         or build_option.get("decision_source") == "generated_build_option_tool"
+        or build_option.get("decision_source") == "agent_selected_generated_build_option"
         or (isinstance(selected, str) and selected.startswith("generated_"))
     )
 
@@ -717,6 +795,34 @@ def propose_build_option(candidate_summary: str, player_request: str) -> dict[st
 
 
 @function_tool
+def select_build_option(
+    candidate_summary: str,
+    selected_option_id: str,
+    player_request: str,
+    selection_reason: str = "",
+) -> dict[str, Any]:
+    """Validate the build option selected by the agent without mutating the world."""
+
+    result = select_build_option_payload(
+        candidate_summary,
+        selected_option_id,
+        player_request,
+        selection_reason,
+    )
+    _record_tool_call(
+        "select_build_option",
+        {
+            "candidate_summary": candidate_summary,
+            "selected_option_id": selected_option_id,
+            "player_request": player_request,
+            "selection_reason": selection_reason,
+        },
+        result,
+    )
+    return result
+
+
+@function_tool
 def recall_build_prompt_memory(player_request: str, candidate_summary: str) -> dict[str, Any]:
     """Return reviewed prompt-memory guidance for a build request, if available."""
 
@@ -738,6 +844,7 @@ def build_agent(model: str | None = None) -> Any:
         classify_world_action,
         recall_build_prompt_memory,
         propose_build_option,
+        select_build_option,
         recommend_build_option,
     ]
     if WebSearchTool is not None:
@@ -753,11 +860,12 @@ def build_agent(model: str | None = None) -> Any:
             "web search only when current public information is needed. Use "
             "function tools to classify capabilities, world-action policy, "
             "reviewed prompt memory, generated build-option proposals, and "
-            "bounded build-option recommendations. "
+            "agent-selected build-option validation. "
             "For build planning, call recall_build_prompt_memory and "
-            "recommend_build_option before producing final output; call "
+            "then choose among the listed options yourself; call "
             "propose_build_option when the listed fixed candidates are too "
-            "generic for the player request. "
+            "generic for the player request, and call select_build_option "
+            "with the option id you chose before producing final output. "
             "Return public-safe, bounded guidance. Do not return provider raw "
             "payloads, credentials, private prompts, private world coordinates, "
             "or asset payloads."
@@ -810,23 +918,27 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             f"selected_candidate_id: {context.get('selected_candidate_id', '')}",
             "Return concise public-safe guidance for the player or operator. "
             "For build planning, first call recall_build_prompt_memory, then "
-            "call propose_build_option when the fixed candidates are too "
-            "generic, then call recommend_build_option using the exact "
-            "candidate_summary and player_request. Generated options must be "
-            "returned only through function-tool output so Luanti can validate "
-            "them before preview.",
+            "decide which executable option best matches the player request. "
+            "Call propose_build_option when the fixed candidates are too "
+            "generic, then call select_build_option using the exact "
+            "candidate_summary, player_request, chosen option id, and a short "
+            "selection reason. Generated options must be returned only through "
+            "function-tool output so Luanti can validate them before preview.",
         ]
     )
 
 
 def _tool_decisions_from_trace(tool_trace: list[dict[str, Any]]) -> dict[str, Any]:
     decisions: dict[str, Any] = {}
+    fallback: dict[str, Any] | None = None
     for entry in tool_trace:
-        if entry.get("tool_name") != "recommend_build_option":
-            continue
         result = entry.get("result")
-        if isinstance(result, dict):
+        if entry.get("tool_name") == "select_build_option" and isinstance(result, dict):
             decisions["build_option"] = result
+        elif entry.get("tool_name") == "recommend_build_option" and isinstance(result, dict):
+            fallback = result
+    if "build_option" not in decisions and fallback is not None:
+        decisions["build_option"] = fallback
     return decisions
 
 

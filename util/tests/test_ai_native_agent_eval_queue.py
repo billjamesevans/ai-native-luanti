@@ -63,7 +63,7 @@ def agents_sdk_log_entry(prompt="build me a fire and only a fire"):
             "elapsed_us": 42,
             "response": {
                 "agentic_execution": True,
-                "tools_enabled": ["recommend_build_option", "classify_world_action"],
+                "tools_enabled": ["select_build_option", "recommend_build_option", "classify_world_action"],
                 "world_mutation_authority": "luanti",
             },
         },
@@ -84,19 +84,19 @@ def agents_sdk_missing_required_tool_entry():
         "tool_decision_source": "adapter_fallback_after_agent_missing_required_tool",
         "required_tool_calls": [
             "recall_build_prompt_memory",
-            "recommend_build_option",
+            "select_build_option",
             "propose_build_option",
         ],
         "missing_required_tool_calls": ["propose_build_option"],
         "required_tool_calls_satisfied": False,
         "tool_trace": [
             {"tool_name": "recall_build_prompt_memory"},
-            {"tool_name": "recommend_build_option"},
+            {"tool_name": "select_build_option"},
         ],
         "tool_decisions": {
             "build_option": {
                 "selected_option_id": "generated_tower_wall",
-                "decision_source": "offline_adapter_fallback",
+                "decision_source": "agent_selected_generated_build_option",
                 "generated_option_status": "ready",
                 "direct_world_mutation": False,
             },
@@ -129,17 +129,17 @@ def nova_trace_line(prompt="build a wall of tnt"):
                 "adapter_tool_decision_source": "agents_sdk_function_tool",
                 "adapter_required_tool_calls": [
                     "recall_build_prompt_memory",
-                    "recommend_build_option",
+                    "select_build_option",
                 ],
                 "adapter_missing_required_tool_calls": [],
                 "adapter_required_tool_calls_satisfied": True,
-                "build_option_decision_source": "reviewed_prompt_memory",
+                "build_option_decision_source": "agent_selected_build_option",
                 "adapter_memory_available": True,
                 "adapter_memory_matched_case_id": "promoted_tnt_wall_123",
                 "adapter_memory_case_hint": "tnt_wall",
                 "adapter_tool_trace_names": [
                     "recall_build_prompt_memory",
-                    "recommend_build_option",
+                    "select_build_option",
                 ],
             },
         },
@@ -176,6 +176,27 @@ def nova_agent_log_entry(prompt="build a wall of tnt"):
         "tool_trace": [
             {"tool_name": "analyze_build_intent", "result": {"contract_kind": "tnt_wall"}},
             {"tool_name": "validate_plan_contract", "result": {"contract_satisfied": False}},
+        ],
+    }
+
+
+def operator_labels_payload(prompt="build a bridge"):
+    return {
+        "schema_version": 1,
+        "artifact_kind": "ai_native_agent_eval_operator_labels",
+        "labels": [
+            {
+                "label_id": "reviewed_stone_bridge_platform",
+                "prompt": prompt,
+                "case_hint": "stone_bridge_platform",
+                "expected": {
+                    "action": "build",
+                    "build_kind": "platform",
+                    "build_material_name": "stone",
+                    "planned_node_writes": 12,
+                    "route": "agentic_build_planner",
+                },
+            }
         ],
     }
 
@@ -234,13 +255,13 @@ class AgentEvalQueueTests(unittest.TestCase):
         )
         self.assertEqual(
             trace_tnt["observed"]["adapter_required_tool_calls"],
-            ["recall_build_prompt_memory", "recommend_build_option"],
+            ["recall_build_prompt_memory", "select_build_option"],
         )
         self.assertEqual(trace_tnt["observed"]["adapter_missing_required_tool_calls"], [])
         self.assertTrue(trace_tnt["observed"]["adapter_required_tool_calls_satisfied"])
         self.assertEqual(
             trace_tnt["observed"]["build_option_decision_source"],
-            "reviewed_prompt_memory",
+            "agent_selected_build_option",
         )
         self.assertTrue(trace_tnt["observed"]["adapter_memory_available"])
         self.assertEqual(
@@ -249,7 +270,7 @@ class AgentEvalQueueTests(unittest.TestCase):
         )
         self.assertEqual(
             trace_tnt["observed"]["adapter_tool_trace_names"],
-            ["recall_build_prompt_memory", "recommend_build_option"],
+            ["recall_build_prompt_memory", "select_build_option"],
         )
         sidecar_tnt = tnt_sources["nova_agent_sidecar_request_response"]
         self.assertEqual(sidecar_tnt["observed"]["contract_kind"], "tnt_wall")
@@ -301,12 +322,12 @@ class AgentEvalQueueTests(unittest.TestCase):
             "tool_decision_source": "agents_sdk_function_tool",
             "tool_trace": [
                 {"tool_name": "recall_build_prompt_memory"},
-                {"tool_name": "recommend_build_option"},
+                {"tool_name": "select_build_option"},
             ],
             "tool_decisions": {
                 "build_option": {
                     "selected_option_id": "fire",
-                    "decision_source": "reviewed_prompt_memory",
+                    "decision_source": "agent_selected_build_option",
                     "memory_match": {
                         "memory_available": True,
                         "matched_case_id": "promoted_fire_only_strict_123",
@@ -323,12 +344,12 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(candidate["case_hint"], "fire_only_strict")
         self.assertEqual(candidate["observed"]["selected_option_id"], "fire")
         self.assertEqual(candidate["observed"]["tool_decision_source"], "agents_sdk_function_tool")
-        self.assertEqual(candidate["observed"]["build_option_decision_source"], "reviewed_prompt_memory")
+        self.assertEqual(candidate["observed"]["build_option_decision_source"], "agent_selected_build_option")
         self.assertEqual(candidate["observed"]["build_option_selected_option_id"], "fire")
         self.assertTrue(candidate["observed"]["memory_available"])
         self.assertEqual(
             candidate["observed"]["tool_trace_names"],
-            ["recall_build_prompt_memory", "recommend_build_option"],
+            ["recall_build_prompt_memory", "select_build_option"],
         )
         self.assertFalse(candidate["ready_for_adapter_contract_eval"])
 
@@ -349,7 +370,7 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(contract["status"], "fail")
         self.assertEqual(
             contract["required_tool_calls"],
-            ["recall_build_prompt_memory", "recommend_build_option", "propose_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "propose_build_option"],
         )
         self.assertEqual(contract["missing_required_tool_calls"], ["propose_build_option"])
         self.assertFalse(contract["required_tool_calls_satisfied"])
@@ -415,6 +436,56 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertNotEqual(candidate["case_hint"], "fire_only_strict")
         self.assertFalse(candidate["ready_for_prompt_eval"])
 
+    def test_operator_labels_promote_unknown_prompt_to_reviewed_candidate(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            sidecar_log.write_text(
+                json.dumps(agents_sdk_log_entry("build a bridge")) + "\n",
+                encoding="utf-8",
+            )
+
+            unlabelled = module.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T12:30:00Z",
+            )
+            labelled = module.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                operator_label_payloads=[operator_labels_payload()],
+                generated_at="2026-06-30T12:30:00Z",
+            )
+
+        self.assertEqual(unlabelled["source_summary"]["ready_for_prompt_eval"], 0)
+        self.assertEqual(unlabelled["candidates"][0]["review_status"], "needs_operator_label")
+        self.assertEqual(labelled["source_summary"]["operator_labels_read"], 1)
+        self.assertEqual(labelled["source_summary"]["operator_labels_applied"], 1)
+        self.assertEqual(labelled["source_summary"]["ready_for_prompt_eval"], 1)
+        candidate = labelled["candidates"][0]
+        self.assertEqual(candidate["case_hint"], "stone_bridge_platform")
+        self.assertEqual(candidate["review_status"], "operator_labeled_candidate_ready")
+        self.assertEqual(candidate["operator_label"]["mode"], "operator_label_overlay")
+        self.assertEqual(candidate["expected"]["build_kind"], "platform")
+        self.assertEqual(candidate["expected"]["build_material_name"], "stone")
+        self.assertEqual(candidate["expected"]["planned_node_writes"], 12)
+        self.assertFalse(PRIVATE_PATTERNS.search(json.dumps(labelled, sort_keys=True)))
+
+    def test_private_operator_labels_are_rejected_without_promoting_candidate(self):
+        module = load_queue_module()
+        private_labels = operator_labels_payload()
+        private_labels["labels"][0]["expected"]["private_prompt"] = "must not be retained"
+
+        payload = module.build_eval_candidate_queue(
+            operator_label_payloads=[private_labels],
+            generated_at="2026-06-30T12:30:00Z",
+        )
+
+        self.assertEqual(payload["status"], "empty")
+        self.assertEqual(payload["source_summary"]["operator_labels_read"], 0)
+        self.assertEqual(payload["source_summary"]["operator_labels_applied"], 0)
+        self.assertTrue(any(item["kind"] == "operator_labels_not_public_safe" for item in payload["violations"]))
+        self.assertNotIn("must not be retained", json.dumps(payload, sort_keys=True))
+
     def test_nova_agent_log_candidate_records_contract_and_correction(self):
         module = load_queue_module()
 
@@ -438,9 +509,11 @@ class AgentEvalQueueTests(unittest.TestCase):
             root = pathlib.Path(tmpdir)
             sidecar_log = root / "agents-sdk-model-adapter.jsonl"
             nova_agent_log = root / "nova-agent-requests.jsonl"
+            operator_labels = root / "operator-labels.json"
             output = root / "candidate-queue.json"
             sidecar_log.write_text(json.dumps(agents_sdk_log_entry("build a fire")) + "\n", encoding="utf-8")
             nova_agent_log.write_text(json.dumps(nova_agent_log_entry()) + "\n", encoding="utf-8")
+            operator_labels.write_text(json.dumps(operator_labels_payload()), encoding="utf-8")
 
             completed = subprocess.run(
                 [
@@ -452,6 +525,8 @@ class AgentEvalQueueTests(unittest.TestCase):
                     str(sidecar_log),
                     "--nova-agent-log",
                     str(nova_agent_log),
+                    "--operator-labels",
+                    str(operator_labels),
                     "--output",
                     str(output),
                     "--generated-at",
@@ -467,6 +542,8 @@ class AgentEvalQueueTests(unittest.TestCase):
             payload = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "ready")
             self.assertEqual(payload["source_summary"]["nova_agent_log_entries_read"], 1)
+            self.assertEqual(payload["source_summary"]["operator_labels_read"], 1)
+            self.assertEqual(payload["source_summary"]["operator_labels_applied"], 0)
             self.assertEqual(
                 {candidate["case_hint"] for candidate in payload["candidates"]},
                 {"build_fire", "tnt_wall"},
@@ -478,6 +555,8 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertIn("ai_native_agent_eval_queue.py", combined)
         self.assertIn("Agent Improvement Loop", combined)
         self.assertIn("agents-sdk-model-adapter.jsonl", combined)
+        self.assertIn("--operator-labels", combined)
+        self.assertIn("ai_native_agent_eval_operator_labels", combined)
         loop_sections = []
         for body in bodies:
             if "## Agent Improvement Loop" not in body:

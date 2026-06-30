@@ -15,8 +15,20 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_KIND = "ai_native_agent_eval_candidate_queue"
+OPERATOR_LABEL_KIND = "ai_native_agent_eval_operator_labels"
 DEFAULT_MAX_BYTES = 32000
 DEFAULT_MAX_CANDIDATES = 50
+
+ALLOWED_LABEL_EXPECTED_KEYS = {
+    "action",
+    "build_kind",
+    "build_material_name",
+    "build_material_node",
+    "planned_node_writes",
+    "route",
+    "danger_refusal_allowed",
+    "forbidden_extra_structure",
+}
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[^\s\"']+"),
@@ -97,6 +109,157 @@ def safe_string_list(value: Any, *, max_items: int = 8, max_bytes: int = 80) -> 
         for item in value
         if isinstance(item, str)
     ][:max_items]
+
+
+def normalized_prompt(value: Any) -> str:
+    return " ".join(str(value or "").strip().lower().split())
+
+
+def safe_expected_from_operator_label(expected: Any) -> dict[str, Any] | None:
+    if not isinstance(expected, dict):
+        return None
+    result: dict[str, Any] = {}
+    for key in sorted(ALLOWED_LABEL_EXPECTED_KEYS):
+        if key not in expected:
+            continue
+        value = expected[key]
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            result[key] = safe_scalar(value, 200)
+    action = result.get("action") or "build"
+    if action != "build":
+        return None
+    result["action"] = "build"
+    if not isinstance(result.get("build_kind"), str) or not result["build_kind"].strip():
+        return None
+    if not isinstance(result.get("build_material_name"), str) or not result["build_material_name"].strip():
+        return None
+    if "planned_node_writes" in result:
+        try:
+            writes = int(result["planned_node_writes"])
+        except (TypeError, ValueError):
+            return None
+        if writes < 0 or writes > 10000:
+            return None
+        result["planned_node_writes"] = writes
+    return result
+
+
+def read_operator_label_payloads(paths: list[Path], violations: list[dict[str, str]]) -> list[dict[str, Any]]:
+    payloads: list[dict[str, Any]] = []
+    for path in paths:
+        if not path.is_file():
+            violations.append({"kind": "missing_operator_labels", "details": str(path)})
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            violations.append({"kind": "invalid_operator_labels_json", "details": str(path)})
+            continue
+        if not isinstance(payload, dict):
+            violations.append({"kind": "invalid_operator_labels_payload", "details": str(path)})
+            continue
+        payloads.append(payload)
+    return payloads
+
+
+def iter_operator_labels(
+    payloads: list[dict[str, Any]],
+    violations: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    labels: list[dict[str, Any]] = []
+    for payload_index, payload in enumerate(payloads, start=1):
+        if payload.get("artifact_kind") != OPERATOR_LABEL_KIND:
+            violations.append({
+                "kind": "invalid_operator_labels_kind",
+                "details": str(payload.get("artifact_kind")),
+            })
+            continue
+        if has_private_content(payload) or has_forbidden_key(payload):
+            violations.append({
+                "kind": "operator_labels_not_public_safe",
+                "details": f"operator_labels:{payload_index}",
+            })
+            continue
+        raw_labels = payload.get("labels")
+        if not isinstance(raw_labels, list):
+            violations.append({
+                "kind": "missing_operator_label_entries",
+                "details": f"operator_labels:{payload_index}",
+            })
+            continue
+        for label_index, raw_label in enumerate(raw_labels, start=1):
+            if not isinstance(raw_label, dict):
+                violations.append({
+                    "kind": "invalid_operator_label_entry",
+                    "details": f"operator_labels:{payload_index}:{label_index}",
+                })
+                continue
+            expected = safe_expected_from_operator_label(raw_label.get("expected"))
+            if expected is None:
+                violations.append({
+                    "kind": "invalid_operator_label_expected",
+                    "details": f"operator_labels:{payload_index}:{label_index}",
+                })
+                continue
+            candidate_id = raw_label.get("candidate_id")
+            prompt = raw_label.get("prompt")
+            if not isinstance(candidate_id, str) and not isinstance(prompt, str):
+                violations.append({
+                    "kind": "operator_label_missing_match",
+                    "details": f"operator_labels:{payload_index}:{label_index}",
+                })
+                continue
+            labels.append({
+                "label_id": safe_scalar(raw_label.get("label_id"), 160)
+                or f"operator_label:{payload_index}:{label_index}",
+                "candidate_id": safe_scalar(candidate_id, 180),
+                "prompt": safe_scalar(prompt, 1000),
+                "prompt_normalized": normalized_prompt(prompt),
+                "source_kind": safe_scalar(raw_label.get("source_kind"), 120),
+                "case_hint": safe_scalar(raw_label.get("case_hint"), 120) or "operator_labeled",
+                "expected": expected,
+            })
+    return labels
+
+
+def operator_label_matches(candidate: dict[str, Any], label: dict[str, Any]) -> bool:
+    label_candidate_id = label.get("candidate_id")
+    if isinstance(label_candidate_id, str) and label_candidate_id:
+        if candidate.get("candidate_id") != label_candidate_id:
+            return False
+    elif label.get("prompt_normalized") != normalized_prompt(candidate.get("prompt")):
+        return False
+    label_source_kind = label.get("source_kind")
+    if isinstance(label_source_kind, str) and label_source_kind:
+        return candidate.get("source_kind") == label_source_kind
+    return True
+
+
+def apply_operator_labels(
+    candidates: list[dict[str, Any]],
+    operator_label_payloads: list[dict[str, Any]],
+    violations: list[dict[str, str]],
+) -> dict[str, int]:
+    labels = iter_operator_labels(operator_label_payloads, violations)
+    applied = 0
+    for candidate in candidates:
+        for label in labels:
+            if not operator_label_matches(candidate, label):
+                continue
+            candidate["case_hint"] = label["case_hint"]
+            candidate["expected"] = dict(label["expected"])
+            candidate["ready_for_prompt_eval"] = True
+            candidate["review_status"] = "operator_labeled_candidate_ready"
+            candidate["priority"] = "high"
+            candidate["operator_label"] = {
+                "label_id": label["label_id"],
+                "mode": "operator_label_overlay",
+                "matched_by": "candidate_id" if label.get("candidate_id") else "prompt",
+                "review_required_before_default_gate": True,
+            }
+            applied += 1
+            break
+    return {"operator_labels_read": len(labels), "operator_labels_applied": applied}
 
 
 def safe_context_subset(value: Any) -> dict[str, Any]:
@@ -681,6 +844,8 @@ def build_eval_candidate_queue(
     agents_sdk_logs: list[Path] | None = None,
     nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
+    operator_label_files: list[Path] | None = None,
+    operator_label_payloads: list[dict[str, Any]] | None = None,
     generated_at: str | None = None,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
     max_bytes: int = DEFAULT_MAX_BYTES,
@@ -689,6 +854,8 @@ def build_eval_candidate_queue(
     agents_sdk_logs = agents_sdk_logs or []
     nova_agent_logs = nova_agent_logs or []
     action_logs = action_logs or []
+    operator_label_files = operator_label_files or []
+    operator_label_payloads = operator_label_payloads or []
     generated_at = generated_at or utc_now()
 
     sdk_candidates, sdk_entries, sdk_private = _read_jsonl_candidates(agents_sdk_logs, violations)
@@ -697,7 +864,9 @@ def build_eval_candidate_queue(
         violations,
     )
     trace_candidates, trace_entries, trace_private = _read_action_log_candidates(action_logs, violations)
+    file_label_payloads = read_operator_label_payloads(operator_label_files, violations)
     candidates = _dedupe_candidates(sdk_candidates + nova_agent_candidates + trace_candidates)
+    label_summary = apply_operator_labels(candidates, file_label_payloads + operator_label_payloads, violations)
     candidates.sort(key=_candidate_sort_key)
     truncated = len(candidates) > max_candidates
     candidates = candidates[:max(0, max_candidates)]
@@ -733,6 +902,8 @@ def build_eval_candidate_queue(
             "ready_for_prompt_eval": ready_count,
             "ready_for_adapter_contract_eval": adapter_contract_ready_count,
             "adapter_contract_failures": adapter_contract_failure_count,
+            "operator_labels_read": label_summary["operator_labels_read"],
+            "operator_labels_applied": label_summary["operator_labels_applied"],
             "manual_review_required": manual_count,
             "review_required": True,
         },
@@ -775,6 +946,9 @@ def build_eval_candidate_queue(
             if isinstance(item.get("adapter_tool_contract"), dict)
             and item["adapter_tool_contract"].get("status") == "fail"
         )
+        payload["source_summary"]["operator_labels_applied"] = sum(
+            1 for item in payload["candidates"] if isinstance(item.get("operator_label"), dict)
+        )
         raw = json.dumps(payload, sort_keys=True)
 
     payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
@@ -802,6 +976,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
     parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
+    parser.add_argument("--operator-labels", action="append", default=[], help="Reviewed operator label JSON path.")
     parser.add_argument("--output", required=True, help="Output candidate queue JSON path.")
     parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
     parser.add_argument("--max-candidates", type=int, default=DEFAULT_MAX_CANDIDATES)
@@ -815,12 +990,14 @@ def main(argv: list[str] | None = None) -> int:
     agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
     nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
     action_logs = [resolve_path(root, path) for path in args.action_log]
+    operator_label_files = [resolve_path(root, path) for path in args.operator_labels]
     output = resolve_path(root, args.output)
 
     payload = build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs,
         nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
+        operator_label_files=operator_label_files,
         generated_at=args.generated_at,
         max_candidates=max(0, args.max_candidates),
         max_bytes=max(1000, args.max_bytes),

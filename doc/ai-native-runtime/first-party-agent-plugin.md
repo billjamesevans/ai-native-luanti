@@ -147,7 +147,8 @@ Implemented deterministic commands:
   route in request traces, and still requires player approval before the
   rollback-backed `build_agent` task is queued. Healthy live agent runs should
   label the selection as
-  `tool_decision_source = agents_sdk_function_tool`; missing tool calls are
+  `tool_decision_source = agents_sdk_function_tool` and include
+  `select_build_option` in the adapter tool trace; missing tool calls are
   fallback/eval signals. The pending plan and bounded `nova_request_trace`
   response retain `adapter_tool_decision_source`,
   `adapter_required_tool_calls`, `adapter_missing_required_tool_calls`,
@@ -228,6 +229,12 @@ read-only prompt memory through `AI_NATIVE_AGENT_CASE_PACK_PATH`. That is the
 runtime improvement loop: bad traces become candidate queues, reviewed queues
 become regression cases, and reviewed cases can bias future agent tool decisions
 without bypassing approval or rollback.
+For unknown prompts, the reviewed queue step is explicit: a maintainer adds a
+public-safe `ai_native_agent_eval_operator_labels` file with the expected
+build output, then reruns the memory refresh with `--operator-labels`. The label
+overlay can only promote build-output cases that `core.ai_agent_plugin.run_prompt_eval`
+can replay; it cannot import private content, raw provider payloads, or direct
+world mutations.
 
 ## Configuration
 
