@@ -6717,6 +6717,22 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 					route = "deterministic_build_parser",
 				},
 			},
+			{
+				case_id = "promoted_generated_dimensioned_wall_1234",
+				case_hint = "generated_dimensioned_wall",
+				source_candidate_id = "agent-eval-candidate:5678",
+				prompt = "build a 6 wide 2 high wall of tnt",
+				action = "build",
+				expected = {
+					action = "build",
+					build_kind = "wall",
+					build_material_name = "tnt",
+					planned_node_writes = 12,
+					build_width = 6,
+					build_height = 2,
+					route = "deterministic_build_parser",
+				},
+			},
 		},
 		context = {
 			pos = test_pos(4260),
@@ -6733,8 +6749,8 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	local custom_report = custom_eval_reports[1]
 	assert(custom_report.ok == true, core.write_json(custom_report))
 	assert(custom_report.status == "pass")
-	assert(custom_report.custom_case_count == 1)
-	assert(#custom_report.cases == 1)
+	assert(custom_report.custom_case_count == 2)
+	assert(#custom_report.cases == 2)
 	assert(custom_report.cases[1].case_id == "promoted_fire_only_strict_1234")
 	assert(custom_report.cases[1].case_hint == "fire_only_strict")
 	assert(custom_report.cases[1].source_candidate_id == "agent-eval-candidate:1234")
@@ -6742,6 +6758,16 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(custom_report.cases[1].reply.planned_node_writes == 1)
 	assert(custom_report.cases[1].trace.route == "deterministic_build_parser")
 	assert(custom_report.cases[1].cleanup.status == "success")
+	assert(custom_report.cases[2].case_id == "promoted_generated_dimensioned_wall_1234")
+	assert(custom_report.cases[2].case_hint == "generated_dimensioned_wall")
+	assert(custom_report.cases[2].source_candidate_id == "agent-eval-candidate:5678")
+	assert(custom_report.cases[2].reply.build_kind == "wall")
+	assert(custom_report.cases[2].reply.build_width == 6)
+	assert(custom_report.cases[2].reply.build_height == 2)
+	assert(custom_report.cases[2].reply.planned_node_writes == 12)
+	assert(custom_report.cases[2].trace.response.build_width == 6)
+	assert(custom_report.cases[2].trace.response.build_height == 2)
+	assert(custom_report.cases[2].cleanup.status == "success")
 
 	local missing_custom_reports = {}
 	local missing_custom_queued, missing_custom_reason =

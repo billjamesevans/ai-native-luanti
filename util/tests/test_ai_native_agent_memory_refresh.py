@@ -104,6 +104,72 @@ def missing_required_tool_sidecar_entry():
     return entry
 
 
+def generated_option_sidecar_entry():
+    entry = build_planning_sidecar_entry()
+    entry["request"]["context"].update({
+        "player_request": "build a 6 wide 2 high lookout wall",
+        "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+    })
+    generated = {
+        "option_id": "generated_dimensioned_wall",
+        "build_kind": "wall",
+        "build_width": 6,
+        "build_height": 2,
+        "build_material_name": "stone",
+        "planned_node_writes": 12,
+    }
+    select_result = {
+        "selected_option_id": "generated_dimensioned_wall",
+        "selection_status": "accepted",
+        "candidate_count": 3,
+        "decision_source": "agent_selected_generated_build_option",
+        "generated_option_status": "ready",
+        "generated_option": generated,
+        "direct_world_mutation": False,
+    }
+    plan_result = {
+        "status": "ready",
+        "selected_option_id": "generated_dimensioned_wall",
+        "step_count": 4,
+        "direct_world_mutation": False,
+        "world_mutation_authority": "luanti",
+    }
+    entry["response"]["message"] = "Use the generated dimensioned wall option."
+    entry["response"]["response"].update({
+        "tools_enabled": [
+            "recall_build_prompt_memory",
+            "propose_build_option",
+            "select_build_option",
+            "plan_build_actions",
+        ],
+        "tool_decision_source": "agents_sdk_function_tool",
+        "selected_option_id": "generated_dimensioned_wall",
+        "required_tool_calls": [
+            "recall_build_prompt_memory",
+            "select_build_option",
+            "plan_build_actions",
+            "propose_build_option",
+        ],
+        "missing_required_tool_calls": [],
+        "required_tool_calls_satisfied": True,
+        "tool_trace": [
+            {"tool_name": "recall_build_prompt_memory", "result": {}},
+            {
+                "tool_name": "propose_build_option",
+                "result": {"status": "ready", "generated_option": generated},
+            },
+            {"tool_name": "select_build_option", "result": select_result},
+            {"tool_name": "plan_build_actions", "result": plan_result},
+        ],
+        "build_action_plan": plan_result,
+        "tool_decisions": {
+            "build_option": select_result,
+            "build_action_plan": plan_result,
+        },
+    })
+    return entry
+
+
 def nova_agent_log_entry():
     return {
         "ts": "2026-06-30T13:05:00Z",
@@ -241,6 +307,29 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(pack["cases"][0]["prompt"], "build me a fire and only a fire")
         self.assertEqual(pack["cases"][0]["expected"]["build_kind"], "fire")
         self.assertEqual(pack["source"]["candidate_queue_path"], "local/benchmarks/ai-agent-eval-candidate-queue.json")
+
+    def test_memory_refresh_promotes_verified_generated_option(self):
+        module = load_refresh_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            sidecar_log.write_text(json.dumps(generated_option_sidecar_entry()) + "\n", encoding="utf-8")
+
+            queue, pack = module.build_memory_artifacts(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T13:00:00Z",
+                candidate_queue_source_path="local/benchmarks/ai-agent-eval-candidate-queue.json",
+            )
+
+        self.assertEqual(queue["status"], "ready")
+        self.assertEqual(queue["source_summary"]["ready_for_prompt_eval"], 1)
+        self.assertEqual(queue["candidates"][0]["case_hint"], "generated_dimensioned_wall")
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 1)
+        self.assertEqual(pack["cases"][0]["case_hint"], "generated_dimensioned_wall")
+        self.assertEqual(pack["cases"][0]["expected"]["selected_candidate_id"], "generated_dimensioned_wall")
+        self.assertEqual(pack["cases"][0]["expected"]["build_width"], 6)
+        self.assertEqual(pack["cases"][0]["expected"]["build_height"], 2)
 
     def test_builds_queue_and_case_pack_from_nova_agent_log(self):
         module = load_refresh_module()

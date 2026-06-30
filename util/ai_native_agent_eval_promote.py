@@ -38,10 +38,15 @@ PRIVATE_PATTERNS = (
 ALLOWED_EXPECTED_KEYS = {
     "action",
     "build_kind",
+    "build_count",
+    "build_depth",
+    "build_height",
     "build_material_name",
     "build_material_node",
+    "build_width",
     "planned_node_writes",
     "route",
+    "selected_candidate_id",
     "danger_refusal_allowed",
     "forbidden_extra_structure",
 }
