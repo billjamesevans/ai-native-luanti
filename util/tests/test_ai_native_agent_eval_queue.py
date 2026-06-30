@@ -126,6 +126,10 @@ def nova_trace_line(prompt="build a wall of tnt"):
                 "build_material_name": "tnt",
                 "planned_node_writes": 12,
                 "approval_id": "approval:tnt",
+                "selected_candidate_id": "tnt_wall",
+                "adapter_selected_candidate_id": "tnt_wall",
+                "model_selected_candidate_id": "tnt_wall",
+                "selection_source": "model_tool_decision",
                 "adapter_tool_decision_source": "agents_sdk_function_tool",
                 "adapter_required_tool_calls": [
                     "recall_build_prompt_memory",
@@ -272,6 +276,9 @@ class AgentEvalQueueTests(unittest.TestCase):
             trace_tnt["observed"]["adapter_tool_trace_names"],
             ["recall_build_prompt_memory", "select_build_option"],
         )
+        self.assertEqual(trace_tnt["observed"]["selected_candidate_id"], "tnt_wall")
+        self.assertEqual(trace_tnt["observed"]["model_selected_candidate_id"], "tnt_wall")
+        self.assertEqual(trace_tnt["observed"]["selection_source"], "model_tool_decision")
         sidecar_tnt = tnt_sources["nova_agent_sidecar_request_response"]
         self.assertEqual(sidecar_tnt["observed"]["contract_kind"], "tnt_wall")
         self.assertTrue(sidecar_tnt["observed"]["contract_satisfied"])
@@ -352,6 +359,97 @@ class AgentEvalQueueTests(unittest.TestCase):
             ["recall_build_prompt_memory", "select_build_option"],
         )
         self.assertFalse(candidate["ready_for_adapter_contract_eval"])
+
+    def test_agents_sdk_candidate_retains_rejected_model_choice(self):
+        module = load_queue_module()
+        entry = agents_sdk_log_entry(
+            "AI-native Luanti model adapter request.\nplayer_request: build me a fire and only a fire"
+        )
+        entry["request"]["context"].update({
+            "intent": "build_planning",
+            "player_request": "build me a fire and only a fire",
+            "candidate_summary": "platform:platform:default:4|fire:fire:fire:1",
+        })
+        entry["response"]["response"].update({
+            "selected_option_id": "fire",
+            "model_selected_option_id": "platform",
+            "rejected_model_selected_option_id": "platform",
+            "intent_constraint_option_id": "fire",
+            "intent_constraint_reason": "player_request_requires_fire_only",
+            "tool_decision_source":
+                "adapter_fallback_after_agent_violated_player_request_constraints",
+            "tool_trace": [
+                {"tool_name": "recall_build_prompt_memory"},
+                {
+                    "tool_name": "select_build_option",
+                    "args": {"selected_option_id": "platform"},
+                    "result": {"selected_option_id": None, "selection_status": "rejected"},
+                },
+            ],
+            "tool_decisions": {
+                "build_option": {
+                    "selected_option_id": "fire",
+                    "decision_source": "offline_adapter_fallback",
+                    "memory_match": {"memory_available": True},
+                },
+            },
+        })
+
+        candidate = module.candidate_from_agents_sdk_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        observed = candidate["observed"]
+        self.assertEqual(observed["selected_option_id"], "fire")
+        self.assertEqual(observed["model_selected_option_id"], "platform")
+        self.assertEqual(observed["rejected_model_selected_option_id"], "platform")
+        self.assertEqual(observed["intent_constraint_option_id"], "fire")
+        self.assertEqual(
+            observed["intent_constraint_reason"],
+            "player_request_requires_fire_only",
+        )
+        self.assertEqual(
+            observed["tool_decision_source"],
+            "adapter_fallback_after_agent_violated_player_request_constraints",
+        )
+
+    def test_nova_trace_candidate_retains_rejected_model_choice(self):
+        module = load_queue_module()
+        payload = json.loads(
+            nova_trace_line("build me a fire and only a fire").split("request_trace=", 1)[1]
+        )
+        response = payload["trace"]["response"]
+        response.update({
+            "build_kind": "fire",
+            "build_material_name": "fire",
+            "planned_node_writes": 1,
+            "selected_candidate_id": "fire",
+            "adapter_selected_candidate_id": "fire",
+            "model_selected_candidate_id": "platform",
+            "selection_source": "model_tool_decision_rejected_intent_constraint",
+            "intent_constraint_option_id": "fire",
+            "intent_constraint_reason": "player_request_requires_fire_only",
+            "adapter_tool_decision_source":
+                "adapter_fallback_after_agent_violated_player_request_constraints",
+            "adapter_model_selected_candidate_id": "platform",
+            "adapter_rejected_model_selected_candidate_id": "platform",
+        })
+
+        candidate = module.candidate_from_nova_trace(payload)
+
+        self.assertIsNotNone(candidate)
+        observed = candidate["observed"]
+        self.assertEqual(observed["selected_candidate_id"], "fire")
+        self.assertEqual(observed["adapter_selected_candidate_id"], "fire")
+        self.assertEqual(observed["model_selected_candidate_id"], "platform")
+        self.assertEqual(
+            observed["selection_source"],
+            "model_tool_decision_rejected_intent_constraint",
+        )
+        self.assertEqual(observed["intent_constraint_option_id"], "fire")
+        self.assertEqual(
+            observed["adapter_rejected_model_selected_candidate_id"],
+            "platform",
+        )
 
     def test_agents_sdk_missing_required_tool_becomes_contract_eval_candidate(self):
         module = load_queue_module()
