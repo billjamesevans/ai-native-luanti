@@ -75,6 +75,8 @@ def validate_contract() -> dict:
         "TOOL_POWER_MANIFEST",
         "def tool_power_manifest",
         '"tool_powers": tool_power_manifest()',
+        '"tool_decisions": tool_decisions',
+        '"selected_option_id": _selected_option_id(tool_decisions)',
         '"direct_world_mutation": False',
         '"world_mutation_authority": "luanti"',
         "core.ai_model_ops.request",

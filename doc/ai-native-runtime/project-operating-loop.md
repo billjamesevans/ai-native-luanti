@@ -78,6 +78,15 @@ so promoted cases exercise the same preview, approval, cleanup, trace, and
 metric checks as built-in `/ai_agent_eval` cases. The chat command remains
 limited to built-in eval cases until a reviewed operator import surface exists.
 
+Ambiguous build behavior must be improved through the same loop. The Agents SDK
+sidecar can reason and call read-only tools, but Luanti only changes an
+executable pending build when the sidecar returns a structured
+`selected_option_id` or `tool_decisions.build_option.selected_option_id` that
+matches a candidate Luanti already offered. When the sidecar selects the wrong
+candidate, capture the request/response logs, promote the public-safe failure
+into a custom prompt-eval case, and fix the agent/tool contract or candidate
+ranking until the eval passes.
+
 ## Pi Promotion Loop
 
 Pi promotion is an operator lane, not a contributor default. Promote only after

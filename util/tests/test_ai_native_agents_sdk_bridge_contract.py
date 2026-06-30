@@ -68,6 +68,40 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertFalse(result["direct_world_mutation"])
         self.assertEqual(result["policy"], "luanti_executes_only_after_player_approval")
 
+    def test_build_planning_response_exposes_structured_tool_decision(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "\n".join([
+            "Plan a Luanti build request using only the listed executable options.",
+            "Player request: build a wall of tnt",
+            "Options:",
+            "- platform: Small platform kind=platform material=default planned_writes=4",
+            "- tnt_wall: Small TNT wall kind=wall material=tnt planned_writes=12",
+        ])
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build a wall of tnt",
+            "candidate_summary": "platform:platform:default:4|tnt_wall:wall:tnt:12",
+        }
+
+        response = module.run_model_adapter_request(request, force_offline=True)
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertFalse(nested["agentic_execution"])
+        self.assertEqual(nested["selected_option_id"], "tnt_wall")
+        self.assertEqual(
+            nested["tool_decisions"]["build_option"]["selected_option_id"],
+            "tnt_wall",
+        )
+        self.assertFalse(nested["tool_decisions"]["build_option"]["direct_world_mutation"])
+
     def test_request_response_log_is_public_safe_jsonl(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)
