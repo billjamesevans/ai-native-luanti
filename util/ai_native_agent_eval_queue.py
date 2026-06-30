@@ -16,6 +16,8 @@ from typing import Any
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_KIND = "ai_native_agent_eval_candidate_queue"
 OPERATOR_LABEL_KIND = "ai_native_agent_eval_operator_labels"
+REQUEST_RESPONSE_LOG_GATE_KIND = "ai_native_agent_request_response_log_gate"
+REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND = "agents_sdk_request_response_log_gate"
 VERIFIED_LIVE_PROBE_KIND = "disposable_live_ai_runtime_nova_auto_apply_probe"
 VERIFIED_LIVE_RESULT_KIND = "ai_native_nova_auto_apply_live_result"
 PROMPT_EVAL_LIVE_RESULT_KIND = "ai_native_agent_prompt_eval_live_result"
@@ -366,6 +368,7 @@ def generated_option_from_tool_trace(tool_trace: Any) -> dict[str, Any]:
 def generated_expected_outcome(candidate: dict[str, Any], observed: dict[str, Any]) -> dict[str, Any] | None:
     if candidate.get("source_kind") not in {
         "agents_sdk_request_response",
+        REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND,
         VERIFIED_LIVE_PROBE_KIND,
     }:
         return None
@@ -526,7 +529,10 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
     lower = prompt.lower()
     observed = candidate.get("observed") if isinstance(candidate.get("observed"), dict) else {}
     route = candidate.get("route") or observed.get("route")
-    verified_live_probe = candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND
+    verified_live_probe = candidate.get("source_kind") in {
+        REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND,
+        VERIFIED_LIVE_PROBE_KIND,
+    }
     agentic_nova_sidecar = (
         candidate.get("source_kind") == "nova_agent_sidecar_request_response"
         and isinstance(route, str)
@@ -981,6 +987,153 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
                 for item in tool_trace
                 if isinstance(item, dict) and isinstance(item.get("tool_name"), str)
             ][:8],
+        },
+        "adapter_replay_request": adapter_replay_request_from_agents_sdk_request(request, prompt),
+    })
+    return finalize_candidate(candidate)
+
+
+def _candidate_summary_selected_option(candidate_summary: Any, selected_id: Any) -> dict[str, Any]:
+    if not isinstance(candidate_summary, str) or not isinstance(selected_id, str):
+        return {}
+    selected_id = selected_id.strip()
+    if not selected_id:
+        return {}
+    for raw_item in candidate_summary.split("|"):
+        parts = raw_item.split(":")
+        if len(parts) < 4:
+            continue
+        option_id = parts[0].strip()
+        if option_id != selected_id:
+            continue
+        return {
+            "option_id": option_id,
+            "build_kind": parts[1].strip(),
+            "build_material_name": parts[2].strip(),
+            "planned_node_writes": safe_int(parts[3].strip(), minimum=0),
+        }
+    return {}
+
+
+def candidate_from_request_response_log_gate_case(
+    payload: dict[str, Any],
+    case: dict[str, Any],
+) -> dict[str, Any] | None:
+    if payload.get("artifact_kind") != REQUEST_RESPONSE_LOG_GATE_KIND:
+        return None
+    if case.get("status") != "pass":
+        return None
+    prompt = case.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return None
+    observed = case.get("observed") if isinstance(case.get("observed"), dict) else {}
+    request = observed.get("request") if isinstance(observed.get("request"), dict) else {}
+    response = observed.get("response") if isinstance(observed.get("response"), dict) else {}
+    context = request.get("context") if isinstance(request.get("context"), dict) else {}
+    selected_id = safe_scalar(response.get("selected_option_id"), 120)
+    summary_option = _candidate_summary_selected_option(
+        context.get("candidate_summary"),
+        selected_id,
+    )
+    build_kind = (
+        safe_scalar(response.get("build_action_plan_build_kind"), 120)
+        or safe_scalar(response.get("generated_option_build_kind"), 120)
+        or safe_scalar(summary_option.get("build_kind"), 120)
+    )
+    material = (
+        safe_scalar(response.get("build_action_plan_build_material_name"), 120)
+        or safe_scalar(response.get("generated_option_build_material_name"), 120)
+        or safe_scalar(summary_option.get("build_material_name"), 120)
+    )
+    planned_writes = safe_int(response.get("build_action_plan_planned_node_writes"), minimum=0)
+    if planned_writes is None:
+        planned_writes = safe_int(response.get("generated_option_planned_node_writes"), minimum=0)
+    if planned_writes is None:
+        planned_writes = safe_int(summary_option.get("planned_node_writes"), minimum=0)
+
+    candidate = _base_candidate(
+        REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND,
+        safe_scalar(observed.get("created_at") or payload.get("generated_at")),
+        prompt,
+    )
+    candidate.update({
+        "owner": safe_scalar(request.get("owner")) or "RequestResponseLogGate",
+        "agent_id": safe_scalar(request.get("agent_id")) or "nova_agent:request_response_log_gate",
+        "task_id": safe_scalar(request.get("task_id")) or safe_scalar(case.get("case_id")),
+        "route": "request_response_log_gate",
+        "action": "build",
+        "prompt_source": "request_response_log_gate.case.prompt",
+        "observed_ok": True,
+        "observed_status": "pass",
+        "observed_reason": None,
+        "observed": {
+            "action": "build",
+            "status": "pass",
+            "gate_case_id": safe_scalar(case.get("case_id"), 120),
+            "gate_generated_at": safe_scalar(payload.get("generated_at"), 120),
+            "gate_status": "pass",
+            "selected_option_id": selected_id,
+            "selected_candidate_id": selected_id,
+            "tool_decision_source": safe_scalar(response.get("tool_decision_source"), 120),
+            "required_tool_calls": safe_string_list(
+                response.get("required_tool_calls"),
+                max_items=12,
+            ),
+            "missing_required_tool_calls": safe_string_list(
+                response.get("missing_required_tool_calls"),
+                max_items=12,
+            ),
+            "required_tool_calls_satisfied": response.get("required_tool_calls_satisfied"),
+            "tool_trace_names": safe_string_list(response.get("tool_trace_names"), max_items=12),
+            "build_action_plan_status": safe_scalar(
+                response.get("build_action_plan_status"),
+                120,
+            ),
+            "build_action_plan_selected_option_id": selected_id,
+            "build_action_plan_step_count": safe_int(
+                response.get("build_action_plan_step_count"),
+                minimum=0,
+            ),
+            "build_action_plan_world_mutation_authority": safe_scalar(
+                response.get("world_mutation_authority"),
+                120,
+            ),
+            "build_action_plan_build_kind": build_kind,
+            "build_action_plan_build_material_name": material,
+            "build_action_plan_planned_node_writes": planned_writes,
+            "generated_option_id": safe_scalar(response.get("generated_option_id"), 120),
+            "generated_option_status": safe_scalar(
+                response.get("generated_option_status"),
+                120,
+            ),
+            "generated_option_build_kind": safe_scalar(
+                response.get("generated_option_build_kind"),
+                120,
+            ),
+            "generated_option_build_material_name": safe_scalar(
+                response.get("generated_option_build_material_name"),
+                120,
+            ),
+            "generated_option_build_width": safe_int(
+                response.get("generated_option_build_width"),
+                minimum=1,
+            ),
+            "generated_option_build_depth": safe_int(
+                response.get("generated_option_build_depth"),
+                minimum=1,
+            ),
+            "generated_option_build_height": safe_int(
+                response.get("generated_option_build_height"),
+                minimum=1,
+            ),
+            "generated_option_build_count": safe_int(
+                response.get("generated_option_build_count"),
+                minimum=1,
+            ),
+            "generated_option_planned_node_writes": safe_int(
+                response.get("generated_option_planned_node_writes"),
+                minimum=0,
+            ),
         },
         "adapter_replay_request": adapter_replay_request_from_agents_sdk_request(request, prompt),
     })
@@ -1482,6 +1635,71 @@ def _read_jsonl_candidates(paths: list[Path], violations: list[dict[str, str]]) 
     return candidates, read_entries, skipped_private
 
 
+def _read_request_response_log_gate_candidates(
+    paths: list[Path],
+    violations: list[dict[str, str]],
+) -> tuple[list[dict[str, Any]], int, int, int]:
+    candidates: list[dict[str, Any]] = []
+    files_read = 0
+    cases_read = 0
+    skipped_private = 0
+    for path in paths:
+        if not path.is_file():
+            violations.append({"kind": "missing_request_response_log_gate", "details": str(path)})
+            continue
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            violations.append({"kind": "invalid_request_response_log_gate_json", "details": str(path)})
+            continue
+        if not isinstance(payload, dict):
+            violations.append({"kind": "invalid_request_response_log_gate_payload", "details": str(path)})
+            continue
+        if payload.get("artifact_kind") != REQUEST_RESPONSE_LOG_GATE_KIND:
+            violations.append({
+                "kind": "invalid_request_response_log_gate_kind",
+                "details": str(payload.get("artifact_kind")),
+            })
+            continue
+        files_read += 1
+        if has_private_content(payload) or has_forbidden_key(payload):
+            skipped_private += 1
+            violations.append({
+                "kind": "skipped_private_request_response_log_gate",
+                "details": str(path),
+            })
+            continue
+        if payload.get("status") != "pass":
+            violations.append({
+                "kind": "request_response_log_gate_not_passed",
+                "details": str(path),
+            })
+        raw_cases = payload.get("cases")
+        if not isinstance(raw_cases, list):
+            violations.append({
+                "kind": "request_response_log_gate_missing_cases",
+                "details": str(path),
+            })
+            continue
+        for index, case in enumerate(raw_cases, start=1):
+            if not isinstance(case, dict):
+                violations.append({
+                    "kind": "invalid_request_response_log_gate_case",
+                    "details": f"{path}:{index}",
+                })
+                continue
+            cases_read += 1
+            candidate = candidate_from_request_response_log_gate_case(payload, case)
+            if candidate:
+                candidates.append(candidate)
+            elif case.get("status") != "pass":
+                violations.append({
+                    "kind": "request_response_log_gate_case_not_passed",
+                    "details": bounded_text(case.get("case_id") or index, 120),
+                })
+    return candidates, files_read, cases_read, skipped_private
+
+
 def _read_nova_agent_log_candidates(paths: list[Path], violations: list[dict[str, str]]) -> tuple[list[dict[str, Any]], int, int]:
     candidates: list[dict[str, Any]] = []
     read_entries = 0
@@ -1575,24 +1793,26 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
     if candidate.get("ready_for_adapter_contract_eval") is True:
         return 0
-    if isinstance(candidate.get("adapter_contract_resolution"), dict):
+    if candidate.get("source_kind") == REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND:
         return 1
-    if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
+    if isinstance(candidate.get("adapter_contract_resolution"), dict):
         return 2
+    if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
+        return 3
     expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
     selected = expected.get("selected_candidate_id")
     if (
         str(candidate.get("case_hint") or "").startswith("generated_")
         or (isinstance(selected, str) and selected.startswith("generated_"))
     ):
-        return 3
-    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 4
-    if isinstance(candidate.get("operator_label"), dict):
+    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 5
-    if candidate.get("ready_for_prompt_eval") is True:
+    if isinstance(candidate.get("operator_label"), dict):
         return 6
-    return 7
+    if candidate.get("ready_for_prompt_eval") is True:
+        return 7
+    return 8
 
 
 def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, str, str]:
@@ -1605,6 +1825,7 @@ def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, str, str]:
 def build_eval_candidate_queue(
     *,
     agents_sdk_logs: list[Path] | None = None,
+    request_response_log_gate_paths: list[Path] | None = None,
     nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
     verified_live_probe_paths: list[Path] | None = None,
@@ -1616,6 +1837,7 @@ def build_eval_candidate_queue(
 ) -> dict[str, Any]:
     violations: list[dict[str, str]] = []
     agents_sdk_logs = agents_sdk_logs or []
+    request_response_log_gate_paths = request_response_log_gate_paths or []
     nova_agent_logs = nova_agent_logs or []
     action_logs = action_logs or []
     verified_live_probe_paths = verified_live_probe_paths or []
@@ -1624,6 +1846,10 @@ def build_eval_candidate_queue(
     generated_at = generated_at or utc_now()
 
     sdk_candidates, sdk_entries, sdk_private = _read_jsonl_candidates(agents_sdk_logs, violations)
+    gate_candidates, gate_files, gate_cases, gate_private = _read_request_response_log_gate_candidates(
+        request_response_log_gate_paths,
+        violations,
+    )
     nova_agent_candidates, nova_agent_entries, nova_agent_private = _read_nova_agent_log_candidates(
         nova_agent_logs,
         violations,
@@ -1634,7 +1860,11 @@ def build_eval_candidate_queue(
     )
     file_label_payloads = read_operator_label_payloads(operator_label_files, violations)
     candidates = _dedupe_candidates(
-        sdk_candidates + nova_agent_candidates + trace_candidates + live_probe_candidates
+        sdk_candidates
+        + gate_candidates
+        + nova_agent_candidates
+        + trace_candidates
+        + live_probe_candidates
     )
     label_summary = apply_operator_labels(candidates, file_label_payloads + operator_label_payloads, violations)
     resolution_summary = apply_adapter_contract_resolutions(candidates)
@@ -1658,12 +1888,17 @@ def build_eval_candidate_queue(
         "status": status,
         "source_summary": {
             "agents_sdk_log_entries_read": sdk_entries,
+            "request_response_log_gate_files_read": gate_files,
+            "request_response_log_gate_cases_read": gate_cases,
+            "request_response_log_gate_candidates_added": len(gate_candidates),
             "nova_agent_log_entries_read": nova_agent_entries,
             "nova_request_traces_read": trace_entries,
             "verified_live_probe_files_read": live_probe_files,
             "verified_live_probe_cases_read": live_probe_cases,
             "verified_live_probe_candidates_added": len(live_probe_candidates),
-            "entries_skipped_private": sdk_private + nova_agent_private + trace_private + live_probe_private,
+            "entries_skipped_private": (
+                sdk_private + gate_private + nova_agent_private + trace_private + live_probe_private
+            ),
             "candidates_total": len(candidates),
             "ready_for_prompt_eval": ready_count,
             **contract_summary,
@@ -1684,7 +1919,9 @@ def build_eval_candidate_queue(
             "no_raw_assets": True,
             "no_provider_prompts": True,
             "no_family_world_coordinates": True,
-            "private_entries_skipped": sdk_private + nova_agent_private + trace_private + live_probe_private,
+            "private_entries_skipped": (
+                sdk_private + gate_private + nova_agent_private + trace_private + live_probe_private
+            ),
         },
         "bounds": {
             "max_candidates": max_candidates,
@@ -1734,6 +1971,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--root", default=".", help="Repository root for relative paths.")
     parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
+    parser.add_argument(
+        "--request-response-log-gate",
+        action="append",
+        default=[],
+        help="Request/response log gate JSON path.",
+    )
     parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
     parser.add_argument("--verified-live-probe", action="append", default=[], help="Verified Nova auto-apply live probe JSON file or directory.")
@@ -1749,6 +1992,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     root = resolve_path(Path.cwd(), args.root).resolve()
     agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
+    request_response_log_gate_paths = [
+        resolve_path(root, path)
+        for path in args.request_response_log_gate
+    ]
     nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
     action_logs = [resolve_path(root, path) for path in args.action_log]
     verified_live_probe_paths = [resolve_path(root, path) for path in args.verified_live_probe]
@@ -1757,6 +2004,7 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs,
+        request_response_log_gate_paths=request_response_log_gate_paths,
         nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
         verified_live_probe_paths=verified_live_probe_paths,

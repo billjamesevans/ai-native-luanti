@@ -115,6 +115,7 @@ tool traces:
 ```bash
 python3 util/ai_native_agent_eval_queue.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
   --verified-live-probe local/logs/live-probes \
@@ -126,6 +127,9 @@ The queue is public-safe and review-first. It skips entries containing private
 fields, credentials, raw provider payloads, private prompts, asset payloads, or
 private world references. Known regressions such as `build me a fire and only a
 fire` and `build a wall of tnt` are labeled with ready prompt-eval assertions;
+passing `ai_native_agent_request_response_log_gate` artifacts can also seed
+those candidates through `--request-response-log-gate`, preserving the latest
+gated behavior instead of replaying stale raw-log noise.
 unknown prompts stay in `needs_operator_label` until a maintainer records the
 expected behavior. Maintainers record that behavior with a public-safe
 `ai_native_agent_eval_operator_labels` file passed as `--operator-labels`; a
@@ -196,6 +200,7 @@ the normal refresh:
 ```bash
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
   --verified-live-probe local/logs/live-probes \

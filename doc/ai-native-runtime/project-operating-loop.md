@@ -60,25 +60,28 @@ python3 util/ai_native_agent_improvement_loop_verify.py \
 ```
 
 ```bash
+python3 util/ai_native_agent_request_response_log_gate.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --output local/benchmarks/ai-agent-request-response-log-gate.json \
+  --generated-at 2026-06-30T00:00:00Z
+
 python3 util/ai_native_agent_eval_queue.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
   --verified-live-probe local/logs/live-probes \
   --output local/benchmarks/ai-agent-eval-candidate-queue.json \
-  --generated-at 2026-06-30T00:00:00Z
-
-python3 util/ai_native_agent_request_response_log_gate.py \
-  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
-  --output local/benchmarks/ai-agent-request-response-log-gate.json \
   --generated-at 2026-06-30T00:00:00Z
 ```
 
 The log gate is the immediate regression check for the player-facing failures:
 `build me a fire and only a fire` must select the fire option, `build a wall of
 tnt` must select the TNT wall instead of refusing game-world danger, and an
-open-ended generated build must retain `propose_build_option` tool evidence. The
-queue remains review-first. Ready candidates such as fire-only and TNT-wall
+open-ended generated build must retain `propose_build_option` tool evidence. Its
+passing cases can seed the eval queue through `--request-response-log-gate`, so
+the latest gated behavior is not lost in raw-log noise. The queue remains
+review-first. Ready candidates such as fire-only and TNT-wall
 regressions can be promoted into `/ai_agent_eval`; unknown prompts require an
 operator label before they become pass/fail tests. The same queue marks missing
 Agents SDK required-tool calls as high-priority adapter-contract regressions with
@@ -154,6 +157,7 @@ python3 util/ai_native_agent_operator_label.py \
 ```bash
 python3 util/ai_native_agent_eval_queue.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --action-log local/logs/luanti-debug.log \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --output local/benchmarks/ai-agent-eval-candidate-queue.json \
@@ -178,6 +182,7 @@ operator labels before prompt-memory promotion.
 ```bash
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
   --verified-live-probe local/logs/live-probes \

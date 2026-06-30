@@ -231,6 +231,11 @@ def safe_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
     body = response_body(entry)
     plan = build_action_plan(body)
     option = build_option_decision(body)
+    generated_option = (
+        option.get("generated_option")
+        if isinstance(option.get("generated_option"), dict)
+        else {}
+    )
     return {
         "created_at": bounded_text(entry.get("created_at"), 120),
         "event_kind": bounded_text(entry.get("event_kind"), 120),
@@ -254,11 +259,28 @@ def safe_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
             "tool_trace_names": tool_trace_names(body),
             "build_action_plan_status": bounded_text(plan.get("status"), 80),
             "build_action_plan_step_count": plan.get("step_count"),
+            "build_action_plan_build_kind": bounded_text(plan.get("build_kind"), 120),
+            "build_action_plan_build_material_name": bounded_text(
+                plan.get("build_material_name"),
+                120,
+            ),
+            "build_action_plan_planned_node_writes": plan.get("planned_node_writes"),
             "world_mutation_authority": bounded_text(
                 plan.get("world_mutation_authority") or body.get("world_mutation_authority"),
                 80,
             ),
             "generated_option_status": bounded_text(option.get("generated_option_status"), 80),
+            "generated_option_id": bounded_text(generated_option.get("option_id"), 120),
+            "generated_option_build_kind": bounded_text(generated_option.get("build_kind"), 120),
+            "generated_option_build_material_name": bounded_text(
+                generated_option.get("build_material_name"),
+                120,
+            ),
+            "generated_option_build_width": generated_option.get("build_width"),
+            "generated_option_build_depth": generated_option.get("build_depth"),
+            "generated_option_build_height": generated_option.get("build_height"),
+            "generated_option_build_count": generated_option.get("build_count"),
+            "generated_option_planned_node_writes": generated_option.get("planned_node_writes"),
         },
     }
 

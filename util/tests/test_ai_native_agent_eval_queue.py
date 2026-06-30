@@ -209,6 +209,156 @@ def resolved_generated_wall_contract_entries():
     return failed, passed
 
 
+def request_response_log_gate_payload():
+    def case(
+        *,
+        case_id,
+        prompt,
+        selected_option_id,
+        candidate_summary,
+        build_kind,
+        material,
+        planned_writes,
+        tool_source="agents_sdk_function_tool",
+        generated=None,
+    ):
+        required = [
+            "recall_build_prompt_memory",
+            "select_build_option",
+            "plan_build_actions",
+        ]
+        trace = list(required)
+        generated_status = "not_needed"
+        generated_fields = {}
+        if generated:
+            required.append("propose_build_option")
+            trace = [
+                "recall_build_prompt_memory",
+                "propose_build_option",
+                "select_build_option",
+                "plan_build_actions",
+            ]
+            generated_status = "ready"
+            generated_fields = {
+                "generated_option_id": generated["option_id"],
+                "generated_option_build_kind": generated["build_kind"],
+                "generated_option_build_material_name": generated["build_material_name"],
+                "generated_option_build_width": generated.get("build_width"),
+                "generated_option_build_depth": generated.get("build_depth"),
+                "generated_option_build_height": generated.get("build_height"),
+                "generated_option_build_count": generated.get("build_count"),
+                "generated_option_planned_node_writes": generated["planned_node_writes"],
+            }
+        return {
+            "case_id": case_id,
+            "prompt": prompt,
+            "status": "pass",
+            "matches": 1,
+            "failures": [],
+            "observed": {
+                "created_at": "2026-06-30T21:11:17Z",
+                "event_kind": "ai_native_agents_sdk_request_response",
+                "adapter_name": "openai-agents-sdk-model-adapter",
+                "request": {
+                    "agent_id": "nova_agent:PromptEvalLive",
+                    "owner": "PromptEvalLive",
+                    "task_id": f"ai-agent-build-planner:{case_id}",
+                    "public_prompt": f"Player request: {prompt}",
+                    "context": {
+                        "intent": "build_planning",
+                        "player_request": prompt,
+                        "candidate_summary": candidate_summary,
+                        "surface_id": "builder",
+                    },
+                },
+                "response": {
+                    "ok": True,
+                    "message": f"Selected {selected_option_id}.",
+                    "reason": "",
+                    "selected_option_id": selected_option_id,
+                    "tool_decision_source": tool_source,
+                    "required_tool_calls": required,
+                    "missing_required_tool_calls": [],
+                    "required_tool_calls_satisfied": True,
+                    "tool_trace_names": trace,
+                    "build_action_plan_status": "ready",
+                    "build_action_plan_step_count": 4,
+                    "build_action_plan_build_kind": build_kind,
+                    "build_action_plan_build_material_name": material,
+                    "build_action_plan_planned_node_writes": planned_writes,
+                    "world_mutation_authority": "luanti",
+                    "generated_option_status": generated_status,
+                    **generated_fields,
+                },
+            },
+        }
+
+    return {
+        "schema_version": 1,
+        "artifact_kind": "ai_native_agent_request_response_log_gate",
+        "generated_at": "2026-06-30T21:12:00Z",
+        "status": "pass",
+        "source_summary": {
+            "files_read": 1,
+            "lines_read": 4,
+            "entries_read": 4,
+            "case_count": 4,
+            "cases_passed": 4,
+            "cases_failed": 0,
+        },
+        "cases": [
+            case(
+                case_id="build_fire",
+                prompt="build a fire",
+                selected_option_id="fire",
+                candidate_summary="platform:platform:default:4|fire:fire:fire:1",
+                build_kind="fire",
+                material="fire",
+                planned_writes=1,
+            ),
+            case(
+                case_id="fire_only_strict",
+                prompt="build me a fire and only a fire",
+                selected_option_id="fire",
+                candidate_summary="platform:platform:default:4|fire:fire:fire:1",
+                build_kind="fire",
+                material="fire",
+                planned_writes=1,
+            ),
+            case(
+                case_id="tnt_wall",
+                prompt="build a wall of tnt",
+                selected_option_id="tnt_wall",
+                candidate_summary="platform:platform:default:4|tnt_wall:wall:tnt:12",
+                build_kind="wall",
+                material="tnt",
+                planned_writes=12,
+            ),
+            case(
+                case_id="generated_build_option",
+                prompt="build a small shelter",
+                selected_option_id="generated_shelter_floor",
+                candidate_summary="platform:platform:default:4|wall:wall:default:12",
+                build_kind="platform",
+                material="stone",
+                planned_writes=12,
+                tool_source="local_agent_tool_contract_fast_path",
+                generated={
+                    "option_id": "generated_shelter_floor",
+                    "build_kind": "platform",
+                    "build_material_name": "stone",
+                    "build_width": 4,
+                    "build_depth": 3,
+                    "planned_node_writes": 12,
+                },
+            ),
+        ],
+        "failures": [],
+        "violations": [],
+        "safety": {"public_safe_output": True, "no_world_mutation": True},
+    }
+
+
 def nova_trace_line(prompt="build a wall of tnt"):
     payload = {
         "schema_version": 1,
@@ -987,6 +1137,44 @@ class AgentEvalQueueTests(unittest.TestCase):
             "local_agent_tool_contract_fast_path",
             candidate["adapter_tool_contract"]["expected"]["tool_decision_sources"],
         )
+
+    def test_request_response_log_gate_cases_become_prompt_eval_candidates(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            gate = root / "ai-agent-request-response-log-gate.json"
+            gate.write_text(json.dumps(request_response_log_gate_payload()), encoding="utf-8")
+
+            payload = module.build_eval_candidate_queue(
+                request_response_log_gate_paths=[gate],
+                generated_at="2026-06-30T21:15:00Z",
+                max_bytes=100000,
+            )
+
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["source_summary"]["request_response_log_gate_files_read"], 1)
+        self.assertEqual(payload["source_summary"]["request_response_log_gate_cases_read"], 4)
+        self.assertEqual(payload["source_summary"]["request_response_log_gate_candidates_added"], 4)
+        self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 4)
+        self.assertFalse(PRIVATE_PATTERNS.search(json.dumps(payload, sort_keys=True)))
+        by_hint = {candidate["case_hint"]: candidate for candidate in payload["candidates"]}
+        self.assertEqual(
+            by_hint["build_fire"]["source_kind"],
+            module.REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND,
+        )
+        self.assertEqual(by_hint["fire_only_strict"]["expected"]["build_kind"], "fire")
+        self.assertEqual(by_hint["fire_only_strict"]["expected"]["route"], "agentic_build_planner")
+        self.assertTrue(by_hint["fire_only_strict"]["expected"]["forbidden_extra_structure"])
+        self.assertEqual(by_hint["tnt_wall"]["expected"]["build_material_name"], "tnt")
+        self.assertFalse(by_hint["tnt_wall"]["expected"]["danger_refusal_allowed"])
+        generated = by_hint["generated_shelter_floor"]
+        self.assertEqual(generated["expected"]["selected_candidate_id"], "generated_shelter_floor")
+        self.assertEqual(generated["expected"]["build_kind"], "platform")
+        self.assertEqual(generated["expected"]["build_material_name"], "stone")
+        self.assertEqual(generated["expected"]["build_width"], 4)
+        self.assertEqual(generated["expected"]["build_depth"], 3)
+        self.assertEqual(generated["observed"]["tool_decision_source"], "local_agent_tool_contract_fast_path")
+        self.assertEqual(generated["adapter_tool_contract"]["status"], "pass")
 
     def test_verified_live_probe_cases_become_prompt_eval_candidates(self):
         module = load_queue_module()

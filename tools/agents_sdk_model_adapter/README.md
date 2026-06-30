@@ -132,6 +132,7 @@ Refresh candidate queues and mounted prompt memory from runtime logs with:
 ```bash
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --action-log local/logs/luanti-debug.log \
   --from-operator-feedback \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
@@ -167,6 +168,10 @@ The log gate fails if `build me a fire and only a fire` selects anything other
 than the single fire option, if `build a wall of tnt` is refused as real-world
 danger, or if an open-ended generated build lacks `propose_build_option`,
 `select_build_option`, and `plan_build_actions` tool evidence.
+Feed the passing gate artifact back into `ai_native_agent_eval_queue.py` or
+`ai_native_agent_memory_refresh.py` with `--request-response-log-gate` so these
+critical behaviors become replayable prompt-memory candidates instead of being
+lost in raw-log history.
 
 Inspect an existing queue and case pack with:
 

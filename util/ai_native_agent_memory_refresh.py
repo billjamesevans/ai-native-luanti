@@ -36,6 +36,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def build_memory_artifacts(
     *,
     agents_sdk_logs: list[Path] | None = None,
+    request_response_log_gate_paths: list[Path] | None = None,
     nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
     verified_live_probe_paths: list[Path] | None = None,
@@ -66,6 +67,7 @@ def build_memory_artifacts(
         operator_feedback_summary.update(payload_summary)
     candidate_queue = eval_queue.build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs or [],
+        request_response_log_gate_paths=request_response_log_gate_paths or [],
         nova_agent_logs=nova_agent_logs or [],
         action_logs=action_logs or [],
         verified_live_probe_paths=verified_live_probe_paths or [],
@@ -94,6 +96,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--root", default=".", help="Repository root for relative paths.")
     parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
+    parser.add_argument(
+        "--request-response-log-gate",
+        action="append",
+        default=[],
+        help="Request/response log gate JSON path.",
+    )
     parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
     parser.add_argument("--verified-live-probe", action="append", default=[], help="Verified Nova auto-apply live probe JSON file or directory.")
@@ -125,6 +133,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     root = resolve_path(Path.cwd(), args.root).resolve()
     agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
+    request_response_log_gate_paths = [
+        resolve_path(root, path)
+        for path in args.request_response_log_gate
+    ]
     nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
     action_logs = [resolve_path(root, path) for path in args.action_log]
     verified_live_probe_paths = [resolve_path(root, path) for path in args.verified_live_probe]
@@ -135,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
 
     candidate_queue, case_pack = build_memory_artifacts(
         agents_sdk_logs=agents_sdk_logs,
+        request_response_log_gate_paths=request_response_log_gate_paths,
         nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
         verified_live_probe_paths=verified_live_probe_paths,
@@ -167,6 +180,15 @@ def main(argv: list[str] | None = None) -> int:
         "candidate_queue_status": candidate_queue.get("status"),
         "adapter_contract_failures": candidate_queue.get("source_summary", {}).get(
             "adapter_contract_failures", 0
+        ),
+        "request_response_log_gate_files_read": candidate_queue.get("source_summary", {}).get(
+            "request_response_log_gate_files_read", 0
+        ),
+        "request_response_log_gate_cases_read": candidate_queue.get("source_summary", {}).get(
+            "request_response_log_gate_cases_read", 0
+        ),
+        "request_response_log_gate_candidates_added": candidate_queue.get("source_summary", {}).get(
+            "request_response_log_gate_candidates_added", 0
         ),
         "adapter_contract_failures_active": candidate_queue.get("source_summary", {}).get(
             "adapter_contract_failures_active", 0

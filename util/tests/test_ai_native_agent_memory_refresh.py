@@ -170,6 +170,78 @@ def generated_option_sidecar_entry():
     return entry
 
 
+def request_response_log_gate_payload():
+    return {
+        "schema_version": 1,
+        "artifact_kind": "ai_native_agent_request_response_log_gate",
+        "generated_at": "2026-06-30T21:12:00Z",
+        "status": "pass",
+        "source_summary": {
+            "files_read": 1,
+            "lines_read": 1,
+            "entries_read": 1,
+            "case_count": 1,
+            "cases_passed": 1,
+            "cases_failed": 0,
+        },
+        "cases": [
+            {
+                "case_id": "fire_only_strict",
+                "prompt": "build me a fire and only a fire",
+                "status": "pass",
+                "matches": 1,
+                "failures": [],
+                "observed": {
+                    "created_at": "2026-06-30T21:11:17Z",
+                    "event_kind": "ai_native_agents_sdk_request_response",
+                    "adapter_name": "openai-agents-sdk-model-adapter",
+                    "request": {
+                        "agent_id": "nova_agent:PromptEvalLive",
+                        "owner": "PromptEvalLive",
+                        "task_id": "ai-agent-build-planner:fire_only_strict",
+                        "public_prompt": "Player request: build me a fire and only a fire",
+                        "context": {
+                            "intent": "build_planning",
+                            "player_request": "build me a fire and only a fire",
+                            "candidate_summary": "platform:platform:default:4|fire:fire:fire:1",
+                            "surface_id": "builder",
+                        },
+                    },
+                    "response": {
+                        "ok": True,
+                        "message": "Selected fire.",
+                        "reason": "",
+                        "selected_option_id": "fire",
+                        "tool_decision_source": "agents_sdk_function_tool",
+                        "required_tool_calls": [
+                            "recall_build_prompt_memory",
+                            "select_build_option",
+                            "plan_build_actions",
+                        ],
+                        "missing_required_tool_calls": [],
+                        "required_tool_calls_satisfied": True,
+                        "tool_trace_names": [
+                            "recall_build_prompt_memory",
+                            "select_build_option",
+                            "plan_build_actions",
+                        ],
+                        "build_action_plan_status": "ready",
+                        "build_action_plan_step_count": 4,
+                        "build_action_plan_build_kind": "fire",
+                        "build_action_plan_build_material_name": "fire",
+                        "build_action_plan_planned_node_writes": 1,
+                        "world_mutation_authority": "luanti",
+                        "generated_option_status": "not_needed",
+                    },
+                },
+            }
+        ],
+        "failures": [],
+        "violations": [],
+        "safety": {"public_safe_output": True, "no_world_mutation": True},
+    }
+
+
 def nova_agent_log_entry():
     return {
         "ts": "2026-06-30T13:05:00Z",
@@ -443,6 +515,32 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(pack["cases"][0]["prompt"], "build me a fire and only a fire")
         self.assertEqual(pack["cases"][0]["expected"]["build_kind"], "fire")
         self.assertEqual(pack["source"]["candidate_queue_path"], "local/benchmarks/ai-agent-eval-candidate-queue.json")
+
+    def test_memory_refresh_promotes_request_response_log_gate_cases(self):
+        module = load_refresh_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            gate = root / "ai-agent-request-response-log-gate.json"
+            gate.write_text(json.dumps(request_response_log_gate_payload()), encoding="utf-8")
+
+            queue, pack = module.build_memory_artifacts(
+                request_response_log_gate_paths=[gate],
+                generated_at="2026-06-30T21:15:00Z",
+                candidate_queue_source_path="local/benchmarks/ai-agent-eval-candidate-queue.json",
+            )
+
+        self.assertEqual(queue["status"], "ready")
+        self.assertEqual(queue["source_summary"]["request_response_log_gate_files_read"], 1)
+        self.assertEqual(queue["source_summary"]["request_response_log_gate_cases_read"], 1)
+        self.assertEqual(queue["source_summary"]["request_response_log_gate_candidates_added"], 1)
+        self.assertEqual(queue["source_summary"]["ready_for_prompt_eval"], 1)
+        self.assertEqual(queue["candidates"][0]["source_kind"], "agents_sdk_request_response_log_gate")
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 1)
+        self.assertEqual(pack["cases"][0]["case_hint"], "fire_only_strict")
+        self.assertEqual(pack["cases"][0]["expected"]["build_kind"], "fire")
+        self.assertEqual(pack["cases"][0]["expected"]["route"], "agentic_build_planner")
+        self.assertTrue(pack["cases"][0]["expected"]["forbidden_extra_structure"])
 
     def test_memory_refresh_promotes_verified_generated_option(self):
         module = load_refresh_module()
