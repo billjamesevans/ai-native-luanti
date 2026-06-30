@@ -178,6 +178,45 @@ def tool_trace_names(body: dict[str, Any]) -> list[str]:
     return names
 
 
+def trace_entry_selected_option_id(item: dict[str, Any]) -> str:
+    args = item.get("args")
+    if isinstance(args, dict):
+        selected = args.get("selected_option_id")
+        if isinstance(selected, str) and selected.strip():
+            return selected.strip()
+    result = item.get("result")
+    if isinstance(result, dict):
+        selected = result.get("selected_option_id")
+        if isinstance(selected, str) and selected.strip():
+            return selected.strip()
+        generated = result.get("generated_option")
+        if isinstance(generated, dict):
+            option_id = generated.get("option_id")
+            if isinstance(option_id, str) and option_id.strip():
+                return option_id.strip()
+    return ""
+
+
+def generated_select_before_propose(body: dict[str, Any]) -> bool:
+    raw_trace = body.get("tool_trace")
+    if not isinstance(raw_trace, list):
+        return False
+    propose_seen = False
+    for item in raw_trace:
+        if not isinstance(item, dict):
+            continue
+        name = item.get("tool_name")
+        if name == "propose_build_option":
+            propose_seen = True
+            continue
+        if name != "select_build_option":
+            continue
+        selected = trace_entry_selected_option_id(item)
+        if selected.startswith("generated_") and not propose_seen:
+            return True
+    return False
+
+
 def required_tool_calls(body: dict[str, Any]) -> list[str]:
     value = body.get("required_tool_calls")
     if not isinstance(value, list):
@@ -258,6 +297,7 @@ def safe_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
             "missing_required_tool_calls": missing_required_tool_calls(body),
             "required_tool_calls_satisfied": body.get("required_tool_calls_satisfied"),
             "tool_trace_names": tool_trace_names(body),
+            "generated_select_before_propose": generated_select_before_propose(body),
             "build_action_plan_status": bounded_text(plan.get("status"), 80),
             "build_action_plan_step_count": plan.get("step_count"),
             "build_action_plan_build_kind": bounded_text(plan.get("build_kind"), 120),
@@ -376,6 +416,11 @@ def validate_case(case_def: dict[str, Any], entries: list[dict[str, Any]]) -> di
         case["failures"].append("required_tool_metadata_incomplete")
     if not expected_tools.issubset(trace):
         case["failures"].append("tool_trace_incomplete")
+    if (
+        (selected.startswith("generated_") or "propose_build_option" in expected_tools)
+        and generated_select_before_propose(body)
+    ):
+        case["failures"].append("generated_select_before_propose")
     if plan.get("status") != "ready":
         case["failures"].append("build_action_plan_not_ready")
     if plan.get("world_mutation_authority") != "luanti":

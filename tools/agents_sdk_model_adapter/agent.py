@@ -1693,6 +1693,44 @@ def _tool_trace_names(tool_trace: Any) -> list[str]:
     return names
 
 
+def _selected_option_id_from_trace_entry(entry: dict[str, Any]) -> str:
+    args = entry.get("args")
+    if isinstance(args, dict):
+        selected = args.get("selected_option_id")
+        if isinstance(selected, str) and selected.strip():
+            return selected.strip()
+    result = entry.get("result")
+    if isinstance(result, dict):
+        selected = result.get("selected_option_id")
+        if isinstance(selected, str) and selected.strip():
+            return selected.strip()
+        generated = result.get("generated_option")
+        if isinstance(generated, dict):
+            option_id = generated.get("option_id")
+            if isinstance(option_id, str) and option_id.strip():
+                return option_id.strip()
+    return ""
+
+
+def _trace_generated_selects_before_propose(tool_trace: Any) -> bool:
+    if not isinstance(tool_trace, list):
+        return False
+    propose_seen = False
+    for entry in tool_trace:
+        if not isinstance(entry, dict):
+            continue
+        name = entry.get("tool_name")
+        if name == "propose_build_option":
+            propose_seen = True
+            continue
+        if name != "select_build_option":
+            continue
+        selected = _selected_option_id_from_trace_entry(entry)
+        if selected.startswith("generated_") and not propose_seen:
+            return True
+    return False
+
+
 def _missing_required_tool_names(
     request: dict[str, Any],
     tool_trace: Any,
@@ -1713,6 +1751,8 @@ def _build_contract_failure_reason(
     missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
     if missing_required_tools:
         return "agent_missing_required_tool"
+    if _trace_generated_selects_before_propose(tool_trace):
+        return "agent_generated_select_before_propose"
     context = _safe_context(request.get("context"))
     if (
         context.get("intent") == "build_planning"
@@ -1753,7 +1793,9 @@ def _repair_request_for_contract_failure(
             "selection, and planning. For fire-only requests select fire. For "
             "TNT wall requests select tnt_wall. For generated shapes call "
             "propose_build_option before select_build_option, then call "
-            "plan_build_actions.",
+            "plan_build_actions. If the previous pass selected a generated_ "
+            "option before propose_build_option, restart the sequence at "
+            "propose_build_option before any generated select_build_option call.",
         ]
     )
     return repair

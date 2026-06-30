@@ -1147,6 +1147,179 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
             nested["tool_decisions"]["build_option"]["decision_source"],
             "agent_selected_generated_build_option",
         )
+        self.assertEqual(
+            [entry["tool_name"] for entry in nested["tool_trace"]],
+            GENERATED_TOOL_TRACE_NAMES,
+        )
+
+    def test_generated_select_before_propose_gets_agentic_repair(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build a 6 wide 2 high lookout wall"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build a 6 wide 2 high lookout wall",
+            "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+        calls = []
+
+        async def fake_run_sdk_agent(_request, model=None):
+            calls.append(_request)
+            generated = {
+                "option_id": "generated_dimensioned_wall",
+                "build_kind": "wall",
+                "build_width": 6,
+                "build_height": 2,
+                "build_material_name": "stone",
+                "planned_node_writes": 12,
+            }
+            propose_result = {
+                "status": "ready",
+                "generated_option": generated,
+                "direct_world_mutation": False,
+            }
+            early_select_result = {
+                "selected_option_id": None,
+                "selection_status": "rejected",
+                "generated_option_status": "tool_call_required",
+                "direct_world_mutation": False,
+            }
+            select_result = {
+                "selected_option_id": "generated_dimensioned_wall",
+                "selection_status": "accepted",
+                "candidate_count": 2,
+                "decision_source": "agent_selected_generated_build_option",
+                "generated_option_status": "ready",
+                "generated_option": generated,
+                "direct_world_mutation": False,
+            }
+            plan_result = {
+                "status": "ready",
+                "selected_option_id": "generated_dimensioned_wall",
+                "step_count": 4,
+                "direct_world_mutation": False,
+                "world_mutation_authority": "luanti",
+            }
+            if len(calls) == 1:
+                return {
+                    "final_output": "Use the generated wall option.",
+                    "tool_trace": [
+                        {
+                            "tool_name": "inspect_build_site_context",
+                            "result": {
+                                "status": "ready",
+                                "request_class": "generated_shape",
+                                "expected_option_id": "generated_dimensioned_wall",
+                                "required_next_tool": "propose_build_option",
+                                "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                                "direct_world_mutation": False,
+                            },
+                        },
+                        {"tool_name": "recall_build_prompt_memory", "result": {}},
+                        {
+                            "tool_name": "select_build_option",
+                            "args": {
+                                "selected_option_id": "generated_dimensioned_wall",
+                            },
+                            "result": early_select_result,
+                        },
+                        {"tool_name": "propose_build_option", "result": propose_result},
+                        {
+                            "tool_name": "select_build_option",
+                            "args": {
+                                "selected_option_id": "generated_dimensioned_wall",
+                            },
+                            "result": select_result,
+                        },
+                        {"tool_name": "plan_build_actions", "result": plan_result},
+                    ],
+                    "tool_decisions": {
+                        "build_site_context": {
+                            "status": "ready",
+                            "request_class": "generated_shape",
+                            "expected_option_id": "generated_dimensioned_wall",
+                            "required_next_tool": "propose_build_option",
+                            "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                            "direct_world_mutation": False,
+                        },
+                        "build_option": select_result,
+                        "build_action_plan": plan_result,
+                    },
+                }
+            self.assertIn(
+                "agent_generated_select_before_propose",
+                _request["public_prompt"],
+            )
+            return {
+                "final_output": "Use the generated wall option through the proper proposal sequence.",
+                "tool_trace": [
+                    {
+                        "tool_name": "inspect_build_site_context",
+                        "result": {
+                            "status": "ready",
+                            "request_class": "generated_shape",
+                            "expected_option_id": "generated_dimensioned_wall",
+                            "required_next_tool": "propose_build_option",
+                            "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                    {"tool_name": "recall_build_prompt_memory", "result": {}},
+                    {"tool_name": "propose_build_option", "result": propose_result},
+                    {
+                        "tool_name": "select_build_option",
+                        "args": {
+                            "selected_option_id": "generated_dimensioned_wall",
+                        },
+                        "result": select_result,
+                    },
+                    {"tool_name": "plan_build_actions", "result": plan_result},
+                ],
+                "tool_decisions": {
+                    "build_site_context": {
+                        "status": "ready",
+                        "request_class": "generated_shape",
+                        "expected_option_id": "generated_dimensioned_wall",
+                        "required_next_tool": "propose_build_option",
+                        "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                        "direct_world_mutation": False,
+                    },
+                    "build_option": select_result,
+                    "build_action_plan": plan_result,
+                },
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(nested["selected_option_id"], "generated_dimensioned_wall")
+        self.assertEqual(nested["tool_decision_source"], "agents_sdk_repair_function_tool")
+        self.assertTrue(nested["agent_repair_attempted"])
+        self.assertTrue(nested["agent_repair_succeeded"])
+        self.assertEqual(nested["agent_repair_reason"], "agent_generated_select_before_propose")
+        self.assertEqual(nested["missing_required_tool_calls"], [])
+        self.assertTrue(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            [entry["tool_name"] for entry in nested["tool_trace"]],
+            GENERATED_TOOL_TRACE_NAMES,
+        )
 
     def test_build_planning_missing_required_tool_is_labeled_for_improvement(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)

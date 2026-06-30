@@ -50,7 +50,17 @@ def log_entry(
             },
         })
     missing = list(missing_required_tool_calls or [])
-    trace_names = [name for name in required if name not in set(missing)]
+    trace_names = [
+        "inspect_build_site_context",
+        "recall_build_prompt_memory",
+    ]
+    if selected_option_id.startswith("generated_"):
+        trace_names.append("propose_build_option")
+    trace_names.extend([
+        "select_build_option",
+        "plan_build_actions",
+    ])
+    trace_names = [name for name in trace_names if name not in set(missing)]
     plan = {
         "status": "ready",
         "selected_option_id": selected_option_id,
@@ -204,6 +214,46 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
         self.assertIn("required_tool_calls_not_satisfied", generated["failures"])
         self.assertIn("missing_required_tool_calls_present", generated["failures"])
         self.assertIn("tool_trace_incomplete", generated["failures"])
+
+    def test_fails_when_generated_option_selected_before_propose_tool(self):
+        module = load_gate_module()
+        entries = passing_entries()
+        body = entries[3]["response"]["response"]
+        body["tool_trace"] = [
+            {"tool_name": "inspect_build_site_context"},
+            {"tool_name": "recall_build_prompt_memory"},
+            {
+                "tool_name": "select_build_option",
+                "args": {"selected_option_id": "generated_shelter_floor"},
+                "result": {
+                    "selected_option_id": None,
+                    "selection_status": "rejected",
+                    "generated_option_status": "tool_call_required",
+                },
+            },
+            {"tool_name": "propose_build_option", "result": {"status": "ready"}},
+            {
+                "tool_name": "select_build_option",
+                "args": {"selected_option_id": "generated_shelter_floor"},
+                "result": {
+                    "selected_option_id": "generated_shelter_floor",
+                    "selection_status": "accepted",
+                },
+            },
+            {"tool_name": "plan_build_actions"},
+        ]
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = pathlib.Path(tmpdir) / "agents-sdk-model-adapter.jsonl"
+            write_jsonl(log_path, entries)
+
+            report = module.build_report(log_paths=[log_path])
+
+        self.assertEqual(report["status"], "fail")
+        generated = next(case for case in report["cases"] if case["case_id"] == "generated_build_option")
+        self.assertIn("generated_select_before_propose", generated["failures"])
+        self.assertTrue(
+            generated["observed"]["response"]["generated_select_before_propose"]
+        )
 
     def test_cli_writes_report(self):
         with tempfile.TemporaryDirectory() as tmpdir:
