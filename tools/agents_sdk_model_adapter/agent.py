@@ -44,6 +44,7 @@ FORBIDDEN_RESPONSE_KEYS = {
     "raw_asset_payload",
     "provider_credentials",
     "api_key",
+    "requires_openai_api_key",
     "headers",
     "request_body",
 }
