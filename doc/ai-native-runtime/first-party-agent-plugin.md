@@ -73,6 +73,13 @@ Use `/ai_agent_eval case=fire`, `/ai_agent_eval case=fire_only`,
 `/ai_agent_eval case=tnt`, `/ai_agent_eval case=agentic`, `/ai_agent_eval
 case=model`, or `/ai_agent_eval model <prompt>` for narrower checks.
 
+Harnesses can also call `core.ai_agent_plugin.run_prompt_eval` with
+`cases = "custom"` and a reviewed `custom_cases` table from an
+`ai_native_agent_prompt_eval_case_pack`. This is the promotion path for live
+Agent Improvement Loop failures: the chat command stays limited to built-ins,
+while replayable case packs can exercise the same preview, approval cleanup,
+request trace, and metric checks in disposable worlds.
+
 Implemented deterministic commands:
 
 - `status`: returns current state, runtime metrics, product-surface readiness,

@@ -5826,7 +5826,68 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(fire_only_command_report.cases[1].prompt == "build me a fire and only a fire")
 	assert(fire_only_command_report.cases[1].reply.planned_node_writes == 1)
 	assert(fire_only_command_report.cases[1].cleanup.status == "success")
-end)
+
+	local custom_eval_reports = {}
+	local custom_queued, custom_reason = core.ai_agent_plugin.run_prompt_eval({
+		owner = "EvalTester",
+		cases = "custom",
+		custom_cases = {
+			{
+				case_id = "promoted_fire_only_strict_1234",
+				case_hint = "fire_only_strict",
+				source_candidate_id = "agent-eval-candidate:1234",
+				prompt = "build me a fire and only a fire",
+				action = "build",
+				expected = {
+					action = "build",
+					build_kind = "fire",
+					build_material_name = "fire",
+					planned_node_writes = 1,
+					route = "deterministic_build_parser",
+				},
+			},
+		},
+		context = {
+			pos = test_pos(4260),
+			world_id = "prompt-eval-custom-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+		},
+	}, function(report)
+		custom_eval_reports[#custom_eval_reports + 1] = report
+	end)
+	assert(custom_queued == true)
+	assert(custom_reason == "completed")
+	assert(#custom_eval_reports == 1)
+	local custom_report = custom_eval_reports[1]
+	assert(custom_report.ok == true, core.write_json(custom_report))
+	assert(custom_report.status == "pass")
+	assert(custom_report.custom_case_count == 1)
+	assert(#custom_report.cases == 1)
+	assert(custom_report.cases[1].case_id == "promoted_fire_only_strict_1234")
+	assert(custom_report.cases[1].case_hint == "fire_only_strict")
+	assert(custom_report.cases[1].source_candidate_id == "agent-eval-candidate:1234")
+	assert(custom_report.cases[1].reply.build_kind == "fire")
+	assert(custom_report.cases[1].reply.planned_node_writes == 1)
+	assert(custom_report.cases[1].trace.route == "deterministic_build_parser")
+	assert(custom_report.cases[1].cleanup.status == "success")
+
+	local missing_custom_reports = {}
+	local missing_custom_queued, missing_custom_reason =
+		core.ai_agent_plugin.run_prompt_eval({
+			owner = "EvalTester",
+			cases = "custom",
+			custom_cases = {},
+		}, function(report)
+			missing_custom_reports[#missing_custom_reports + 1] = report
+		end)
+	assert(missing_custom_queued == true)
+	assert(missing_custom_reason == "completed")
+	assert(#missing_custom_reports == 1)
+	assert(missing_custom_reports[1].ok == false)
+	assert(missing_custom_reports[1].status == "fail")
+	assert(missing_custom_reports[1].cases[1].case_id == "custom_cases_missing")
+	end)
 
 _G.test_ai_agent_plugin_prompt_eval_surface()
 rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", nil)

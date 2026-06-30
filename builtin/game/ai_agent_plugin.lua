@@ -4037,7 +4037,8 @@ local function append_eval_case(report, case_report)
 	return case_report
 end
 
-local function run_build_eval_case(report, owner, case_id, prompt, context, expected)
+local function run_build_eval_case(report, owner, case_id, prompt, context, expected, metadata)
+	metadata = metadata or {}
 	local reply = plugin.handle_command(owner, prompt, context)
 	local trace = latest_request_trace()
 	local cleanup
@@ -4046,6 +4047,8 @@ local function run_build_eval_case(report, owner, case_id, prompt, context, expe
 	end
 	return append_eval_case(report, {
 		case_id = case_id,
+		case_hint = metadata.case_hint,
+		source_candidate_id = metadata.source_candidate_id,
 		prompt = prompt,
 		reply = compact_eval_reply(reply),
 		trace = compact_eval_trace(trace),
@@ -4062,7 +4065,8 @@ local function run_build_eval_case(report, owner, case_id, prompt, context, expe
 			not_refused_as_dangerous = reply
 				and reply.reason ~= "dangerous"
 				and reply.reason ~= "unsafe",
-			trace_route = trace and trace.route == "deterministic_build_parser",
+			trace_route = trace and trace.route
+				== (expected.route or "deterministic_build_parser"),
 			trace_prompt = trace and trace.public_prompt == prompt,
 			trace_status = trace and trace.response
 				and trace.response.status == "pending_approval",
@@ -4317,6 +4321,35 @@ local function parse_eval_cases(value)
 	return ordered
 end
 
+local function normalize_custom_eval_cases(value)
+	local custom_cases = {}
+	if type(value) ~= "table" then
+		return custom_cases
+	end
+	for _, raw_case in ipairs(value) do
+		if type(raw_case) == "table"
+				and type(raw_case.case_id) == "string"
+				and type(raw_case.prompt) == "string"
+				and type(raw_case.expected) == "table" then
+			local expected = table.copy(raw_case.expected)
+			local action = expected.action or raw_case.action or "build"
+			if action == "build"
+					and type(expected.build_kind) == "string"
+					and type(expected.build_material_name) == "string" then
+				custom_cases[#custom_cases + 1] = {
+					case_id = bounded_trace_text(raw_case.case_id, 120),
+					case_hint = bounded_trace_text(raw_case.case_hint, 120),
+					source_candidate_id =
+						bounded_trace_text(raw_case.source_candidate_id, 160),
+					prompt = bounded_trace_text(raw_case.prompt, 1000),
+					expected = expected,
+				}
+			end
+		end
+	end
+	return custom_cases
+end
+
 local function eval_report_ok(report)
 	for _, case_report in ipairs(report.cases or {}) do
 		if case_report.ok ~= true then
@@ -4330,13 +4363,18 @@ function plugin.run_prompt_eval(options, callback)
 	assert(type(callback) == "function", "Field 'callback' must be a function")
 	options = options or {}
 	local owner = normalize_player_name(options.owner or options.name or "NovaEval")
-	local cases = parse_eval_cases(options.cases)
+	local custom_cases = normalize_custom_eval_cases(options.custom_cases)
+	local normalized_case_param = tostring(options.cases or ""):lower():gsub("[%-_]", "")
+	local custom_only = normalized_case_param == "custom"
+		or normalized_case_param == "promoted"
+	local cases = custom_only and {} or parse_eval_cases(options.cases)
 	local before = core.get_ai_runtime_metrics()
 	local finished = false
 	local report = {
 		schema_version = 1,
 		operation = "ai_agent_plugin.run_prompt_eval",
 		owner = owner,
+		custom_case_count = #custom_cases,
 		cases = {},
 	}
 	local function finish_report()
@@ -4378,6 +4416,15 @@ function plugin.run_prompt_eval(options, callback)
 		end
 	end
 	local context = eval_context(options)
+	if custom_only and #custom_cases == 0 then
+		append_eval_case(report, {
+			case_id = "custom_cases_missing",
+			prompt = "",
+			checks = {
+				custom_cases_present = false,
+			},
+		})
+	end
 	for _, case_id in ipairs(cases) do
 		if case_id == "build_fire" then
 			run_build_eval_case(report, owner, case_id, "build a fire", context, {
@@ -4413,6 +4460,13 @@ function plugin.run_prompt_eval(options, callback)
 				pending_async_count = pending_async_count + 1
 			end
 		end
+	end
+	for _, custom_case in ipairs(custom_cases) do
+		run_build_eval_case(report, owner, custom_case.case_id,
+			custom_case.prompt, context, custom_case.expected, {
+				case_hint = custom_case.case_hint,
+				source_candidate_id = custom_case.source_candidate_id,
+			})
 	end
 	if pending_async_count > 0 and not finished then
 		return true, "queued"
