@@ -93,6 +93,24 @@ def _public_response_summary(response: dict[str, Any]) -> dict[str, Any]:
         "web_search_used": nested.get("web_search_used"),
         "tools_enabled": nested.get("tools_enabled") if isinstance(nested.get("tools_enabled"), list) else [],
         "tool_powers": nested.get("tool_powers") if isinstance(nested.get("tool_powers"), list) else [],
+        "tool_decision_source": nested.get("tool_decision_source"),
+        "selected_option_id": nested.get("selected_option_id"),
+        "required_tool_calls": (
+            nested.get("required_tool_calls")
+            if isinstance(nested.get("required_tool_calls"), list)
+            else []
+        ),
+        "missing_required_tool_calls": (
+            nested.get("missing_required_tool_calls")
+            if isinstance(nested.get("missing_required_tool_calls"), list)
+            else []
+        ),
+        "required_tool_calls_satisfied": nested.get("required_tool_calls_satisfied"),
+        "tool_trace_names": [
+            item.get("tool_name")
+            for item in nested.get("tool_trace", [])
+            if isinstance(item, dict) and isinstance(item.get("tool_name"), str)
+        ],
         "world_mutation_authority": nested.get("world_mutation_authority"),
     }
 
@@ -105,7 +123,13 @@ def _tool_powers_safe(tool_powers: Any) -> bool:
         for power in tool_powers
         if isinstance(power, dict)
     }
-    required = {"WebSearchTool", "summarize_runtime_capabilities", "classify_world_action"}
+    required = {
+        "WebSearchTool",
+        "summarize_runtime_capabilities",
+        "classify_world_action",
+        "recall_build_prompt_memory",
+        "recommend_build_option",
+    }
     if not required.issubset(names):
         return False
     for power in tool_powers:
@@ -128,7 +152,13 @@ def _contains_forbidden_keys(value: Any) -> bool:
     return False
 
 
-def _base_report(mode: str, endpoint: str, *, require_live_agent: bool = False) -> dict[str, Any]:
+def _base_report(
+    mode: str,
+    endpoint: str,
+    *,
+    require_live_agent: bool = False,
+    require_build_planning_tools: bool = False,
+) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "report_kind": REPORT_KIND,
@@ -136,6 +166,7 @@ def _base_report(mode: str, endpoint: str, *, require_live_agent: bool = False) 
         "endpoint": endpoint,
         "loopback_endpoint": _loopback_url(endpoint),
         "live_agent_required": require_live_agent,
+        "build_planning_tools_required": require_build_planning_tools,
         "status": "fail",
         "checks": {
             "files_present": AGENT.exists() and MAIN.exists(),
@@ -153,6 +184,7 @@ def _base_report(mode: str, endpoint: str, *, require_live_agent: bool = False) 
             "no_forbidden_payload_keys": False,
             "tool_powers_declared": False,
             "no_direct_world_mutation_tools": False,
+            "required_tool_calls_satisfied": False,
             "public_safe_response": False,
         },
         "health": {},
@@ -181,6 +213,15 @@ def _offline_smoke(report: dict[str, Any]) -> dict[str, Any]:
     report["checks"]["no_forbidden_payload_keys"] = not _contains_forbidden_keys(response)
     report["checks"]["tool_powers_declared"] = _tool_powers_safe(report["response"]["tool_powers"])
     report["checks"]["no_direct_world_mutation_tools"] = _tool_powers_safe(report["response"]["tool_powers"])
+    if report.get("build_planning_tools_required"):
+        report["checks"]["required_tool_calls_satisfied"] = (
+            report["response"].get("required_tool_calls_satisfied") is True
+            and not report["response"].get("missing_required_tool_calls")
+        )
+    else:
+        report["checks"]["required_tool_calls_satisfied"] = (
+            report["response"].get("required_tool_calls_satisfied") is not False
+        )
     report["checks"]["public_safe_response"] = response.get("adapter_contract") == "provider_neutral_v1"
     return report
 
@@ -191,6 +232,7 @@ def _probe_http(
     *,
     timeout_seconds: float,
     live_public_prompt: str | None = None,
+    require_build_planning_tools: bool = False,
 ) -> dict[str, Any]:
     base = endpoint.rsplit("/v1/model-adapter", 1)[0]
     try:
@@ -226,6 +268,20 @@ def _probe_http(
         if live_public_prompt:
             request = dict(request)
             request["public_prompt"] = live_public_prompt
+        if require_build_planning_tools:
+            request = dict(request)
+            request["public_prompt"] = "\n".join([
+                "Plan a Luanti build request using only the listed executable options.",
+                "Player request: build a wall of tnt",
+                "Candidate summary: platform:platform:default:4|tnt_wall:wall:tnt:12",
+            ])
+            request["context"] = {
+                "surface_id": "builder",
+                "intent": "build_planning",
+                "capabilities": "world.read,http.llm",
+                "player_request": "build a wall of tnt",
+                "candidate_summary": "platform:platform:default:4|tnt_wall:wall:tnt:12",
+            }
         adapter_status, response = _http_json(
             "POST",
             endpoint,
@@ -259,6 +315,15 @@ def _probe_http(
         and _tool_powers_safe(report["response"]["tool_powers"])
     )
     report["checks"]["no_direct_world_mutation_tools"] = report["checks"]["tool_powers_declared"]
+    if report.get("build_planning_tools_required"):
+        report["checks"]["required_tool_calls_satisfied"] = (
+            report["response"].get("required_tool_calls_satisfied") is True
+            and not report["response"].get("missing_required_tool_calls")
+        )
+    else:
+        report["checks"]["required_tool_calls_satisfied"] = (
+            report["response"].get("required_tool_calls_satisfied") is not False
+        )
     report["checks"]["public_safe_response"] = response.get("adapter_contract") == "provider_neutral_v1"
     return report
 
@@ -307,11 +372,17 @@ def run_readiness(
     timeout_seconds: float = 5.0,
     require_live_agent: bool = False,
     live_public_prompt: str | None = None,
+    require_build_planning_tools: bool = False,
 ) -> dict[str, Any]:
     if mode == "managed-http" and port == 0:
         port = _free_port()
     endpoint = endpoint or f"http://{host}:{port}/v1/model-adapter"
-    report = _base_report(mode, endpoint, require_live_agent=require_live_agent)
+    report = _base_report(
+        mode,
+        endpoint,
+        require_live_agent=require_live_agent,
+        require_build_planning_tools=require_build_planning_tools,
+    )
     if not report["checks"]["files_present"]:
         _record_violation(report, "missing_sidecar_files", "agent.py or main.py")
         return report
@@ -331,6 +402,7 @@ def run_readiness(
             endpoint,
             timeout_seconds=timeout_seconds,
             live_public_prompt=live_public_prompt,
+            require_build_planning_tools=require_build_planning_tools,
         )
     elif mode == "managed-http":
         process = _start_sidecar(
@@ -345,6 +417,7 @@ def run_readiness(
                 endpoint,
                 timeout_seconds=timeout_seconds,
                 live_public_prompt=live_public_prompt,
+                require_build_planning_tools=require_build_planning_tools,
             )
         except Exception as exc:
             _record_violation(report, "managed_sidecar_failed", exc.__class__.__name__)
@@ -367,6 +440,7 @@ def run_readiness(
         "no_forbidden_payload_keys",
         "tool_powers_declared",
         "no_direct_world_mutation_tools",
+        "required_tool_calls_satisfied",
         "public_safe_response",
     ]
     if mode != "offline-smoke":
@@ -408,6 +482,11 @@ def main() -> int:
         ),
         help="Public-only prompt used when --require-live-agent is set.",
     )
+    parser.add_argument(
+        "--require-build-planning-tools",
+        action="store_true",
+        help="Post a build-planning request and require the sidecar to satisfy required tool calls.",
+    )
     parser.add_argument("--output")
     args = parser.parse_args()
 
@@ -419,6 +498,7 @@ def main() -> int:
         timeout_seconds=args.timeout_seconds,
         require_live_agent=args.require_live_agent,
         live_public_prompt=args.live_public_prompt if args.require_live_agent else None,
+        require_build_planning_tools=args.require_build_planning_tools,
     )
     rendered = json.dumps(report, indent=2, sort_keys=True)
     if args.output:
