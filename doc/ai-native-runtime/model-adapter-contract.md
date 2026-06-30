@@ -93,9 +93,11 @@ capability, preview, approval, task, audit, and rollback APIs.
 
 For build-planning responses, first-party adapters should also include a bounded
 `tool_trace`, `tool_decision_source`, `tool_decisions.build_option`, and
-`tool_decisions.build_action_plan` object. `tool_decision_source =
-agents_sdk_function_tool` means the executable selection came from an SDK
-function-tool call. The build-action plan should use
+`tool_decisions.build_action_plan` object. Healthy tool-contract sources are
+`agents_sdk_function_tool`, `agents_sdk_repair_function_tool`, or
+`local_agent_tool_contract_fast_path`; the local path is only for bounded
+build-planning requests after the live SDK path or repair path failed, and it
+must still emit the same read-only tool trace. The build-action plan should use
 `plan_kind = "luanti_build_action_plan_v1"`, keep
 `direct_world_mutation = false`, and set `world_mutation_authority = "luanti"`.
 It is the sidecar's read-only handoff to the engine preview, approval,

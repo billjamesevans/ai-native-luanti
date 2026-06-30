@@ -152,10 +152,11 @@ Implemented deterministic commands:
   known executable candidate or a validated generated candidate, records the
   route in request traces, and still requires player approval before the
   rollback-backed `build_agent` task is queued. Healthy live agent runs should
-  label the selection as
-  `tool_decision_source = agents_sdk_function_tool` and include
-  `select_build_option` in the adapter tool trace; missing tool calls are
-  fallback/eval signals. Exact player requests for one fire or a TNT wall are
+  label the selection with an accepted tool-contract source such as
+  `agents_sdk_function_tool`, `agents_sdk_repair_function_tool`, or
+  `local_agent_tool_contract_fast_path`, and include `select_build_option` in
+  the adapter tool trace; missing tool calls are fallback/eval signals. Exact
+  player requests for one fire or a TNT wall are
   intent constraints; if the model selects a generic platform or another
   mismatch, the plugin keeps the constrained executable candidate and records
   `selection_source = model_tool_decision_rejected_intent_constraint`. The

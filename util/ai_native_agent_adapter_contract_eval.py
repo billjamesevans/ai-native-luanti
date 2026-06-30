@@ -22,7 +22,8 @@ REPORT_KIND = "ai_native_agent_adapter_contract_eval_result"
 DEFAULT_MAX_BYTES = 32000
 DEFAULT_MAX_CASES = 25
 DEFAULT_ENDPOINT = "http://127.0.0.1:8766/v1/model-adapter"
-HEALTHY_TOOL_DECISION_SOURCE = "agents_sdk_function_tool"
+HEALTHY_TOOL_DECISION_SOURCE = eval_queue.PRIMARY_AGENT_TOOL_DECISION_SOURCE
+HEALTHY_TOOL_DECISION_SOURCES = set(eval_queue.ACCEPTED_AGENT_TOOL_DECISION_SOURCES)
 
 
 def utc_now() -> str:
@@ -97,6 +98,16 @@ def response_summary(response: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def expected_tool_decision_sources(expected: dict[str, Any]) -> list[str]:
+    sources = string_list(expected.get("tool_decision_sources"))
+    if sources:
+        return sources
+    source = expected.get("tool_decision_source") or HEALTHY_TOOL_DECISION_SOURCE
+    if isinstance(source, str) and source == HEALTHY_TOOL_DECISION_SOURCE:
+        return sorted(HEALTHY_TOOL_DECISION_SOURCES)
+    return string_list([source])
+
+
 def failures_from_checks(checks: dict[str, bool]) -> list[str]:
     return sorted(key for key, ok in checks.items() if ok is not True)
 
@@ -141,6 +152,7 @@ def replay_candidate(
             "tool_decision_source": eval_queue.safe_scalar(
                 expected.get("tool_decision_source") or HEALTHY_TOOL_DECISION_SOURCE
             ),
+            "tool_decision_sources": expected_tool_decision_sources(expected),
             "selected_option_id": eval_queue.safe_scalar(
                 observed.get("selected_option_id") or observed.get("build_option_selected_option_id")
             ),
@@ -189,7 +201,7 @@ def replay_candidate(
         "required_tool_calls_present": expected_required.issubset(actual_required),
         "missing_required_tool_calls_empty": summary["missing_required_tool_calls"] == [],
         "required_tool_calls_satisfied": summary["required_tool_calls_satisfied"] is True,
-        "tool_decision_source": summary["tool_decision_source"] == case["expected"]["tool_decision_source"],
+        "tool_decision_source": summary["tool_decision_source"] in case["expected"]["tool_decision_sources"],
         "selected_option_id": expected_selected in {None, ""} or summary["selected_option_id"] == expected_selected,
         "no_forbidden_payload_keys": not eval_queue.has_forbidden_key(response),
     }
