@@ -65,6 +65,15 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             [item["issue"] for item in operating_loop["ranked_next_issue_queue"]],
             ["#253", "#254", "#255", "#256"],
         )
+        queue_by_issue = {
+            item["issue"]: item
+            for item in operating_loop["ranked_next_issue_queue"]
+        }
+        self.assertIn("recorded backup artifact and SHA", queue_by_issue["#253"]["gate"])
+        self.assertIn(
+            "streamed Agents SDK build-planning evidence",
+            queue_by_issue["#254"]["gate"],
+        )
         self.assertEqual(
             operating_loop["maintenance_invariants"][0]["name"],
             "operating_loop_maintenance",

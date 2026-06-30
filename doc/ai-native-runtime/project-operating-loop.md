@@ -257,17 +257,19 @@ overnight evidence only after one-hour evidence is clean.
 Keep this ranked next-issue queue current after every milestone slice:
 
 1. #253 Promoted Pi one-hour and overnight evidence for current alpha.
-   Use when the Pi lane is clear. Gate: backup-first side-by-side deploy and
-   clean low-power evidence.
+   Current quick proof is clean for `dce016208`; use when the Pi lane is clear
+   for a longer run. Gate: backup-first side-by-side deploy, recorded backup
+   artifact plus SHA, and clean one-hour low-power evidence before overnight.
 2. #254 First-party AI agent productization lane.
    Use for parallel local work while Pi evidence is occupied. Gate: live
-   product-loop probe and one-command local verifier.
+   product-loop probe, streamed Agents SDK build-planning tool evidence, the
+   agent quality gate, and one-command local verifier.
 3. #255 Compatibility import scale-up after staged apply pilot.
-   Use after runtime and product-loop evidence remains clean. Gate: dry-run or
-   approval-gated apply with rollback metadata.
+   Use after runtime, quick Pi evidence, and product-loop evidence remain
+   clean. Gate: dry-run or approval-gated apply with rollback metadata.
 4. #256 Minecraft parity benchmark expansion.
-   Use after accepted local and low-power lanes are refreshed. Gate:
-   public-safe parity harness with actionable scorecard.
+   Use after accepted local and low-power lanes are refreshed for the current
+   candidate. Gate: public-safe parity harness with actionable scorecard.
 
 The contributor release automation and project operating loop lane is complete
 but still enforced. Keep the alpha gate docs, issue/PR templates,
