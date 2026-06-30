@@ -80,6 +80,7 @@ def validate_contract() -> dict:
         "required_tool_calls_satisfied",
         "generated_option",
         "generated_build_option_tool",
+        "_build_option_uses_generated",
         "adapter_fallback_after_agent_missing_required_tool",
         "_TOOL_TRACE",
         '"tool_trace": tool_trace',
