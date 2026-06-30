@@ -62,6 +62,22 @@ regressions can be promoted into `/ai_agent_eval`; unknown prompts require an
 operator label before they become pass/fail tests. This keeps improvement tied
 to observed failures while preserving the public/private boundary.
 
+Promote reviewed ready candidates into a replayable
+`ai_native_agent_prompt_eval_case_pack`:
+
+```bash
+python3 util/ai_native_agent_eval_promote.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+Case packs are for harnesses and disposable-world probes. They run through
+`core.ai_agent_plugin.run_prompt_eval({ cases = "custom", custom_cases = ... })`
+so promoted cases exercise the same preview, approval, cleanup, trace, and
+metric checks as built-in `/ai_agent_eval` cases. The chat command remains
+limited to built-in eval cases until a reviewed operator import surface exists.
+
 ## Pi Promotion Loop
 
 Pi promotion is an operator lane, not a contributor default. Promote only after

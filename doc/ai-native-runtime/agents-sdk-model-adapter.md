@@ -109,6 +109,19 @@ fire` and `build a wall of tnt` are labeled with ready prompt-eval assertions;
 unknown prompts stay in `needs_operator_label` until a maintainer records the
 expected behavior.
 
+Ready candidates can then become an `ai_native_agent_prompt_eval_case_pack`:
+
+```bash
+python3 util/ai_native_agent_eval_promote.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The case pack is consumed by `custom_cases` in
+`core.ai_agent_plugin.run_prompt_eval`, not by direct world mutation. It keeps
+the sidecar as an agentic planner and Luanti as the execution authority.
+
 Managed readiness probe, without provider credentials:
 
 ```bash
