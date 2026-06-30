@@ -122,6 +122,22 @@ python3 util/ai_native_agent_eval_promote.py \
   --generated-at 2026-06-30T00:00:00Z
 ```
 
+The routine refresh command writes both artifacts together and is the preferred
+operator path for sidecar memory:
+
+```bash
+python3 util/ai_native_agent_memory_refresh.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+When a sidecar log includes `context.player_request`, that exact player request
+is promoted as the case prompt. This keeps reviewed memory aligned to the command
+the player actually typed instead of the adapter's larger wrapper prompt.
+
 The case pack is consumed by `custom_cases` in
 `core.ai_agent_plugin.run_prompt_eval`, and can also be mounted into the sidecar
 with:

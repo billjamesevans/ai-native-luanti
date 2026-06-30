@@ -72,11 +72,25 @@ python3 util/ai_native_agent_eval_promote.py \
   --generated-at 2026-06-30T00:00:00Z
 ```
 
+For routine sidecar operations, refresh both artifacts in one audited command:
+
+```bash
+python3 util/ai_native_agent_memory_refresh.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
 Case packs are for harnesses and disposable-world probes. They run through
 `core.ai_agent_plugin.run_prompt_eval({ cases = "custom", custom_cases = ... })`
 so promoted cases exercise the same preview, approval, cleanup, trace, and
 metric checks as built-in `/ai_agent_eval` cases. The chat command remains
 limited to built-in eval cases until a reviewed operator import surface exists.
+The Pi fork sidecar mounts the refreshed case pack as read-only prompt memory
+through `AI_NATIVE_AGENT_CASE_PACK_PATH`; it still cannot bypass Luanti preview,
+approval, rollback, or task gates.
 
 Ambiguous build behavior must be improved through the same loop. The Agents SDK
 sidecar can reason and call read-only tools, but Luanti only changes an

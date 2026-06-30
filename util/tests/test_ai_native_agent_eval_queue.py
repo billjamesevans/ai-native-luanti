@@ -160,6 +160,51 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertTrue(payload["violations"])
         self.assertTrue(payload["safety"]["public_safe_output"])
 
+    def test_agents_sdk_candidate_uses_player_request_and_tool_trace(self):
+        module = load_queue_module()
+        entry = agents_sdk_log_entry(
+            "AI-native Luanti model adapter request.\nplayer_request: build me a fire and only a fire"
+        )
+        entry["request"]["context"].update({
+            "intent": "build_planning",
+            "player_request": "build me a fire and only a fire",
+            "candidate_summary": "fire:fire:fire:1|platform:platform:stone:9",
+        })
+        entry["response"]["response"].update({
+            "selected_option_id": "fire",
+            "tool_decision_source": "agents_sdk_function_tool",
+            "tool_trace": [
+                {"tool_name": "recall_build_prompt_memory"},
+                {"tool_name": "recommend_build_option"},
+            ],
+            "tool_decisions": {
+                "build_option": {
+                    "selected_option_id": "fire",
+                    "decision_source": "reviewed_prompt_memory",
+                    "memory_match": {
+                        "memory_available": True,
+                        "matched_case_id": "promoted_fire_only_strict_123",
+                    },
+                },
+            },
+        })
+
+        candidate = module.candidate_from_agents_sdk_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["prompt"], "build me a fire and only a fire")
+        self.assertEqual(candidate["prompt_source"], "context.player_request")
+        self.assertEqual(candidate["case_hint"], "fire_only_strict")
+        self.assertEqual(candidate["observed"]["selected_option_id"], "fire")
+        self.assertEqual(candidate["observed"]["tool_decision_source"], "agents_sdk_function_tool")
+        self.assertEqual(candidate["observed"]["build_option_decision_source"], "reviewed_prompt_memory")
+        self.assertEqual(candidate["observed"]["build_option_selected_option_id"], "fire")
+        self.assertTrue(candidate["observed"]["memory_available"])
+        self.assertEqual(
+            candidate["observed"]["tool_trace_names"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
+
     def test_cli_writes_candidate_queue(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)

@@ -82,6 +82,19 @@ That file must be an `ai_native_agent_prompt_eval_case_pack`. The sidecar only
 uses it through the read-only `recall_build_prompt_memory` tool; it never mutates
 world state or bypasses Luanti approval/rollback gates.
 
+Refresh candidate queues and mounted prompt memory from runtime logs with:
+
+```bash
+python3 util/ai_native_agent_memory_refresh.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json
+```
+
+For build-planning logs, `context.player_request` becomes the reviewed memory
+prompt so future agent tool calls can match the exact player command.
+
 Adapter endpoint:
 
 ```text
