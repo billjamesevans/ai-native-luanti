@@ -17,6 +17,7 @@ For product-profile hygiene changes, also run `python3 util/ai_native_product_pr
 | --- | --- | --- |
 | `games/ai_runtime/game.conf` | Product runtime | Loaded |
 | `games/ai_runtime/mods/ai_runtime_base` | First-party plugin | Loaded |
+| `games/ai_runtime/mods/ai_runtime_agents_sdk_bridge` | First-party plugin | Loaded; inert unless the Agents SDK adapter is explicitly enabled |
 | `builtin/game/ai_runtime_smoke.lua` | Unit-test helper | Requires `ai_runtime.enable_smoke_command = true` |
 | `builtin/game/demo_entity_benchmark.lua` | Benchmark fixture | Requires `ai_runtime.enable_demo_benchmark_command = true` |
 | `util/tests/fixtures/compat` | Compatibility fixture | Test/dev path only |
@@ -56,6 +57,19 @@ Grant the local operator `server` privilege in the disposable world, then run:
 /ai_runtime_smoke
 ```
 
+For a disposable live-agent check, run a loopback Agents SDK sidecar and add
+these settings before startup:
+
+```conf
+ai_runtime.enable_agents_sdk_adapter = true
+ai_runtime.agents_sdk_adapter_endpoint = http://127.0.0.1:8766/v1/model-adapter
+secure.http_mods = ai_runtime_agents_sdk_bridge
+```
+
+The sidecar must get its provider API key from server-local secret
+configuration. No key, private prompt, raw provider payload, or asset payload
+belongs in this profile, manifest, or verification output.
+
 ## Boundaries
 
 - This profile requires no live server.
@@ -63,6 +77,8 @@ Grant the local operator `server` privilege in the disposable world, then run:
 - This profile requires no private assets.
 - This profile requires no provider prompt retention.
 - This profile requires no model-network access.
+- Live model-network access is an explicit operator opt-in through the Agents
+  SDK adapter and a loopback sidecar.
 - This profile is not a replacement for benchmark fixtures or engine unit tests.
 - This profile keeps synthetic smoke and demo benchmark commands behind explicit dev/test settings.
 - This profile declares first-party agent capability grants in `games/ai_runtime/mods/ai_runtime_base/init.lua`.

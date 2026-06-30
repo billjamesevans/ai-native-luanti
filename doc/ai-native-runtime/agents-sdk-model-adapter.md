@@ -127,6 +127,17 @@ The Lua adapter is disabled by default and is loaded only when:
 ai_runtime.enable_agents_sdk_adapter = true
 ```
 
+For real server use, grant HTTP access to the profile bridge mod, not to
+builtin code or unrelated gameplay mods:
+
+```text
+secure.http_mods = ai_runtime_agents_sdk_bridge
+```
+
+`games/ai_runtime/mods/ai_runtime_agents_sdk_bridge` supplies only the Luanti
+HTTP API handle to the already-enabled builtin bridge. It does not contain
+provider credentials, endpoints, or world mutation logic.
+
 Default endpoint:
 
 ```text

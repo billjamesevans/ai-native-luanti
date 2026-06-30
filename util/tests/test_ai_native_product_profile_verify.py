@@ -26,7 +26,10 @@ class AIProductProfileVerifierTests(unittest.TestCase):
 
         self.assertEqual(manifest["schema_version"], 1)
         self.assertEqual(manifest["gameid"], "ai_runtime")
-        self.assertEqual(manifest["product_mods"], ["ai_runtime_base"])
+        self.assertEqual(
+            manifest["product_mods"],
+            ["ai_runtime_agents_sdk_bridge", "ai_runtime_base"],
+        )
         self.assertEqual(
             {
                 surface["name"]: surface["setting"]
@@ -67,6 +70,7 @@ class AIProductProfileVerifierTests(unittest.TestCase):
             default_loaded,
             {
                 "ai_runtime_game",
+                "ai_runtime_agents_sdk_bridge",
                 "ai_runtime_base",
                 "ai_runtime_core",
                 "ai_operator_status",
@@ -79,6 +83,10 @@ class AIProductProfileVerifierTests(unittest.TestCase):
         )
         base_entry = next(entry for entry in inventory if entry["name"] == "ai_runtime_base")
         self.assertIn("helper entity", base_entry["purpose"])
+        bridge_entry = next(
+            entry for entry in inventory if entry["name"] == "ai_runtime_agents_sdk_bridge"
+        )
+        self.assertIn("HTTP handle", bridge_entry["purpose"])
         for entry in inventory:
             if entry["category"] in {"benchmark_fixture", "compatibility_fixture", "unit_test_helper"}:
                 self.assertFalse(entry["loaded_by_default_product_profile"], entry)
@@ -162,7 +170,10 @@ class AIProductProfileVerifierTests(unittest.TestCase):
         self.assertEqual(report["schema_version"], 1)
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["profile"]["gameid"], "ai_runtime")
-        self.assertEqual(report["profile"]["product_mods"], ["ai_runtime_base"])
+        self.assertEqual(
+            report["profile"]["product_mods"],
+            ["ai_runtime_agents_sdk_bridge", "ai_runtime_base"],
+        )
         self.assertEqual(report["violations"], [])
         self.assertTrue(report["safety"]["no_private_content"])
         self.assertTrue(report["safety"]["dev_surfaces_disabled_by_default"])
