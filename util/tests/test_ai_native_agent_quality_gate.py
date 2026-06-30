@@ -435,7 +435,7 @@ class AgentQualityGateTests(unittest.TestCase):
             for item in report["violations"]
         ))
 
-    def test_review_queue_attention_keeps_gate_attention_not_fail(self):
+    def test_review_queue_attention_is_reported_but_not_deploy_blocking(self):
         module = load_quality_gate_module()
 
         review = review_queue_payload(
@@ -459,8 +459,10 @@ class AgentQualityGateTests(unittest.TestCase):
             generated_at="2026-06-30T18:05:00Z",
         )
 
-        self.assertEqual(report["status"], "attention")
+        self.assertEqual(report["status"], "pass")
         self.assertTrue(any(item["kind"] == "manual_review_required" for item in report["attention"]))
+        self.assertEqual(report["summary"]["attention_total"], 3)
+        self.assertEqual(report["summary"]["blocking_attention_total"], 0)
         self.assertEqual(report["violations"], [])
 
     def test_adapter_contract_eval_failure_fails_gate(self):
@@ -501,6 +503,7 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "attention")
         self.assertTrue(any(item["kind"] == "adapter_contract_replay_missing" for item in report["attention"]))
+        self.assertEqual(report["summary"]["blocking_attention_total"], 1)
 
     def test_cli_writes_quality_gate(self):
         with tempfile.TemporaryDirectory() as tmpdir:
