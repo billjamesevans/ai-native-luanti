@@ -294,6 +294,56 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertEqual(recommendation["selected_option_id"], "generated_dimensioned_wall")
         self.assertEqual(recommendation["decision_source"], "generated_build_option_tool")
 
+    def test_generated_option_selection_requires_prior_propose_tool_call(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        candidate_summary = "platform:platform:default:4|wall:wall:default:12"
+        player_request = "build a 6 wide 2 high lookout wall"
+        unproposed_selection = module.select_build_option_payload(
+            candidate_summary,
+            "generated_dimensioned_wall",
+            player_request,
+            "reviewed memory matched the generated wall",
+        )
+        unproposed_plan = module.plan_build_actions_payload(
+            candidate_summary,
+            player_request,
+            "generated_dimensioned_wall",
+        )
+        proposal = module.propose_build_option_payload(candidate_summary, player_request)
+        proposed_options = [proposal["generated_option"]]
+        proposed_selection = module.select_build_option_payload(
+            candidate_summary,
+            "generated_dimensioned_wall",
+            player_request,
+            "proposed generated option first",
+            proposed_options,
+        )
+        proposed_plan = module.plan_build_actions_payload(
+            candidate_summary,
+            player_request,
+            "generated_dimensioned_wall",
+            proposed_options,
+        )
+
+        self.assertIsNone(unproposed_selection["selected_option_id"])
+        self.assertEqual(unproposed_selection["selection_status"], "rejected")
+        self.assertEqual(unproposed_selection["generated_option_status"], "tool_call_required")
+        self.assertEqual(unproposed_selection["rejection_reason"], "selected_option_not_executable")
+        self.assertEqual(unproposed_plan["status"], "rejected")
+        self.assertEqual(proposed_selection["selected_option_id"], "generated_dimensioned_wall")
+        self.assertEqual(proposed_selection["selection_status"], "accepted")
+        self.assertEqual(
+            proposed_selection["decision_source"],
+            "agent_selected_generated_build_option",
+        )
+        self.assertEqual(proposed_plan["status"], "ready")
+        self.assertEqual(proposed_plan["selected_option_id"], "generated_dimensioned_wall")
+
     def test_reviewed_prompt_memory_can_drive_repeated_build_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)
