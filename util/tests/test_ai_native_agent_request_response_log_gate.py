@@ -224,6 +224,7 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
             {"tool_name": "recall_build_prompt_memory"},
             {
                 "tool_name": "select_build_option",
+                "args": {"selected_option_id": "generated_shelter_floor"},
                 "result": {
                     "selected_option_id": None,
                     "selection_status": "rejected",
