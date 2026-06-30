@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import asyncio
+from contextvars import ContextVar
 from datetime import datetime, timezone
 import inspect
 import json
@@ -33,6 +34,8 @@ ADAPTER_NAME = "openai-agents-sdk-model-adapter"
 MAX_PROMPT_BYTES = 6000
 MAX_RESPONSE_BYTES = 4000
 MAX_LOG_STRING_BYTES = 1200
+MAX_TOOL_TRACE_ENTRIES = 12
+MAX_MEMORY_CASES = 12
 FORBIDDEN_RESPONSE_KEYS = {
     "raw_provider_request",
     "raw_provider_response",
@@ -48,6 +51,11 @@ FORBIDDEN_RESPONSE_KEYS = {
     "headers",
     "request_body",
 }
+
+_TOOL_TRACE: ContextVar[list[dict[str, Any]] | None] = ContextVar(
+    "ai_native_luanti_agent_tool_trace",
+    default=None,
+)
 
 
 TOOL_POWER_MANIFEST = (
@@ -77,6 +85,15 @@ TOOL_POWER_MANIFEST = (
         "available_without_provider_credentials": True,
         "direct_world_mutation": False,
         "engine_authority": "luanti_task_preview_approval_rollback",
+    },
+    {
+        "name": "recall_build_prompt_memory",
+        "kind": "function_tool",
+        "runtime_power": "reviewed_prompt_memory_lookup",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "reviewed_eval_case_pack",
     },
     {
         "name": "WebSearchTool",
@@ -174,6 +191,17 @@ def _write_request_response_log(request: dict[str, Any], response: dict[str, Any
         return
 
 
+def _record_tool_call(name: str, args: dict[str, Any], result: dict[str, Any]) -> None:
+    trace = _TOOL_TRACE.get()
+    if trace is None or len(trace) >= MAX_TOOL_TRACE_ENTRIES:
+        return
+    trace.append({
+        "tool_name": name,
+        "args": _safe_log_value(args),
+        "result": _safe_log_value(result),
+    })
+
+
 def _safe_context(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -237,7 +265,7 @@ def classify_world_action(action: str, planned_node_writes: int) -> dict[str, An
     """Classify a requested world action before it is returned to Luanti."""
 
     writes = max(0, int(planned_node_writes or 0))
-    return {
+    result = {
         "action": action or "reply",
         "planned_node_writes": writes,
         "requires_preview": writes > 0,
@@ -245,12 +273,15 @@ def classify_world_action(action: str, planned_node_writes: int) -> dict[str, An
         "requires_rollback": writes > 0,
         "max_recommended_writes": 1000,
     }
+    _record_tool_call(
+        "classify_world_action",
+        {"action": action, "planned_node_writes": planned_node_writes},
+        result,
+    )
+    return result
 
 
-def recommend_build_option_payload(candidate_summary: str, player_request: str) -> dict[str, Any]:
-    """Choose one bounded build candidate from Luanti's public-safe summary."""
-
-    request = str(player_request or "").lower()
+def _candidate_entries(candidate_summary: str) -> list[dict[str, Any]]:
     candidates: list[dict[str, Any]] = []
     for raw_entry in str(candidate_summary or "").split("|"):
         parts = raw_entry.split(":")
@@ -269,9 +300,112 @@ def recommend_build_option_payload(candidate_summary: str, player_request: str) 
                 "planned_node_writes": planned_node_writes,
             }
         )
+    return candidates
+
+
+def _load_reviewed_case_pack() -> dict[str, Any] | None:
+    path_value = os.getenv("AI_NATIVE_AGENT_CASE_PACK_PATH")
+    if not path_value:
+        return None
+    try:
+        path = Path(path_value)
+        if not path.is_file():
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    if payload.get("artifact_kind") != "ai_native_agent_prompt_eval_case_pack":
+        return None
+    return payload
+
+
+def _expected_option_from_case(
+    expected: dict[str, Any],
+    candidates: list[dict[str, Any]],
+) -> str | None:
+    expected_kind = str(expected.get("build_kind") or "")
+    expected_material = str(expected.get("build_material_name") or "")
+    expected_writes = expected.get("planned_node_writes")
+    for candidate in candidates:
+        if expected_kind and candidate.get("build_kind") != expected_kind:
+            continue
+        if expected_material and candidate.get("material") != expected_material:
+            continue
+        if expected_writes is not None and candidate.get("planned_node_writes") != expected_writes:
+            continue
+        return str(candidate.get("option_id") or "") or None
+    return None
+
+
+def recall_build_prompt_memory_payload(
+    player_request: str,
+    candidate_summary: str,
+) -> dict[str, Any]:
+    """Look up reviewed prompt-eval memory without mutating the world."""
+
+    request = str(player_request or "").strip()
+    candidates = _candidate_entries(candidate_summary)
+    payload = _load_reviewed_case_pack()
+    if not payload:
+        return {
+            "memory_available": False,
+            "selected_option_id": None,
+            "matched_case_id": None,
+            "reviewed_case_count": 0,
+            "direct_world_mutation": False,
+            "policy": "reviewed_case_pack_only",
+        }
+
+    cases = payload.get("cases") if isinstance(payload.get("cases"), list) else []
+    reviewed_case_count = min(len(cases), MAX_MEMORY_CASES)
+    request_lower = request.lower()
+    for case in cases[:MAX_MEMORY_CASES]:
+        if not isinstance(case, dict):
+            continue
+        prompt = case.get("prompt")
+        expected = case.get("expected")
+        if not isinstance(prompt, str) or not isinstance(expected, dict):
+            continue
+        if prompt.strip().lower() != request_lower:
+            continue
+        selected = _expected_option_from_case(expected, candidates)
+        if selected:
+            return {
+                "memory_available": True,
+                "selected_option_id": selected,
+                "matched_case_id": case.get("case_id"),
+                "case_hint": case.get("case_hint"),
+                "reviewed_case_count": reviewed_case_count,
+                "direct_world_mutation": False,
+                "policy": "reviewed_case_pack_only",
+            }
+
+    return {
+        "memory_available": True,
+        "selected_option_id": None,
+        "matched_case_id": None,
+        "reviewed_case_count": reviewed_case_count,
+        "direct_world_mutation": False,
+        "policy": "reviewed_case_pack_only",
+    }
+
+
+def recommend_build_option_payload(candidate_summary: str, player_request: str) -> dict[str, Any]:
+    """Choose one bounded build candidate from Luanti's public-safe summary."""
+
+    request = str(player_request or "").lower()
+    candidates = _candidate_entries(candidate_summary)
 
     preferred = "platform"
-    if "tnt" in request:
+    memory = recall_build_prompt_memory_payload(player_request, candidate_summary)
+    memory_selected = memory.get("selected_option_id")
+    if isinstance(memory_selected, str) and memory_selected:
+        preferred = memory_selected
+    elif "only a fire" in request:
+        preferred = "fire"
+    elif "tnt" in request:
         preferred = "tnt_wall"
     elif "fire" in request or "flame" in request:
         preferred = "fire"
@@ -287,6 +421,9 @@ def recommend_build_option_payload(candidate_summary: str, player_request: str) 
         "selected_option_id": selected["option_id"] if selected else None,
         "candidate_count": len(candidates),
         "alternatives": [item["option_id"] for item in candidates[:6]],
+        "decision_source": "reviewed_prompt_memory"
+        if memory.get("selected_option_id") else "agent_build_option_tool",
+        "memory_match": memory,
         "requires_preview": True,
         "requires_approval": True,
         "requires_rollback": True,
@@ -313,6 +450,7 @@ def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
             str(context.get("candidate_summary") or ""),
             player_request,
         )
+        decisions["build_option"]["decision_source"] = "offline_adapter_fallback"
     return decisions
 
 
@@ -329,7 +467,26 @@ def _selected_option_id(decisions: dict[str, Any]) -> str | None:
 def recommend_build_option(candidate_summary: str, player_request: str) -> dict[str, Any]:
     """Recommend one of Luanti's bounded build candidates without mutating the world."""
 
-    return recommend_build_option_payload(candidate_summary, player_request)
+    result = recommend_build_option_payload(candidate_summary, player_request)
+    _record_tool_call(
+        "recommend_build_option",
+        {"candidate_summary": candidate_summary, "player_request": player_request},
+        result,
+    )
+    return result
+
+
+@function_tool
+def recall_build_prompt_memory(player_request: str, candidate_summary: str) -> dict[str, Any]:
+    """Return reviewed prompt-memory guidance for a build request, if available."""
+
+    result = recall_build_prompt_memory_payload(player_request, candidate_summary)
+    _record_tool_call(
+        "recall_build_prompt_memory",
+        {"player_request": player_request, "candidate_summary": candidate_summary},
+        result,
+    )
+    return result
 
 
 def build_agent(model: str | None = None) -> Any:
@@ -339,6 +496,7 @@ def build_agent(model: str | None = None) -> Any:
     tools: list[Any] = [
         summarize_runtime_capabilities,
         classify_world_action,
+        recall_build_prompt_memory,
         recommend_build_option,
     ]
     if WebSearchTool is not None:
@@ -353,7 +511,9 @@ def build_agent(model: str | None = None) -> Any:
             "world mutation, rollback, audit, and task execution. Use hosted "
             "web search only when current public information is needed. Use "
             "function tools to classify capabilities, world-action policy, "
-            "and bounded build-option recommendations. "
+            "reviewed prompt memory, and bounded build-option recommendations. "
+            "For build planning, call recall_build_prompt_memory and "
+            "recommend_build_option before producing final output. "
             "Return public-safe, bounded guidance. Do not return provider raw "
             "payloads, credentials, private prompts, private world coordinates, "
             "or asset payloads."
@@ -379,7 +539,6 @@ def adapter_health() -> dict[str, Any]:
 def _agent_input_from_request(request: dict[str, Any]) -> str:
     context = _safe_context(request.get("context"))
     prompt = _bounded_text(request.get("public_prompt"), MAX_PROMPT_BYTES)
-    tool_decisions = _tool_decisions_for_request(request)
     capability_csv = ""
     capabilities = context.get("capabilities")
     if isinstance(capabilities, str):
@@ -397,20 +556,41 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             f"player_request: {context.get('player_request', '')}",
             f"candidate_summary: {context.get('candidate_summary', '')}",
             f"selected_candidate_id: {context.get('selected_candidate_id', '')}",
-            f"tool_decision_recommendation: {json.dumps(tool_decisions, sort_keys=True)}",
             "Return concise public-safe guidance for the player or operator. "
-            "For build planning, use the recommend_build_option decision and "
-            "do not invent options that are not in candidate_summary.",
+            "For build planning, first call recall_build_prompt_memory, then "
+            "call recommend_build_option using the exact candidate_summary and "
+            "player_request. Do not invent options that are not in "
+            "candidate_summary.",
         ]
     )
 
 
-async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> str:
+def _tool_decisions_from_trace(tool_trace: list[dict[str, Any]]) -> dict[str, Any]:
+    decisions: dict[str, Any] = {}
+    for entry in tool_trace:
+        if entry.get("tool_name") != "recommend_build_option":
+            continue
+        result = entry.get("result")
+        if isinstance(result, dict):
+            decisions["build_option"] = result
+    return decisions
+
+
+async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> dict[str, Any]:
     agent = build_agent(model)
-    result = Runner.run(agent, _agent_input_from_request(request))
-    if inspect.isawaitable(result):
-        result = await result
-    return _bounded_text(getattr(result, "final_output", result), MAX_RESPONSE_BYTES)
+    tool_trace: list[dict[str, Any]] = []
+    token = _TOOL_TRACE.set(tool_trace)
+    try:
+        result = Runner.run(agent, _agent_input_from_request(request))
+        if inspect.isawaitable(result):
+            result = await result
+        return {
+            "final_output": _bounded_text(getattr(result, "final_output", result), MAX_RESPONSE_BYTES),
+            "tool_trace": _safe_log_value(tool_trace),
+            "tool_decisions": _tool_decisions_from_trace(tool_trace),
+        }
+    finally:
+        _TOOL_TRACE.reset(token)
 
 
 def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
@@ -429,7 +609,9 @@ def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
             "web_search_used": False,
             "tools_enabled": tool_power_names(),
             "tool_powers": tool_power_manifest(),
+            "tool_trace": [],
             "tool_decisions": tool_decisions,
+            "tool_decision_source": "offline_adapter_fallback",
             "selected_option_id": _selected_option_id(tool_decisions),
             "world_mutation_authority": "luanti",
             "guidance": (
@@ -478,8 +660,7 @@ def run_model_adapter_request(
         return response
 
     try:
-        tool_decisions = _tool_decisions_for_request(request)
-        final_output = asyncio.run(_run_sdk_agent(request, model=model))
+        agent_result = asyncio.run(_run_sdk_agent(request, model=model))
     except Exception as exc:  # pragma: no cover - live SDK path depends on credentials.
         response = {
             "schema_version": 1,
@@ -494,12 +675,19 @@ def run_model_adapter_request(
         _write_request_response_log(request, response)
         return response
 
+    tool_trace = agent_result.get("tool_trace") if isinstance(agent_result, dict) else []
+    tool_decisions = agent_result.get("tool_decisions") if isinstance(agent_result, dict) else {}
+    decision_source = "agents_sdk_function_tool"
+    if not tool_decisions:
+        tool_decisions = _tool_decisions_for_request(request)
+        decision_source = "adapter_fallback_after_agent_no_tool"
+
     response = _sanitize_response({
         "schema_version": 1,
         "response_kind": "ai_native_model_adapter_response",
         "adapter_contract": "provider_neutral_v1",
         "ok": True,
-        "message": final_output,
+        "message": agent_result.get("final_output") if isinstance(agent_result, dict) else "",
         "adapter_name": ADAPTER_NAME,
         "elapsed_us": int((time.perf_counter() - start) * 1_000_000),
         "response": {
@@ -507,7 +695,9 @@ def run_model_adapter_request(
             "web_search_available": WebSearchTool is not None,
             "tools_enabled": tool_power_names(),
             "tool_powers": tool_power_manifest(),
+            "tool_trace": tool_trace,
             "tool_decisions": tool_decisions,
+            "tool_decision_source": decision_source,
             "selected_option_id": _selected_option_id(tool_decisions),
             "world_mutation_authority": "luanti",
         },

@@ -38,7 +38,8 @@ The Agents SDK sidecar owns:
 - `Runner` execution.
 - `WebSearchTool` for current public web lookup when needed.
 - `function_tool` deterministic tools for runtime-capability summaries,
-  world-action classification, and build-option recommendations.
+  world-action classification, reviewed prompt-memory lookup, and build-option
+  recommendations.
 - Optional future handoffs or sandbox agents, only after the engine has a
   matching capability and approval contract.
 
@@ -64,6 +65,9 @@ Important files:
 - `agent.py`: Agents SDK adapter, tools, offline smoke path, and response
   envelope conversion. When `AI_NATIVE_AGENT_LOG_PATH` is set, it appends
   bounded public-safe JSONL request/response entries for post-incident review.
+  When `AI_NATIVE_AGENT_CASE_PACK_PATH` points at a reviewed
+  `ai_native_agent_prompt_eval_case_pack`, the sidecar exposes those cases to the
+  agent through a read-only prompt-memory tool.
 - `main.py`: HTTP service with `GET /health` and `POST /v1/model-adapter`.
 - `pyproject.toml`: declares `openai-agents`.
 
@@ -119,8 +123,19 @@ python3 util/ai_native_agent_eval_promote.py \
 ```
 
 The case pack is consumed by `custom_cases` in
-`core.ai_agent_plugin.run_prompt_eval`, not by direct world mutation. It keeps
-the sidecar as an agentic planner and Luanti as the execution authority.
+`core.ai_agent_plugin.run_prompt_eval`, and can also be mounted into the sidecar
+with:
+
+```bash
+AI_NATIVE_AGENT_CASE_PACK_PATH=local/benchmarks/ai-agent-prompt-eval-case-pack.json
+```
+
+Mounted cases become read-only prompt memory through the
+`recall_build_prompt_memory` function tool. They do not directly mutate the
+world and do not bypass Luanti preview, approval, rollback, or task gates. This
+is the first improvement loop: bad live requests create logs, logs become
+candidate queues, reviewed candidates become eval cases, and those reviewed
+cases can influence future agent planning while staying public-safe.
 
 For build-planning requests, the sidecar response also includes a structured
 read-only tool decision:
@@ -129,9 +144,16 @@ read-only tool decision:
 {
   "response": {
     "selected_option_id": "fire",
+    "tool_decision_source": "agents_sdk_function_tool",
+    "tool_trace": [
+      {
+        "tool_name": "recommend_build_option"
+      }
+    ],
     "tool_decisions": {
       "build_option": {
         "selected_option_id": "fire",
+        "decision_source": "agent_build_option_tool",
         "direct_world_mutation": false
       }
     }
@@ -143,6 +165,10 @@ The Lua planner honors that selected option only when it matches one of the
 bounded executable candidates supplied in the request. The model's prose is
 kept as player guidance; the structured `tool_decisions` field is the execution
 contract that can change the pending preview plan.
+If a live agent does not call the required function tools, the adapter still
+returns a bounded fallback decision but labels it with
+`tool_decision_source = adapter_fallback_after_agent_no_tool` so the run can be
+promoted into evals instead of being mistaken for healthy agent behavior.
 
 Managed readiness probe, without provider credentials:
 
@@ -238,6 +264,9 @@ Initial tools are deliberately read-only:
   already been granted.
 - `classify_world_action`: labels planned node writes as requiring preview,
   approval, and rollback before the engine may execute them.
+- `recall_build_prompt_memory`: checks an optional reviewed prompt-eval case pack
+  for exact public prompt regressions, then returns only a bounded option id and
+  case id.
 - `recommend_build_option`: chooses from Luanti-supplied bounded build
   candidates for ambiguous `/nova build ...` prompts without executing world
   mutation.

@@ -42,10 +42,14 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertFalse(response["response"]["agentic_execution"])
         self.assertIn("WebSearchTool", response["response"]["tools_enabled"])
         self.assertIn("recommend_build_option", response["response"]["tools_enabled"])
+        self.assertIn("recall_build_prompt_memory", response["response"]["tools_enabled"])
+        self.assertEqual(response["response"]["tool_trace"], [])
+        self.assertEqual(response["response"]["tool_decision_source"], "offline_adapter_fallback")
         self.assertEqual(response["response"]["world_mutation_authority"], "luanti")
         tool_powers = response["response"]["tool_powers"]
         self.assertIn("WebSearchTool", {power["name"] for power in tool_powers})
         self.assertIn("recommend_build_option", {power["name"] for power in tool_powers})
+        self.assertIn("recall_build_prompt_memory", {power["name"] for power in tool_powers})
         self.assertTrue(all(power["direct_world_mutation"] is False for power in tool_powers))
 
     def test_build_option_recommender_is_read_only_and_bounded(self):
@@ -67,6 +71,48 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(result["requires_rollback"])
         self.assertFalse(result["direct_world_mutation"])
         self.assertEqual(result["policy"], "luanti_executes_only_after_player_approval")
+
+    def test_reviewed_prompt_memory_can_drive_repeated_build_decision(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            case_pack = pathlib.Path(tmpdir) / "case-pack.json"
+            case_pack.write_text(json.dumps({
+                "schema_version": 1,
+                "artifact_kind": "ai_native_agent_prompt_eval_case_pack",
+                "cases": [{
+                    "case_id": "promoted_fire_only_memory",
+                    "case_hint": "fire_only_strict",
+                    "prompt": "build something surprising",
+                    "expected": {
+                        "action": "build",
+                        "build_kind": "fire",
+                        "build_material_name": "fire",
+                        "planned_node_writes": 1,
+                    },
+                }],
+            }), encoding="utf-8")
+            old_case_pack = os.environ.get("AI_NATIVE_AGENT_CASE_PACK_PATH")
+            os.environ["AI_NATIVE_AGENT_CASE_PACK_PATH"] = str(case_pack)
+            try:
+                result = module.recommend_build_option_payload(
+                    "platform:platform:default:4|fire:fire:fire:1",
+                    "build something surprising",
+                )
+            finally:
+                if old_case_pack is None:
+                    os.environ.pop("AI_NATIVE_AGENT_CASE_PACK_PATH", None)
+                else:
+                    os.environ["AI_NATIVE_AGENT_CASE_PACK_PATH"] = old_case_pack
+
+        self.assertEqual(result["selected_option_id"], "fire")
+        self.assertEqual(result["decision_source"], "reviewed_prompt_memory")
+        self.assertEqual(result["memory_match"]["matched_case_id"], "promoted_fire_only_memory")
+        self.assertFalse(result["direct_world_mutation"])
 
     def test_build_planning_response_exposes_structured_tool_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
@@ -100,7 +146,62 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
             nested["tool_decisions"]["build_option"]["selected_option_id"],
             "tnt_wall",
         )
+        self.assertEqual(nested["tool_decision_source"], "offline_adapter_fallback")
         self.assertFalse(nested["tool_decisions"]["build_option"]["direct_world_mutation"])
+
+    def test_live_agent_response_uses_tool_trace_decision(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build something surprising"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build something surprising",
+            "candidate_summary": "platform:platform:default:4|fire:fire:fire:1",
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+
+        async def fake_run_sdk_agent(_request, model=None):
+            return {
+                "final_output": "Use the fire option.",
+                "tool_trace": [{
+                    "tool_name": "recommend_build_option",
+                    "result": {
+                        "selected_option_id": "fire",
+                        "candidate_count": 2,
+                        "direct_world_mutation": False,
+                    },
+                }],
+                "tool_decisions": {
+                    "build_option": {
+                        "selected_option_id": "fire",
+                        "candidate_count": 2,
+                        "direct_world_mutation": False,
+                    },
+                },
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertTrue(nested["agentic_execution"])
+        self.assertEqual(nested["selected_option_id"], "fire")
+        self.assertEqual(nested["tool_decision_source"], "agents_sdk_function_tool")
+        self.assertEqual(nested["tool_trace"][0]["tool_name"], "recommend_build_option")
 
     def test_request_response_log_is_public_safe_jsonl(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
