@@ -34,6 +34,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def build_memory_artifacts(
     *,
     agents_sdk_logs: list[Path] | None = None,
+    nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
     generated_at: str | None = None,
     candidate_queue_source_path: str | None = None,
@@ -44,6 +45,7 @@ def build_memory_artifacts(
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     candidate_queue = eval_queue.build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs or [],
+        nova_agent_logs=nova_agent_logs or [],
         action_logs=action_logs or [],
         generated_at=generated_at,
         max_candidates=max(0, max_candidates),
@@ -65,6 +67,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--root", default=".", help="Repository root for relative paths.")
     parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
+    parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
     parser.add_argument("--candidate-queue-output", required=True, help="Output candidate queue JSON path.")
     parser.add_argument("--case-pack-output", required=True, help="Output prompt-memory case pack JSON path.")
@@ -80,12 +83,14 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     root = resolve_path(Path.cwd(), args.root).resolve()
     agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
+    nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
     action_logs = [resolve_path(root, path) for path in args.action_log]
     candidate_queue_output = resolve_path(root, args.candidate_queue_output)
     case_pack_output = resolve_path(root, args.case_pack_output)
 
     candidate_queue, case_pack = build_memory_artifacts(
         agents_sdk_logs=agents_sdk_logs,
+        nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
         generated_at=args.generated_at,
         candidate_queue_source_path=relative_label(root, candidate_queue_output),

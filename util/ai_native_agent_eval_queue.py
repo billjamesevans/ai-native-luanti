@@ -207,6 +207,11 @@ def _agents_sdk_candidate_prompt(request: dict[str, Any]) -> tuple[str | None, s
         return player_request, "context.player_request"
     public_prompt = request.get("public_prompt")
     if isinstance(public_prompt, str) and public_prompt.strip():
+        for line in public_prompt.splitlines():
+            if line.lower().startswith("player request:"):
+                extracted = line.split(":", 1)[1].strip()
+                if extracted:
+                    return extracted, "request.public_prompt.player_request"
         return public_prompt, "request.public_prompt"
     return None, "missing"
 
@@ -324,6 +329,124 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
     return candidate
 
 
+def _first_action(entry: dict[str, Any]) -> dict[str, Any]:
+    actions = entry.get("actions") if isinstance(entry.get("actions"), list) else []
+    for action in actions:
+        if isinstance(action, dict):
+            return action
+    return {}
+
+
+def _planned_node_writes_from_actions(entry: dict[str, Any]) -> int:
+    total = 0
+    actions = entry.get("actions") if isinstance(entry.get("actions"), list) else []
+    for action in actions:
+        if not isinstance(action, dict):
+            continue
+        action_type = str(action.get("type") or "")
+        if action_type == "place_node":
+            try:
+                total += max(1, int(action.get("count") or 1))
+            except (TypeError, ValueError):
+                total += 1
+        elif action_type in {"fill_box", "hollow_box", "clear_box"}:
+            size = action.get("size") if isinstance(action.get("size"), dict) else {}
+            try:
+                total += (
+                    max(1, int(size.get("x") or 1))
+                    * max(1, int(size.get("y") or 1))
+                    * max(1, int(size.get("z") or 1))
+                )
+            except (TypeError, ValueError):
+                total += 0
+        elif action_type in {"sphere", "ring"}:
+            try:
+                radius = max(1, int(action.get("radius") or 1))
+            except (TypeError, ValueError):
+                radius = 1
+            total += radius * radius * 4
+        elif action_type == "line":
+            total += 1
+        elif action_type == "lights":
+            try:
+                total += max(1, int(action.get("count") or 1))
+            except (TypeError, ValueError):
+                total += 1
+    return total
+
+
+def _build_kind_from_sidecar_action(entry: dict[str, Any], action: dict[str, Any]) -> str | None:
+    contract = entry.get("prompt_contract") if isinstance(entry.get("prompt_contract"), dict) else {}
+    contract_kind = contract.get("contract_kind")
+    if isinstance(contract_kind, str) and contract_kind:
+        if contract_kind == "single_fire":
+            return "fire"
+        if contract_kind.endswith("_wall"):
+            return "wall"
+    material = str(action.get("material") or "")
+    action_type = str(action.get("type") or "")
+    if material == "fire" and action_type == "place_node":
+        return "fire"
+    if action_type == "fill_box":
+        return "wall"
+    return action_type or None
+
+
+def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any] | None:
+    prompt = entry.get("prompt")
+    if not isinstance(prompt, str) or not prompt.strip():
+        return None
+    first_action = _first_action(entry)
+    prompt_contract = entry.get("prompt_contract") if isinstance(entry.get("prompt_contract"), dict) else {}
+    tool_trace = entry.get("tool_trace") if isinstance(entry.get("tool_trace"), list) else []
+    correction_source = safe_scalar(entry.get("correction_source"))
+    contract_satisfied = entry.get("contract_satisfied")
+    observed_status = "success" if entry.get("ok") is True else "failed"
+    if correction_source:
+        observed_status = "corrected"
+    if contract_satisfied is False:
+        observed_status = "contract_failed"
+    candidate = _base_candidate(
+        "nova_agent_sidecar_request_response",
+        safe_scalar(entry.get("ts")),
+        prompt,
+    )
+    candidate.update({
+        "owner": safe_scalar(entry.get("player")),
+        "agent_id": "nova_agent:sidecar",
+        "task_id": None,
+        "route": safe_scalar(entry.get("source") or "nova_agent_sidecar"),
+        "action": "build" if first_action else "reply",
+        "observed_ok": entry.get("ok") is True and contract_satisfied is not False,
+        "observed_status": observed_status,
+        "observed_reason": correction_source,
+        "observed": {
+            "source": safe_scalar(entry.get("source")),
+            "label": safe_scalar(entry.get("label"), 200),
+            "action": safe_scalar(first_action.get("type")),
+            "build_kind": safe_scalar(_build_kind_from_sidecar_action(entry, first_action)),
+            "build_material_name": safe_scalar(first_action.get("material")),
+            "planned_node_writes": _planned_node_writes_from_actions(entry),
+            "contract_kind": safe_scalar(prompt_contract.get("contract_kind")),
+            "contract_satisfied": contract_satisfied,
+            "correction_source": correction_source,
+            "tool_trace_names": [
+                bounded_text(item.get("tool_name"), 80)
+                for item in tool_trace
+                if isinstance(item, dict) and isinstance(item.get("tool_name"), str)
+            ][:8],
+            "action_count": len(entry.get("actions")) if isinstance(entry.get("actions"), list) else 0,
+        },
+    })
+    expected = expected_outcome_for(candidate["prompt"], candidate)
+    candidate.update({
+        "candidate_id": stable_candidate_id(candidate),
+        "priority": candidate_priority(candidate, expected),
+        **expected,
+    })
+    return candidate
+
+
 def _read_jsonl_candidates(paths: list[Path], violations: list[dict[str, str]]) -> tuple[list[dict[str, Any]], int, int]:
     candidates: list[dict[str, Any]] = []
     read_entries = 0
@@ -354,6 +477,41 @@ def _read_jsonl_candidates(paths: list[Path], violations: list[dict[str, str]]) 
                 })
                 continue
             candidate = candidate_from_agents_sdk_entry(entry)
+            if candidate:
+                candidates.append(candidate)
+    return candidates, read_entries, skipped_private
+
+
+def _read_nova_agent_log_candidates(paths: list[Path], violations: list[dict[str, str]]) -> tuple[list[dict[str, Any]], int, int]:
+    candidates: list[dict[str, Any]] = []
+    read_entries = 0
+    skipped_private = 0
+    for path in paths:
+        if not path.is_file():
+            violations.append({"kind": "missing_nova_agent_log", "details": str(path)})
+            continue
+        for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+            if not raw.strip():
+                continue
+            try:
+                entry = json.loads(raw)
+            except json.JSONDecodeError:
+                violations.append({
+                    "kind": "invalid_nova_agent_log_json",
+                    "details": f"{path}:{line_number}",
+                })
+                continue
+            if not isinstance(entry, dict) or "prompt" not in entry or "actions" not in entry:
+                continue
+            read_entries += 1
+            if has_private_content(entry) or has_forbidden_key(entry):
+                skipped_private += 1
+                violations.append({
+                    "kind": "skipped_private_nova_agent_log_entry",
+                    "details": f"{path}:{line_number}",
+                })
+                continue
+            candidate = candidate_from_nova_agent_log_entry(entry)
             if candidate:
                 candidates.append(candidate)
     return candidates, read_entries, skipped_private
@@ -406,6 +564,7 @@ def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, str, str]:
 def build_eval_candidate_queue(
     *,
     agents_sdk_logs: list[Path] | None = None,
+    nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
     generated_at: str | None = None,
     max_candidates: int = DEFAULT_MAX_CANDIDATES,
@@ -413,12 +572,17 @@ def build_eval_candidate_queue(
 ) -> dict[str, Any]:
     violations: list[dict[str, str]] = []
     agents_sdk_logs = agents_sdk_logs or []
+    nova_agent_logs = nova_agent_logs or []
     action_logs = action_logs or []
     generated_at = generated_at or utc_now()
 
     sdk_candidates, sdk_entries, sdk_private = _read_jsonl_candidates(agents_sdk_logs, violations)
+    nova_agent_candidates, nova_agent_entries, nova_agent_private = _read_nova_agent_log_candidates(
+        nova_agent_logs,
+        violations,
+    )
     trace_candidates, trace_entries, trace_private = _read_action_log_candidates(action_logs, violations)
-    candidates = _dedupe_candidates(sdk_candidates + trace_candidates)
+    candidates = _dedupe_candidates(sdk_candidates + nova_agent_candidates + trace_candidates)
     candidates.sort(key=_candidate_sort_key)
     truncated = len(candidates) > max_candidates
     candidates = candidates[:max(0, max_candidates)]
@@ -438,8 +602,9 @@ def build_eval_candidate_queue(
         "status": status,
         "source_summary": {
             "agents_sdk_log_entries_read": sdk_entries,
+            "nova_agent_log_entries_read": nova_agent_entries,
             "nova_request_traces_read": trace_entries,
-            "entries_skipped_private": sdk_private + trace_private,
+            "entries_skipped_private": sdk_private + nova_agent_private + trace_private,
             "candidates_total": len(candidates),
             "ready_for_prompt_eval": ready_count,
             "manual_review_required": manual_count,
@@ -454,7 +619,7 @@ def build_eval_candidate_queue(
             "no_raw_assets": True,
             "no_provider_prompts": True,
             "no_family_world_coordinates": True,
-            "private_entries_skipped": sdk_private + trace_private,
+            "private_entries_skipped": sdk_private + nova_agent_private + trace_private,
         },
         "bounds": {
             "max_candidates": max_candidates,
@@ -500,6 +665,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     )
     parser.add_argument("--root", default=".", help="Repository root for relative paths.")
     parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
+    parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
     parser.add_argument("--output", required=True, help="Output candidate queue JSON path.")
     parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
@@ -512,11 +678,13 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     root = resolve_path(Path.cwd(), args.root).resolve()
     agents_sdk_logs = [resolve_path(root, path) for path in args.agents_sdk_log]
+    nova_agent_logs = [resolve_path(root, path) for path in args.nova_agent_log]
     action_logs = [resolve_path(root, path) for path in args.action_log]
     output = resolve_path(root, args.output)
 
     payload = build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs,
+        nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
         generated_at=args.generated_at,
         max_candidates=max(0, args.max_candidates),
