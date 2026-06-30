@@ -21,6 +21,15 @@ VERIFIED_LIVE_RESULT_KIND = "ai_native_nova_auto_apply_live_result"
 PROMPT_EVAL_LIVE_RESULT_KIND = "ai_native_agent_prompt_eval_live_result"
 DEFAULT_MAX_BYTES = 32000
 DEFAULT_MAX_CANDIDATES = 50
+PRIMARY_AGENT_TOOL_DECISION_SOURCE = "agents_sdk_function_tool"
+REPAIR_AGENT_TOOL_DECISION_SOURCE = "agents_sdk_repair_function_tool"
+LOCAL_AGENT_TOOL_CONTRACT_FAST_PATH = "local_agent_tool_contract_fast_path"
+NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE = "agents_sdk_submit_nova_plan_tool"
+ACCEPTED_AGENT_TOOL_DECISION_SOURCES = {
+    PRIMARY_AGENT_TOOL_DECISION_SOURCE,
+    REPAIR_AGENT_TOOL_DECISION_SOURCE,
+    LOCAL_AGENT_TOOL_CONTRACT_FAST_PATH,
+}
 
 ALLOWED_LABEL_EXPECTED_KEYS = {
     "action",
@@ -107,6 +116,14 @@ def safe_scalar(value: Any, max_bytes: int = 1000) -> str | int | float | bool |
     if isinstance(value, (int, float, bool)) or value is None:
         return value
     return bounded_text(value, max_bytes)
+
+
+def accepted_agent_tool_decision_sources() -> list[str]:
+    return sorted(ACCEPTED_AGENT_TOOL_DECISION_SOURCES)
+
+
+def is_accepted_agent_tool_decision_source(value: Any) -> bool:
+    return isinstance(value, str) and value in ACCEPTED_AGENT_TOOL_DECISION_SOURCES
 
 
 def safe_int(value: Any, *, minimum: int = 0, maximum: int = 10000) -> int | None:
@@ -367,7 +384,7 @@ def generated_expected_outcome(candidate: dict[str, Any], observed: dict[str, An
     }
     if not required_trace.issubset(tool_trace_names):
         return None
-    if observed.get("tool_decision_source") != "agents_sdk_function_tool":
+    if not is_accepted_agent_tool_decision_source(observed.get("tool_decision_source")):
         return None
     if observed.get("required_tool_calls_satisfied") is not True:
         return None
@@ -609,13 +626,24 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
         return None
 
     status = "unknown"
-    if satisfied is True and not missing:
-        status = "pass"
-    if satisfied is False or missing or decision_source == "adapter_fallback_after_agent_missing_required_tool":
-        status = "fail"
-    expected_decision_source = "agents_sdk_function_tool"
     if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
-        expected_decision_source = "agents_sdk_submit_nova_plan_tool"
+        expected_decision_sources = {
+            NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE,
+            *ACCEPTED_AGENT_TOOL_DECISION_SOURCES,
+        }
+    else:
+        expected_decision_sources = set(ACCEPTED_AGENT_TOOL_DECISION_SOURCES)
+    source_accepted = isinstance(decision_source, str) and decision_source in expected_decision_sources
+
+    if satisfied is True and not missing and source_accepted:
+        status = "pass"
+    if satisfied is False or missing or (decision_source and not source_accepted):
+        status = "fail"
+    expected_decision_source = (
+        NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE
+        if candidate.get("source_kind") == "nova_agent_sidecar_request_response"
+        else PRIMARY_AGENT_TOOL_DECISION_SOURCE
+    )
 
     return {
         "status": status,
@@ -629,6 +657,7 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
             "missing_required_tool_calls": [],
             "required_tool_calls_satisfied": True,
             "tool_decision_source": expected_decision_source,
+            "tool_decision_sources": sorted(expected_decision_sources),
         },
     }
 
@@ -1234,7 +1263,8 @@ def candidate_from_verified_live_probe_case(
         return None
     if reply.get("selected_candidate_id") != case.get("expected_candidate"):
         return None
-    if reply.get("adapter_tool_decision_source") != "agents_sdk_function_tool":
+    adapter_tool_decision_source = reply.get("adapter_tool_decision_source")
+    if not is_accepted_agent_tool_decision_source(adapter_tool_decision_source):
         return None
     if reply.get("adapter_required_tool_calls_satisfied") is not True:
         return None
@@ -1306,7 +1336,7 @@ def candidate_from_verified_live_probe_case(
             "planner_mode": "agentic_model_adapter",
             "selected_option_id": selected_id,
             "selected_candidate_id": selected_id,
-            "tool_decision_source": "agents_sdk_function_tool",
+            "tool_decision_source": safe_scalar(adapter_tool_decision_source),
             "required_tool_calls": required_tools,
             "missing_required_tool_calls": [],
             "required_tool_calls_satisfied": True,

@@ -225,8 +225,9 @@ python3 util/ai_native_agent_adapter_contract_eval.py \
 The replay runner consumes only `ready_for_adapter_contract_eval` candidates and
 grades the real adapter response for required tool calls, empty
 `missing_required_tool_calls`, `required_tool_calls_satisfied = true`,
-`tool_decision_source = agents_sdk_function_tool`, and Luanti-only world
-mutation authority.
+an accepted tool-contract source (`agents_sdk_function_tool`,
+`agents_sdk_repair_function_tool`, or `local_agent_tool_contract_fast_path`),
+and Luanti-only world mutation authority.
 
 When a sidecar log includes `context.player_request`, that exact player request
 is promoted as the case prompt. This keeps reviewed memory aligned to the command

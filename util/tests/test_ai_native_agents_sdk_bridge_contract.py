@@ -623,15 +623,21 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(response["ok"])
         self.assertEqual(response["reason"], "agents_sdk_model_timeout")
         nested = response["response"]
-        self.assertFalse(nested["agentic_execution"])
+        self.assertTrue(nested["agentic_execution"])
         self.assertTrue(nested["agent_model_timeout"])
         self.assertEqual(
             nested["tool_decision_source"],
-            "offline_adapter_fallback_after_agent_timeout",
+            "local_agent_tool_contract_fast_path",
         )
         self.assertEqual(nested["selected_option_id"], "tnt_wall")
+        self.assertEqual(nested["local_tool_contract_reason"], "agents_sdk_model_timeout")
         self.assertEqual(
             nested["missing_required_tool_calls"],
+            [],
+        )
+        self.assertTrue(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            [entry["tool_name"] for entry in nested["tool_trace"]],
             ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
         )
 
@@ -716,14 +722,18 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(
             nested["tool_decision_source"],
-            "adapter_fallback_after_agent_violated_player_request_constraints",
+            "local_agent_tool_contract_fast_path",
+        )
+        self.assertEqual(
+            nested["local_tool_contract_reason"],
+            "agent_repair_failed:agent_violated_player_request_constraints",
         )
         self.assertEqual(
             nested["tool_decisions"]["build_option"]["selected_option_id"],
             "fire",
         )
 
-    def test_live_generated_option_requires_propose_tool_trace(self):
+    def test_live_generated_option_missing_propose_uses_local_tool_contract(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)
         module = importlib.util.module_from_spec(spec)
@@ -801,7 +811,7 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertEqual(nested["selected_option_id"], "generated_tower_wall")
         self.assertEqual(
             nested["tool_decision_source"],
-            "adapter_fallback_after_agent_missing_required_tool",
+            "local_agent_tool_contract_fast_path",
         )
         self.assertEqual(
             nested["required_tool_calls"],
@@ -814,12 +824,25 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(
             nested["missing_required_tool_calls"],
-            ["plan_build_actions", "propose_build_option"],
+            [],
         )
-        self.assertFalse(nested["required_tool_calls_satisfied"])
+        self.assertTrue(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            nested["local_tool_contract_reason"],
+            "agent_repair_failed:agent_missing_required_tool",
+        )
         self.assertEqual(
             nested["tool_decisions"]["build_option"]["decision_source"],
-            "offline_adapter_fallback",
+            "generated_build_option_tool",
+        )
+        self.assertEqual(
+            [entry["tool_name"] for entry in nested["tool_trace"]],
+            [
+                "recall_build_prompt_memory",
+                "propose_build_option",
+                "select_build_option",
+                "plan_build_actions",
+            ],
         )
 
     def test_live_generated_option_with_propose_tool_trace_is_healthy(self):
@@ -963,7 +986,7 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertEqual(nested["selected_option_id"], "tnt_wall")
         self.assertEqual(
             nested["tool_decision_source"],
-            "adapter_fallback_after_agent_missing_required_tool",
+            "local_agent_tool_contract_fast_path",
         )
         self.assertEqual(
             nested["required_tool_calls"],
@@ -971,12 +994,16 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(
             nested["missing_required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
+            [],
         )
-        self.assertFalse(nested["required_tool_calls_satisfied"])
+        self.assertTrue(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            nested["local_tool_contract_reason"],
+            "agent_repair_failed:agent_missing_required_tool",
+        )
         self.assertEqual(
             nested["tool_decisions"]["build_option"]["decision_source"],
-            "offline_adapter_fallback",
+            "player_request_constraint",
         )
 
     def test_missing_required_tool_gets_agentic_repair_before_fallback(self):

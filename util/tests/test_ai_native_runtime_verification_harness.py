@@ -1506,7 +1506,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             fallback_source["prompt_eval"]["cases"][1][
                 "adapter_tool_decision_source"
             ] = "adapter_fallback_after_agent_missing_required_tool"
-            with self.assertRaisesRegex(ValueError, "did not use Agents SDK function tools"):
+            with self.assertRaisesRegex(ValueError, "did not use an accepted agent tool contract"):
                 probe.validate_live_result(fallback_source)
 
     def test_nova_auto_apply_validator_requires_exact_build_write_counts(self):

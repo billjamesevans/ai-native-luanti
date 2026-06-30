@@ -79,7 +79,7 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "movement tasks only",
             "`ai_agent.follow_step`",
             "rollback-backed",
-            "tool_decision_source = agents_sdk_function_tool",
+            "`local_agent_tool_contract_fast_path`",
             "`adapter_tool_decision_source`",
             "`adapter_required_tool_calls`",
             "`adapter_missing_required_tool_calls`",

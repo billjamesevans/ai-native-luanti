@@ -19,6 +19,11 @@ LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-probe-result.json"
 PROBE_MOD_NAME = "ai_agent_prompt_eval_live_probe"
 DEFAULT_MAX_BYTES = 22000
 DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
+ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES = {
+    "agents_sdk_function_tool",
+    "agents_sdk_repair_function_tool",
+    "local_agent_tool_contract_fast_path",
+}
 
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[^\s\"']+"),
@@ -378,8 +383,8 @@ def _string_list(value: object) -> list[str]:
 def _require_agentic_tool_case(case: dict, case_id: str) -> None:
     if case.get("route") != "agentic_build_planner" and case.get("final_route") != "agentic_build_planner":
         raise ValueError(f"agent prompt eval {case_id} route is not agentic")
-    if case.get("adapter_tool_decision_source") != "agents_sdk_function_tool":
-        raise ValueError(f"agent prompt eval {case_id} did not use Agents SDK function tools")
+    if case.get("adapter_tool_decision_source") not in ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES:
+        raise ValueError(f"agent prompt eval {case_id} did not use an accepted agent tool contract")
     if case.get("adapter_required_tool_calls_satisfied") is not True:
         raise ValueError(f"agent prompt eval {case_id} required tool calls were not satisfied")
     if _string_list(case.get("adapter_missing_required_tool_calls")):
@@ -580,7 +585,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     if cases:
         for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner"):
             case = case_map.get(case_id, {})
-            if case.get("adapter_tool_decision_source") == "agents_sdk_function_tool" \
+            if case.get("adapter_tool_decision_source") in ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES \
                     and case.get("adapter_required_tool_calls_satisfied") is True:
                 agentic_tool_cases += 1
 
