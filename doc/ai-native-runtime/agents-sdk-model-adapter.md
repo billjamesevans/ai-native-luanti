@@ -144,6 +144,22 @@ python3 util/ai_native_agent_memory_refresh.py \
   --generated-at 2026-06-30T00:00:00Z
 ```
 
+Adapter-contract regressions can be replayed against the live loopback sidecar:
+
+```bash
+python3 util/ai_native_agent_adapter_contract_eval.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-adapter-contract-eval.json \
+  --endpoint http://127.0.0.1:8766/v1/model-adapter \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The replay runner consumes only `ready_for_adapter_contract_eval` candidates and
+grades the real adapter response for required tool calls, empty
+`missing_required_tool_calls`, `required_tool_calls_satisfied = true`,
+`tool_decision_source = agents_sdk_function_tool`, and Luanti-only world
+mutation authority.
+
 When a sidecar log includes `context.player_request`, that exact player request
 is promoted as the case prompt. This keeps reviewed memory aligned to the command
 the player actually typed instead of the adapter's larger wrapper prompt.
