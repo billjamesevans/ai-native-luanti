@@ -194,6 +194,65 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(recommendation["requires_approval"])
         self.assertFalse(recommendation["direct_world_mutation"])
 
+    def test_agent_authored_generated_option_flows_through_build_tools(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        candidate_summary = "platform:platform:default:4|wall:wall:default:12"
+        proposal = module.propose_build_option(
+            candidate_summary=candidate_summary,
+            player_request="build a wide lookout wall",
+            option_id="generated_agent_lookout_wall",
+            build_kind="wall",
+            build_material_name="stone",
+            build_width=6,
+            build_height=2,
+            reason="agent composed a wider wall within Luanti's node-write budget",
+        )
+        selection = module.select_build_option(
+            candidate_summary=candidate_summary,
+            selected_option_id="generated_agent_lookout_wall",
+            player_request="build a wide lookout wall",
+            selection_reason="the generated option best matches the requested wider lookout wall",
+        )
+        action_plan = module.plan_build_actions(
+            candidate_summary=candidate_summary,
+            player_request="build a wide lookout wall",
+            selected_option_id="generated_agent_lookout_wall",
+        )
+
+        self.assertEqual(proposal["status"], "ready")
+        self.assertFalse(proposal["direct_world_mutation"])
+        self.assertEqual(
+            proposal["generated_option"]["option_id"],
+            "generated_agent_lookout_wall",
+        )
+        self.assertEqual(proposal["generated_option"]["build_kind"], "wall")
+        self.assertEqual(proposal["generated_option"]["build_width"], 6)
+        self.assertEqual(proposal["generated_option"]["build_height"], 2)
+        self.assertEqual(proposal["generated_option"]["planned_node_writes"], 12)
+        self.assertEqual(selection["selected_option_id"], "generated_agent_lookout_wall")
+        self.assertEqual(selection["selection_status"], "accepted")
+        self.assertEqual(
+            selection["decision_source"],
+            "agent_selected_generated_build_option",
+        )
+        self.assertEqual(
+            selection["generated_option"]["option_id"],
+            "generated_agent_lookout_wall",
+        )
+        self.assertFalse(selection["direct_world_mutation"])
+        self.assertEqual(action_plan["status"], "ready")
+        self.assertEqual(action_plan["selected_option_id"], "generated_agent_lookout_wall")
+        self.assertEqual(action_plan["build_kind"], "wall")
+        self.assertEqual(action_plan["build_material_name"], "stone")
+        self.assertEqual(action_plan["planned_node_writes"], 12)
+        self.assertEqual(action_plan["world_mutation_authority"], "luanti")
+        self.assertFalse(action_plan["direct_world_mutation"])
+
     def test_reviewed_prompt_memory_can_drive_repeated_build_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)

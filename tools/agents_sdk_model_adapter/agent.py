@@ -62,6 +62,10 @@ _TOOL_TRACE: ContextVar[list[dict[str, Any]] | None] = ContextVar(
     "ai_native_luanti_agent_tool_trace",
     default=None,
 )
+_BUILD_TOOL_STATE: ContextVar[dict[str, Any] | None] = ContextVar(
+    "ai_native_luanti_agent_build_tool_state",
+    default=None,
+)
 
 
 TOOL_POWER_MANIFEST = (
@@ -235,6 +239,37 @@ def _record_tool_call(name: str, args: dict[str, Any], result: dict[str, Any]) -
     })
 
 
+def _current_generated_options() -> list[dict[str, Any]]:
+    state = _BUILD_TOOL_STATE.get()
+    if not isinstance(state, dict):
+        return []
+    generated_options = state.get("generated_options")
+    if not isinstance(generated_options, list):
+        return []
+    return [option for option in generated_options if isinstance(option, dict)]
+
+
+def _remember_generated_option(option: dict[str, Any] | None) -> None:
+    if not isinstance(option, dict):
+        return
+    option_id = option.get("option_id")
+    if not isinstance(option_id, str) or not option_id:
+        return
+    state = _BUILD_TOOL_STATE.get()
+    if not isinstance(state, dict):
+        state = {"generated_options": []}
+        _BUILD_TOOL_STATE.set(state)
+    generated_options = state.setdefault("generated_options", [])
+    if not isinstance(generated_options, list):
+        generated_options = []
+        state["generated_options"] = generated_options
+    for index, existing in enumerate(generated_options):
+        if isinstance(existing, dict) and existing.get("option_id") == option_id:
+            generated_options[index] = option
+            return
+    generated_options.append(option)
+
+
 def _safe_context(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         return {}
@@ -399,12 +434,214 @@ def _first_prompt_int(pattern: str, request: str) -> int | None:
     return value if value >= 1 else None
 
 
-def propose_build_option_payload(candidate_summary: str, player_request: str) -> dict[str, Any]:
+def _positive_tool_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        value = int(value)
+        return value if value >= 1 else None
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+        return parsed if parsed >= 1 else None
+    return None
+
+
+def _custom_generated_option_requested(*values: Any) -> bool:
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return True
+        if isinstance(value, (int, float)) and not isinstance(value, bool) and value:
+            return True
+    return False
+
+
+def _generated_option_response(
+    *,
+    status: str,
+    reason: str,
+    generated_option: dict[str, Any] | None,
+    candidate_count: int,
+    build_budget: int,
+) -> dict[str, Any]:
+    response = {
+        "status": status,
+        "reason": reason,
+        "generated_option": generated_option,
+        "candidate_count": candidate_count,
+        "build_budget": build_budget,
+        "direct_world_mutation": False,
+        "policy": "luanti_validates_generated_options_before_preview",
+    }
+    if status == "ready":
+        response.update({
+            "requires_preview": True,
+            "requires_approval": True,
+            "requires_rollback": True,
+        })
+    return response
+
+
+def _agent_authored_generated_option(
+    candidates: list[dict[str, Any]],
+    *,
+    option_id: str,
+    build_kind: str,
+    build_material_name: str,
+    build_width: Any,
+    build_depth: Any,
+    build_height: Any,
+    build_count: Any,
+    reason: str,
+    label: str,
+) -> dict[str, Any]:
+    budget = _generated_build_budget(candidates)
+    option_id = _bounded_text(option_id, 64).strip()
+    if not re.match(r"^generated[\w-]*$", option_id):
+        return _generated_option_response(
+            status="rejected",
+            reason="generated_option_id_invalid",
+            generated_option=None,
+            candidate_count=len(candidates),
+            build_budget=budget,
+        )
+
+    kind = str(build_kind or "").strip().lower()
+    if kind not in {"marker", "platform", "wall", "fire"}:
+        return _generated_option_response(
+            status="rejected",
+            reason="generated_build_kind_unsupported",
+            generated_option=None,
+            candidate_count=len(candidates),
+            build_budget=budget,
+        )
+
+    material = str(build_material_name or "default").strip().lower() or "default"
+    if kind == "fire":
+        material = "fire"
+    if material not in {"default", "stone", "tnt", "fire"}:
+        return _generated_option_response(
+            status="rejected",
+            reason="generated_build_material_unsupported",
+            generated_option=None,
+            candidate_count=len(candidates),
+            build_budget=budget,
+        )
+    if material == "fire" and kind != "fire":
+        return _generated_option_response(
+            status="rejected",
+            reason="generated_build_material_kind_mismatch",
+            generated_option=None,
+            candidate_count=len(candidates),
+            build_budget=budget,
+        )
+
+    option: dict[str, Any] = {
+        "option_id": option_id,
+        "label": _bounded_text(label or "Agent-authored build option", 120),
+        "reason": _bounded_text(reason or "agent-authored bounded option", 240),
+        "build_kind": kind,
+        "build_material_name": material,
+    }
+    if kind == "marker":
+        planned_writes = 1
+    elif kind == "platform":
+        width = _positive_tool_int(build_width)
+        depth = _positive_tool_int(build_depth)
+        if width is None or depth is None:
+            return _generated_option_response(
+                status="rejected",
+                reason="generated_build_dimensions_missing",
+                generated_option=None,
+                candidate_count=len(candidates),
+                build_budget=budget,
+            )
+        option["build_width"] = width
+        option["build_depth"] = depth
+        planned_writes = width * depth
+    elif kind == "wall":
+        width = _positive_tool_int(build_width)
+        height = _positive_tool_int(build_height)
+        if width is None or height is None:
+            return _generated_option_response(
+                status="rejected",
+                reason="generated_build_dimensions_missing",
+                generated_option=None,
+                candidate_count=len(candidates),
+                build_budget=budget,
+            )
+        option["build_width"] = width
+        option["build_height"] = height
+        planned_writes = width * height
+    else:
+        count = _positive_tool_int(build_count) or 1
+        option["build_count"] = count
+        planned_writes = count
+
+    if planned_writes < 1 or planned_writes > budget:
+        return _generated_option_response(
+            status="rejected",
+            reason="generated_build_shape_out_of_bounds",
+            generated_option=None,
+            candidate_count=len(candidates),
+            build_budget=budget,
+        )
+    option["planned_node_writes"] = planned_writes
+    return _generated_option_response(
+        status="ready",
+        reason="agent_authored_generated_option_requires_luanti_validation",
+        generated_option=option,
+        candidate_count=len(candidates),
+        build_budget=budget,
+    )
+
+
+def propose_build_option_payload(
+    candidate_summary: str,
+    player_request: str,
+    option_id: str = "",
+    build_kind: str = "",
+    build_material_name: str = "",
+    build_width: Any = 0,
+    build_depth: Any = 0,
+    build_height: Any = 0,
+    build_count: Any = 0,
+    reason: str = "",
+    label: str = "",
+) -> dict[str, Any]:
     """Propose one generated build option for Luanti to validate, without mutating the world."""
 
     request = str(player_request or "").lower()
     candidates = _candidate_entries(candidate_summary)
     budget = _generated_build_budget(candidates)
+    if _custom_generated_option_requested(
+        option_id,
+        build_kind,
+        build_material_name,
+        build_width,
+        build_depth,
+        build_height,
+        build_count,
+        reason,
+        label,
+    ):
+        return _agent_authored_generated_option(
+            candidates,
+            option_id=option_id,
+            build_kind=build_kind,
+            build_material_name=build_material_name,
+            build_width=build_width,
+            build_depth=build_depth,
+            build_height=build_height,
+            build_count=build_count,
+            reason=reason,
+            label=label,
+        )
 
     if "only a fire" in request or "fire" in request or "flame" in request:
         return {
@@ -536,11 +773,46 @@ def _expected_option_from_case(
     return None
 
 
+def _combined_generated_options(
+    generated: dict[str, Any] | None,
+    generated_options: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]]:
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if isinstance(generated, dict):
+        option = generated.get("generated_option")
+        if isinstance(option, dict):
+            option_id = str(option.get("option_id") or "")
+            if option_id:
+                options.append(option)
+                seen.add(option_id)
+    for option in generated_options or []:
+        if not isinstance(option, dict):
+            continue
+        option_id = str(option.get("option_id") or "")
+        if not option_id or option_id in seen:
+            continue
+        options.append(option)
+        seen.add(option_id)
+    return options
+
+
+def _find_generated_option(
+    generated_options: list[dict[str, Any]],
+    selected_id: str,
+) -> dict[str, Any] | None:
+    for option in generated_options:
+        if option.get("option_id") == selected_id:
+            return option
+    return None
+
+
 def select_build_option_payload(
     candidate_summary: str,
     selected_option_id: str,
     player_request: str,
     selection_reason: str = "",
+    generated_options: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Validate the option id selected by the agent without mutating the world."""
 
@@ -548,12 +820,13 @@ def select_build_option_payload(
     selected_id = str(selected_option_id or "").strip()
     memory = recall_build_prompt_memory_payload(player_request, candidate_summary)
     generated = propose_build_option_payload(candidate_summary, player_request)
-    generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
+    generated_option_list = _combined_generated_options(generated, generated_options)
+    generated_option = _find_generated_option(generated_option_list, selected_id)
     selected = next((item for item in candidates if item["option_id"] == selected_id), None)
     decision_source = "agent_selected_build_option"
     locked_option = _locked_build_option_for_request(player_request, candidates)
 
-    if selected is None and isinstance(generated_option, dict) and selected_id == generated_option.get("option_id"):
+    if selected is None and isinstance(generated_option, dict):
         selected = {
             "option_id": selected_id,
             "build_kind": generated_option.get("build_kind"),
@@ -563,8 +836,16 @@ def select_build_option_payload(
         decision_source = "agent_selected_generated_build_option"
 
     alternatives = [item["option_id"] for item in candidates[:6]]
-    if isinstance(generated_option, dict):
-        alternatives.append(str(generated_option.get("option_id") or "generated_agent_option"))
+    for option in generated_option_list:
+        alternatives.append(str(option.get("option_id") or "generated_agent_option"))
+    generated_status = "ready" if isinstance(generated_option, dict) else (
+        generated.get("status") if isinstance(generated, dict) else None
+    )
+    generated_reason = (
+        generated_option.get("reason")
+        if isinstance(generated_option, dict) and generated_option.get("reason")
+        else generated.get("reason") if isinstance(generated, dict) else None
+    )
 
     if locked_option and selected_id != locked_option["option_id"]:
         return {
@@ -578,8 +859,8 @@ def select_build_option_payload(
             "alternatives": alternatives,
             "decision_source": "agent_selection_rejected",
             "memory_match": memory,
-            "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
-            "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
+            "generated_option_status": generated_status,
+            "generated_option_reason": generated_reason,
             "generated_option": generated_option if isinstance(generated_option, dict) else None,
             "requires_preview": True,
             "requires_approval": True,
@@ -598,8 +879,8 @@ def select_build_option_payload(
             "alternatives": alternatives,
             "decision_source": "agent_selection_rejected",
             "memory_match": memory,
-            "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
-            "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
+            "generated_option_status": generated_status,
+            "generated_option_reason": generated_reason,
             "generated_option": generated_option if isinstance(generated_option, dict) else None,
             "requires_preview": True,
             "requires_approval": True,
@@ -619,11 +900,10 @@ def select_build_option_payload(
         "selected_build_kind": selected.get("build_kind"),
         "selected_material": selected.get("material"),
         "selected_planned_node_writes": selected.get("planned_node_writes"),
-        "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
-        "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
+        "generated_option_status": generated_status,
+        "generated_option_reason": generated_reason,
         "generated_option": generated_option
             if isinstance(generated_option, dict)
-            and selected["option_id"] == generated_option.get("option_id")
             else None,
         "requires_preview": True,
         "requires_approval": True,
@@ -637,6 +917,7 @@ def _selected_build_plan_entry(
     candidate_summary: str,
     player_request: str,
     selected_option_id: str,
+    generated_options: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     candidates = _candidate_entries(candidate_summary)
     selected_id = str(selected_option_id or "").strip()
@@ -649,8 +930,11 @@ def _selected_build_plan_entry(
             "planned_node_writes": selected.get("planned_node_writes") or 0,
         }
     generated = propose_build_option_payload(candidate_summary, player_request)
-    generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
-    if isinstance(generated_option, dict) and selected_id == generated_option.get("option_id"):
+    generated_option = _find_generated_option(
+        _combined_generated_options(generated, generated_options),
+        selected_id,
+    )
+    if isinstance(generated_option, dict):
         return {
             "option_id": selected_id,
             "build_kind": generated_option.get("build_kind"),
@@ -664,10 +948,16 @@ def plan_build_actions_payload(
     candidate_summary: str,
     player_request: str,
     selected_option_id: str,
+    generated_options: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Plan the Luanti-controlled workflow for a selected build option."""
 
-    selected = _selected_build_plan_entry(candidate_summary, player_request, selected_option_id)
+    selected = _selected_build_plan_entry(
+        candidate_summary,
+        player_request,
+        selected_option_id,
+        generated_options,
+    )
     selected_id = str(selected_option_id or "").strip()
     if selected is None:
         return {
@@ -1014,13 +1304,51 @@ def recommend_build_option(candidate_summary: str, player_request: str) -> dict[
 
 
 @function_tool
-def propose_build_option(candidate_summary: str, player_request: str) -> dict[str, Any]:
-    """Propose a generated build option that Luanti must validate before preview."""
+def propose_build_option(
+    candidate_summary: str,
+    player_request: str,
+    option_id: str = "",
+    build_kind: str = "",
+    build_material_name: str = "",
+    build_width: int = 0,
+    build_depth: int = 0,
+    build_height: int = 0,
+    build_count: int = 0,
+    reason: str = "",
+    label: str = "",
+) -> dict[str, Any]:
+    """Propose or validate a generated build option that Luanti must validate before preview."""
 
-    result = propose_build_option_payload(candidate_summary, player_request)
+    result = propose_build_option_payload(
+        candidate_summary,
+        player_request,
+        option_id,
+        build_kind,
+        build_material_name,
+        build_width,
+        build_depth,
+        build_height,
+        build_count,
+        reason,
+        label,
+    )
+    if result.get("status") == "ready":
+        _remember_generated_option(result.get("generated_option"))
     _record_tool_call(
         "propose_build_option",
-        {"candidate_summary": candidate_summary, "player_request": player_request},
+        {
+            "candidate_summary": candidate_summary,
+            "player_request": player_request,
+            "option_id": option_id,
+            "build_kind": build_kind,
+            "build_material_name": build_material_name,
+            "build_width": build_width,
+            "build_depth": build_depth,
+            "build_height": build_height,
+            "build_count": build_count,
+            "reason": reason,
+            "label": label,
+        },
         result,
     )
     return result
@@ -1040,6 +1368,7 @@ def select_build_option(
         selected_option_id,
         player_request,
         selection_reason,
+        _current_generated_options(),
     )
     _record_tool_call(
         "select_build_option",
@@ -1066,6 +1395,7 @@ def plan_build_actions(
         candidate_summary,
         player_request,
         selected_option_id,
+        _current_generated_options(),
     )
     _record_tool_call(
         "plan_build_actions",
@@ -1122,9 +1452,12 @@ def build_agent(model: str | None = None) -> Any:
             "For build planning, call recall_build_prompt_memory and "
             "then choose among the listed options yourself; call "
             "propose_build_option when the listed fixed candidates are too "
-            "generic for the player request, and call select_build_option "
-            "with the option id you chose. Then call plan_build_actions for "
-            "that selected option before producing final output. "
+            "generic for the player request. When you propose a custom "
+            "bounded option, pass a generated option_id plus build_kind, "
+            "material, dimensions, and reason through propose_build_option; "
+            "then call select_build_option with the option id you chose. "
+            "Then call plan_build_actions for that selected option before "
+            "producing final output. "
             "Return public-safe, bounded guidance. Do not return provider raw "
             "payloads, credentials, private prompts, private world coordinates, "
             "or asset payloads."
@@ -1179,9 +1512,11 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             "For build planning, first call recall_build_prompt_memory, then "
             "decide which executable option best matches the player request. "
             "Call propose_build_option when the fixed candidates are too "
-            "generic, then call select_build_option using the exact "
-            "candidate_summary, player_request, chosen option id, and a short "
-            "selection reason. Then call plan_build_actions with the same "
+            "generic; for custom generated options pass a generated option_id, "
+            "build_kind, material, bounded dimensions, and reason. Then call "
+            "select_build_option using the exact candidate_summary, "
+            "player_request, chosen option id, and a short selection reason. "
+            "Then call plan_build_actions with the same "
             "candidate_summary, player_request, and selected option id so "
             "Luanti receives a read-only approval/task/rollback workflow plan. "
             "Generated options must be returned only through function-tool "
@@ -1210,6 +1545,7 @@ async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> d
     agent = build_agent(model)
     tool_trace: list[dict[str, Any]] = []
     token = _TOOL_TRACE.set(tool_trace)
+    build_token = _BUILD_TOOL_STATE.set({"generated_options": []})
     try:
         result = Runner.run(agent, _agent_input_from_request(request))
         if inspect.isawaitable(result):
@@ -1221,6 +1557,7 @@ async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> d
         }
     finally:
         _TOOL_TRACE.reset(token)
+        _BUILD_TOOL_STATE.reset(build_token)
 
 
 def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
