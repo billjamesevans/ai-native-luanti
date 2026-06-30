@@ -645,19 +645,27 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
         status = "pass"
     if satisfied is False or missing or (decision_source and not source_accepted):
         status = "fail"
+    replayable = isinstance(candidate.get("adapter_replay_request"), dict)
+    non_replayable_sidecar_observation = (
+        status == "fail"
+        and candidate.get("source_kind") == "nova_agent_sidecar_request_response"
+        and not replayable
+    )
+    if non_replayable_sidecar_observation:
+        status = "review"
     expected_decision_source = (
         NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE
         if candidate.get("source_kind") == "nova_agent_sidecar_request_response"
         else PRIMARY_AGENT_TOOL_DECISION_SOURCE
     )
 
-    return {
+    result = {
         "status": status,
         "required_tool_calls": required,
         "missing_required_tool_calls": missing,
         "required_tool_calls_satisfied": satisfied,
         "tool_decision_source": safe_scalar(decision_source),
-        "ready_for_adapter_contract_eval": status == "fail",
+        "ready_for_adapter_contract_eval": status == "fail" and replayable,
         "expected": {
             "required_tool_calls": required,
             "missing_required_tool_calls": [],
@@ -666,6 +674,9 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
             "tool_decision_sources": sorted(expected_decision_sources),
         },
     }
+    if non_replayable_sidecar_observation:
+        result["review_reason"] = "non_replayable_family_sidecar_contract_observation"
+    return result
 
 
 def _candidate_selected_option_id(candidate: dict[str, Any]) -> str | None:

@@ -516,6 +516,57 @@ def nova_agent_fire_only_option_log_entry():
     }
 
 
+def nova_agent_resolved_plan_timeout_log_entry():
+    return {
+        "ts": "2026-06-30T12:18:00Z",
+        "player": "Eval",
+        "prompt": "build a small cabin here",
+        "model": "gpt-5-nano",
+        "agent_runtime": "openai-agents-sdk",
+        "agent_model_called": True,
+        "agent_model_status": "timeout_after_resolve",
+        "fallback_reason": "runner_timeout_after_resolve",
+        "source": "agents_sdk_resolved_plan_after_timeout",
+        "tool_decision_source": "resolve_build_plan_recommended_plan",
+        "required_tool_calls": ["resolve_build_plan"],
+        "missing_required_tool_calls": [],
+        "required_tool_calls_satisfied": True,
+        "ok": True,
+        "label": "agent custom build",
+        "message": "Nova accepted: agent custom build.",
+        "selected_option_id": "best_guess",
+        "decision_reason": "Used the resolve_build_plan recommended plan after the runner timed out before submit.",
+        "contract_satisfied": True,
+        "reviewed_prompt_memory": {"memory_available": True},
+        "build_options": [
+            {
+                "option_id": "best_guess",
+                "source": "local_best_guess",
+                "label": "agent custom build",
+                "contract_satisfied": True,
+                "action_count": 2,
+            }
+        ],
+        "actions": [
+            {
+                "type": "hollow_box",
+                "material": "stone",
+                "offset": {"x": 0, "y": 1, "z": 0},
+                "size": {"x": 11, "y": 7, "z": 11},
+            },
+            {
+                "type": "sphere",
+                "material": "glass",
+                "offset": {"x": 0, "y": 12, "z": 0},
+                "radius": 4,
+            },
+        ],
+        "tool_trace": [
+            {"tool_name": "resolve_build_plan", "result": {"recommended_option_id": "best_guess"}},
+        ],
+    }
+
+
 def operator_labels_payload(prompt="build a bridge"):
     return {
         "schema_version": 1,
@@ -1573,6 +1624,45 @@ class AgentEvalQueueTests(unittest.TestCase):
             "agents_sdk_submit_nova_plan_tool",
         )
         self.assertFalse(candidate["ready_for_adapter_contract_eval"])
+
+    def test_non_replayable_nova_timeout_trace_requires_review_not_replay(self):
+        module = load_queue_module()
+
+        candidate = module.candidate_from_nova_agent_log_entry(
+            nova_agent_resolved_plan_timeout_log_entry()
+        )
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["source_kind"], "nova_agent_sidecar_request_response")
+        self.assertEqual(candidate["route"], "agents_sdk_resolved_plan_after_timeout")
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "review")
+        self.assertEqual(
+            candidate["adapter_tool_contract"]["review_reason"],
+            "non_replayable_family_sidecar_contract_observation",
+        )
+        self.assertFalse(candidate["ready_for_adapter_contract_eval"])
+        self.assertNotIn("adapter_replay_request", candidate)
+
+    def test_non_replayable_nova_timeout_trace_does_not_block_adapter_contract_gate(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            nova_agent_log = root / "nova-agent-requests.jsonl"
+            nova_agent_log.write_text(
+                json.dumps(nova_agent_resolved_plan_timeout_log_entry()) + "\n",
+                encoding="utf-8",
+            )
+
+            payload = module.build_eval_candidate_queue(
+                nova_agent_logs=[nova_agent_log],
+                generated_at="2026-06-30T12:30:00Z",
+            )
+
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["source_summary"]["candidates_total"], 1)
+        self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 0)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_active"], 0)
+        self.assertEqual(payload["source_summary"]["manual_review_required"], 1)
 
     def test_nova_agent_sidecar_candidates_rank_ahead_of_live_probe_evidence(self):
         module = load_queue_module()
