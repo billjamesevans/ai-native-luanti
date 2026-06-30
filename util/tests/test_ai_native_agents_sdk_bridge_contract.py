@@ -407,6 +407,13 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(response["ok"])
         nested = response["response"]
         self.assertEqual(nested["selected_option_id"], "fire")
+        self.assertEqual(nested["model_selected_option_id"], "platform")
+        self.assertEqual(nested["rejected_model_selected_option_id"], "platform")
+        self.assertEqual(nested["intent_constraint_option_id"], "fire")
+        self.assertEqual(
+            nested["intent_constraint_reason"],
+            "player_request_requires_fire_only",
+        )
         self.assertEqual(
             nested["tool_decision_source"],
             "adapter_fallback_after_agent_violated_player_request_constraints",

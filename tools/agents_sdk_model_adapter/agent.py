@@ -823,6 +823,43 @@ def _selected_option_id(decisions: dict[str, Any]) -> str | None:
     return None
 
 
+def _model_selected_option_id(
+    decisions: dict[str, Any] | None,
+    tool_trace: Any,
+) -> str | None:
+    if isinstance(decisions, dict):
+        selected = _selected_option_id(decisions)
+        if selected:
+            return selected
+    if not isinstance(tool_trace, list):
+        return None
+    for entry in tool_trace:
+        if not isinstance(entry, dict) or entry.get("tool_name") != "select_build_option":
+            continue
+        args = entry.get("args")
+        if isinstance(args, dict):
+            selected = args.get("selected_option_id")
+            if isinstance(selected, str) and selected:
+                return selected
+        result = entry.get("result")
+        if isinstance(result, dict):
+            selected = result.get("selected_option_id")
+            if isinstance(selected, str) and selected:
+                return selected
+    return None
+
+
+def _intent_constraint_for_request(request: dict[str, Any]) -> dict[str, Any] | None:
+    context = _safe_context(request.get("context"))
+    if context.get("intent") != "build_planning" or not context.get("candidate_summary"):
+        return None
+    candidates = _candidate_entries(str(context.get("candidate_summary") or ""))
+    return _locked_build_option_for_request(
+        str(context.get("player_request") or ""),
+        candidates,
+    )
+
+
 def _build_decision_fallback_reason(
     request: dict[str, Any],
     decisions: dict[str, Any] | None,
@@ -1128,6 +1165,8 @@ def run_model_adapter_request(
 
     tool_trace = agent_result.get("tool_trace") if isinstance(agent_result, dict) else []
     tool_decisions = agent_result.get("tool_decisions") if isinstance(agent_result, dict) else {}
+    model_tool_decisions = tool_decisions if isinstance(tool_decisions, dict) else {}
+    model_selected_option_id = _model_selected_option_id(model_tool_decisions, tool_trace)
     decision_source = "agents_sdk_function_tool"
     required_tools = _required_tool_names_for_request(request, tool_decisions)
     missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
@@ -1157,6 +1196,17 @@ def run_model_adapter_request(
                 )
                 decision_source = f"adapter_fallback_after_{fallback_reason}"
 
+    final_selected_option_id = _selected_option_id(tool_decisions)
+    intent_constraint = _intent_constraint_for_request(request)
+    rejected_model_selected_option_id = None
+    if (
+        model_selected_option_id
+        and final_selected_option_id
+        and model_selected_option_id != final_selected_option_id
+        and decision_source.startswith("adapter_fallback_after_agent_")
+    ):
+        rejected_model_selected_option_id = model_selected_option_id
+
     response = _sanitize_response({
         "schema_version": 1,
         "response_kind": "ai_native_model_adapter_response",
@@ -1173,7 +1223,13 @@ def run_model_adapter_request(
             "tool_trace": tool_trace,
             "tool_decisions": tool_decisions,
             "tool_decision_source": decision_source,
-            "selected_option_id": _selected_option_id(tool_decisions),
+            "selected_option_id": final_selected_option_id,
+            "model_selected_option_id": model_selected_option_id,
+            "rejected_model_selected_option_id": rejected_model_selected_option_id,
+            "intent_constraint_option_id": intent_constraint.get("option_id")
+                if isinstance(intent_constraint, dict) else None,
+            "intent_constraint_reason": intent_constraint.get("reason")
+                if isinstance(intent_constraint, dict) else None,
             "required_tool_calls": required_tools,
             "missing_required_tool_calls": missing_required_tools,
             "required_tool_calls_satisfied": not missing_required_tools,

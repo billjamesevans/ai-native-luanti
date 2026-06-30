@@ -525,6 +525,12 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             "agentic_execution": nested.get("agentic_execution"),
             "world_mutation_authority": safe_scalar(nested.get("world_mutation_authority")),
             "selected_option_id": safe_scalar(nested.get("selected_option_id")),
+            "model_selected_option_id": safe_scalar(nested.get("model_selected_option_id")),
+            "rejected_model_selected_option_id": safe_scalar(
+                nested.get("rejected_model_selected_option_id")
+            ),
+            "intent_constraint_option_id": safe_scalar(nested.get("intent_constraint_option_id")),
+            "intent_constraint_reason": safe_scalar(nested.get("intent_constraint_reason")),
             "tool_decision_source": safe_scalar(nested.get("tool_decision_source")),
             "build_option_decision_source": safe_scalar(build_option.get("decision_source")),
             "build_option_selected_option_id": safe_scalar(build_option.get("selected_option_id")),
@@ -592,8 +598,21 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             "planned_node_writes": safe_scalar(response.get("planned_node_writes")),
             "planner_mode": safe_scalar(response.get("planner_mode")),
             "selected_candidate_id": safe_scalar(response.get("selected_candidate_id")),
+            "adapter_selected_candidate_id": safe_scalar(
+                response.get("adapter_selected_candidate_id")
+            ),
+            "model_selected_candidate_id": safe_scalar(response.get("model_selected_candidate_id")),
+            "selection_source": safe_scalar(response.get("selection_source")),
+            "intent_constraint_option_id": safe_scalar(response.get("intent_constraint_option_id")),
+            "intent_constraint_reason": safe_scalar(response.get("intent_constraint_reason")),
             "candidate_count": safe_scalar(response.get("candidate_count")),
             "adapter_tool_decision_source": safe_scalar(response.get("adapter_tool_decision_source")),
+            "adapter_model_selected_candidate_id": safe_scalar(
+                response.get("adapter_model_selected_candidate_id")
+            ),
+            "adapter_rejected_model_selected_candidate_id": safe_scalar(
+                response.get("adapter_rejected_model_selected_candidate_id")
+            ),
             "adapter_required_tool_calls": safe_string_list(response.get("adapter_required_tool_calls")),
             "adapter_missing_required_tool_calls": safe_string_list(
                 response.get("adapter_missing_required_tool_calls")
