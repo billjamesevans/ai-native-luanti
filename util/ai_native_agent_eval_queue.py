@@ -801,6 +801,15 @@ def candidate_from_agents_sdk_entry(entry: dict[str, Any]) -> dict[str, Any] | N
             "rejected_model_selected_option_id": safe_scalar(
                 nested.get("rejected_model_selected_option_id")
             ),
+            "initial_model_selected_option_id": safe_scalar(
+                nested.get("initial_model_selected_option_id")
+            ),
+            "agent_repair_attempted": nested.get("agent_repair_attempted"),
+            "agent_repair_succeeded": nested.get("agent_repair_succeeded"),
+            "agent_repair_reason": safe_scalar(nested.get("agent_repair_reason")),
+            "initial_missing_required_tool_calls": safe_string_list(
+                nested.get("initial_missing_required_tool_calls")
+            ),
             "intent_constraint_option_id": safe_scalar(nested.get("intent_constraint_option_id")),
             "intent_constraint_reason": safe_scalar(nested.get("intent_constraint_reason")),
             "tool_decision_source": safe_scalar(nested.get("tool_decision_source")),
