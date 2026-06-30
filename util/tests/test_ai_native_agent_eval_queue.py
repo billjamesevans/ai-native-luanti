@@ -1345,6 +1345,25 @@ class AgentEvalQueueTests(unittest.TestCase):
         )
         self.assertFalse(candidate["ready_for_adapter_contract_eval"])
 
+    def test_nova_agent_sidecar_candidates_rank_ahead_of_live_probe_evidence(self):
+        module = load_queue_module()
+        probe_payload = verified_live_probe_payload()
+        live_candidate = module.candidate_from_verified_live_probe_case(
+            probe_payload,
+            probe_payload["cases"][0],
+        )
+        sidecar_candidate = module.candidate_from_nova_agent_log_entry(
+            nova_agent_fire_only_option_log_entry()
+        )
+
+        self.assertIsNotNone(live_candidate)
+        self.assertIsNotNone(sidecar_candidate)
+        ordered = sorted([live_candidate, sidecar_candidate], key=module._candidate_sort_key)
+
+        self.assertEqual(ordered[0]["source_kind"], "nova_agent_sidecar_request_response")
+        self.assertEqual(ordered[0]["observed"]["selected_option_id"], "reviewed_prompt_memory")
+        self.assertEqual(ordered[0]["observed"]["build_options"][0]["option_id"], "reviewed_prompt_memory")
+
     def test_cli_writes_candidate_queue(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)
