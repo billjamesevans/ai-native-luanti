@@ -35,7 +35,10 @@ The engine owns:
 The Agents SDK sidecar owns:
 
 - `Agent` instructions and orchestration.
-- `Runner` execution.
+- `Runner` execution. When `Runner.run_streamed` is available, the sidecar
+  streams the run and returns as soon as the required build-planning tools have
+  produced a ready Luanti action plan; it cancels the remaining stream instead
+  of waiting for final prose.
 - `WebSearchTool` for current public web lookup when needed.
 - `function_tool` deterministic tools for runtime-capability summaries,
   world-action classification, reviewed prompt-memory lookup, and build-option
@@ -331,6 +334,12 @@ rollback, task, and improvement-evidence workflow. Generated options add
 generated option without that tool call, the adapter labels the response as
 `adapter_fallback_after_agent_missing_required_tool` and records
 `missing_required_tool_calls = ["propose_build_option"]`.
+In live mode the adapter prefers streamed Agents SDK execution. Once
+`recall_build_prompt_memory`, `select_build_option`, and `plan_build_actions`
+have yielded a valid build decision and ready action plan, the sidecar cancels
+the remaining stream and returns that tool output as the execution contract.
+The model can still reason and use web/tool powers, but late prose is not
+allowed to override the structured plan.
 If a live agent does not call the required function tools, the adapter still
 returns a bounded fallback decision but labels it with
 `tool_decision_source = adapter_fallback_after_agent_missing_required_tool`,
@@ -388,6 +397,24 @@ The Pi fork deploy script sets the live sidecar log to:
 ```text
 /opt/ai-native-luanti/logs/agents-sdk-model-adapter.jsonl
 ```
+
+Live side-by-side Pi proof from 2026-06-30:
+
+- Family server remained active on UDP `30000`.
+- Fork test server remained active on UDP `30001`.
+- Agents SDK adapter remained active on loopback TCP `8766`.
+- The live adapter health check reported `agents_sdk_available = true`,
+  `openai_api_key_present = true`, `web_search_tool_available = true`, and a
+  mounted reviewed prompt-memory case pack.
+- Provider-backed build-planning probes for `build a fire`,
+  `build me a fire and only a fire`, and `build a wall of tnt` each returned
+  `tool_decision_source = agents_sdk_function_tool`,
+  `required_tool_calls_satisfied = true`, no missing required tools, no repair
+  pass, and no rejected tool calls after candidate-token alias normalization.
+- The selected executable options were `fire`, `fire`, and `tnt_wall`
+  respectively, each with a ready `luanti_build_action_plan_v1`.
+- Observed adapter latency for those three live probes was about 5.2-7.5
+  seconds on the Pi lane.
 
 ## Luanti Adapter
 

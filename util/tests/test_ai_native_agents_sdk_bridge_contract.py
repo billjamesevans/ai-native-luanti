@@ -101,6 +101,32 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(result["requires_rollback"])
         self.assertFalse(result["direct_world_mutation"])
 
+    def test_build_option_validator_accepts_candidate_summary_token_alias(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        candidate_summary = "platform:platform:default:4|fire:fire:fire:1"
+        selection = module.select_build_option_payload(
+            candidate_summary,
+            "fire:fire:fire:1",
+            "build a fire",
+            "the selected token is the exact candidate tuple",
+        )
+        action_plan = module.plan_build_actions_payload(
+            candidate_summary,
+            "build a fire",
+            "fire:fire:fire:1",
+        )
+
+        self.assertEqual(selection["selected_option_id"], "fire")
+        self.assertEqual(selection["selection_status"], "accepted")
+        self.assertEqual(selection["selected_build_kind"], "fire")
+        self.assertEqual(action_plan["status"], "ready")
+        self.assertEqual(action_plan["selected_option_id"], "fire")
+
     def test_build_action_plan_tool_is_read_only_and_workflow_bounded(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)
@@ -570,6 +596,104 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(nested["missing_required_tool_calls"], [])
         self.assertTrue(nested["required_tool_calls_satisfied"])
+
+    def test_streamed_live_agent_returns_after_required_tool_plan(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build a wall of tnt"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build a wall of tnt",
+            "candidate_summary": "platform:platform:default:4|tnt_wall:wall:tnt:12",
+        }
+
+        old_key = os.environ.get("OPENAI_API_KEY")
+        old_agent = module.Agent
+        old_runner = module.Runner
+        os.environ["OPENAI_API_KEY"] = "test-key"
+        stream_holder = {}
+
+        class StreamingAgent:
+            def __init__(self, *args, **kwargs):
+                pass
+
+        class StreamingResult:
+            final_output = "This late prose should not be required."
+
+            def __init__(self):
+                self.cancelled = False
+                self.completed_after_contract = False
+
+            async def stream_events(self):
+                module.recall_build_prompt_memory(
+                    player_request="build a wall of tnt",
+                    candidate_summary="platform:platform:default:4|tnt_wall:wall:tnt:12",
+                )
+                yield {"event": "memory"}
+                module.select_build_option(
+                    candidate_summary="platform:platform:default:4|tnt_wall:wall:tnt:12",
+                    selected_option_id="tnt_wall",
+                    player_request="build a wall of tnt",
+                    selection_reason="the player explicitly requested a TNT wall",
+                )
+                yield {"event": "selection"}
+                module.plan_build_actions(
+                    candidate_summary="platform:platform:default:4|tnt_wall:wall:tnt:12",
+                    player_request="build a wall of tnt",
+                    selected_option_id="tnt_wall",
+                )
+                yield {"event": "plan"}
+                self.completed_after_contract = True
+
+            def cancel(self):
+                self.cancelled = True
+
+        class StreamingRunner:
+            run_called = False
+
+            @staticmethod
+            def run_streamed(*args, **kwargs):
+                stream = StreamingResult()
+                stream_holder["stream"] = stream
+                return stream
+
+            @staticmethod
+            async def run(*args, **kwargs):
+                StreamingRunner.run_called = True
+                return "unexpected non-streamed result"
+
+        module.Agent = StreamingAgent
+        module.Runner = StreamingRunner
+        try:
+            response = module.run_model_adapter_request(request)
+        finally:
+            module.Agent = old_agent
+            module.Runner = old_runner
+            if old_key is None:
+                os.environ.pop("OPENAI_API_KEY", None)
+            else:
+                os.environ["OPENAI_API_KEY"] = old_key
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        stream = stream_holder["stream"]
+        self.assertTrue(stream.cancelled)
+        self.assertFalse(stream.completed_after_contract)
+        self.assertFalse(StreamingRunner.run_called)
+        self.assertEqual(nested["selected_option_id"], "tnt_wall")
+        self.assertEqual(nested["tool_decision_source"], "agents_sdk_function_tool")
+        self.assertEqual(nested["missing_required_tool_calls"], [])
+        self.assertTrue(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            [entry["tool_name"] for entry in nested["tool_trace"]],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
+        )
 
     def test_live_agent_model_timeout_returns_bounded_fallback(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)

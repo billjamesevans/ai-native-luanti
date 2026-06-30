@@ -83,6 +83,11 @@ it keeps the game responsive while preserving explicit evidence that the model
 path needed recovery. The action-plan tool is read-only; it records the intended
 Luanti workflow and confirms that the engine, not the sidecar, owns preview,
 approval, rollback, task execution, and improvement evidence.
+When the installed Agents SDK exposes `Runner.run_streamed`, the sidecar uses
+the streamed runner and returns as soon as the required build-planning tools
+produce a ready Luanti action plan. It cancels the remaining stream instead of
+waiting for final prose, so the executable plan comes from tool output while
+still preserving the full bounded tool trace in the request/response log.
 For open-ended build requests, the `propose_build_option` function tool may
 return a generated option such as a tower wall, bridge platform, path platform,
 or shelter floor. That proposal is still read-only: Luanti validates the kind,

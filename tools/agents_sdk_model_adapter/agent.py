@@ -382,6 +382,29 @@ def _candidate_entries(candidate_summary: str) -> list[dict[str, Any]]:
     return candidates
 
 
+def _candidate_summary_token(candidate: dict[str, Any]) -> str:
+    return ":".join(
+        [
+            str(candidate.get("option_id") or ""),
+            str(candidate.get("build_kind") or ""),
+            str(candidate.get("material") or ""),
+            str(candidate.get("planned_node_writes") or 0),
+        ]
+    )
+
+
+def _resolve_candidate_option_id(candidates: list[dict[str, Any]], selected_id: str) -> str:
+    cleaned = str(selected_id or "").strip()
+    if not cleaned:
+        return ""
+    if any(candidate.get("option_id") == cleaned for candidate in candidates):
+        return cleaned
+    for candidate in candidates:
+        if cleaned == _candidate_summary_token(candidate):
+            return str(candidate.get("option_id") or "")
+    return cleaned
+
+
 def _has_candidate(candidates: list[dict[str, Any]], option_id: str) -> bool:
     return any(candidate.get("option_id") == option_id for candidate in candidates)
 
@@ -894,7 +917,10 @@ def select_build_option_payload(
     """Validate the option id selected by the agent without mutating the world."""
 
     candidates = _candidate_entries(candidate_summary)
-    selected_id = str(selected_option_id or "").strip()
+    selected_id = _resolve_candidate_option_id(
+        candidates,
+        str(selected_option_id or "").strip(),
+    )
     memory = recall_build_prompt_memory_payload(player_request, candidate_summary)
     generated_requirement = propose_build_option_payload(candidate_summary, player_request)
     generated_option_list = _combined_generated_options(None, generated_options)
@@ -1034,7 +1060,10 @@ def _selected_build_plan_entry(
     generated_options: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any] | None:
     candidates = _candidate_entries(candidate_summary)
-    selected_id = str(selected_option_id or "").strip()
+    selected_id = _resolve_candidate_option_id(
+        candidates,
+        str(selected_option_id or "").strip(),
+    )
     selected = next((item for item in candidates if item["option_id"] == selected_id), None)
     if selected is not None:
         return {
@@ -1856,15 +1885,121 @@ def _tool_decisions_from_trace(tool_trace: list[dict[str, Any]]) -> dict[str, An
     return decisions
 
 
+def _build_action_plan_failure_reason(
+    request: dict[str, Any],
+    tool_decisions: dict[str, Any] | None,
+) -> str | None:
+    context = _safe_context(request.get("context"))
+    if context.get("intent") != "build_planning" or not context.get("candidate_summary"):
+        return None
+    if not isinstance(tool_decisions, dict):
+        return "agent_no_build_action_plan"
+    plan = tool_decisions.get("build_action_plan")
+    if not isinstance(plan, dict):
+        return "agent_no_build_action_plan"
+    if plan.get("status") != "ready":
+        return "agent_invalid_build_action_plan"
+    selected = _selected_option_id(tool_decisions)
+    plan_selected = plan.get("selected_option_id")
+    if isinstance(selected, str) and selected and plan_selected != selected:
+        return "agent_build_action_plan_mismatched_selection"
+    return None
+
+
+def _agent_tool_contract_result_from_trace(
+    request: dict[str, Any],
+    tool_trace: list[dict[str, Any]],
+    *,
+    final_output: Any = "",
+    agent_model_status: str = "",
+) -> dict[str, Any] | None:
+    context = _safe_context(request.get("context"))
+    if context.get("intent") != "build_planning" or not context.get("candidate_summary"):
+        return None
+    tool_decisions = _tool_decisions_from_trace(tool_trace)
+    if not tool_decisions:
+        return None
+    if _build_contract_failure_reason(request, tool_trace, tool_decisions):
+        return None
+    if _build_action_plan_failure_reason(request, tool_decisions):
+        return None
+    message = _bounded_text(final_output, MAX_RESPONSE_BYTES)
+    if not message:
+        selected = _selected_option_id(tool_decisions) or "selected"
+        message = f"Agents SDK tool plan selected {selected} for Luanti approval."
+    result = {
+        "final_output": message,
+        "tool_trace": _safe_log_value(tool_trace),
+        "tool_decisions": tool_decisions,
+        "tool_decision_source": "agents_sdk_function_tool",
+    }
+    if agent_model_status:
+        result["agent_model_status"] = agent_model_status
+    return result
+
+
+async def _consume_stream_until_tool_contract_ready(
+    request: dict[str, Any],
+    stream_result: Any,
+    tool_trace: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    stream_events = getattr(stream_result, "stream_events", None)
+    if not callable(stream_events):
+        return None
+    async for _event in stream_events():
+        ready = _agent_tool_contract_result_from_trace(
+            request,
+            tool_trace,
+            agent_model_status="success_early_tool_plan",
+        )
+        if ready is None:
+            continue
+        cancel = getattr(stream_result, "cancel", None)
+        if callable(cancel):
+            cancel()
+        return ready
+    final_output = getattr(stream_result, "final_output", "")
+    return _agent_tool_contract_result_from_trace(
+        request,
+        tool_trace,
+        final_output=final_output,
+        agent_model_status="success_stream_complete",
+    )
+
+
 async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> dict[str, Any]:
     agent = build_agent(model)
     tool_trace: list[dict[str, Any]] = []
     token = _TOOL_TRACE.set(tool_trace)
     build_token = _BUILD_TOOL_STATE.set({"generated_options": []})
     try:
-        result = Runner.run(agent, _agent_input_from_request(request))
-        if inspect.isawaitable(result):
-            result = await asyncio.wait_for(result, timeout=model_timeout_seconds())
+        agent_input = _agent_input_from_request(request)
+        if hasattr(Runner, "run_streamed"):
+            stream_result = Runner.run_streamed(agent, agent_input)
+            if inspect.isawaitable(stream_result):
+                stream_result = await asyncio.wait_for(
+                    stream_result,
+                    timeout=model_timeout_seconds(),
+                )
+            ready = await asyncio.wait_for(
+                _consume_stream_until_tool_contract_ready(request, stream_result, tool_trace),
+                timeout=model_timeout_seconds(),
+            )
+            if ready is not None:
+                return ready
+            result = stream_result
+        else:
+            result = Runner.run(agent, agent_input)
+            if inspect.isawaitable(result):
+                result = await asyncio.wait_for(result, timeout=model_timeout_seconds())
+        ready = _agent_tool_contract_result_from_trace(
+            request,
+            tool_trace,
+            final_output=getattr(result, "final_output", result),
+            agent_model_status="success",
+        )
+        if ready is not None:
+            return ready
         return {
             "final_output": _bounded_text(getattr(result, "final_output", result), MAX_RESPONSE_BYTES),
             "tool_trace": _safe_log_value(tool_trace),
