@@ -139,8 +139,10 @@ Implemented deterministic commands:
   `response.tool_decisions.build_option.selected_option_id` when it matches a
   known executable candidate, records the route in request traces, and still
   requires player approval before the rollback-backed `build_agent` task is
-  queued. Invalid or missing model selections fall back to the deterministic
-  preselected candidate rather than inventing a build shape.
+  queued. Healthy live agent runs should label the selection as
+  `tool_decision_source = agents_sdk_function_tool`; missing tool calls are
+  fallback/eval signals. Invalid or missing model selections fall back to the
+  deterministic preselected candidate rather than inventing a build shape.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair plan radius N`, `repair radius N`: plans a bounded wider repair
   area before approval. `N` must be within the configured `max_repair_radius`
@@ -205,6 +207,11 @@ when requests queue or complete, without storing private prompts, raw API respon
 unbounded media data. Async model requests first record a queued trace with a
 trace id, then overwrite that same trace with the final bounded model response
 when the adapter callback returns.
+The first-party sidecar can also consume reviewed prompt-eval case packs as
+read-only prompt memory through `AI_NATIVE_AGENT_CASE_PACK_PATH`. That is the
+runtime improvement loop: bad traces become candidate queues, reviewed queues
+become regression cases, and reviewed cases can bias future agent tool decisions
+without bypassing approval or rollback.
 
 ## Configuration
 
