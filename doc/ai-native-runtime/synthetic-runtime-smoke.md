@@ -78,7 +78,7 @@ python3 util/ai_native_runtime_verify.py --hardware-class local-mac
 
 The harness runs the AI-native utility contracts, the product-profile hygiene gate, the branch
 benchmark gate, the live operator status command probe, the Nova prompt eval probe, the
-compatibility import staging pilot, the receipt-gated task-control command probe, and the focused
+Nova auto-apply probe, the compatibility import staging pilot, the receipt-gated task-control command probe, and the focused
 `TestAIRuntime` smoke in a repeatable order. It writes
 `ai-runtime-verification-manifest.json` under
 `local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
@@ -129,6 +129,15 @@ By default it
 uses a deterministic mock async adapter and requires no model-network calls; pass
 `--agent-prompt-eval-adapter-endpoint http://127.0.0.1:8766/v1/model-adapter` to run the same
 regression gate through the loopback Agents SDK adapter. It then runs
+`util/ai_native_nova_auto_apply_live_probe.py` against a disposable live `ai_runtime` world and
+writes `ai-runtime-nova-auto-apply-live-result.json`. That Nova auto-apply live result executes
+`/nova`-style build requests for strict `build me a fire and only a fire` and `build a wall of
+tnt`, requires the `agentic_build_planner` route, requires the Agents SDK-style build tools to be
+satisfied, auto-applies only the validated preview, executes the rollback-backed Luanti task, and
+proves exact mutation counts: one fire node for the fire-only request and twelve TNT nodes for the
+wall. By default it uses a deterministic mock async adapter and requires no model-network calls;
+pass `--nova-auto-apply-adapter-endpoint http://127.0.0.1:8766/v1/model-adapter` to run the same
+auto-apply regression through the loopback Agents SDK adapter. It then runs
 `util/ai_native_compat_import_staging_pilot.py` against a disposable live `ai_runtime` staging world
 and writes `ai-runtime-compat-import-staging-pilot-result.json`. That pilot runs public-safe
 inventory discovery, dry-run report generation, reviewed adapter smoke, operator review, chunked
@@ -160,7 +169,11 @@ build and repair mutation, operator-status-visible, no rollback execution, no im
 read-only, public-safe, pending-approval cleanup only, no world mutation, five-case complete, and
 bounded by `--agent-prompt-eval-live-result-max-bytes` and
 `--agent-prompt-eval-live-timeout`; optional real adapter checks use
-`--agent-prompt-eval-adapter-endpoint` and `--agent-prompt-eval-adapter-timeout`. The compatibility import staging pilot result must
+`--agent-prompt-eval-adapter-endpoint` and `--agent-prompt-eval-adapter-timeout`.
+The Nova auto-apply live result must stay disposable-world-only, public-safe, rollback-backed,
+agentic-build-planner-only, auto-apply-policy explicit, exact-count verified, and bounded by
+`--nova-auto-apply-live-result-max-bytes`; optional real adapter checks use
+`--nova-auto-apply-adapter-endpoint` and `--nova-auto-apply-adapter-timeout`. The compatibility import staging pilot result must
 stay public-safe, disposable-staging-only, approval-gated, rollback-backed, family-world-free,
 asset-copy-free, and bounded by `--compat-import-staging-pilot-result-max-bytes` and
 `--compat-import-staging-pilot-timeout`. The live task-control result must stay receipt-gated,
@@ -206,6 +219,7 @@ directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifes
 `ai-runtime-operator-action-execution-result.json` and
 `ai-runtime-agent-product-loop-live-result.json` and
 `ai-runtime-agent-prompt-eval-live-result.json` and
+`ai-runtime-nova-auto-apply-live-result.json` and
 `ai-runtime-compat-import-staging-pilot-result.json` and
 `ai-runtime-operator-task-control-live-result.json` and
 `ai-runtime-operator-task-control-command-result.json`. It still requires no family server, no private
