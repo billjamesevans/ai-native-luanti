@@ -652,8 +652,7 @@ def apply_adapter_contract_resolutions(candidates: list[dict[str, Any]]) -> dict
         contract["resolved_by_candidate_id"] = safe_scalar(resolver.get("candidate_id"), 180)
         candidate["ready_for_adapter_contract_eval"] = False
         candidate["adapter_contract_review_status"] = "adapter_contract_resolved"
-        if candidate.get("ready_for_prompt_eval") is not True:
-            candidate["priority"] = "normal"
+        candidate["priority"] = "high"
         resolved += 1
     total_failures = sum(
         1
@@ -1419,20 +1418,22 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
     if candidate.get("ready_for_adapter_contract_eval") is True:
         return 0
+    if isinstance(candidate.get("adapter_contract_resolution"), dict):
+        return 1
     expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
     selected = expected.get("selected_candidate_id")
     if (
         str(candidate.get("case_hint") or "").startswith("generated_")
         or (isinstance(selected, str) and selected.startswith("generated_"))
     ):
-        return 1
-    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 2
-    if isinstance(candidate.get("operator_label"), dict):
+    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 3
-    if candidate.get("ready_for_prompt_eval") is True:
+    if isinstance(candidate.get("operator_label"), dict):
         return 4
-    return 5
+    if candidate.get("ready_for_prompt_eval") is True:
+        return 5
+    return 6
 
 
 def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, str, str]:
