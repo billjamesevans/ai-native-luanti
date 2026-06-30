@@ -318,6 +318,27 @@ def candidate_from_nova_trace(payload: dict[str, Any]) -> dict[str, Any] | None:
             "planner_mode": safe_scalar(response.get("planner_mode")),
             "selected_candidate_id": safe_scalar(response.get("selected_candidate_id")),
             "candidate_count": safe_scalar(response.get("candidate_count")),
+            "adapter_tool_decision_source": safe_scalar(response.get("adapter_tool_decision_source")),
+            "adapter_required_tool_calls": [
+                bounded_text(item, 80)
+                for item in response.get("adapter_required_tool_calls", [])
+                if isinstance(item, str)
+            ][:8],
+            "adapter_missing_required_tool_calls": [
+                bounded_text(item, 80)
+                for item in response.get("adapter_missing_required_tool_calls", [])
+                if isinstance(item, str)
+            ][:8],
+            "adapter_required_tool_calls_satisfied": response.get("adapter_required_tool_calls_satisfied"),
+            "build_option_decision_source": safe_scalar(response.get("build_option_decision_source")),
+            "adapter_memory_available": response.get("adapter_memory_available"),
+            "adapter_memory_matched_case_id": safe_scalar(response.get("adapter_memory_matched_case_id")),
+            "adapter_memory_case_hint": safe_scalar(response.get("adapter_memory_case_hint")),
+            "adapter_tool_trace_names": [
+                bounded_text(item, 80)
+                for item in response.get("adapter_tool_trace_names", [])
+                if isinstance(item, str)
+            ][:8],
         },
     })
     expected = expected_outcome_for(candidate["prompt"], candidate)

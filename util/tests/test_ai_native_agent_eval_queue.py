@@ -91,6 +91,21 @@ def nova_trace_line(prompt="build a wall of tnt"):
                 "build_material_name": "tnt",
                 "planned_node_writes": 12,
                 "approval_id": "approval:tnt",
+                "adapter_tool_decision_source": "agents_sdk_function_tool",
+                "adapter_required_tool_calls": [
+                    "recall_build_prompt_memory",
+                    "recommend_build_option",
+                ],
+                "adapter_missing_required_tool_calls": [],
+                "adapter_required_tool_calls_satisfied": True,
+                "build_option_decision_source": "reviewed_prompt_memory",
+                "adapter_memory_available": True,
+                "adapter_memory_matched_case_id": "promoted_tnt_wall_123",
+                "adapter_memory_case_hint": "tnt_wall",
+                "adapter_tool_trace_names": [
+                    "recall_build_prompt_memory",
+                    "recommend_build_option",
+                ],
             },
         },
     }
@@ -178,6 +193,29 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(trace_tnt["expected"]["build_material_name"], "tnt")
         self.assertEqual(trace_tnt["expected"]["planned_node_writes"], 12)
         self.assertFalse(trace_tnt["expected"]["danger_refusal_allowed"])
+        self.assertEqual(
+            trace_tnt["observed"]["adapter_tool_decision_source"],
+            "agents_sdk_function_tool",
+        )
+        self.assertEqual(
+            trace_tnt["observed"]["adapter_required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
+        self.assertEqual(trace_tnt["observed"]["adapter_missing_required_tool_calls"], [])
+        self.assertTrue(trace_tnt["observed"]["adapter_required_tool_calls_satisfied"])
+        self.assertEqual(
+            trace_tnt["observed"]["build_option_decision_source"],
+            "reviewed_prompt_memory",
+        )
+        self.assertTrue(trace_tnt["observed"]["adapter_memory_available"])
+        self.assertEqual(
+            trace_tnt["observed"]["adapter_memory_matched_case_id"],
+            "promoted_tnt_wall_123",
+        )
+        self.assertEqual(
+            trace_tnt["observed"]["adapter_tool_trace_names"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
         sidecar_tnt = tnt_sources["nova_agent_sidecar_request_response"]
         self.assertEqual(sidecar_tnt["observed"]["contract_kind"], "tnt_wall")
         self.assertTrue(sidecar_tnt["observed"]["contract_satisfied"])

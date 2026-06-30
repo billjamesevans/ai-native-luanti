@@ -79,6 +79,14 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "movement tasks only",
             "`ai_agent.follow_step`",
             "rollback-backed",
+            "tool_decision_source = agents_sdk_function_tool",
+            "`adapter_tool_decision_source`",
+            "`adapter_required_tool_calls`",
+            "`adapter_missing_required_tool_calls`",
+            "`adapter_required_tool_calls_satisfied`",
+            "`build_option_decision_source`",
+            "`adapter_memory_matched_case_id`",
+            "`adapter_tool_trace_names`",
             "surface_capability_not_granted",
             "before any task is queued",
             "combat.defend",
@@ -115,6 +123,13 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "is_movement_task",
             '"stay"',
             '"come"',
+            "agentic_build_planner_adapter_metadata",
+            "adapter_tool_decision_source",
+            "adapter_required_tool_calls",
+            "adapter_missing_required_tool_calls",
+            "adapter_required_tool_calls_satisfied",
+            "adapter_memory_matched_case_id",
+            "adapter_tool_trace_names",
         ):
             self.assertIn(phrase, source)
         for forbidden in (
