@@ -98,7 +98,11 @@ came from an SDK function-tool call. Fallback labels such as
 `offline_adapter_fallback` or `adapter_fallback_after_agent_no_tool` are allowed
 but should be treated as eval/improvement signals, not proof of healthy live
 agent behavior. Luanti may honor `selected_option_id` only when it matches one
-of the bounded executable candidates already supplied by the engine.
+of the bounded executable candidates already supplied by the engine, or when it
+matches a `generated_option` that the engine-side generated-option validator can
+turn into a normal bounded preview. Generated options are proposals, not direct
+task definitions; Luanti validates kind, material, dimensions, and planned write
+budget before any approval or rollback-backed mutation can be queued.
 
 The runtime rejects unsafe/raw response fields with
 `adapter_payload_rejected`. Optional provider plugins should keep raw provider

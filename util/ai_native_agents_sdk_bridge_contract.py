@@ -75,8 +75,11 @@ def validate_contract() -> dict:
         "TOOL_POWER_MANIFEST",
         "def tool_power_manifest",
         "recall_build_prompt_memory",
+        "propose_build_option",
         "BUILD_PLANNING_REQUIRED_TOOLS",
         "required_tool_calls_satisfied",
+        "generated_option",
+        "generated_build_option_tool",
         "adapter_fallback_after_agent_missing_required_tool",
         "_TOOL_TRACE",
         '"tool_trace": tool_trace',
@@ -192,6 +195,8 @@ def validate_contract() -> dict:
             "offline_response_missing_web_search_tool", str(response), violations)
         _require("recall_build_prompt_memory" in nested.get("tools_enabled", []),
             "offline_response_missing_prompt_memory_tool", str(response), violations)
+        _require("propose_build_option" in nested.get("tools_enabled", []),
+            "offline_response_missing_generated_option_tool", str(response), violations)
         _require(nested.get("tool_decision_source") == "offline_adapter_fallback",
             "offline_response_decision_source_invalid", str(response), violations)
         _require(nested.get("required_tool_calls_satisfied") is not False,
@@ -202,6 +207,9 @@ def validate_contract() -> dict:
         _require(any(power.get("name") == "recall_build_prompt_memory"
             for power in tool_powers if isinstance(power, dict)),
             "offline_response_missing_prompt_memory_power", str(response), violations)
+        _require(any(power.get("name") == "propose_build_option"
+            for power in tool_powers if isinstance(power, dict)),
+            "offline_response_missing_generated_option_power", str(response), violations)
         _require(all(power.get("direct_world_mutation") is False for power in tool_powers if isinstance(power, dict)),
             "offline_response_tool_can_mutate_world", str(response), violations)
         _require(nested.get("world_mutation_authority") == "luanti",
