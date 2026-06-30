@@ -2108,7 +2108,7 @@ def parse_args(argv=None):
     parser.add_argument(
         "--nova-auto-apply-live-result-max-bytes",
         type=int,
-        default=26000,
+        default=36000,
         help="Maximum byte budget for the Nova auto-apply live probe artifact.",
     )
     parser.add_argument(
