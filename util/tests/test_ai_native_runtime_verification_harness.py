@@ -749,10 +749,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "world_mutation_scope": "disposable_synthetic_ai_runtime_world",
             },
             "summary": {
-                "cases_total": 3,
-                "cases_passed": 3,
+                "cases_total": 5,
+                "cases_passed": 5,
                 "cases_failed": 0,
                 "fire_only_strict_checked": True,
+                "fire_simple_checked": True,
+                "fire_me_simple_checked": True,
                 "tnt_wall_checked": True,
                 "generated_dimensioned_wall_checked": True,
                 "agentic_build_planner_checked": True,
@@ -763,6 +765,24 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 case_payload(
                     "fire_only_strict",
                     "build me a fire and only a fire",
+                    "fire",
+                    "fire",
+                    "fire",
+                    "ai_runtime_base:fire",
+                    1,
+                ),
+                case_payload(
+                    "fire_simple",
+                    "build a fire",
+                    "fire",
+                    "fire",
+                    "fire",
+                    "ai_runtime_base:fire",
+                    1,
+                ),
+                case_payload(
+                    "fire_me_simple",
+                    "build me a fire",
                     "fire",
                     "fire",
                     "fire",
@@ -1440,6 +1460,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 1,
             )
             self.assertEqual(
+                evidence["nova_auto_apply_fire_simple_planned_node_writes"],
+                1,
+            )
+            self.assertEqual(
+                evidence["nova_auto_apply_fire_me_simple_planned_node_writes"],
+                1,
+            )
+            self.assertEqual(
                 evidence["nova_auto_apply_tnt_wall_planned_node_writes"],
                 12,
             )
@@ -1462,12 +1490,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 probe.validate_live_result(fire_extra)
 
             tnt_underplanned = json.loads(json.dumps(payload))
-            tnt_underplanned["cases"][1]["reply"]["planned_node_writes"] = 1
+            tnt_underplanned["cases"][3]["reply"]["planned_node_writes"] = 1
             with self.assertRaisesRegex(ValueError, "tnt_wall planned writes are invalid"):
                 probe.validate_live_result(tnt_underplanned)
 
             generated_wrong_width = json.loads(json.dumps(payload))
-            generated_wrong_width["cases"][2]["reply"]["build_width"] = 4
+            generated_wrong_width["cases"][4]["reply"]["build_width"] = 4
             with self.assertRaisesRegex(ValueError, "generated_dimensioned_wall width is invalid"):
                 probe.validate_live_result(generated_wrong_width)
 
@@ -1482,7 +1510,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 probe.validate_live_result(missing_tool_trace)
 
             generated_missing_propose = json.loads(json.dumps(payload))
-            generated_missing_propose["cases"][2]["reply"]["adapter_tool_trace_names"] = [
+            generated_missing_propose["cases"][4]["reply"]["adapter_tool_trace_names"] = [
                 "recall_build_prompt_memory",
                 "select_build_option",
                 "plan_build_actions",
@@ -1494,7 +1522,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 probe.validate_live_result(generated_missing_propose)
 
             generated_not_validated = json.loads(json.dumps(payload))
-            generated_not_validated["cases"][2]["reply"]["generated_build_option_status"] = "ready"
+            generated_not_validated["cases"][4]["reply"]["generated_build_option_status"] = "ready"
             with self.assertRaisesRegex(
                 ValueError,
                 "generated_dimensioned_wall generated option was not validated",

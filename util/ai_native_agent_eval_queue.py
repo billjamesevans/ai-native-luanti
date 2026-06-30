@@ -488,6 +488,7 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
                 "build_kind": "fire",
                 "build_material_name": "fire",
                 "planned_node_writes": 1,
+                "forbidden_extra_structure": True,
             },
         }
     generated = generated_expected_outcome(candidate, observed)
