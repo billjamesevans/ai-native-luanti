@@ -145,16 +145,20 @@ Default endpoint:
 http://127.0.0.1:8766/v1/model-adapter
 ```
 
-Probe command:
+Probe commands:
 
 ```text
 /ai_agents_sdk_adapter_probe
+/ai_agents_sdk_adapter_probe_async
 ```
 
 The adapter installs itself into `core.ai_agent_plugin.set_model_adapter` when
 enabled, so unknown `/nova` prompts can flow through the Agents SDK sidecar.
-The Lua side only accepts loopback endpoints by default. The sidecar can perform
-hosted web search and function-tool reasoning, but it still returns a bounded
+The synchronous probe is for contract/offline checks. Live sidecar checks should
+use the async probe path, which calls Luanti's callback HTTP API and lets the
+server continue stepping while the Agents SDK call is in flight. The Lua side
+only accepts loopback endpoints by default. The sidecar can perform hosted web
+search and function-tool reasoning, but it still returns a bounded
 `ai_native_model_adapter_response`; the engine decides whether any proposed
 world action becomes a preview, approval, rollback-backed task, or refusal.
 
