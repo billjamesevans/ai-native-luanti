@@ -831,6 +831,36 @@ class AgentEvalQueueTests(unittest.TestCase):
             ],
         )
 
+    def test_verified_live_probe_duplicates_are_compacted_before_byte_cap(self):
+        module = load_queue_module()
+        older = verified_live_probe_payload()
+        older["generated_at"] = "2026-06-30T14:33:40Z"
+        newer = verified_live_probe_payload()
+        newer["generated_at"] = "2026-06-30T14:41:15Z"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            probe_dir = root / "live-probes"
+            probe_dir.mkdir()
+            (probe_dir / "nova-auto-apply-old.json").write_text(json.dumps(older), encoding="utf-8")
+            (probe_dir / "nova-auto-apply-new.json").write_text(json.dumps(newer), encoding="utf-8")
+
+            payload = module.build_eval_candidate_queue(
+                verified_live_probe_paths=[probe_dir],
+                generated_at="2026-06-30T15:00:00Z",
+            )
+
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["source_summary"]["verified_live_probe_cases_read"], 6)
+        self.assertEqual(payload["source_summary"]["verified_live_probe_candidates_added"], 6)
+        self.assertEqual(payload["source_summary"]["candidates_total"], 3)
+        self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 3)
+        self.assertEqual(
+            {candidate["case_hint"] for candidate in payload["candidates"]},
+            {"fire_only_strict", "tnt_wall", "generated_dimensioned_wall"},
+        )
+        self.assertTrue(all(candidate["observed_at"] == newer["generated_at"] for candidate in payload["candidates"]))
+        self.assertLess(payload["bounds"]["output_bytes"], payload["bounds"]["max_bytes"])
+
     def test_verified_live_probe_failed_case_does_not_promote(self):
         module = load_queue_module()
         bad_case = verified_live_probe_payload()["cases"][0]
@@ -874,10 +904,10 @@ class AgentEvalQueueTests(unittest.TestCase):
                 max_bytes=100000,
             )
 
-        self.assertEqual(payload["source_summary"]["candidates_total"], 3)
-        self.assertIn(
-            "generated_dimensioned_wall",
+        self.assertEqual(payload["source_summary"]["candidates_total"], 2)
+        self.assertEqual(
             {candidate["case_hint"] for candidate in payload["candidates"]},
+            {"fire_only_strict", "generated_dimensioned_wall"},
         )
 
     def test_agents_sdk_candidate_extracts_embedded_player_request_from_wrapper_prompt(self):

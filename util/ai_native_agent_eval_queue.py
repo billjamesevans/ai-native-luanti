@@ -1261,15 +1261,25 @@ def _read_action_log_candidates(paths: list[Path], violations: list[dict[str, st
 
 
 def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    seen: set[str] = set()
-    result: list[dict[str, Any]] = []
+    seen: dict[tuple[str, str, str], dict[str, Any]] = {}
+    order: list[tuple[str, str, str]] = []
     for candidate in candidates:
-        candidate_id = str(candidate.get("candidate_id") or "")
-        if candidate_id in seen:
+        if candidate.get("observed_ok") is True and candidate.get("ready_for_prompt_eval") is True:
+            key = (
+                str(candidate.get("source_kind") or ""),
+                str(candidate.get("case_hint") or ""),
+                normalized_prompt(candidate.get("prompt")),
+            )
+        else:
+            key = ("candidate_id", str(candidate.get("candidate_id") or ""), "")
+        if key not in seen:
+            seen[key] = candidate
+            order.append(key)
             continue
-        seen.add(candidate_id)
-        result.append(candidate)
-    return result
+        previous = seen[key]
+        if str(candidate.get("observed_at") or "") > str(previous.get("observed_at") or ""):
+            seen[key] = candidate
+    return [seen[key] for key in order]
 
 
 def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
@@ -1282,11 +1292,13 @@ def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
         or (isinstance(selected, str) and selected.startswith("generated_"))
     ):
         return 1
-    if isinstance(candidate.get("operator_label"), dict):
+    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 2
-    if candidate.get("ready_for_prompt_eval") is True:
+    if isinstance(candidate.get("operator_label"), dict):
         return 3
-    return 4
+    if candidate.get("ready_for_prompt_eval") is True:
+        return 4
+    return 5
 
 
 def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, str, str]:
