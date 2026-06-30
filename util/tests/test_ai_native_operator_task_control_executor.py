@@ -322,7 +322,11 @@ class AIOperatorTaskControlExecutorTests(unittest.TestCase):
         receipt["decisions"][0]["operator_note"] = "inspect /Users/billevans/private/spacebase"
 
         with self.assertRaisesRegex(ValueError, "private"):
-            executor.build_execution_result(receipt, sample_task_state())
+            executor.build_execution_result(
+                receipt,
+                sample_task_state(),
+                generated_at="2026-06-29T03:05:00Z",
+            )
 
     def test_mutating_safe_next_action_is_rejected_before_execution(self):
         executor = load_executor_module()
@@ -330,7 +334,11 @@ class AIOperatorTaskControlExecutorTests(unittest.TestCase):
         receipt["decisions"][0]["safe_next_action"] = "execute_rollback_now"
 
         with self.assertRaisesRegex(ValueError, "mutating"):
-            executor.build_execution_result(receipt, sample_task_state())
+            executor.build_execution_result(
+                receipt,
+                sample_task_state(),
+                generated_at="2026-06-29T03:05:00Z",
+            )
 
     def test_oversized_receipt_is_rejected_before_execution(self):
         executor = load_executor_module()

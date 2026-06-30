@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
 import ai_native_agent_product_loop_live_probe
+import ai_native_agent_prompt_eval_live_probe
 import ai_native_compat_import_staging_pilot
 import ai_native_operator_action_approval_plan
 import ai_native_operator_action_approval_receipt
@@ -34,6 +35,7 @@ OPERATOR_ACTION_APPROVAL_PLAN_NAME = "ai-runtime-operator-action-approval-plan.j
 OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-receipt.json"
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
 AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME = "ai-runtime-agent-product-loop-live-result.json"
+AGENT_PROMPT_EVAL_LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-result.json"
 COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME = "ai-runtime-compat-import-staging-pilot-result.json"
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
 OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json"
@@ -176,6 +178,10 @@ def operator_action_execution_result_artifact_path(args) -> Path:
 
 def agent_product_loop_live_result_artifact_path(args) -> Path:
     return physical_run_dir(args) / AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME
+
+
+def agent_prompt_eval_live_result_artifact_path(args) -> Path:
+    return physical_run_dir(args) / AGENT_PROMPT_EVAL_LIVE_RESULT_NAME
 
 
 def compat_import_staging_pilot_result_artifact_path(args) -> Path:
@@ -325,6 +331,7 @@ def build_steps(args) -> list[CommandStep]:
         ),
         build_operator_status_step(args),
         build_agent_product_loop_live_step(args),
+        build_agent_prompt_eval_live_step(args),
         build_compat_import_staging_pilot_step(args),
         build_operator_task_control_live_step(args),
         build_operator_task_control_command_step(args),
@@ -482,6 +489,63 @@ def build_agent_product_loop_live_step(args) -> CommandStep:
             "--timeout",
             str(args.agent_product_loop_live_timeout),
         ),
+    )
+
+
+def build_agent_prompt_eval_live_step(args) -> CommandStep:
+    actual = [
+        args.python,
+        "util/ai_native_agent_prompt_eval_live_probe.py",
+        "--root",
+        ".",
+        "--server-bin",
+        args.server_bin,
+        "--output",
+        str(agent_prompt_eval_live_result_artifact_path(args)),
+        "--generated-at",
+        operator_status_generated_at(args),
+        "--max-bytes",
+        str(args.agent_prompt_eval_live_result_max_bytes),
+        "--timeout",
+        str(args.agent_prompt_eval_live_timeout),
+        "--model-prompt",
+        args.agent_prompt_eval_model_prompt,
+    ]
+    manifest = python_manifest_command(
+        "util/ai_native_agent_prompt_eval_live_probe.py",
+        "--root",
+        ".",
+        "--server-bin",
+        server_manifest_bin(args.server_bin),
+        "--output",
+        logical_path(args, AGENT_PROMPT_EVAL_LIVE_RESULT_NAME),
+        "--generated-at",
+        operator_status_generated_at(args),
+        "--max-bytes",
+        str(args.agent_prompt_eval_live_result_max_bytes),
+        "--timeout",
+        str(args.agent_prompt_eval_live_timeout),
+        "--model-prompt",
+        "<agent-prompt-eval-model-prompt>",
+    )
+    if args.agent_prompt_eval_adapter_endpoint:
+        actual += [
+            "--adapter-endpoint",
+            args.agent_prompt_eval_adapter_endpoint,
+            "--adapter-timeout",
+            str(args.agent_prompt_eval_adapter_timeout),
+        ]
+        manifest += [
+            "--adapter-endpoint",
+            "<loopback-agents-sdk-adapter-endpoint>",
+            "--adapter-timeout",
+            str(args.agent_prompt_eval_adapter_timeout),
+        ]
+    return CommandStep(
+        "agent_prompt_eval_live_probe",
+        "Nova prompt eval command probe in disposable ai_runtime world",
+        actual,
+        manifest,
     )
 
 
@@ -943,7 +1007,7 @@ def product_profile_evidence(args) -> tuple[dict, list[str]]:
         reasons.append("product_profile_hygiene status is not pass")
     if profile.get("gameid") != "ai_runtime":
         reasons.append("product_profile_hygiene gameid is not ai_runtime")
-    if product_mods != ["ai_runtime_base"]:
+    if product_mods != ["ai_runtime_agents_sdk_bridge", "ai_runtime_base"]:
         reasons.append("product_profile_hygiene product_mods changed from clean profile")
     if safety.get("no_private_content") is not True:
         reasons.append("product_profile_hygiene private content scan failed")
@@ -1371,6 +1435,36 @@ def agent_product_loop_live_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def agent_prompt_eval_live_evidence(args) -> tuple[dict, list[str]]:
+    path = agent_prompt_eval_live_result_artifact_path(args)
+    source_path = logical_path(args, AGENT_PROMPT_EVAL_LIVE_RESULT_NAME)
+    evidence = {
+        "agent_prompt_eval_status": "fail",
+        "agent_prompt_eval_path": source_path,
+        "source_kind": "disposable_live_ai_runtime_agent_prompt_eval_probe",
+        "live_command": "/ai_agent_eval",
+        "direct_command_execution": True,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("agent_prompt_eval_live_probe artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        evidence.update(
+            ai_native_agent_prompt_eval_live_probe.validate_live_result(
+                payload,
+                max_bytes=args.agent_prompt_eval_live_result_max_bytes,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"agent_prompt_eval_live_probe artifact invalid: {type(exc).__name__}")
+    evidence["agent_prompt_eval_status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def compat_import_staging_pilot_evidence(args) -> tuple[dict, list[str]]:
     path = compat_import_staging_pilot_result_artifact_path(args)
     source_path = logical_path(args, COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME)
@@ -1494,6 +1588,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME,
             )
+        if step.id == "agent_prompt_eval_live_probe":
+            artifact_paths["agent_prompt_eval_live_result"] = logical_path(
+                args,
+                AGENT_PROMPT_EVAL_LIVE_RESULT_NAME,
+            )
         if step.id == "compat_import_staging_pilot":
             artifact_paths["compat_import_staging_pilot_result"] = logical_path(
                 args,
@@ -1532,6 +1631,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         agent_product_loop_live, agent_product_loop_failures = agent_product_loop_live_evidence(args)
         failure_reasons.extend(agent_product_loop_failures)
 
+    agent_prompt_eval_live = None
+    if any(step.id == "agent_prompt_eval_live_probe" for step, _ in command_results):
+        agent_prompt_eval_live, agent_prompt_eval_failures = agent_prompt_eval_live_evidence(args)
+        failure_reasons.extend(agent_prompt_eval_failures)
+
     compat_import_staging_pilot = None
     if any(step.id == "compat_import_staging_pilot" for step, _ in command_results):
         compat_import_staging_pilot, compat_import_failures = compat_import_staging_pilot_evidence(args)
@@ -1565,7 +1669,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "requires_private_world": False,
             "requires_private_assets": False,
             "requires_live_pi": False,
-            "requires_model_network": False,
+            "requires_model_network": args.agent_prompt_eval_adapter_endpoint is not None,
         },
         "notes": [
             "Runs local utility contracts, the branch benchmark gate, and focused AI runtime unit smoke.",
@@ -1574,6 +1678,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "Operator status uses a disposable ai_runtime live command probe by default.",
             "First-party agent product-loop proof uses a disposable ai_runtime world and synthetic public nodes.",
             "Compatibility import pilot runs public-safe inventory, dry-run, reviewed staging apply, rollback, and refusal gates in a disposable ai_runtime world.",
+            "Nova prompt eval runs /ai_agent_eval for fire, TNT wall, and async model-adapter regression coverage.",
         ]
         + (
             [
@@ -1591,6 +1696,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         manifest["operator_status_evidence"] = operator_evidence
     if agent_product_loop_live is not None:
         manifest["agent_product_loop_live_evidence"] = agent_product_loop_live
+    if agent_prompt_eval_live is not None:
+        manifest["agent_prompt_eval_live_evidence"] = agent_prompt_eval_live
     if compat_import_staging_pilot is not None:
         manifest["compat_import_staging_pilot_evidence"] = compat_import_staging_pilot
     if operator_task_control_live is not None:
@@ -1777,6 +1884,37 @@ def parse_args(argv=None):
         type=float,
         default=20.0,
         help="Seconds to wait for the disposable first-party agent product-loop live probe.",
+    )
+    parser.add_argument(
+        "--agent-prompt-eval-live-result-max-bytes",
+        type=int,
+        default=22000,
+        help="Maximum byte budget for the Nova prompt-eval live probe artifact.",
+    )
+    parser.add_argument(
+        "--agent-prompt-eval-live-timeout",
+        type=float,
+        default=20.0,
+        help="Seconds to wait for the disposable Nova prompt-eval live probe.",
+    )
+    parser.add_argument(
+        "--agent-prompt-eval-adapter-endpoint",
+        help=(
+            "Optional loopback Agents SDK model adapter endpoint for real model "
+            "calls during the Nova prompt-eval probe. When omitted, the probe "
+            "uses a deterministic mock async adapter."
+        ),
+    )
+    parser.add_argument(
+        "--agent-prompt-eval-adapter-timeout",
+        type=float,
+        default=60.0,
+        help="Seconds for the Agents SDK adapter HTTP request when endpoint is set.",
+    )
+    parser.add_argument(
+        "--agent-prompt-eval-model-prompt",
+        default=ai_native_agent_prompt_eval_live_probe.DEFAULT_MODEL_PROMPT,
+        help="Model prompt used for the Nova prompt-eval model case.",
     )
     parser.add_argument(
         "--compat-import-staging-pilot-result-max-bytes",
