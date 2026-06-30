@@ -31,7 +31,7 @@ except Exception:  # pragma: no cover - offline contract tests use the fallback.
 
 
 DEFAULT_MODEL = os.getenv("AI_NATIVE_AGENT_MODEL", "gpt-4.1-mini")
-DEFAULT_MODEL_TIMEOUT_SECONDS = 18.0
+DEFAULT_MODEL_TIMEOUT_SECONDS = 45.0
 ADAPTER_NAME = "openai-agents-sdk-model-adapter"
 MAX_PROMPT_BYTES = 6000
 MAX_RESPONSE_BYTES = 4000
