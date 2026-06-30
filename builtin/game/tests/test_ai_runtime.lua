@@ -5550,6 +5550,16 @@ agentic_auto_fire_done({
 	response = {
 		agentic_execution = true,
 		selected_option_id = "fire",
+		model_selected_option_id = "fire",
+		initial_model_selected_option_id = "platform",
+		agent_repair_attempted = true,
+		agent_repair_succeeded = true,
+		agent_repair_reason = "agent_missing_required_tool",
+		initial_missing_required_tool_calls = {
+			"recall_build_prompt_memory",
+			"select_build_option",
+			"plan_build_actions",
+		},
 		tool_decision_source = "agents_sdk_function_tool",
 		required_tool_calls = {
 			"recall_build_prompt_memory",
@@ -5593,10 +5603,20 @@ assert(agentic_auto_fire_reply.build_material_name == "fire")
 assert(agentic_auto_fire_reply.build_material_node == "ai_runtime_test:fire")
 assert(agentic_auto_fire_reply.planned_node_writes == 1)
 assert(agentic_auto_fire_reply.adapter_build_action_plan_status == "ready")
+assert(agentic_auto_fire_reply.adapter_agent_repair_attempted == true)
+assert(agentic_auto_fire_reply.adapter_agent_repair_succeeded == true)
+assert(agentic_auto_fire_reply.adapter_agent_repair_reason == "agent_missing_required_tool")
+assert(agentic_auto_fire_reply.adapter_initial_model_selected_candidate_id == "platform")
+assert(agentic_auto_fire_reply.adapter_initial_missing_required_tool_calls[1]
+	== "recall_build_prompt_memory")
 assert(agentic_auto_fire_trace ~= nil)
 assert(agentic_auto_fire_trace.response.status == "queued")
 assert(agentic_auto_fire_trace.response.auto_applied_approval == true)
 assert(agentic_auto_fire_trace.response.selected_candidate_id == "fire")
+assert(agentic_auto_fire_trace.response.adapter_agent_repair_attempted == true)
+assert(agentic_auto_fire_trace.response.adapter_agent_repair_succeeded == true)
+assert(agentic_auto_fire_trace.response.adapter_agent_repair_reason
+	== "agent_missing_required_tool")
 assert(get_test_node(agentic_auto_fire_pos).name == "air")
 local no_agentic_auto_pending =
 	core.ai_agent_plugin.handle_command("PlannerAutoFire", "pending plan", {})
@@ -5609,6 +5629,15 @@ local completed_agentic_auto_fire =
 assert(completed_agentic_auto_fire.status == "completed")
 assert(completed_agentic_auto_fire.last_result.metrics.node_writes == 1)
 assert(completed_agentic_auto_fire.last_result.rollback_record_id ~= nil)
+local auto_fire_diagnostic =
+	core.ai_agent_plugin.handle_command("PlannerAutoFire", "last", {})
+assert(auto_fire_diagnostic.ok == true)
+assert(auto_fire_diagnostic.adapter_agent_repair_attempted == true)
+assert(auto_fire_diagnostic.adapter_agent_repair_succeeded == true)
+assert(auto_fire_diagnostic.adapter_agent_repair_reason == "agent_missing_required_tool")
+assert(auto_fire_diagnostic.adapter_initial_model_selected_candidate_id == "platform")
+assert(auto_fire_diagnostic.adapter_initial_missing_required_tool_calls[1]
+	== "recall_build_prompt_memory")
 
 local generated_timeout_pos = test_pos(42566)
 for x = 0, 5 do

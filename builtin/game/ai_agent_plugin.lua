@@ -3715,29 +3715,38 @@ local function agentic_build_planner_adapter_metadata(model_result)
 		adapter_tool_decision_source = response.tool_decision_source,
 		adapter_selected_candidate_id = response.selected_option_id,
 		adapter_model_selected_candidate_id = response.model_selected_option_id,
+		adapter_initial_model_selected_candidate_id =
+			response.initial_model_selected_option_id,
 		adapter_rejected_model_selected_candidate_id =
 			response.rejected_model_selected_option_id,
 		adapter_intent_constraint_option_id =
 			response.intent_constraint_option_id,
 		adapter_intent_constraint_reason =
 			response.intent_constraint_reason,
-			adapter_required_tool_calls = required,
-			adapter_missing_required_tool_calls = missing_required,
-			adapter_required_tool_calls_satisfied =
-				response.required_tool_calls_satisfied,
-			build_option_decision_source = build_option.decision_source,
-			adapter_memory_available = memory_match.memory_available,
-			adapter_memory_matched_case_id = memory_match.matched_case_id,
-			adapter_memory_case_hint = memory_match.case_hint,
-			adapter_tool_trace_names = agentic_tool_trace_names(response),
-			adapter_build_action_plan_status = build_action_plan.status,
-			adapter_build_action_plan_selected_candidate_id =
-				build_action_plan.selected_option_id,
-			adapter_build_action_plan_step_count = build_action_plan.step_count,
-			adapter_build_action_plan_world_mutation_authority =
-				build_action_plan.world_mutation_authority,
-		}
-	end
+		adapter_agent_repair_attempted = response.agent_repair_attempted,
+		adapter_agent_repair_succeeded = response.agent_repair_succeeded,
+		adapter_agent_repair_reason = response.agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			type(response.initial_missing_required_tool_calls) == "table"
+				and table.copy(response.initial_missing_required_tool_calls)
+				or nil,
+		adapter_required_tool_calls = required,
+		adapter_missing_required_tool_calls = missing_required,
+		adapter_required_tool_calls_satisfied =
+			response.required_tool_calls_satisfied,
+		build_option_decision_source = build_option.decision_source,
+		adapter_memory_available = memory_match.memory_available,
+		adapter_memory_matched_case_id = memory_match.matched_case_id,
+		adapter_memory_case_hint = memory_match.case_hint,
+		adapter_tool_trace_names = agentic_tool_trace_names(response),
+		adapter_build_action_plan_status = build_action_plan.status,
+		adapter_build_action_plan_selected_candidate_id =
+			build_action_plan.selected_option_id,
+		adapter_build_action_plan_step_count = build_action_plan.step_count,
+		adapter_build_action_plan_world_mutation_authority =
+			build_action_plan.world_mutation_authority,
+	}
+end
 
 local function build_agentic_candidate_options(name, raw_prompt, context)
 	local lower = raw_prompt:lower()
@@ -3972,8 +3981,18 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 					adapter_metadata.adapter_tool_decision_source,
 				adapter_model_selected_candidate_id =
 					adapter_metadata.adapter_model_selected_candidate_id,
+				adapter_initial_model_selected_candidate_id =
+					adapter_metadata.adapter_initial_model_selected_candidate_id,
 				adapter_rejected_model_selected_candidate_id =
 					adapter_metadata.adapter_rejected_model_selected_candidate_id,
+				adapter_agent_repair_attempted =
+					adapter_metadata.adapter_agent_repair_attempted,
+				adapter_agent_repair_succeeded =
+					adapter_metadata.adapter_agent_repair_succeeded,
+				adapter_agent_repair_reason =
+					adapter_metadata.adapter_agent_repair_reason,
+				adapter_initial_missing_required_tool_calls =
+					adapter_metadata.adapter_initial_missing_required_tool_calls,
 				adapter_required_tool_calls =
 					adapter_metadata.adapter_required_tool_calls,
 				adapter_missing_required_tool_calls =
@@ -4019,8 +4038,18 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				adapter_metadata.adapter_tool_decision_source,
 			adapter_model_selected_candidate_id =
 				adapter_metadata.adapter_model_selected_candidate_id,
+			adapter_initial_model_selected_candidate_id =
+				adapter_metadata.adapter_initial_model_selected_candidate_id,
 			adapter_rejected_model_selected_candidate_id =
 				adapter_metadata.adapter_rejected_model_selected_candidate_id,
+			adapter_agent_repair_attempted =
+				adapter_metadata.adapter_agent_repair_attempted,
+			adapter_agent_repair_succeeded =
+				adapter_metadata.adapter_agent_repair_succeeded,
+			adapter_agent_repair_reason =
+				adapter_metadata.adapter_agent_repair_reason,
+			adapter_initial_missing_required_tool_calls =
+				adapter_metadata.adapter_initial_missing_required_tool_calls,
 			adapter_required_tool_calls =
 				adapter_metadata.adapter_required_tool_calls,
 			adapter_missing_required_tool_calls =
@@ -4653,6 +4682,14 @@ function plugin.get_last_command_diagnostic(name)
 	if memory_available == nil then
 		memory_available = trace.adapter_memory_available
 	end
+	local repair_attempted = response.adapter_agent_repair_attempted
+	if repair_attempted == nil then
+		repair_attempted = trace.adapter_agent_repair_attempted
+	end
+	local repair_succeeded = response.adapter_agent_repair_succeeded
+	if repair_succeeded == nil then
+		repair_succeeded = trace.adapter_agent_repair_succeeded
+	end
 	local diagnostic = {
 		schema_version = 1,
 		diagnostic_kind = "nova_last_command",
@@ -4697,6 +4734,18 @@ function plugin.get_last_command_diagnostic(name)
 		adapter_name = trace.adapter_name,
 		adapter_tool_decision_source =
 			response.adapter_tool_decision_source or trace.adapter_tool_decision_source,
+		adapter_initial_model_selected_candidate_id =
+			response.adapter_initial_model_selected_candidate_id
+			or trace.adapter_initial_model_selected_candidate_id,
+		adapter_agent_repair_attempted =
+			repair_attempted,
+		adapter_agent_repair_succeeded =
+			repair_succeeded,
+		adapter_agent_repair_reason =
+			response.adapter_agent_repair_reason or trace.adapter_agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			table.copy(response.adapter_initial_missing_required_tool_calls
+				or trace.adapter_initial_missing_required_tool_calls or {}),
 		adapter_required_tool_calls =
 			table.copy(response.adapter_required_tool_calls
 				or trace.adapter_required_tool_calls or {}),
@@ -4955,8 +5004,18 @@ local function handle_pending_plan(name)
 		adapter_tool_decision_source = pending.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
 			pending.adapter_model_selected_candidate_id,
+		adapter_initial_model_selected_candidate_id =
+			pending.adapter_initial_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			pending.adapter_rejected_model_selected_candidate_id,
+		adapter_agent_repair_attempted =
+			pending.adapter_agent_repair_attempted,
+		adapter_agent_repair_succeeded =
+			pending.adapter_agent_repair_succeeded,
+		adapter_agent_repair_reason =
+			pending.adapter_agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			pending.adapter_initial_missing_required_tool_calls,
 		adapter_required_tool_calls = pending.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
 		adapter_required_tool_calls_satisfied =
