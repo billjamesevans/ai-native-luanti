@@ -295,6 +295,36 @@ def recommend_build_option_payload(candidate_summary: str, player_request: str) 
     }
 
 
+def _extract_player_request(public_prompt: str) -> str:
+    for line in str(public_prompt or "").splitlines():
+        if line.lower().startswith("player request:"):
+            return line.split(":", 1)[1].strip()
+    return str(public_prompt or "")
+
+
+def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
+    context = _safe_context(request.get("context"))
+    decisions: dict[str, Any] = {}
+    if context.get("intent") == "build_planning" and context.get("candidate_summary"):
+        player_request = str(context.get("player_request") or "").strip()
+        if not player_request:
+            player_request = _extract_player_request(str(request.get("public_prompt") or ""))
+        decisions["build_option"] = recommend_build_option_payload(
+            str(context.get("candidate_summary") or ""),
+            player_request,
+        )
+    return decisions
+
+
+def _selected_option_id(decisions: dict[str, Any]) -> str | None:
+    build_option = decisions.get("build_option")
+    if isinstance(build_option, dict):
+        selected = build_option.get("selected_option_id")
+        if isinstance(selected, str) and selected:
+            return selected
+    return None
+
+
 @function_tool
 def recommend_build_option(candidate_summary: str, player_request: str) -> dict[str, Any]:
     """Recommend one of Luanti's bounded build candidates without mutating the world."""
@@ -349,6 +379,7 @@ def adapter_health() -> dict[str, Any]:
 def _agent_input_from_request(request: dict[str, Any]) -> str:
     context = _safe_context(request.get("context"))
     prompt = _bounded_text(request.get("public_prompt"), MAX_PROMPT_BYTES)
+    tool_decisions = _tool_decisions_for_request(request)
     capability_csv = ""
     capabilities = context.get("capabilities")
     if isinstance(capabilities, str):
@@ -363,9 +394,13 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             f"capabilities: {capability_csv}",
             f"public_prompt: {prompt}",
             f"planner_reason: {context.get('planner_reason', '')}",
+            f"player_request: {context.get('player_request', '')}",
             f"candidate_summary: {context.get('candidate_summary', '')}",
             f"selected_candidate_id: {context.get('selected_candidate_id', '')}",
-            "Return concise public-safe guidance for the player or operator.",
+            f"tool_decision_recommendation: {json.dumps(tool_decisions, sort_keys=True)}",
+            "Return concise public-safe guidance for the player or operator. "
+            "For build planning, use the recommend_build_option decision and "
+            "do not invent options that are not in candidate_summary.",
         ]
     )
 
@@ -380,6 +415,7 @@ async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> s
 
 def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
     prompt = _bounded_text(request.get("public_prompt"), 400)
+    tool_decisions = _tool_decisions_for_request(request)
     return {
         "schema_version": 1,
         "response_kind": "ai_native_model_adapter_response",
@@ -393,6 +429,8 @@ def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
             "web_search_used": False,
             "tools_enabled": tool_power_names(),
             "tool_powers": tool_power_manifest(),
+            "tool_decisions": tool_decisions,
+            "selected_option_id": _selected_option_id(tool_decisions),
             "world_mutation_authority": "luanti",
             "guidance": (
                 "The sidecar is configured for Agents SDK execution. Set "
@@ -440,6 +478,7 @@ def run_model_adapter_request(
         return response
 
     try:
+        tool_decisions = _tool_decisions_for_request(request)
         final_output = asyncio.run(_run_sdk_agent(request, model=model))
     except Exception as exc:  # pragma: no cover - live SDK path depends on credentials.
         response = {
@@ -468,6 +507,8 @@ def run_model_adapter_request(
             "web_search_available": WebSearchTool is not None,
             "tools_enabled": tool_power_names(),
             "tool_powers": tool_power_manifest(),
+            "tool_decisions": tool_decisions,
+            "selected_option_id": _selected_option_id(tool_decisions),
             "world_mutation_authority": "luanti",
         },
     })

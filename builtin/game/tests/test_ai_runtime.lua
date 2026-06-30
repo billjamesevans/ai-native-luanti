@@ -5102,6 +5102,7 @@ assert(async_planner_calls[1].public_prompt:find("build a small shelter", 1, tru
 assert(async_planner_calls[1].context.surface_id == "builder")
 assert(async_planner_calls[1].context.intent == "build_planning")
 assert(async_planner_calls[1].context.selected_candidate_id == "platform")
+assert(async_planner_calls[1].context.player_request == "build a small shelter")
 assert(async_planner_calls[1].context.candidate_count >= 3)
 assert(async_planner_calls[1].private_prompt == nil)
 assert(async_planner_calls[1].safety.private_input_retained == false)
@@ -5119,6 +5120,13 @@ async_planner_done({
 	elapsed_us = 90000,
 	response = {
 		agentic_execution = true,
+		selected_option_id = "platform",
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "platform",
+				candidate_count = 4,
+			},
+		},
 		tools_enabled = { "recommend_build_option", "classify_world_action" },
 	},
 })
@@ -5157,6 +5165,66 @@ local agentic_audit = core.get_ai_runtime_audit({ limit = 8 })
 for _, record in ipairs(agentic_audit) do
 	assert(record.private_payload == nil)
 end
+
+local fire_override_pos = test_pos(4256)
+set_test_node(fire_override_pos, { name = "air" })
+local fire_override_done
+local fire_override_reply
+local fire_override_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build something surprising")
+	fire_override_done = done
+	return true, "queued"
+end)
+local queued_fire_override = core.ai_agent_plugin.handle_command(
+	"PlannerFire", "build something surprising", {
+		pos = fire_override_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			fire_override_reply = reply
+			fire_override_trace = trace
+		end,
+	})
+assert(queued_fire_override.ok == true)
+assert(queued_fire_override.status == "queued")
+assert(queued_fire_override.selected_candidate_id == "platform")
+fire_override_done({
+	ok = true,
+	message = "Use the fire option because the tool selected it.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 70000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "fire",
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "fire",
+				candidate_count = 4,
+			},
+		},
+		tools_enabled = { "recommend_build_option", "classify_world_action" },
+	},
+})
+assert(fire_override_reply ~= nil)
+assert(fire_override_reply.status == "pending_approval")
+assert(fire_override_reply.planner_mode == "agentic_model_adapter")
+assert(fire_override_reply.selected_candidate_id == "fire")
+assert(fire_override_reply.build_kind == "fire")
+assert(fire_override_reply.build_material_name == "fire")
+assert(fire_override_reply.build_material_node == "ai_runtime_test:fire")
+assert(fire_override_reply.planned_node_writes == 1)
+assert(fire_override_trace ~= nil)
+assert(fire_override_trace.selection_source == "model_tool_decision")
+assert(fire_override_trace.model_selected_candidate_id == "fire")
+assert(fire_override_trace.response.selected_candidate_id == "fire")
+assert(get_test_node(fire_override_pos).name == "air")
+local discarded_fire_override = core.ai_agent_plugin.handle_command("PlannerFire", "discard plan", {})
+assert(discarded_fire_override.ok == true)
+assert(discarded_fire_override.action == "discard_approval")
+assert(get_test_node(fire_override_pos).name == "air")
 core.ai_agent_plugin.set_model_adapter_async(nil)
 
 local fallback_pos = test_pos(4258)

@@ -2574,6 +2574,40 @@ local function select_agentic_build_candidate(candidates, lower_prompt)
 	return candidates and candidates[1] or nil
 end
 
+local function find_agentic_build_candidate(candidates, option_id)
+	if type(option_id) ~= "string" or option_id == "" then
+		return nil
+	end
+	for _, candidate in ipairs(candidates or {}) do
+		if candidate.option_id == option_id then
+			return candidate
+		end
+	end
+	return nil
+end
+
+local function selected_agentic_candidate_id_from_model_result(model_result)
+	if type(model_result) ~= "table" or model_result.status ~= "success" then
+		return nil
+	end
+	local response = model_result.response
+	if type(response) ~= "table" then
+		return nil
+	end
+	if type(response.selected_option_id) == "string" then
+		return response.selected_option_id
+	end
+	local tool_decisions = response.tool_decisions
+	if type(tool_decisions) ~= "table" then
+		return nil
+	end
+	local build_option = tool_decisions.build_option
+	if type(build_option) == "table" and type(build_option.selected_option_id) == "string" then
+		return build_option.selected_option_id
+	end
+	return nil
+end
+
 local function build_agentic_candidate_options(name, raw_prompt, context)
 	local lower = raw_prompt:lower()
 	local candidates = {}
@@ -2650,7 +2684,7 @@ end
 
 local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 	context = context or {}
-	local _candidates, public_candidates, selected =
+	local candidates, public_candidates, selected =
 		build_agentic_candidate_options(name, raw_prompt, context)
 	if not selected then
 		return public_reply(name, "build_plan", "blocked",
@@ -2667,6 +2701,7 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 		capabilities = capability_csv(),
 		candidate_count = #public_candidates,
 		selected_candidate_id = selected.option_id,
+		player_request = raw_prompt,
 		candidate_summary = candidate_summary(public_candidates),
 	}
 	local trace = start_request_trace(name, "build",
@@ -2679,10 +2714,16 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 		})
 	local function finish_with_pending(model_result, planner_mode)
 		model_result = model_result or {}
-		local pending_reply = create_build_pending_reply(name, selected.context,
+		local model_selected_id =
+			selected_agentic_candidate_id_from_model_result(model_result)
+		local final_selected = find_agentic_build_candidate(candidates, model_selected_id)
+			or selected
+		local selection_source = final_selected.option_id == model_selected_id
+			and "model_tool_decision" or "deterministic_preselection"
+		local pending_reply = create_build_pending_reply(name, final_selected.context,
 			"Agentic build planner selected an approval-gated build option.", {
 				planner_mode = planner_mode,
-				selected_candidate_id = selected.option_id,
+				selected_candidate_id = final_selected.option_id,
 				candidate_options = public_candidates,
 				candidate_count = #public_candidates,
 				planner_model_status = model_result.status,
@@ -2693,7 +2734,9 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 			})
 		return finish_request_trace(trace, pending_reply, {
 			planner_mode = planner_mode,
-			selected_candidate_id = selected.option_id,
+			selected_candidate_id = final_selected.option_id,
+			model_selected_candidate_id = model_selected_id,
+			selection_source = selection_source,
 			candidate_count = #public_candidates,
 			adapter_name = model_result.adapter_name or adapter_name,
 		})

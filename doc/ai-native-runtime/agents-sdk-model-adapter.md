@@ -122,6 +122,28 @@ The case pack is consumed by `custom_cases` in
 `core.ai_agent_plugin.run_prompt_eval`, not by direct world mutation. It keeps
 the sidecar as an agentic planner and Luanti as the execution authority.
 
+For build-planning requests, the sidecar response also includes a structured
+read-only tool decision:
+
+```json
+{
+  "response": {
+    "selected_option_id": "fire",
+    "tool_decisions": {
+      "build_option": {
+        "selected_option_id": "fire",
+        "direct_world_mutation": false
+      }
+    }
+  }
+}
+```
+
+The Lua planner honors that selected option only when it matches one of the
+bounded executable candidates supplied in the request. The model's prose is
+kept as player guidance; the structured `tool_decisions` field is the execution
+contract that can change the pending preview plan.
+
 Managed readiness probe, without provider credentials:
 
 ```bash

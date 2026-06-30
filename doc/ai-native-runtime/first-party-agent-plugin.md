@@ -134,9 +134,13 @@ Implemented deterministic commands:
 - Ambiguous build prompts such as `build a small shelter` use the agentic build
   planner instead of silently becoming a marker. The planner returns multiple
   executable bounded candidates, asks the async Agents SDK model adapter for
-  public-safe guidance when configured, selects one preview candidate, records
-  the route in request traces, and still requires player approval before the
-  rollback-backed `build_agent` task is queued.
+  public-safe guidance when configured, consumes the adapter's structured
+  `response.selected_option_id` or
+  `response.tool_decisions.build_option.selected_option_id` when it matches a
+  known executable candidate, records the route in request traces, and still
+  requires player approval before the rollback-backed `build_agent` task is
+  queued. Invalid or missing model selections fall back to the deterministic
+  preselected candidate rather than inventing a build shape.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair plan radius N`, `repair radius N`: plans a bounded wider repair
   area before approval. `N` must be within the configured `max_repair_radius`
