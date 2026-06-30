@@ -447,11 +447,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "status": "pass",
                 "ok": True,
                 "owner": "PromptEvalLive",
-                "cases_total": 4,
-                "cases_passed": 4,
+                "cases_total": 5,
+                "cases_passed": 5,
                 "cases_failed": 0,
                 "case_ids": {
                     "build_fire": True,
+                    "fire_only_strict": True,
                     "tnt_wall": True,
                     "agentic_build_planner": True,
                     "model": True,
@@ -462,6 +463,20 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "status": "pass",
                         "ok": True,
                         "prompt": "build a fire",
+                        "action": "build",
+                        "reply_status": "pending_approval",
+                        "route": "deterministic_build_parser",
+                        "build_kind": "fire",
+                        "build_material_name": "fire",
+                        "planned_node_writes": 1,
+                        "cleanup_status": "success",
+                        "failure_count": 0,
+                    },
+                    {
+                        "case_id": "fire_only_strict",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "build me a fire and only a fire",
                         "action": "build",
                         "reply_status": "pending_approval",
                         "route": "deterministic_build_parser",
@@ -526,10 +541,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 },
             },
             "summary": {
-                "cases_total": 4,
-                "cases_passed": 4,
+                "cases_total": 5,
+                "cases_passed": 5,
                 "cases_failed": 0,
                 "build_fire_checked": True,
+                "fire_only_strict_checked": True,
                 "tnt_wall_checked": True,
                 "agentic_build_planner_checked": True,
                 "model_checked": True,
@@ -1141,8 +1157,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "fire must plan exactly one node write"):
                 probe.validate_live_result(fire_structure)
 
+            fire_only_structure = json.loads(json.dumps(payload))
+            fire_only_structure["prompt_eval"]["cases"][1]["planned_node_writes"] = 2
+            with self.assertRaisesRegex(ValueError, "fire-only strict must plan exactly one node write"):
+                probe.validate_live_result(fire_only_structure)
+
             tnt_underplanned = json.loads(json.dumps(payload))
-            tnt_underplanned["prompt_eval"]["cases"][1]["planned_node_writes"] = 1
+            tnt_underplanned["prompt_eval"]["cases"][2]["planned_node_writes"] = 1
             with self.assertRaisesRegex(ValueError, "TNT wall must plan exactly twelve node writes"):
                 probe.validate_live_result(tnt_underplanned)
 
@@ -1563,11 +1584,16 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
-                4,
+                5,
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_build_fire_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_fire_only_strict_checked"
                 ]
             )
             self.assertTrue(
@@ -1588,6 +1614,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_fire_planned_node_writes"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_fire_only_strict_planned_node_writes"
                 ],
                 1,
             )

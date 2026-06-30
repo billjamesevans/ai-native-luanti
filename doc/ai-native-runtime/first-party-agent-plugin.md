@@ -64,11 +64,13 @@ The plugin registers three aliases:
 
 The plugin also registers `/ai_agent_eval` for operators with `server`
 privilege. It runs a bounded public-safe prompt evaluation covering `build a
-fire`, `build a wall of tnt`, and an unknown prompt routed through the
-configured model adapter. The report is JSON, is logged with the prompt trace
-ids and model-adapter metric deltas, requires approval for build plans instead
-of mutating the world, and discards those approvals after recording the result.
-Use `/ai_agent_eval case=fire`, `/ai_agent_eval case=tnt`, `/ai_agent_eval
+fire`, strict `build me a fire and only a fire`, `build a wall of tnt`, an
+agentic build-planner case, and an unknown prompt routed through the configured
+model adapter. The report is JSON, is logged with the prompt trace ids and
+model-adapter metric deltas, requires approval for build plans instead of
+mutating the world, and discards those approvals after recording the result.
+Use `/ai_agent_eval case=fire`, `/ai_agent_eval case=fire_only`,
+`/ai_agent_eval case=tnt`, `/ai_agent_eval case=agentic`, `/ai_agent_eval
 case=model`, or `/ai_agent_eval model <prompt>` for narrower checks.
 
 Implemented deterministic commands:
@@ -116,8 +118,8 @@ Implemented deterministic commands:
 - `build plan platform width N depth N`, `build platform width N depth N`:
   plans a bounded platform before approval. `width * depth` must fit within
   the configured build write budget, and the apply path remains rollback-backed.
-- `build fire`, `build a fire`: plans a bounded fire placement using the
-  configured or registered game fire node.
+- `build fire`, `build a fire`, `build me a fire and only a fire`: plans a
+  bounded fire placement using the configured or registered game fire node.
 - `build wall width N height N`, `build a wall of tnt`: plans a bounded wall
   before approval. Requested game materials such as TNT are allowed when the
   node exists and the request fits the server's capability, protection,
@@ -187,7 +189,8 @@ Nova request traces are intentionally separate from provider payload retention.
 `core.ai_agent_plugin.get_request_traces({ limit = N })` and the chat-facing
 `traces` command keep bounded public prompt/response summaries for debugging bad
 agent behavior. They are meant to answer "why did Nova do that?" after a player
-command, without storing private prompts, raw API responses, credentials, or
+command. The same bounded trace summaries are emitted to the Luanti action log
+when requests queue or complete, without storing private prompts, raw API responses, credentials, or
 unbounded media data. Async model requests first record a queued trace with a
 trace id, then overwrite that same trace with the final bounded model response
 when the adapter callback returns.

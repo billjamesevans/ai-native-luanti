@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import inspect
 import json
 import os
+from pathlib import Path
 import time
 from typing import Any
 
@@ -30,13 +32,20 @@ DEFAULT_MODEL = os.getenv("AI_NATIVE_AGENT_MODEL", "gpt-4.1-mini")
 ADAPTER_NAME = "openai-agents-sdk-model-adapter"
 MAX_PROMPT_BYTES = 6000
 MAX_RESPONSE_BYTES = 4000
+MAX_LOG_STRING_BYTES = 1200
 FORBIDDEN_RESPONSE_KEYS = {
     "raw_provider_request",
     "raw_provider_response",
     "provider_headers",
     "credentials",
     "private_payload",
+    "private_prompt",
     "asset_payload",
+    "raw_asset_payload",
+    "provider_credentials",
+    "api_key",
+    "headers",
+    "request_body",
 }
 
 
@@ -86,6 +95,82 @@ def _bounded_text(value: Any, max_bytes: int) -> str:
     if len(encoded) <= max_bytes:
         return text
     return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _safe_log_value(value: Any, *, depth: int = 0) -> Any:
+    if depth > 6:
+        return "<truncated>"
+    if isinstance(value, str):
+        return _bounded_text(value, MAX_LOG_STRING_BYTES).replace(
+            "OPENAI_API_KEY", "<redacted-secret-env>"
+        )
+    if isinstance(value, (int, float, bool)) or value is None:
+        return value
+    if isinstance(value, list):
+        return [_safe_log_value(item, depth=depth + 1) for item in value[:16]]
+    if isinstance(value, dict):
+        safe: dict[str, Any] = {}
+        for key, child in value.items():
+            if len(safe) >= 32:
+                break
+            if not isinstance(key, str) or key in FORBIDDEN_RESPONSE_KEYS:
+                continue
+            safe[key] = _safe_log_value(child, depth=depth + 1)
+        return safe
+    return _bounded_text(value, MAX_LOG_STRING_BYTES)
+
+
+def _public_log_request(request: dict[str, Any]) -> dict[str, Any]:
+    context = _safe_context(request.get("context"))
+    return {
+        "request_kind": request.get("request_kind"),
+        "adapter_contract": request.get("adapter_contract"),
+        "agent_id": request.get("agent_id"),
+        "owner": request.get("owner"),
+        "task_id": request.get("task_id"),
+        "public_prompt": _bounded_text(request.get("public_prompt"), MAX_LOG_STRING_BYTES),
+        "context": _safe_log_value(context),
+        "safety": _safe_log_value(request.get("safety")),
+        "bounds": _safe_log_value(request.get("bounds")),
+    }
+
+
+def _public_log_response(response: dict[str, Any]) -> dict[str, Any]:
+    return _safe_log_value({
+        "response_kind": response.get("response_kind"),
+        "adapter_contract": response.get("adapter_contract"),
+        "ok": response.get("ok"),
+        "message": response.get("message"),
+        "adapter_name": response.get("adapter_name"),
+        "reason": response.get("reason"),
+        "elapsed_us": response.get("elapsed_us"),
+        "response": response.get("response"),
+    })
+
+
+def _write_request_response_log(request: dict[str, Any], response: dict[str, Any]) -> None:
+    log_path = os.getenv("AI_NATIVE_AGENT_LOG_PATH")
+    if not log_path:
+        return
+    entry = {
+        "schema_version": 1,
+        "event_kind": "ai_native_agents_sdk_request_response",
+        "created_at": _utc_now(),
+        "adapter_name": ADAPTER_NAME,
+        "request": _public_log_request(request),
+        "response": _public_log_response(response),
+    }
+    try:
+        path = Path(log_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, sort_keys=True) + "\n")
+    except OSError:
+        return
 
 
 def _safe_context(value: Any) -> dict[str, Any]:
@@ -334,7 +419,7 @@ def run_model_adapter_request(
 ) -> dict[str, Any]:
     start = time.perf_counter()
     if request.get("request_kind") != "ai_native_model_adapter_request":
-        return {
+        response = {
             "schema_version": 1,
             "response_kind": "ai_native_model_adapter_response",
             "adapter_contract": "provider_neutral_v1",
@@ -343,17 +428,20 @@ def run_model_adapter_request(
             "adapter_name": ADAPTER_NAME,
             "reason": "invalid_request_kind",
         }
+        _write_request_response_log(request, response)
+        return response
 
     if force_offline or not _sdk_ready():
         reason = "forced_offline" if force_offline else "agents_sdk_not_ready"
         response = _offline_fallback(request, reason)
         response["elapsed_us"] = int((time.perf_counter() - start) * 1_000_000)
+        _write_request_response_log(request, response)
         return response
 
     try:
         final_output = asyncio.run(_run_sdk_agent(request, model=model))
     except Exception as exc:  # pragma: no cover - live SDK path depends on credentials.
-        return {
+        response = {
             "schema_version": 1,
             "response_kind": "ai_native_model_adapter_response",
             "adapter_contract": "provider_neutral_v1",
@@ -363,8 +451,10 @@ def run_model_adapter_request(
             "reason": exc.__class__.__name__,
             "elapsed_us": int((time.perf_counter() - start) * 1_000_000),
         }
+        _write_request_response_log(request, response)
+        return response
 
-    return _sanitize_response({
+    response = _sanitize_response({
         "schema_version": 1,
         "response_kind": "ai_native_model_adapter_response",
         "adapter_contract": "provider_neutral_v1",
@@ -380,6 +470,8 @@ def run_model_adapter_request(
             "world_mutation_authority": "luanti",
         },
     })
+    _write_request_response_log(request, response)
+    return response
 
 
 def sample_request() -> dict[str, Any]:

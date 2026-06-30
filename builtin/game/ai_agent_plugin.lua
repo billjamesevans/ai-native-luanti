@@ -314,6 +314,22 @@ local function compact_trace_entry(entry)
 	return result
 end
 
+local function log_request_trace(trace, event)
+	if not trace or not core.write_json or not core.log then
+		return
+	end
+	local ok, encoded = pcall(core.write_json, {
+		schema_version = 1,
+		event_kind = "nova_request_trace",
+		event = event or "completed",
+		trace = compact_trace_entry(trace),
+	})
+	if ok and encoded then
+		core.log("action", "[ai_agent_plugin] request_trace="
+			.. bounded_trace_text(encoded, 4000))
+	end
+end
+
 local function remember_request_trace(entry)
 	entry = entry or {}
 	request_trace_sequence = request_trace_sequence + 1
@@ -374,6 +390,7 @@ local function finish_request_trace(trace, result, extra)
 	for key, value in pairs(extra) do
 		trace[key] = value
 	end
+	log_request_trace(trace, "completed")
 	return result
 end
 
@@ -2752,6 +2769,7 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 		selected_candidate_id = selected.option_id,
 		candidate_count = #public_candidates,
 	}
+	log_request_trace(trace, "queued")
 	returned_to_player = true
 	return queued_reply
 end
@@ -3688,17 +3706,18 @@ local function handle_model(name, prompt, context)
 				adapter_name = adapter_name,
 				async_model_request = true,
 			})
-		trace.response = {
-			ok = true,
-			status = "queued",
-			action = "model",
-			reason = "model_adapter_queued",
-			message = "Model adapter request queued.",
-			trace_id = trace.trace_id,
-		}
-		returned_to_player = true
-		return queued_reply
-	end
+			trace.response = {
+				ok = true,
+				status = "queued",
+				action = "model",
+				reason = "model_adapter_queued",
+				message = "Model adapter request queued.",
+				trace_id = trace.trace_id,
+			}
+			log_request_trace(trace, "queued")
+			returned_to_player = true
+			return queued_reply
+		end
 	local result = core.ai_model_ops.request(prompt, {
 		agent_id = agent_id_for(name),
 		owner = name,
@@ -3906,7 +3925,7 @@ function plugin.handle_command(name, param, context)
 end
 
 local EVAL_DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
-local EVAL_DEFAULT_CASES = { "build_fire", "tnt_wall", "agentic_build_planner", "model" }
+local EVAL_DEFAULT_CASES = { "build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner", "model" }
 local EVAL_MAX_OUTPUT_BYTES = 12000
 
 local function eval_metric_delta(before, after, key)
@@ -4253,6 +4272,9 @@ local function normalize_eval_case(value)
 		return "all"
 	elseif value == "fire" or value == "buildfire" then
 		return "build_fire"
+	elseif value == "fireonly" or value == "onlyfire"
+			or value == "fireonlystrict" or value == "buildfireonly" then
+		return "fire_only_strict"
 	elseif value == "tnt" or value == "walltnt" or value == "tntwall" then
 		return "tnt_wall"
 	elseif value == "agentic" or value == "planner" or value == "buildplanner"
@@ -4364,6 +4386,14 @@ function plugin.run_prompt_eval(options, callback)
 				build_material_node = settings.fire_node,
 				planned_node_writes = 1,
 			})
+		elseif case_id == "fire_only_strict" then
+			run_build_eval_case(report, owner, case_id,
+				"build me a fire and only a fire", context, {
+					build_kind = "fire",
+					build_material_name = "fire",
+					build_material_node = settings.fire_node,
+					planned_node_writes = 1,
+				})
 		elseif case_id == "tnt_wall" then
 			run_build_eval_case(report, owner, case_id, "build a wall of tnt", context, {
 				build_kind = "wall",
@@ -4443,7 +4473,7 @@ local function parse_prompt_eval_command(param)
 end
 
 core.register_chatcommand("ai_agent_eval", {
-	params = "[case=all|fire|tnt|model] [agent=NAME] OR model <prompt>",
+	params = "[case=all|fire|fire_only|tnt|agentic|model] [agent=NAME] OR model <prompt>",
 	description = "Run a bounded first-party AI agent prompt evaluation and emit public-safe JSON.",
 	privs = { server = true },
 	func = function(name, param)
