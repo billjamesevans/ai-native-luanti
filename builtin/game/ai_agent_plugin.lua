@@ -425,8 +425,18 @@ local function finish_request_trace(trace, result, extra)
 		adapter_tool_decision_source = result and result.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
 			result and result.adapter_model_selected_candidate_id,
+		adapter_initial_model_selected_candidate_id =
+			result and result.adapter_initial_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			result and result.adapter_rejected_model_selected_candidate_id,
+		adapter_agent_repair_attempted =
+			result and result.adapter_agent_repair_attempted,
+		adapter_agent_repair_succeeded =
+			result and result.adapter_agent_repair_succeeded,
+		adapter_agent_repair_reason =
+			result and result.adapter_agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			result and result.adapter_initial_missing_required_tool_calls,
 		adapter_required_tool_calls = result and result.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls =
 			result and result.adapter_missing_required_tool_calls,
@@ -1349,25 +1359,35 @@ local function compact_pending_approval(pending)
 		adapter_tool_decision_source = pending.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
 			pending.adapter_model_selected_candidate_id,
+		adapter_initial_model_selected_candidate_id =
+			pending.adapter_initial_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			pending.adapter_rejected_model_selected_candidate_id,
-			adapter_required_tool_calls = pending.adapter_required_tool_calls,
-			adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
-			adapter_required_tool_calls_satisfied =
-				pending.adapter_required_tool_calls_satisfied,
-			build_option_decision_source = pending.build_option_decision_source,
-			adapter_memory_available = pending.adapter_memory_available,
-			adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
-			adapter_memory_case_hint = pending.adapter_memory_case_hint,
-			adapter_tool_trace_names = pending.adapter_tool_trace_names,
-			adapter_build_action_plan_status =
-				pending.adapter_build_action_plan_status,
-			adapter_build_action_plan_selected_candidate_id =
-				pending.adapter_build_action_plan_selected_candidate_id,
-			adapter_build_action_plan_step_count =
-				pending.adapter_build_action_plan_step_count,
-			adapter_build_action_plan_world_mutation_authority =
-				pending.adapter_build_action_plan_world_mutation_authority,
+		adapter_agent_repair_attempted =
+			pending.adapter_agent_repair_attempted,
+		adapter_agent_repair_succeeded =
+			pending.adapter_agent_repair_succeeded,
+		adapter_agent_repair_reason =
+			pending.adapter_agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			pending.adapter_initial_missing_required_tool_calls,
+		adapter_required_tool_calls = pending.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			pending.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = pending.build_option_decision_source,
+		adapter_memory_available = pending.adapter_memory_available,
+		adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = pending.adapter_memory_case_hint,
+		adapter_tool_trace_names = pending.adapter_tool_trace_names,
+		adapter_build_action_plan_status =
+			pending.adapter_build_action_plan_status,
+		adapter_build_action_plan_selected_candidate_id =
+			pending.adapter_build_action_plan_selected_candidate_id,
+		adapter_build_action_plan_step_count =
+			pending.adapter_build_action_plan_step_count,
+		adapter_build_action_plan_world_mutation_authority =
+			pending.adapter_build_action_plan_world_mutation_authority,
 		generated_build_option_status = pending.generated_build_option_status,
 		generated_build_option_reason = pending.generated_build_option_reason,
 		generated_candidate_id = pending.generated_candidate_id,
@@ -1405,8 +1425,18 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		adapter_tool_decision_source = extra.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
 			extra.adapter_model_selected_candidate_id,
+		adapter_initial_model_selected_candidate_id =
+			extra.adapter_initial_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			extra.adapter_rejected_model_selected_candidate_id,
+		adapter_agent_repair_attempted =
+			extra.adapter_agent_repair_attempted,
+		adapter_agent_repair_succeeded =
+			extra.adapter_agent_repair_succeeded,
+		adapter_agent_repair_reason =
+			extra.adapter_agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			extra.adapter_initial_missing_required_tool_calls,
 		adapter_required_tool_calls = extra.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls =
 			extra.adapter_missing_required_tool_calls,
@@ -3144,8 +3174,18 @@ function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
 	queued.adapter_tool_decision_source = pending.adapter_tool_decision_source
 	queued.adapter_model_selected_candidate_id =
 		pending.adapter_model_selected_candidate_id
+	queued.adapter_initial_model_selected_candidate_id =
+		pending.adapter_initial_model_selected_candidate_id
 	queued.adapter_rejected_model_selected_candidate_id =
 		pending.adapter_rejected_model_selected_candidate_id
+	queued.adapter_agent_repair_attempted =
+		pending.adapter_agent_repair_attempted
+	queued.adapter_agent_repair_succeeded =
+		pending.adapter_agent_repair_succeeded
+	queued.adapter_agent_repair_reason =
+		pending.adapter_agent_repair_reason
+	queued.adapter_initial_missing_required_tool_calls =
+		pending.adapter_initial_missing_required_tool_calls
 	queued.adapter_required_tool_calls = pending.adapter_required_tool_calls
 	queued.adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls
 	queued.adapter_required_tool_calls_satisfied =
@@ -3196,30 +3236,40 @@ local function create_build_pending_reply(name, context, message, extra)
 		adapter_tool_decision_source = extra.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
 			extra.adapter_model_selected_candidate_id,
+		adapter_initial_model_selected_candidate_id =
+			extra.adapter_initial_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			extra.adapter_rejected_model_selected_candidate_id,
-			adapter_required_tool_calls = extra.adapter_required_tool_calls,
-			adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
-			adapter_required_tool_calls_satisfied =
-				extra.adapter_required_tool_calls_satisfied,
-			build_option_decision_source = extra.build_option_decision_source,
-			adapter_memory_available = extra.adapter_memory_available,
-			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
-			adapter_memory_case_hint = extra.adapter_memory_case_hint,
-			adapter_tool_trace_names = extra.adapter_tool_trace_names,
-			adapter_build_action_plan_status =
-				extra.adapter_build_action_plan_status,
-			adapter_build_action_plan_selected_candidate_id =
-				extra.adapter_build_action_plan_selected_candidate_id,
-			adapter_build_action_plan_step_count =
-				extra.adapter_build_action_plan_step_count,
-			adapter_build_action_plan_world_mutation_authority =
-				extra.adapter_build_action_plan_world_mutation_authority,
-			generated_build_option_status = extra.generated_build_option_status,
-			generated_build_option_reason = extra.generated_build_option_reason,
-			generated_candidate_id = extra.generated_candidate_id,
-			agentic_tool_success_required =
-				extra.agentic_tool_success_required,
+		adapter_agent_repair_attempted =
+			extra.adapter_agent_repair_attempted,
+		adapter_agent_repair_succeeded =
+			extra.adapter_agent_repair_succeeded,
+		adapter_agent_repair_reason =
+			extra.adapter_agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			extra.adapter_initial_missing_required_tool_calls,
+		adapter_required_tool_calls = extra.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			extra.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = extra.build_option_decision_source,
+		adapter_memory_available = extra.adapter_memory_available,
+		adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = extra.adapter_memory_case_hint,
+		adapter_tool_trace_names = extra.adapter_tool_trace_names,
+		adapter_build_action_plan_status =
+			extra.adapter_build_action_plan_status,
+		adapter_build_action_plan_selected_candidate_id =
+			extra.adapter_build_action_plan_selected_candidate_id,
+		adapter_build_action_plan_step_count =
+			extra.adapter_build_action_plan_step_count,
+		adapter_build_action_plan_world_mutation_authority =
+			extra.adapter_build_action_plan_world_mutation_authority,
+		generated_build_option_status = extra.generated_build_option_status,
+		generated_build_option_reason = extra.generated_build_option_reason,
+		generated_candidate_id = extra.generated_candidate_id,
+		agentic_tool_success_required =
+			extra.agentic_tool_success_required,
 		})
 	local reply = public_reply(name, "build", "pending_approval",
 		message or "Build plan is pending approval before mutation.", {
@@ -3247,8 +3297,18 @@ local function create_build_pending_reply(name, context, message, extra)
 			adapter_tool_decision_source = extra.adapter_tool_decision_source,
 			adapter_model_selected_candidate_id =
 				extra.adapter_model_selected_candidate_id,
+			adapter_initial_model_selected_candidate_id =
+				extra.adapter_initial_model_selected_candidate_id,
 			adapter_rejected_model_selected_candidate_id =
 				extra.adapter_rejected_model_selected_candidate_id,
+			adapter_agent_repair_attempted =
+				extra.adapter_agent_repair_attempted,
+			adapter_agent_repair_succeeded =
+				extra.adapter_agent_repair_succeeded,
+			adapter_agent_repair_reason =
+				extra.adapter_agent_repair_reason,
+			adapter_initial_missing_required_tool_calls =
+				extra.adapter_initial_missing_required_tool_calls,
 			adapter_required_tool_calls = extra.adapter_required_tool_calls,
 			adapter_missing_required_tool_calls =
 				extra.adapter_missing_required_tool_calls,
