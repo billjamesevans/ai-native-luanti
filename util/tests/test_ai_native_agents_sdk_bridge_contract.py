@@ -253,6 +253,47 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertEqual(action_plan["world_mutation_authority"], "luanti")
         self.assertFalse(action_plan["direct_world_mutation"])
 
+    def test_explicit_wall_dimensions_require_generated_option(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        candidate_summary = "platform:platform:default:4|wall:wall:default:12"
+        proposal = module.propose_build_option_payload(
+            candidate_summary,
+            "build a 6 wide 2 high lookout wall",
+        )
+        fixed_selection = module.select_build_option_payload(
+            candidate_summary,
+            "wall",
+            "build a 6 wide 2 high lookout wall",
+            "the fixed wall has the same write count",
+        )
+        recommendation = module.recommend_build_option_payload(
+            candidate_summary,
+            "build a 6 wide 2 high lookout wall",
+        )
+
+        self.assertEqual(proposal["status"], "ready")
+        self.assertEqual(
+            proposal["generated_option"]["option_id"],
+            "generated_dimensioned_wall",
+        )
+        self.assertEqual(proposal["generated_option"]["build_width"], 6)
+        self.assertEqual(proposal["generated_option"]["build_height"], 2)
+        self.assertEqual(proposal["generated_option"]["planned_node_writes"], 12)
+        self.assertIsNone(fixed_selection["selected_option_id"])
+        self.assertEqual(fixed_selection["selection_status"], "rejected")
+        self.assertEqual(
+            fixed_selection["rejection_reason"],
+            "selection_violates_player_request_constraints",
+        )
+        self.assertEqual(fixed_selection["required_option_id"], "generated_dimensioned_wall")
+        self.assertEqual(recommendation["selected_option_id"], "generated_dimensioned_wall")
+        self.assertEqual(recommendation["decision_source"], "generated_build_option_tool")
+
     def test_reviewed_prompt_memory_can_drive_repeated_build_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)
