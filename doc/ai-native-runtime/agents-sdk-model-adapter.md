@@ -67,7 +67,10 @@ Important files:
   bounded public-safe JSONL request/response entries for post-incident review.
   When `AI_NATIVE_AGENT_CASE_PACK_PATH` points at a reviewed
   `ai_native_agent_prompt_eval_case_pack`, the sidecar exposes those cases to the
-  agent through a read-only prompt-memory tool.
+  agent through a read-only prompt-memory tool. For open-ended build requests,
+  the sidecar can also return a read-only generated build option through
+  `propose_build_option`; Luanti must validate its kind, material, dimensions,
+  and planned writes before it can become a pending preview.
 - `main.py`: HTTP service with `GET /health` and `POST /v1/model-adapter`.
 - `pyproject.toml`: declares `openai-agents`.
 
@@ -176,13 +179,25 @@ read-only tool decision:
         "tool_name": "recall_build_prompt_memory"
       },
       {
+        "tool_name": "propose_build_option"
+      },
+      {
         "tool_name": "recommend_build_option"
       }
     ],
     "tool_decisions": {
       "build_option": {
-        "selected_option_id": "fire",
-        "decision_source": "agent_build_option_tool",
+        "selected_option_id": "generated_tower_wall",
+        "decision_source": "generated_build_option_tool",
+        "generated_option_status": "ready",
+        "generated_option": {
+          "option_id": "generated_tower_wall",
+          "build_kind": "wall",
+          "build_width": 3,
+          "build_height": 4,
+          "build_material_name": "stone",
+          "planned_node_writes": 12
+        },
         "direct_world_mutation": false
       }
     }
@@ -190,10 +205,13 @@ read-only tool decision:
 }
 ```
 
-The Lua planner honors that selected option only when it matches one of the
-bounded executable candidates supplied in the request. The model's prose is
-kept as player guidance; the structured `tool_decisions` field is the execution
-contract that can change the pending preview plan.
+The Lua planner honors a selected fixed option only when it matches one of the
+bounded executable candidates supplied in the request. It honors a generated
+option only after the Luanti-side generated-option validator accepts the
+proposed kind, material, dimensions, and write budget and can produce a normal
+rollback-backed preview plan from it. The model's prose is kept as player
+guidance; the structured `tool_decisions` field is the execution contract that
+can change the pending preview plan.
 If a live agent does not call the required function tools, the adapter still
 returns a bounded fallback decision but labels it with
 `tool_decision_source = adapter_fallback_after_agent_missing_required_tool`,
@@ -301,9 +319,12 @@ Initial tools are deliberately read-only:
 - `recall_build_prompt_memory`: checks an optional reviewed prompt-eval case pack
   for exact public prompt regressions, then returns only a bounded option id and
   case id.
+- `propose_build_option`: creates a bounded generated build option for
+  open-ended player requests such as towers, bridges, paths, or shelter floors;
+  it is read-only and Luanti may reject it before preview.
 - `recommend_build_option`: chooses from Luanti-supplied bounded build
-  candidates for ambiguous `/nova build ...` prompts without executing world
-  mutation.
+  candidates, or selects a generated option produced by the tool contract, for
+  ambiguous `/nova build ...` prompts without executing world mutation.
 - `WebSearchTool`: lets the agent look up current public information when the
   prompt genuinely needs it.
 

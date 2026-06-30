@@ -87,6 +87,10 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "`build_option_decision_source`",
             "`adapter_memory_matched_case_id`",
             "`adapter_tool_trace_names`",
+            "`generated_build_option_status`",
+            "`generated_build_option_reason`",
+            "`generated_candidate_id`",
+            "Generated options must be returned through",
             "surface_capability_not_granted",
             "before any task is queued",
             "combat.defend",
@@ -130,6 +134,10 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "adapter_required_tool_calls_satisfied",
             "adapter_memory_matched_case_id",
             "adapter_tool_trace_names",
+            "generated_build_option_status",
+            "generated_build_option_reason",
+            "generated_candidate_id",
+            "append_generated_agentic_build_candidate",
         ):
             self.assertIn(phrase, source)
         for forbidden in (

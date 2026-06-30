@@ -10,6 +10,7 @@ import inspect
 import json
 import os
 from pathlib import Path
+import re
 import time
 from typing import Any
 
@@ -89,6 +90,15 @@ TOOL_POWER_MANIFEST = (
         "available_without_provider_credentials": True,
         "direct_world_mutation": False,
         "engine_authority": "luanti_task_preview_approval_rollback",
+    },
+    {
+        "name": "propose_build_option",
+        "kind": "function_tool",
+        "runtime_power": "bounded_generated_build_option",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_generated_option_validator",
     },
     {
         "name": "recall_build_prompt_memory",
@@ -307,6 +317,138 @@ def _candidate_entries(candidate_summary: str) -> list[dict[str, Any]]:
     return candidates
 
 
+def _generated_build_budget(candidates: list[dict[str, Any]]) -> int:
+    candidate_budget = max(
+        [int(item.get("planned_node_writes") or 0) for item in candidates] + [12]
+    )
+    return max(1, min(32, candidate_budget))
+
+
+def _bounded_generated_dims(width: int, depth_or_height: int, budget: int) -> tuple[int, int]:
+    width = max(1, int(width))
+    depth_or_height = max(1, int(depth_or_height))
+    while width * depth_or_height > budget:
+        if width >= depth_or_height and width > 1:
+            width -= 1
+        elif depth_or_height > 1:
+            depth_or_height -= 1
+        else:
+            break
+    return width, depth_or_height
+
+
+def _first_prompt_int(pattern: str, request: str) -> int | None:
+    match = re.search(pattern, request)
+    if not match:
+        return None
+    try:
+        value = int(match.group(1))
+    except (TypeError, ValueError):
+        return None
+    return value if value >= 1 else None
+
+
+def propose_build_option_payload(candidate_summary: str, player_request: str) -> dict[str, Any]:
+    """Propose one generated build option for Luanti to validate, without mutating the world."""
+
+    request = str(player_request or "").lower()
+    candidates = _candidate_entries(candidate_summary)
+    budget = _generated_build_budget(candidates)
+
+    if "only a fire" in request or "fire" in request or "flame" in request:
+        return {
+            "status": "not_needed",
+            "reason": "fixed_fire_candidate_preferred",
+            "generated_option": None,
+            "direct_world_mutation": False,
+            "policy": "luanti_validates_generated_options_before_preview",
+        }
+    if "tnt" in request:
+        return {
+            "status": "not_needed",
+            "reason": "fixed_tnt_candidate_preferred",
+            "generated_option": None,
+            "direct_world_mutation": False,
+            "policy": "luanti_validates_generated_options_before_preview",
+        }
+
+    option: dict[str, Any] | None = None
+    if "tower" in request or "tall" in request:
+        width = _first_prompt_int(r"(?:width|wide)\s+(\d+)", request) or 3
+        height = (
+            _first_prompt_int(r"(?:height|high|tall)\s+(\d+)", request)
+            or min(6, max(3, budget // max(1, width)))
+        )
+        width, height = _bounded_generated_dims(width, height, budget)
+        option = {
+            "option_id": "generated_tower_wall",
+            "label": "Generated tower wall",
+            "reason": "player asked for a taller build than the fixed candidates",
+            "build_kind": "wall",
+            "build_width": width,
+            "build_height": height,
+            "build_material_name": "stone",
+            "planned_node_writes": width * height,
+        }
+    elif "bridge" in request:
+        width, depth = _bounded_generated_dims(8, 2, budget)
+        option = {
+            "option_id": "generated_bridge_platform",
+            "label": "Generated bridge platform",
+            "reason": "player asked for a bridge-like surface",
+            "build_kind": "platform",
+            "build_width": width,
+            "build_depth": depth,
+            "build_material_name": "stone",
+            "planned_node_writes": width * depth,
+        }
+    elif "road" in request or "path" in request or "walkway" in request:
+        width, depth = _bounded_generated_dims(min(8, budget), 1, budget)
+        option = {
+            "option_id": "generated_path_platform",
+            "label": "Generated path platform",
+            "reason": "player asked for a path-like build",
+            "build_kind": "platform",
+            "build_width": width,
+            "build_depth": depth,
+            "build_material_name": "stone",
+            "planned_node_writes": width * depth,
+        }
+    elif any(word in request for word in ("shelter", "house", "base", "floor", "room")):
+        width, depth = _bounded_generated_dims(4, 3, budget)
+        option = {
+            "option_id": "generated_shelter_floor",
+            "label": "Generated shelter floor",
+            "reason": "player asked for a small usable footprint",
+            "build_kind": "platform",
+            "build_width": width,
+            "build_depth": depth,
+            "build_material_name": "stone",
+            "planned_node_writes": width * depth,
+        }
+
+    if option is None:
+        return {
+            "status": "not_needed",
+            "reason": "no_safe_generated_shape_matched",
+            "generated_option": None,
+            "direct_world_mutation": False,
+            "policy": "luanti_validates_generated_options_before_preview",
+        }
+    return {
+        "status": "ready",
+        "reason": "generated_candidate_requires_luanti_validation",
+        "generated_option": option,
+        "candidate_count": len(candidates),
+        "build_budget": budget,
+        "requires_preview": True,
+        "requires_approval": True,
+        "requires_rollback": True,
+        "direct_world_mutation": False,
+        "policy": "luanti_validates_generated_options_before_preview",
+    }
+
+
 def _load_reviewed_case_pack() -> dict[str, Any] | None:
     path_value = os.getenv("AI_NATIVE_AGENT_CASE_PACK_PATH")
     if not path_value:
@@ -406,7 +548,7 @@ def recall_build_prompt_memory_payload(
 
 
 def recommend_build_option_payload(candidate_summary: str, player_request: str) -> dict[str, Any]:
-    """Choose one bounded build candidate from Luanti's public-safe summary."""
+    """Choose one bounded build candidate or generated option for Luanti validation."""
 
     request = str(player_request or "").lower()
     candidates = _candidate_entries(candidate_summary)
@@ -414,8 +556,12 @@ def recommend_build_option_payload(candidate_summary: str, player_request: str) 
     preferred = "platform"
     memory = recall_build_prompt_memory_payload(player_request, candidate_summary)
     memory_selected = memory.get("selected_option_id")
+    generated = propose_build_option_payload(candidate_summary, player_request)
+    generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
     if isinstance(memory_selected, str) and memory_selected:
         preferred = memory_selected
+    elif isinstance(generated_option, dict) and generated.get("status") == "ready":
+        preferred = str(generated_option.get("option_id") or "generated_agent_option")
     elif "only a fire" in request:
         preferred = "fire"
     elif "tnt" in request:
@@ -428,15 +574,30 @@ def recommend_build_option_payload(candidate_summary: str, player_request: str) 
         preferred = "marker"
 
     selected = next((item for item in candidates if item["option_id"] == preferred), None)
+    if selected is None and isinstance(generated_option, dict) and preferred == generated_option.get("option_id"):
+        selected = {
+            "option_id": preferred,
+            "build_kind": generated_option.get("build_kind"),
+            "material": generated_option.get("build_material_name") or "default",
+            "planned_node_writes": generated_option.get("planned_node_writes") or 0,
+        }
     if selected is None and candidates:
         selected = candidates[0]
+    decision_source = "agent_build_option_tool"
+    if memory.get("selected_option_id"):
+        decision_source = "reviewed_prompt_memory"
+    elif isinstance(generated_option, dict) and selected and selected["option_id"] == generated_option.get("option_id"):
+        decision_source = "generated_build_option_tool"
     return {
         "selected_option_id": selected["option_id"] if selected else None,
         "candidate_count": len(candidates),
-        "alternatives": [item["option_id"] for item in candidates[:6]],
-        "decision_source": "reviewed_prompt_memory"
-        if memory.get("selected_option_id") else "agent_build_option_tool",
+        "alternatives": [item["option_id"] for item in candidates[:6]]
+        + ([generated_option["option_id"]] if isinstance(generated_option, dict) else []),
+        "decision_source": decision_source,
         "memory_match": memory,
+        "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
+        "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
+        "generated_option": generated_option if isinstance(generated_option, dict) else None,
         "requires_preview": True,
         "requires_approval": True,
         "requires_rollback": True,
@@ -518,6 +679,19 @@ def recommend_build_option(candidate_summary: str, player_request: str) -> dict[
 
 
 @function_tool
+def propose_build_option(candidate_summary: str, player_request: str) -> dict[str, Any]:
+    """Propose a generated build option that Luanti must validate before preview."""
+
+    result = propose_build_option_payload(candidate_summary, player_request)
+    _record_tool_call(
+        "propose_build_option",
+        {"candidate_summary": candidate_summary, "player_request": player_request},
+        result,
+    )
+    return result
+
+
+@function_tool
 def recall_build_prompt_memory(player_request: str, candidate_summary: str) -> dict[str, Any]:
     """Return reviewed prompt-memory guidance for a build request, if available."""
 
@@ -538,6 +712,7 @@ def build_agent(model: str | None = None) -> Any:
         summarize_runtime_capabilities,
         classify_world_action,
         recall_build_prompt_memory,
+        propose_build_option,
         recommend_build_option,
     ]
     if WebSearchTool is not None:
@@ -552,9 +727,12 @@ def build_agent(model: str | None = None) -> Any:
             "world mutation, rollback, audit, and task execution. Use hosted "
             "web search only when current public information is needed. Use "
             "function tools to classify capabilities, world-action policy, "
-            "reviewed prompt memory, and bounded build-option recommendations. "
+            "reviewed prompt memory, generated build-option proposals, and "
+            "bounded build-option recommendations. "
             "For build planning, call recall_build_prompt_memory and "
-            "recommend_build_option before producing final output. "
+            "recommend_build_option before producing final output; call "
+            "propose_build_option when the listed fixed candidates are too "
+            "generic for the player request. "
             "Return public-safe, bounded guidance. Do not return provider raw "
             "payloads, credentials, private prompts, private world coordinates, "
             "or asset payloads."
@@ -607,9 +785,11 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             f"selected_candidate_id: {context.get('selected_candidate_id', '')}",
             "Return concise public-safe guidance for the player or operator. "
             "For build planning, first call recall_build_prompt_memory, then "
-            "call recommend_build_option using the exact candidate_summary and "
-            "player_request. Do not invent options that are not in "
-            "candidate_summary.",
+            "call propose_build_option when the fixed candidates are too "
+            "generic, then call recommend_build_option using the exact "
+            "candidate_summary and player_request. Generated options must be "
+            "returned only through function-tool output so Luanti can validate "
+            "them before preview.",
         ]
     )
 
