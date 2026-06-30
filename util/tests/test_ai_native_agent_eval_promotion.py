@@ -280,6 +280,8 @@ class AgentEvalPromotionTests(unittest.TestCase):
         self.assertIn("ai_native_agent_prompt_eval_case_pack", combined)
         self.assertIn("custom_cases", combined)
         self.assertIn("--operator-labels", combined)
+        self.assertIn("--from-operator-feedback", combined)
+        self.assertIn("/ai_agent_feedback", combined)
         self.assertIn("ai_native_agent_eval_operator_labels", combined)
         loop_sections = []
         for body in bodies:

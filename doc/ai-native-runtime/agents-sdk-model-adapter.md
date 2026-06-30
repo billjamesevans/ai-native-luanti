@@ -129,6 +129,24 @@ needs an operator label.
 Use the artifact builder for reviewed corrections instead of hand-writing label
 JSON:
 
+```text
+/ai_agent_feedback last; case=stone_bridge_platform; build_kind=platform; material=stone; planned_writes=12; route=agentic_build_planner
+```
+
+When the correction starts from the server-side feedback command, consume the
+logged `ai_agent_operator_feedback` event directly:
+
+```bash
+python3 util/ai_native_agent_feedback_packet.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --from-operator-feedback \
+  --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --operator-label-output local/benchmarks/ai-agent-operator-labels.json \
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
 ```bash
 python3 util/ai_native_agent_operator_label.py \
   --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \

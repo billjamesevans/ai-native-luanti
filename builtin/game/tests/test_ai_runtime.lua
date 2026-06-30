@@ -6211,6 +6211,38 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(fire_only_command_report.cases[1].reply.planned_node_writes == 1)
 	assert(fire_only_command_report.cases[1].cleanup.status == "success")
 
+	assert(core.registered_chatcommands.ai_agent_feedback ~= nil)
+	assert(core.registered_chatcommands.ai_agent_feedback.privs.server == true)
+	local feedback_seed_reply =
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "build a bridge", {})
+	assert(feedback_seed_reply.status == "queued"
+		or feedback_seed_reply.status == "pending_approval")
+	if feedback_seed_reply.status == "pending_approval" then
+		core.ai_agent_plugin.handle_command("FeedbackCommand", "discard plan", {})
+	end
+	local feedback_ok, feedback_message =
+		core.registered_chatcommands.ai_agent_feedback.func(
+			"FeedbackCommand",
+			"last; case=stone_bridge_platform; build_kind=platform; material=stone; planned_writes=12; route=agentic_build_planner")
+	assert(feedback_ok == true)
+	local feedback_report = core.parse_json(feedback_message)
+	assert(feedback_report.action == "agent_feedback")
+	assert(feedback_report.status == "success")
+	assert(feedback_report.no_world_mutation == true)
+	assert(feedback_report.prompt == "build a bridge")
+	assert(feedback_report.case_hint == "stone_bridge_platform")
+	assert(feedback_report.expected.action == "build")
+	assert(feedback_report.expected.build_kind == "platform")
+	assert(feedback_report.expected.build_material_name == "stone")
+	assert(feedback_report.expected.planned_node_writes == 12)
+	assert(feedback_report.expected.route == "agentic_build_planner")
+	assert(feedback_report.source_trace_id ~= nil)
+	local stored_feedback = core.ai_agent_plugin.get_operator_feedback({ limit = 1 })[1]
+	assert(stored_feedback.event_kind == "ai_agent_operator_feedback")
+	assert(stored_feedback.feedback.prompt == "build a bridge")
+	assert(stored_feedback.feedback.expected.build_kind == "platform")
+	assert(stored_feedback.feedback.review.no_world_mutation == true)
+
 	local custom_eval_reports = {}
 	local custom_queued, custom_reason = core.ai_agent_plugin.run_prompt_eval({
 		owner = "EvalTester",

@@ -72,6 +72,42 @@ def sidecar_entry(prompt="build a bridge"):
     }
 
 
+def operator_feedback_line(prompt="build a bridge"):
+    payload = {
+        "schema_version": 1,
+        "event_kind": "ai_agent_operator_feedback",
+        "feedback": {
+            "feedback_id": "operator_feedback:7",
+            "owner": "Eval",
+            "agent_id": "nova_agent:Eval:guide",
+            "source_trace_id": "nova_trace:7",
+            "prompt": prompt,
+            "case_hint": "stone_bridge_platform",
+            "expected": {
+                "action": "build",
+                "build_kind": "platform",
+                "build_material_name": "stone",
+                "planned_node_writes": 12,
+                "route": "agentic_build_planner",
+            },
+            "review": {
+                "operator_reviewed": True,
+                "review_source": "ai_agent_feedback_chatcommand",
+                "no_world_mutation": True,
+            },
+        },
+        "safety": {
+            "public_safe_output": True,
+            "operator_reviewed": True,
+            "no_world_mutation": True,
+            "no_raw_assets": True,
+            "no_provider_prompts": True,
+            "no_family_world_coordinates": True,
+        },
+    }
+    return "[ai_agent_plugin] operator_feedback=" + json.dumps(payload, sort_keys=True)
+
+
 class AgentFeedbackPacketTests(unittest.TestCase):
     def test_builds_feedback_packet_from_log_and_reviewed_expectation(self):
         module = load_feedback_module()
@@ -218,6 +254,58 @@ class AgentFeedbackPacketTests(unittest.TestCase):
         self.assertEqual(queue["source_summary"]["operator_labels_applied"], 1)
         self.assertEqual(labels["artifact_kind"], "ai_native_agent_eval_operator_labels")
         self.assertEqual(pack["summary"]["cases_total"], 1)
+
+    def test_cli_uses_operator_feedback_from_action_log(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            action_log = root / "debug.log"
+            candidate_queue_output = root / "candidate-queue.json"
+            operator_label_output = root / "operator-labels.json"
+            case_pack_output = root / "case-pack.json"
+            sidecar_log.write_text(json.dumps(sidecar_entry("build a bridge")) + "\n", encoding="utf-8")
+            action_log.write_text(operator_feedback_line("build a bridge") + "\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(FEEDBACK),
+                    "--root",
+                    str(root),
+                    "--agents-sdk-log",
+                    str(sidecar_log),
+                    "--action-log",
+                    str(action_log),
+                    "--from-operator-feedback",
+                    "--candidate-queue-output",
+                    str(candidate_queue_output),
+                    "--operator-label-output",
+                    str(operator_label_output),
+                    "--case-pack-output",
+                    str(case_pack_output),
+                    "--generated-at",
+                    "2026-06-30T14:30:00Z",
+                ],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            summary = json.loads(completed.stdout)
+            queue = json.loads(candidate_queue_output.read_text(encoding="utf-8"))
+            labels = json.loads(operator_label_output.read_text(encoding="utf-8"))
+            pack = json.loads(case_pack_output.read_text(encoding="utf-8"))
+
+            self.assertEqual(summary["status"], "ready")
+            self.assertEqual(summary["operator_feedback_id"], "operator_feedback:7")
+            self.assertEqual(summary["operator_feedback_events_read"], 1)
+            self.assertEqual(summary["operator_labels_applied"], 1)
+            self.assertEqual(queue["candidates"][0]["review_status"], "operator_labeled_candidate_ready")
+            self.assertEqual(labels["labels"][0]["case_hint"], "stone_bridge_platform")
+            self.assertEqual(labels["labels"][0]["expected"]["build_kind"], "platform")
+            self.assertEqual(pack["summary"]["cases_total"], 1)
 
 
 if __name__ == "__main__":
