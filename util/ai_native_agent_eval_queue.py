@@ -560,6 +560,140 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
     }
 
 
+def _candidate_selected_option_id(candidate: dict[str, Any]) -> str | None:
+    observed = candidate.get("observed") if isinstance(candidate.get("observed"), dict) else {}
+    expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
+    for value in (
+        observed.get("selected_option_id"),
+        observed.get("selected_candidate_id"),
+        observed.get("build_option_selected_option_id"),
+        expected.get("selected_candidate_id"),
+    ):
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _adapter_contract_required_tools(candidate: dict[str, Any]) -> set[str]:
+    contract = candidate.get("adapter_tool_contract")
+    if not isinstance(contract, dict):
+        return set()
+    return {
+        item
+        for item in safe_string_list(contract.get("required_tool_calls"), max_items=12)
+        if isinstance(item, str) and item
+    }
+
+
+def _adapter_contract_is_active_failure(candidate: dict[str, Any]) -> bool:
+    contract = candidate.get("adapter_tool_contract")
+    return (
+        isinstance(contract, dict)
+        and contract.get("status") == "fail"
+        and not isinstance(candidate.get("adapter_contract_resolution"), dict)
+    )
+
+
+def _contract_pass_resolves_failure(
+    failure: dict[str, Any],
+    passing: dict[str, Any],
+) -> bool:
+    failure_prompt = normalized_prompt(failure.get("prompt"))
+    passing_prompt = normalized_prompt(passing.get("prompt"))
+    if not failure_prompt or failure_prompt != passing_prompt:
+        return False
+    failure_observed_at = str(failure.get("observed_at") or "")
+    passing_observed_at = str(passing.get("observed_at") or "")
+    if failure_observed_at and passing_observed_at and passing_observed_at <= failure_observed_at:
+        return False
+    failure_selected = _candidate_selected_option_id(failure)
+    passing_selected = _candidate_selected_option_id(passing)
+    if failure_selected and passing_selected and failure_selected != passing_selected:
+        return False
+    required = _adapter_contract_required_tools(failure)
+    passing_required = _adapter_contract_required_tools(passing)
+    return not required or required.issubset(passing_required)
+
+
+def apply_adapter_contract_resolutions(candidates: list[dict[str, Any]]) -> dict[str, int]:
+    passing_candidates = [
+        candidate
+        for candidate in candidates
+        if isinstance(candidate.get("adapter_tool_contract"), dict)
+        and candidate["adapter_tool_contract"].get("status") == "pass"
+    ]
+    resolved = 0
+    for candidate in candidates:
+        contract = candidate.get("adapter_tool_contract")
+        if not isinstance(contract, dict) or contract.get("status") != "fail":
+            continue
+        resolver = next(
+            (
+                passing
+                for passing in sorted(
+                    passing_candidates,
+                    key=lambda item: str(item.get("observed_at") or ""),
+                    reverse=True,
+                )
+                if _contract_pass_resolves_failure(candidate, passing)
+            ),
+            None,
+        )
+        if resolver is None:
+            continue
+        candidate["adapter_contract_resolution"] = {
+            "status": "resolved_by_later_pass",
+            "resolved_by_candidate_id": safe_scalar(resolver.get("candidate_id"), 180),
+            "resolved_at": safe_scalar(resolver.get("observed_at"), 120),
+            "resolved_by_source_kind": safe_scalar(resolver.get("source_kind"), 120),
+            "required_tool_calls_satisfied": True,
+        }
+        contract["resolution_status"] = "resolved_by_later_pass"
+        contract["resolved_by_candidate_id"] = safe_scalar(resolver.get("candidate_id"), 180)
+        candidate["ready_for_adapter_contract_eval"] = False
+        candidate["adapter_contract_review_status"] = "adapter_contract_resolved"
+        if candidate.get("ready_for_prompt_eval") is not True:
+            candidate["priority"] = "normal"
+        resolved += 1
+    total_failures = sum(
+        1
+        for candidate in candidates
+        if isinstance(candidate.get("adapter_tool_contract"), dict)
+        and candidate["adapter_tool_contract"].get("status") == "fail"
+    )
+    active_failures = sum(1 for candidate in candidates if _adapter_contract_is_active_failure(candidate))
+    return {
+        "adapter_contract_failures_total": total_failures,
+        "adapter_contract_failures_resolved": resolved,
+        "adapter_contract_failures_active": active_failures,
+    }
+
+
+def adapter_contract_summary(candidates: list[dict[str, Any]]) -> dict[str, int]:
+    total_failures = sum(
+        1
+        for item in candidates
+        if isinstance(item.get("adapter_tool_contract"), dict)
+        and item["adapter_tool_contract"].get("status") == "fail"
+    )
+    resolved_failures = sum(
+        1
+        for item in candidates
+        if isinstance(item.get("adapter_tool_contract"), dict)
+        and item["adapter_tool_contract"].get("status") == "fail"
+        and isinstance(item.get("adapter_contract_resolution"), dict)
+    )
+    active_failures = sum(1 for item in candidates if _adapter_contract_is_active_failure(item))
+    ready_for_replay = sum(1 for item in candidates if item.get("ready_for_adapter_contract_eval") is True)
+    return {
+        "ready_for_adapter_contract_eval": ready_for_replay,
+        "adapter_contract_failures": active_failures,
+        "adapter_contract_failures_active": active_failures,
+        "adapter_contract_failures_total": total_failures,
+        "adapter_contract_failures_resolved": resolved_failures,
+    }
+
+
 def finalize_candidate(candidate: dict[str, Any]) -> dict[str, Any]:
     expected = expected_outcome_for(candidate["prompt"], candidate)
     candidate.update({
@@ -1343,21 +1477,14 @@ def build_eval_candidate_queue(
         sdk_candidates + nova_agent_candidates + trace_candidates + live_probe_candidates
     )
     label_summary = apply_operator_labels(candidates, file_label_payloads + operator_label_payloads, violations)
+    resolution_summary = apply_adapter_contract_resolutions(candidates)
     candidates.sort(key=_candidate_sort_key)
     truncated = len(candidates) > max_candidates
     candidates = candidates[:max(0, max_candidates)]
 
     ready_count = sum(1 for item in candidates if item.get("ready_for_prompt_eval") is True)
     manual_count = sum(1 for item in candidates if item.get("ready_for_prompt_eval") is not True)
-    adapter_contract_ready_count = sum(
-        1 for item in candidates if item.get("ready_for_adapter_contract_eval") is True
-    )
-    adapter_contract_failure_count = sum(
-        1
-        for item in candidates
-        if isinstance(item.get("adapter_tool_contract"), dict)
-        and item["adapter_tool_contract"].get("status") == "fail"
-    )
+    contract_summary = adapter_contract_summary(candidates)
     status = "ready"
     if not candidates:
         status = "empty"
@@ -1379,12 +1506,14 @@ def build_eval_candidate_queue(
             "entries_skipped_private": sdk_private + nova_agent_private + trace_private + live_probe_private,
             "candidates_total": len(candidates),
             "ready_for_prompt_eval": ready_count,
-            "ready_for_adapter_contract_eval": adapter_contract_ready_count,
-            "adapter_contract_failures": adapter_contract_failure_count,
+            **contract_summary,
             "operator_labels_read": label_summary["operator_labels_read"],
             "operator_labels_applied": label_summary["operator_labels_applied"],
             "manual_review_required": manual_count,
             "review_required": True,
+            "adapter_contract_failures_resolved_in_source": resolution_summary[
+                "adapter_contract_failures_resolved"
+            ],
         },
         "candidates": candidates,
         "violations": violations,
@@ -1416,15 +1545,7 @@ def build_eval_candidate_queue(
         payload["source_summary"]["manual_review_required"] = sum(
             1 for item in payload["candidates"] if item.get("ready_for_prompt_eval") is not True
         )
-        payload["source_summary"]["ready_for_adapter_contract_eval"] = sum(
-            1 for item in payload["candidates"] if item.get("ready_for_adapter_contract_eval") is True
-        )
-        payload["source_summary"]["adapter_contract_failures"] = sum(
-            1
-            for item in payload["candidates"]
-            if isinstance(item.get("adapter_tool_contract"), dict)
-            and item["adapter_tool_contract"].get("status") == "fail"
-        )
+        payload["source_summary"].update(adapter_contract_summary(payload["candidates"]))
         payload["source_summary"]["operator_labels_applied"] = sum(
             1 for item in payload["candidates"] if isinstance(item.get("operator_label"), dict)
         )

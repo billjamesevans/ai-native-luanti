@@ -146,6 +146,15 @@ def main(argv: list[str] | None = None) -> int:
         "adapter_contract_failures": candidate_queue.get("source_summary", {}).get(
             "adapter_contract_failures", 0
         ),
+        "adapter_contract_failures_active": candidate_queue.get("source_summary", {}).get(
+            "adapter_contract_failures_active", 0
+        ),
+        "adapter_contract_failures_total": candidate_queue.get("source_summary", {}).get(
+            "adapter_contract_failures_total", 0
+        ),
+        "adapter_contract_failures_resolved": candidate_queue.get("source_summary", {}).get(
+            "adapter_contract_failures_resolved", 0
+        ),
         "ready_for_adapter_contract_eval": candidate_queue.get("source_summary", {}).get(
             "ready_for_adapter_contract_eval", 0
         ),

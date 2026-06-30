@@ -753,7 +753,73 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(payload["source_summary"]["manual_review_required"], 1)
         self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 1)
         self.assertEqual(payload["source_summary"]["adapter_contract_failures"], 1)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_active"], 1)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_total"], 1)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_resolved"], 0)
         self.assertTrue(payload["candidates"][0]["ready_for_adapter_contract_eval"])
+
+    def test_later_contract_pass_marks_prior_failure_resolved(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            failed = agents_sdk_missing_required_tool_entry()
+            failed["created_at"] = "2026-06-30T15:04:13Z"
+            failed["request"]["context"]["player_request"] = "build a 6 wide 2 high lookout wall"
+            failed["request"]["context"]["candidate_summary"] = "platform:platform:default:4|wall:wall:default:12"
+            failed["response"]["response"].update({
+                "selected_option_id": "generated_dimensioned_wall",
+                "model_selected_option_id": "generated_dimensioned_wall",
+                "tool_decisions": {
+                    "build_option": {
+                        "selected_option_id": "generated_dimensioned_wall",
+                        "decision_source": "offline_adapter_fallback",
+                        "generated_option_status": "ready",
+                        "generated_option": {
+                            "option_id": "generated_dimensioned_wall",
+                            "build_kind": "wall",
+                            "build_width": 6,
+                            "build_height": 2,
+                            "build_material_name": "stone",
+                            "planned_node_writes": 12,
+                        },
+                        "direct_world_mutation": False,
+                    },
+                },
+            })
+            passed = agents_sdk_generated_option_entry()
+            passed["created_at"] = "2026-06-30T15:12:29Z"
+            sidecar_log.write_text(
+                json.dumps(failed) + "\n" + json.dumps(passed) + "\n",
+                encoding="utf-8",
+            )
+
+            payload = module.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T15:30:00Z",
+                max_bytes=100000,
+            )
+
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures"], 0)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_active"], 0)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_total"], 1)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_resolved"], 1)
+        self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 0)
+        resolved = next(
+            candidate
+            for candidate in payload["candidates"]
+            if candidate["case_hint"] == "model_adapter_review"
+        )
+        self.assertFalse(resolved["ready_for_adapter_contract_eval"])
+        self.assertEqual(resolved["adapter_contract_review_status"], "adapter_contract_resolved")
+        self.assertEqual(
+            resolved["adapter_contract_resolution"]["status"],
+            "resolved_by_later_pass",
+        )
+        self.assertEqual(
+            resolved["adapter_tool_contract"]["resolution_status"],
+            "resolved_by_later_pass",
+        )
 
     def test_verified_generated_option_becomes_prompt_eval_candidate(self):
         module = load_queue_module()
