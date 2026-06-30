@@ -46,7 +46,7 @@ core.ai_agent_plugin.configure({
 	},
 	agent_entity_name = helper_entity_name,
 	repair_nodes = {},
-	max_lights = 8,
+	max_lights = 16,
 	max_entity_move_distance = 16,
 	max_follow_steps = 6,
 	max_follow_step_distance = 4,

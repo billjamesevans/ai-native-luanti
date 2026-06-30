@@ -5506,6 +5506,107 @@ end)
 _G.test_ai_agent_plugin_async_model_adapter_fallback(plugin_agent)
 rawset(_G, "test_ai_agent_plugin_async_model_adapter_fallback", nil)
 
+rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
+	core.ai_agent_plugin.configure({
+		max_lights = 16,
+	})
+	local eval_reports = {}
+	local async_eval_done
+	core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+		assert(request.public_prompt == "what can you plan with tools next?")
+		assert(request.private_prompt == nil)
+		assert(request.safety.private_input_retained == false)
+		async_eval_done = done
+		return true, "queued"
+	end)
+	local queued, reason = core.ai_agent_plugin.run_prompt_eval({
+		owner = "EvalTester",
+		cases = "all",
+		context = {
+			pos = test_pos(4248),
+			world_id = "prompt-eval-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+		},
+	}, function(report)
+		eval_reports[#eval_reports + 1] = report
+	end)
+	assert(queued == true)
+	assert(reason == "queued")
+	assert(#eval_reports == 0)
+	assert(async_eval_done ~= nil)
+	async_eval_done({
+		ok = true,
+		message = "eval async adapter response",
+		adapter_name = "mock-eval-async",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			tools_enabled = { "classify_world_action" },
+		},
+	})
+	assert(#eval_reports == 1)
+	local eval_report = eval_reports[1]
+	assert(eval_report.operation == "ai_agent_plugin.run_prompt_eval")
+	assert(eval_report.ok == true, core.write_json(eval_report))
+	assert(eval_report.status == "pass")
+	assert(eval_report.owner == "EvalTester")
+	assert(#eval_report.cases == 3)
+	local eval_cases = {}
+	for _, case_report in ipairs(eval_report.cases) do
+		eval_cases[case_report.case_id] = case_report
+		assert(case_report.status == "pass")
+		assert(case_report.ok == true)
+	end
+	assert(eval_cases.build_fire.reply.status == "pending_approval")
+	assert(eval_cases.build_fire.reply.build_kind == "fire")
+	assert(eval_cases.build_fire.reply.build_material_node == "ai_runtime_test:fire")
+	assert(eval_cases.build_fire.trace.route == "deterministic_build_parser")
+	assert(eval_cases.build_fire.cleanup.action == "discard_approval")
+	assert(eval_cases.build_fire.cleanup.status == "success")
+	assert(eval_cases.tnt_wall.reply.status == "pending_approval")
+	assert(eval_cases.tnt_wall.reply.reason ~= "dangerous")
+	assert(eval_cases.tnt_wall.reply.reason ~= "unsafe")
+	assert(eval_cases.tnt_wall.reply.build_kind == "wall")
+	assert(eval_cases.tnt_wall.reply.build_material_name == "tnt")
+	assert(eval_cases.tnt_wall.reply.build_material_node == "ai_runtime_test:tnt")
+	assert(eval_cases.tnt_wall.trace.response.build_material_node == "ai_runtime_test:tnt")
+	assert(eval_cases.tnt_wall.cleanup.action == "discard_approval")
+	assert(eval_cases.tnt_wall.cleanup.status == "success")
+	assert(eval_cases.model.queued_status == "queued")
+	assert(eval_cases.model.initial_trace.route == "model_adapter_async")
+	assert(eval_cases.model.final_status == "success")
+	assert(eval_cases.model.final_trace.response.status == "success")
+	assert(eval_cases.model.final_trace.context.private_prompt == nil)
+	assert(eval_report.metrics.model_adapter_requests_delta == 1)
+	assert(eval_report.metrics.model_adapter_successes_delta == 1)
+	assert(eval_report.metrics.model_adapter_failures_delta == 0)
+	assert(eval_report.metrics.model_adapter_timeouts_delta == 0)
+	assert(eval_report.safety.audit_private_payload_retained == false)
+	local eval_pending = core.ai_agent_plugin.handle_command("EvalTester", "pending plan", {})
+	assert(eval_pending.status == "blocked")
+	assert(eval_pending.reason == "no_pending_approval")
+	core.ai_agent_plugin.set_model_adapter_async(nil)
+
+	assert(core.registered_chatcommands.ai_agent_eval ~= nil)
+	assert(core.registered_chatcommands.ai_agent_eval.privs.server == true)
+	local command_ok, command_message =
+		core.registered_chatcommands.ai_agent_eval.func("EvalCommand", "case=fire")
+	assert(command_ok == true)
+	local command_report = core.parse_json(command_message)
+	assert(command_report.operation == "ai_agent_plugin.run_prompt_eval")
+	assert(command_report.ok == true)
+	assert(command_report.status == "pass")
+	assert(#command_report.cases == 1)
+	assert(command_report.cases[1].case_id == "build_fire")
+	assert(command_report.cases[1].reply.status == "pending_approval")
+	assert(command_report.cases[1].cleanup.action == "discard_approval")
+	assert(command_report.cases[1].cleanup.status == "success")
+end)
+
+_G.test_ai_agent_plugin_prompt_eval_surface()
+rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", nil)
+
 assert(core.repair_agent ~= nil)
 core.repair_agent.configure({
 	repair_nodes = {

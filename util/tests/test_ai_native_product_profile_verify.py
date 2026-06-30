@@ -99,7 +99,7 @@ class AIProductProfileVerifierTests(unittest.TestCase):
 
         self.assertEqual(
             set(surfaces),
-            {"ai_operator_status", "ai_operator_task_control"},
+            {"ai_operator_status", "ai_operator_task_control", "ai_agent_prompt_eval"},
         )
         self.assertEqual(
             surfaces["ai_operator_status"],
@@ -121,6 +121,18 @@ class AIProductProfileVerifierTests(unittest.TestCase):
                 "command": "ai_runtime_operator_task_control",
                 "privilege": "server",
                 "mutation_scope": "receipt_gated_task_queue_only",
+                "loaded_by_default_product_profile": True,
+                "public_safe_output_required": True,
+            },
+        )
+        self.assertEqual(
+            surfaces["ai_agent_prompt_eval"],
+            {
+                "name": "ai_agent_prompt_eval",
+                "source_file": "builtin/game/ai_agent_plugin.lua",
+                "command": "ai_agent_eval",
+                "privilege": "server",
+                "mutation_scope": "read_only_prompt_eval",
                 "loaded_by_default_product_profile": True,
                 "public_safe_output_required": True,
             },
@@ -212,6 +224,7 @@ class AIProductProfileVerifierTests(unittest.TestCase):
             {
                 "ai_operator_status": "present",
                 "ai_operator_task_control": "present",
+                "ai_agent_prompt_eval": "present",
             },
         )
         for surface in runtime_surfaces.values():
