@@ -31,6 +31,7 @@ except Exception:  # pragma: no cover - offline contract tests use the fallback.
 
 
 DEFAULT_MODEL = os.getenv("AI_NATIVE_AGENT_MODEL", "gpt-4.1-mini")
+DEFAULT_MODEL_TIMEOUT_SECONDS = 18.0
 ADAPTER_NAME = "openai-agents-sdk-model-adapter"
 MAX_PROMPT_BYTES = 6000
 MAX_RESPONSE_BYTES = 4000
@@ -291,6 +292,14 @@ def _sdk_available() -> bool:
 
 def _sdk_ready() -> bool:
     return _sdk_available() and bool(os.getenv("OPENAI_API_KEY"))
+
+
+def model_timeout_seconds() -> float:
+    try:
+        timeout = float(os.getenv("AI_NATIVE_AGENT_MODEL_TIMEOUT_SECONDS", DEFAULT_MODEL_TIMEOUT_SECONDS))
+    except ValueError:
+        timeout = DEFAULT_MODEL_TIMEOUT_SECONDS
+    return max(0.05, min(60.0, timeout))
 
 
 def tool_power_manifest() -> list[dict[str, Any]]:
@@ -1720,7 +1729,7 @@ async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> d
     try:
         result = Runner.run(agent, _agent_input_from_request(request))
         if inspect.isawaitable(result):
-            result = await result
+            result = await asyncio.wait_for(result, timeout=model_timeout_seconds())
         return {
             "final_output": _bounded_text(getattr(result, "final_output", result), MAX_RESPONSE_BYTES),
             "tool_trace": _safe_log_value(tool_trace),
@@ -1805,6 +1814,13 @@ def run_model_adapter_request(
 
     try:
         agent_result = asyncio.run(_run_sdk_agent(request, model=model))
+    except asyncio.TimeoutError:
+        response = _offline_fallback(request, "agents_sdk_model_timeout")
+        response["elapsed_us"] = int((time.perf_counter() - start) * 1_000_000)
+        response["response"]["tool_decision_source"] = "offline_adapter_fallback_after_agent_timeout"
+        response["response"]["agent_model_timeout"] = True
+        _write_request_response_log(request, response)
+        return response
     except Exception as exc:  # pragma: no cover - live SDK path depends on credentials.
         response = {
             "schema_version": 1,
