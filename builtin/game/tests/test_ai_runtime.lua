@@ -5057,6 +5057,7 @@ core.ai_agent_plugin.configure({
 		tnt = "ai_runtime_test:tnt",
 	},
 	max_lights = 16,
+	agentic_build_planner_first = true,
 	capabilities = {
 		["world.read"] = true,
 		["world.place"] = true,
@@ -5194,6 +5195,95 @@ end
 local completed_agentic = core.get_ai_task(approved_agentic.task_id)
 assert(completed_agentic.status == "completed")
 assert(completed_agentic.last_result.metrics.node_writes == 4)
+
+local agentic_first_fire_pos = test_pos(4255)
+set_test_node(agentic_first_fire_pos, { name = "air" })
+local agentic_first_fire_done
+local agentic_first_fire_reply
+local agentic_first_fire_trace
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	assert(request.context.player_request == "build me a fire and only a fire")
+	assert(request.context.candidate_summary:find("fire:fire:fire:1", 1, true) ~= nil)
+	agentic_first_fire_done = done
+	return true, "queued"
+end)
+local queued_agentic_first_fire = core.ai_agent_plugin.handle_command(
+	"PlannerFireFirst", "build me a fire and only a fire", {
+		pos = agentic_first_fire_pos,
+		world_id = "agentic-build-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		on_agentic_build_planner_complete = function(reply, trace)
+			agentic_first_fire_reply = reply
+			agentic_first_fire_trace = trace
+		end,
+	})
+assert(queued_agentic_first_fire.ok == true)
+assert(queued_agentic_first_fire.action == "build_plan")
+assert(queued_agentic_first_fire.status == "queued")
+assert(queued_agentic_first_fire.reason == "agentic_build_planner_queued")
+assert(queued_agentic_first_fire.selected_candidate_id == "fire")
+local queued_agentic_first_fire_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(queued_agentic_first_fire_trace.route == "agentic_build_planner")
+agentic_first_fire_done({
+	ok = true,
+	message = "Use only the single fire option.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 72000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "fire",
+		tool_decision_source = "agents_sdk_function_tool",
+		required_tool_calls = {
+			"recall_build_prompt_memory",
+			"select_build_option",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "select_build_option" },
+		},
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "fire",
+				candidate_count = 5,
+				decision_source = "agent_selected_build_option",
+				memory_match = {
+					memory_available = true,
+					matched_case_id = "promoted_fire_only_strict_81bd6f366e",
+					case_hint = "fire_only_strict",
+				},
+			},
+		},
+		tools_enabled = { "recall_build_prompt_memory", "select_build_option" },
+	},
+})
+assert(agentic_first_fire_reply ~= nil)
+assert(agentic_first_fire_reply.status == "pending_approval")
+assert(agentic_first_fire_reply.planner_mode == "agentic_model_adapter")
+assert(agentic_first_fire_reply.selected_candidate_id == "fire")
+assert(agentic_first_fire_reply.build_kind == "fire")
+assert(agentic_first_fire_reply.build_material_name == "fire")
+assert(agentic_first_fire_reply.build_material_node == "ai_runtime_test:fire")
+assert(agentic_first_fire_reply.planned_node_writes == 1)
+assert(agentic_first_fire_reply.adapter_tool_decision_source == "agents_sdk_function_tool")
+assert(agentic_first_fire_reply.adapter_required_tool_calls[1] == "recall_build_prompt_memory")
+assert(agentic_first_fire_reply.adapter_required_tool_calls[2] == "select_build_option")
+assert(agentic_first_fire_reply.adapter_required_tool_calls_satisfied == true)
+assert(agentic_first_fire_trace ~= nil)
+assert(agentic_first_fire_trace.selection_source == "model_tool_decision")
+assert(agentic_first_fire_trace.model_selected_candidate_id == "fire")
+assert(agentic_first_fire_trace.response.selected_candidate_id == "fire")
+assert(agentic_first_fire_trace.response.adapter_tool_trace_names[1] == "recall_build_prompt_memory")
+assert(agentic_first_fire_trace.response.adapter_tool_trace_names[2] == "select_build_option")
+assert(get_test_node(agentic_first_fire_pos).name == "air")
+local discarded_agentic_first_fire = core.ai_agent_plugin.handle_command(
+	"PlannerFireFirst", "discard plan", {})
+assert(discarded_agentic_first_fire.ok == true)
+assert(discarded_agentic_first_fire.action == "discard_approval")
+assert(get_test_node(agentic_first_fire_pos).name == "air")
 local agentic_audit = core.get_ai_runtime_audit({ limit = 8 })
 for _, record in ipairs(agentic_audit) do
 	assert(record.private_payload == nil)
@@ -5481,6 +5571,7 @@ local discarded_fallback = core.ai_agent_plugin.handle_command("FallbackPlanner"
 assert(discarded_fallback.ok == true)
 assert(discarded_fallback.action == "discard_approval")
 assert(get_test_node(fallback_pos).name == "air")
+core.ai_agent_plugin.configure({ agentic_build_planner_first = false })
 end)
 
 _G.test_ai_agent_plugin_agentic_build_planner()
