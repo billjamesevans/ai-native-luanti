@@ -170,13 +170,16 @@ python3 util/ai_native_agent_eval_promote.py \
 ```
 
 The routine refresh command writes both artifacts together and is the preferred
-operator path for sidecar memory:
+operator path for sidecar memory. Include `--from-operator-feedback` so
+server-side `/ai_agent_feedback` reviews in the action log are harvested during
+the normal refresh:
 
 ```bash
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --from-operator-feedback \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \

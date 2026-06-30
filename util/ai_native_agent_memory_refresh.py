@@ -13,6 +13,7 @@ from typing import Any
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_agent_eval_promote as eval_promote
 import ai_native_agent_eval_queue as eval_queue
+import ai_native_agent_operator_feedback as operator_feedback
 
 
 def resolve_path(root: Path, value: str | Path) -> Path:
@@ -37,6 +38,8 @@ def build_memory_artifacts(
     nova_agent_logs: list[Path] | None = None,
     action_logs: list[Path] | None = None,
     operator_label_files: list[Path] | None = None,
+    from_operator_feedback: bool = False,
+    feedback_id: str | None = None,
     generated_at: str | None = None,
     candidate_queue_source_path: str | None = None,
     max_candidates: int = eval_queue.DEFAULT_MAX_CANDIDATES,
@@ -44,15 +47,32 @@ def build_memory_artifacts(
     max_cases: int = eval_promote.DEFAULT_MAX_CASES,
     max_case_pack_bytes: int = eval_promote.DEFAULT_MAX_BYTES,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
+    candidate_queue_path = candidate_queue_source_path or "ai-agent-eval-candidate-queue.json"
+    operator_label_payloads: list[dict[str, Any]] = []
+    operator_feedback_summary: dict[str, int] = {}
+    if from_operator_feedback:
+        feedback_events, read_summary = operator_feedback.read_operator_feedback_events(action_logs or [])
+        feedback_payloads, payload_summary = operator_feedback.operator_feedback_label_payloads(
+            feedback_events,
+            candidate_queue_path=candidate_queue_path,
+            generated_at=generated_at,
+            feedback_id=feedback_id,
+        )
+        operator_label_payloads = feedback_payloads
+        operator_feedback_summary.update(read_summary)
+        operator_feedback_summary.update(payload_summary)
     candidate_queue = eval_queue.build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs or [],
         nova_agent_logs=nova_agent_logs or [],
         action_logs=action_logs or [],
         operator_label_files=operator_label_files or [],
+        operator_label_payloads=operator_label_payloads,
         generated_at=generated_at,
         max_candidates=max(0, max_candidates),
         max_bytes=max(1000, max_candidate_queue_bytes),
     )
+    if operator_feedback_summary:
+        candidate_queue.setdefault("source_summary", {}).update(operator_feedback_summary)
     case_pack = eval_promote.build_case_pack(
         candidate_queue,
         generated_at=generated_at,
@@ -72,6 +92,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova sidecar request JSONL log path.")
     parser.add_argument("--action-log", action="append", default=[], help="Luanti action/debug log path containing request_trace JSON.")
     parser.add_argument("--operator-labels", action="append", default=[], help="Reviewed operator label JSON path.")
+    parser.add_argument(
+        "--from-operator-feedback",
+        action="store_true",
+        help="Harvest public-safe ai_agent_operator_feedback events from action logs as reviewed labels.",
+    )
+    parser.add_argument("--feedback-id", default=None, help="Specific ai_agent_operator_feedback feedback_id to harvest.")
     parser.add_argument("--candidate-queue-output", required=True, help="Output candidate queue JSON path.")
     parser.add_argument("--case-pack-output", required=True, help="Output prompt-memory case pack JSON path.")
     parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
@@ -97,6 +123,8 @@ def main(argv: list[str] | None = None) -> int:
         nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
         operator_label_files=operator_label_files,
+        from_operator_feedback=args.from_operator_feedback,
+        feedback_id=args.feedback_id,
         generated_at=args.generated_at,
         candidate_queue_source_path=relative_label(root, candidate_queue_output),
         max_candidates=args.max_candidates,
@@ -121,6 +149,12 @@ def main(argv: list[str] | None = None) -> int:
         ),
         "operator_labels_applied": candidate_queue.get("source_summary", {}).get(
             "operator_labels_applied", 0
+        ),
+        "operator_feedback_events_read": candidate_queue.get("source_summary", {}).get(
+            "operator_feedback_events_read", 0
+        ),
+        "operator_feedback_labels_generated": candidate_queue.get("source_summary", {}).get(
+            "operator_feedback_labels_generated", 0
         ),
         "case_pack": relative_label(root, case_pack_output),
         "case_pack_status": case_pack.get("status"),
