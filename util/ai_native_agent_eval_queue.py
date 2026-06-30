@@ -257,6 +257,13 @@ def operator_label_matches(candidate: dict[str, Any], label: dict[str, Any]) -> 
             return False
     elif label.get("prompt_normalized") != normalized_prompt(candidate.get("prompt")):
         return False
+    elif (
+        candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND
+        and isinstance(label.get("case_hint"), str)
+        and isinstance(candidate.get("case_hint"), str)
+        and label["case_hint"] != candidate["case_hint"]
+    ):
+        return False
     label_source_kind = label.get("source_kind")
     if isinstance(label_source_kind, str) and label_source_kind:
         return candidate.get("source_kind") == label_source_kind

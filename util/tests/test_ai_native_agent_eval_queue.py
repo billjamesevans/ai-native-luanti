@@ -933,6 +933,50 @@ class AgentEvalQueueTests(unittest.TestCase):
             ],
         )
 
+    def test_prompt_label_does_not_relabel_verified_live_probe_case_family(self):
+        module = load_queue_module()
+        simple_fire = verified_live_probe_payload()["cases"][0]
+        simple_fire["case_id"] = "fire_simple"
+        simple_fire["prompt"] = "build a fire"
+        stale_label = {
+            "schema_version": 1,
+            "artifact_kind": "ai_native_agent_eval_operator_labels",
+            "labels": [
+                {
+                    "label_id": "reviewed_fire_only_strict_stale",
+                    "prompt": "build a fire",
+                    "case_hint": "fire_only_strict",
+                    "expected": {
+                        "action": "build",
+                        "build_kind": "fire",
+                        "build_material_name": "fire",
+                        "planned_node_writes": 1,
+                    },
+                }
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            probe = root / "simple-fire-live-probe.json"
+            probe.write_text(
+                json.dumps(verified_live_probe_payload([simple_fire])),
+                encoding="utf-8",
+            )
+
+            payload = module.build_eval_candidate_queue(
+                verified_live_probe_paths=[probe],
+                operator_label_payloads=[stale_label],
+                generated_at="2026-06-30T16:10:00Z",
+            )
+
+        self.assertEqual(payload["source_summary"]["operator_labels_applied"], 0)
+        candidate = payload["candidates"][0]
+        self.assertEqual(candidate["prompt"], "build a fire")
+        self.assertEqual(candidate["case_hint"], "build_fire")
+        self.assertEqual(candidate["expected"]["planned_node_writes"], 1)
+        self.assertTrue(candidate["expected"]["forbidden_extra_structure"])
+        self.assertNotIn("operator_label", candidate)
+
     def test_verified_live_probe_duplicates_are_compacted_before_byte_cap(self):
         module = load_queue_module()
         older = verified_live_probe_payload()
