@@ -75,6 +75,8 @@ def validate_contract() -> dict:
         "TOOL_POWER_MANIFEST",
         "def tool_power_manifest",
         '"tool_powers": tool_power_manifest()',
+        '"tool_decisions": tool_decisions',
+        '"selected_option_id": _selected_option_id(tool_decisions)',
         '"direct_world_mutation": False',
         '"world_mutation_authority": "luanti"',
         "core.ai_model_ops.request",
@@ -102,6 +104,9 @@ def validate_contract() -> dict:
         "OPENAI_API_KEY",
         "endpoint_not_loopback",
         "no_provider_credentials_required",
+        "require_live_agent",
+        "live_agent_execution",
+        "live_web_lookup_available",
         "no_forbidden_payload_keys",
         "tool_powers_declared",
         "no_direct_world_mutation_tools",
@@ -114,7 +119,9 @@ def validate_contract() -> dict:
         "http://127.0.0.1:8766/v1/model-adapter",
         "endpoint_is_loopback",
         "core.ai_agent_plugin.set_model_adapter",
+        "core.ai_agent_plugin.set_model_adapter_async",
         "core.ai_model_ops.request",
+        "core.ai_model_ops.request_async",
         "ai_native_model_adapter_response",
         "sidecar_executes_world_mutation = false",
     ):
@@ -148,6 +155,9 @@ def validate_contract() -> dict:
         "http.llm",
         "The sidecar must not execute world mutations directly",
         "Luanti remains the only writer",
+        "--require-live-agent",
+        "agentic_execution",
+        "live_web_lookup_available",
         "OPENAI_API_KEY",
     ):
         _require(phrase in doc, "doc_missing_phrase", phrase, violations)

@@ -37,8 +37,8 @@ The Agents SDK sidecar owns:
 - `Agent` instructions and orchestration.
 - `Runner` execution.
 - `WebSearchTool` for current public web lookup when needed.
-- `function_tool` deterministic tools for runtime-capability summaries and
-  world-action classification.
+- `function_tool` deterministic tools for runtime-capability summaries,
+  world-action classification, and build-option recommendations.
 - Optional future handoffs or sandbox agents, only after the engine has a
   matching capability and approval contract.
 
@@ -62,7 +62,8 @@ builtin/game/ai_agents_sdk_adapter_plugin.lua
 Important files:
 
 - `agent.py`: Agents SDK adapter, tools, offline smoke path, and response
-  envelope conversion.
+  envelope conversion. When `AI_NATIVE_AGENT_LOG_PATH` is set, it appends
+  bounded public-safe JSONL request/response entries for post-incident review.
 - `main.py`: HTTP service with `GET /health` and `POST /v1/model-adapter`.
 - `pyproject.toml`: declares `openai-agents`.
 
@@ -82,6 +83,66 @@ uv run python main.py --host 127.0.0.1 --port 8766
 
 Live mode requires `OPENAI_API_KEY`. The key belongs in server-local secret
 configuration, never in the repository, runtime manifests, or public evidence.
+Set `AI_NATIVE_AGENT_LOG_PATH=/path/to/agents-sdk-model-adapter.jsonl` to retain
+public-safe sidecar request/response logs. The log records the public prompt,
+safe context, status, reason, elapsed time, and tool metadata; it drops private
+prompt fields, provider raw payloads, credentials, headers, and asset payloads.
+
+## Agent Improvement Loop
+
+The sidecar log is an input to the eval backlog, not just a debug file. After a
+bad or surprising Nova interaction, pair the sidecar JSONL with the Luanti
+action/debug log and build a bounded candidate queue:
+
+```bash
+python3 util/ai_native_agent_eval_queue.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The queue is public-safe and review-first. It skips entries containing private
+fields, credentials, raw provider payloads, private prompts, asset payloads, or
+private world references. Known regressions such as `build me a fire and only a
+fire` and `build a wall of tnt` are labeled with ready prompt-eval assertions;
+unknown prompts stay in `needs_operator_label` until a maintainer records the
+expected behavior.
+
+Ready candidates can then become an `ai_native_agent_prompt_eval_case_pack`:
+
+```bash
+python3 util/ai_native_agent_eval_promote.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The case pack is consumed by `custom_cases` in
+`core.ai_agent_plugin.run_prompt_eval`, not by direct world mutation. It keeps
+the sidecar as an agentic planner and Luanti as the execution authority.
+
+For build-planning requests, the sidecar response also includes a structured
+read-only tool decision:
+
+```json
+{
+  "response": {
+    "selected_option_id": "fire",
+    "tool_decisions": {
+      "build_option": {
+        "selected_option_id": "fire",
+        "direct_world_mutation": false
+      }
+    }
+  }
+}
+```
+
+The Lua planner honors that selected option only when it matches one of the
+bounded executable candidates supplied in the request. The model's prose is
+kept as player guidance; the structured `tool_decisions` field is the execution
+contract that can change the pending preview plan.
 
 Managed readiness probe, without provider credentials:
 
@@ -99,13 +160,50 @@ bounded JSON report. The report verifies `tool_powers` and confirms every
 declared tool has `direct_world_mutation = false`. It is intended for local and
 Pi release evidence before enabling live provider credentials.
 
+Live-agent readiness is a separate, stricter gate for deployments that have the
+Agents SDK dependency and a server-local `OPENAI_API_KEY` configured outside the
+repository:
+
+```bash
+uv run --project tools/agents_sdk_model_adapter \
+  python util/ai_native_agents_sdk_sidecar_readiness.py \
+  --mode managed-http \
+  --port 8766 \
+  --require-live-agent \
+  --output local/benchmarks/agents-sdk-sidecar-live-readiness.json
+```
+
+That mode keeps the endpoint loopback-only, does not print or retain the key,
+and requires provider-backed `agentic_execution = true`,
+`web_search_tool_available = true`, `live_web_lookup_available = true`,
+bounded public-safe response metadata, and `world_mutation_authority = luanti`.
+It is the evidence path for proving the sidecar is actually running Agents SDK
+agents with hosted web lookup instead of only publishing the offline contract.
+The Pi fork deploy script sets the live sidecar log to:
+
+```text
+/opt/ai-native-luanti/logs/agents-sdk-model-adapter.jsonl
+```
+
 ## Luanti Adapter
 
 The Lua adapter is disabled by default and is loaded only when:
 
 ```text
 ai_runtime.enable_agents_sdk_adapter = true
+ai_runtime.agents_sdk_adapter_timeout = 60
 ```
+
+For real server use, grant HTTP access to the profile bridge mod, not to
+builtin code or unrelated gameplay mods:
+
+```text
+secure.http_mods = ai_runtime_agents_sdk_bridge
+```
+
+`games/ai_runtime/mods/ai_runtime_agents_sdk_bridge` supplies only the Luanti
+HTTP API handle to the already-enabled builtin bridge. It does not contain
+provider credentials, endpoints, or world mutation logic.
 
 Default endpoint:
 
@@ -113,16 +211,22 @@ Default endpoint:
 http://127.0.0.1:8766/v1/model-adapter
 ```
 
-Probe command:
+Probe commands:
 
 ```text
 /ai_agents_sdk_adapter_probe
+/ai_agents_sdk_adapter_probe_async
 ```
 
-The adapter installs itself into `core.ai_agent_plugin.set_model_adapter` when
-enabled, so unknown `/nova` prompts can flow through the Agents SDK sidecar.
-The Lua side only accepts loopback endpoints by default. The sidecar can perform
-hosted web search and function-tool reasoning, but it still returns a bounded
+The adapter installs itself into `core.ai_agent_plugin.set_model_adapter` and,
+when available, `core.ai_agent_plugin.set_model_adapter_async` when enabled, so
+unknown `/nova` prompts can flow through the Agents SDK sidecar without
+spin-waiting on a live provider call. The synchronous probe is for
+contract/offline checks. Live sidecar checks should use the async probe path,
+which calls Luanti's callback HTTP API and lets the server continue stepping
+while the Agents SDK call is in flight. The Lua side only accepts loopback
+endpoints by default. The sidecar can perform hosted web search and
+function-tool reasoning, but it still returns a bounded
 `ai_native_model_adapter_response`; the engine decides whether any proposed
 world action becomes a preview, approval, rollback-backed task, or refusal.
 
@@ -134,6 +238,9 @@ Initial tools are deliberately read-only:
   already been granted.
 - `classify_world_action`: labels planned node writes as requiring preview,
   approval, and rollback before the engine may execute them.
+- `recommend_build_option`: chooses from Luanti-supplied bounded build
+  candidates for ambiguous `/nova build ...` prompts without executing world
+  mutation.
 - `WebSearchTool`: lets the agent look up current public information when the
   prompt genuinely needs it.
 
@@ -169,6 +276,7 @@ Run:
 ```bash
 python3 util/ai_native_agents_sdk_bridge_contract.py
 python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode managed-http --port 8766
+uv run --project tools/agents_sdk_model_adapter python util/ai_native_agents_sdk_sidecar_readiness.py --mode managed-http --port 8766 --require-live-agent
 python3 tools/agents_sdk_model_adapter/main.py --smoke
 bin/luantiserver --run-unittests --test-module TestAIRuntime
 ```

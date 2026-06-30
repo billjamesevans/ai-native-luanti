@@ -26,6 +26,15 @@ def load_harness_module():
     return module
 
 
+def load_agent_prompt_eval_module():
+    path = ROOT / "util" / "ai_native_agent_prompt_eval_live_probe.py"
+    assert path.is_file(), f"missing {path}"
+    spec = importlib.util.spec_from_file_location("ai_native_agent_prompt_eval_live_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class AIRuntimeVerificationHarnessTests(unittest.TestCase):
     def write_operator_status_artifact(self, path, *, payload=None, source="live_command"):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -409,6 +418,163 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
+    def write_agent_prompt_eval_live_artifact(self, path, *, adapter_mode="mock_async_adapter"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "schema_version": 1,
+            "live_result_kind": "ai_native_agent_prompt_eval_live_result",
+            "generated_at": "2026-06-28T12:00:00Z",
+            "runtime_context": {
+                "mode": "disposable_live_ai_runtime_agent_prompt_eval_probe",
+                "gameid": "ai_runtime",
+                "command": "/ai_agent_eval",
+                "adapter_mode": adapter_mode,
+                "requires_live_pi": False,
+                "requires_private_world": False,
+                "requires_private_assets": False,
+                "requires_model_network": adapter_mode == "agents_sdk_sidecar",
+                "world_mutation_performed": False,
+                "world_mutation_scope": "read_only_prompt_eval_pending_approval_cleanup",
+            },
+            "command": {
+                "fire_case_status": "pass",
+                "fire_case_ok": True,
+                "fire_case_count": 1,
+                "registered": True,
+                "server_privilege_required": True,
+            },
+            "prompt_eval": {
+                "status": "pass",
+                "ok": True,
+                "owner": "PromptEvalLive",
+                "cases_total": 5,
+                "cases_passed": 5,
+                "cases_failed": 0,
+                "case_ids": {
+                    "build_fire": True,
+                    "fire_only_strict": True,
+                    "tnt_wall": True,
+                    "agentic_build_planner": True,
+                    "model": True,
+                },
+                "cases": [
+                    {
+                        "case_id": "build_fire",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "build a fire",
+                        "action": "build",
+                        "reply_status": "pending_approval",
+                        "route": "deterministic_build_parser",
+                        "build_kind": "fire",
+                        "build_material_name": "fire",
+                        "planned_node_writes": 1,
+                        "cleanup_status": "success",
+                        "failure_count": 0,
+                    },
+                    {
+                        "case_id": "fire_only_strict",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "build me a fire and only a fire",
+                        "action": "build",
+                        "reply_status": "pending_approval",
+                        "route": "deterministic_build_parser",
+                        "build_kind": "fire",
+                        "build_material_name": "fire",
+                        "planned_node_writes": 1,
+                        "cleanup_status": "success",
+                        "failure_count": 0,
+                    },
+                    {
+                        "case_id": "tnt_wall",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "build a wall of tnt",
+                        "action": "build",
+                        "reply_status": "pending_approval",
+                        "route": "deterministic_build_parser",
+                        "build_kind": "wall",
+                        "build_material_name": "tnt",
+                        "planned_node_writes": 12,
+                        "cleanup_status": "success",
+                        "failure_count": 0,
+                    },
+                    {
+                        "case_id": "agentic_build_planner",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "build a small shelter",
+                        "action": "build",
+                        "reply_status": "queued",
+                        "final_status": "pending_approval",
+                        "route": "agentic_build_planner",
+                        "final_route": "agentic_build_planner",
+                        "build_kind": "platform",
+                        "selected_candidate_id": "platform",
+                        "candidate_count": 4,
+                        "planned_node_writes": 4,
+                        "cleanup_status": "success",
+                        "failure_count": 0,
+                    },
+                    {
+                        "case_id": "model",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "what can you plan with tools next?",
+                        "action": "model",
+                        "reply_status": "queued",
+                        "final_status": "success",
+                        "route": "model_adapter_async",
+                        "final_route": "model_adapter_async",
+                        "failure_count": 0,
+                    },
+                ],
+                "metrics": {
+                    "model_adapter_requests_delta": 2,
+                    "model_adapter_successes_delta": 2,
+                    "model_adapter_failures_delta": 0,
+                    "model_adapter_timeouts_delta": 0,
+                },
+                "safety": {
+                    "audit_private_payload_retained": False,
+                },
+            },
+            "summary": {
+                "cases_total": 5,
+                "cases_passed": 5,
+                "cases_failed": 0,
+                "build_fire_checked": True,
+                "fire_only_strict_checked": True,
+                "tnt_wall_checked": True,
+                "agentic_build_planner_checked": True,
+                "model_checked": True,
+                "model_adapter_requests": 2,
+                "model_adapter_successes": 2,
+                "model_adapter_failures": 0,
+                "model_adapter_timeouts": 0,
+            },
+            "safety": {
+                "public_safe_output": True,
+                "disposable_live_world_only": True,
+                "read_only_prompt_eval": True,
+                "pending_approvals_discarded": True,
+                "world_mutation_performed": False,
+                "no_world_mutation": True,
+                "no_raw_assets": True,
+                "no_provider_prompts": True,
+                "no_family_world_coordinates": True,
+                "no_private_prompt_retained": True,
+            },
+            "bounds": {
+                "max_bytes": 22000,
+                "output_bytes": 0,
+                "truncated": False,
+            },
+        }
+        payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
     def write_compat_import_staging_pilot_artifact(self, path):
         path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
@@ -673,7 +839,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "profile": {
                 "gameid": "ai_runtime",
                 "manifest_path": "games/ai_runtime/product_profile_manifest.json",
-                "product_mods": ["ai_runtime_base"],
+                "product_mods": ["ai_runtime_agents_sdk_bridge", "ai_runtime_base"],
             },
             "startup_inventory": [
                 {
@@ -684,6 +850,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 },
                 {
                     "name": "ai_runtime_base",
+                    "category": "first_party_plugin",
+                    "loaded_by_default_product_profile": True,
+                    "requires_explicit_dev_or_test_lane": False,
+                },
+                {
+                    "name": "ai_runtime_agents_sdk_bridge",
                     "category": "first_party_plugin",
                     "loaded_by_default_product_profile": True,
                     "requires_explicit_dev_or_test_lane": False,
@@ -740,6 +912,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 {
                     "name": "ai_operator_task_control",
                     "command": "ai_runtime_operator_task_control",
+                    "status": "present",
+                    "loaded_by_default_product_profile": True,
+                    "command_registered": True,
+                    "server_privilege_required": True,
+                    "public_safe_output_required": True,
+                },
+                {
+                    "name": "ai_agent_prompt_eval",
+                    "command": "ai_agent_eval",
                     "status": "present",
                     "loaded_by_default_product_profile": True,
                     "command_registered": True,
@@ -937,6 +1118,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     step.actual_command[step.actual_command.index("--output") + 1]
                 )
                 self.write_agent_product_loop_live_artifact(output_path)
+            if step.id == "agent_prompt_eval_live_probe":
+                output_path = pathlib.Path(
+                    step.actual_command[step.actual_command.index("--output") + 1]
+                )
+                self.write_agent_prompt_eval_live_artifact(output_path)
+                return load_harness_module().CommandRun(
+                    0, 0.25, "agent prompt eval live probe ok", ""
+                )
             if step.id == "compat_import_staging_pilot":
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
@@ -955,6 +1144,28 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             return next(runs)
 
         return run_step
+
+    def test_agent_prompt_eval_validator_requires_exact_build_write_counts(self):
+        probe = load_agent_prompt_eval_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact = pathlib.Path(tmpdir) / "agent-prompt-eval.json"
+            self.write_agent_prompt_eval_live_artifact(artifact)
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+            fire_structure = json.loads(json.dumps(payload))
+            fire_structure["prompt_eval"]["cases"][0]["planned_node_writes"] = 2
+            with self.assertRaisesRegex(ValueError, "fire must plan exactly one node write"):
+                probe.validate_live_result(fire_structure)
+
+            fire_only_structure = json.loads(json.dumps(payload))
+            fire_only_structure["prompt_eval"]["cases"][1]["planned_node_writes"] = 2
+            with self.assertRaisesRegex(ValueError, "fire-only strict must plan exactly one node write"):
+                probe.validate_live_result(fire_only_structure)
+
+            tnt_underplanned = json.loads(json.dumps(payload))
+            tnt_underplanned["prompt_eval"]["cases"][2]["planned_node_writes"] = 1
+            with self.assertRaisesRegex(ValueError, "TNT wall must plan exactly twelve node writes"):
+                probe.validate_live_result(tnt_underplanned)
 
     def test_success_manifest_is_bounded_private_safe_and_records_artifacts(self):
         harness = load_harness_module()
@@ -1020,6 +1231,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_live_command",
                     "agent_product_loop_live_probe",
+                    "agent_prompt_eval_live_probe",
                     "compat_import_staging_pilot",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
@@ -1060,6 +1272,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-agent-product-loop-live-result.json",
             )
             self.assertEqual(
+                manifest["artifact_paths"]["agent_prompt_eval_live_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-agent-prompt-eval-live-result.json",
+            )
+            self.assertEqual(
                 manifest["artifact_paths"]["compat_import_staging_pilot_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-compat-import-staging-pilot-result.json",
             )
@@ -1075,7 +1291,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(manifest["product_profile_evidence"]["game_profile"], "ai_runtime")
             self.assertEqual(
                 manifest["product_profile_evidence"]["product_mods"],
-                ["ai_runtime_base"],
+                ["ai_runtime_agents_sdk_bridge", "ai_runtime_base"],
             )
             self.assertTrue(
                 manifest["product_profile_evidence"]["dev_surfaces_disabled_by_default"]
@@ -1094,13 +1310,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["product_profile_evidence"]["runtime_surface_count"],
-                2,
+                3,
             )
             self.assertEqual(
                 manifest["product_profile_evidence"]["runtime_surface_commands"],
                 [
                     "ai_runtime_operator_status",
                     "ai_runtime_operator_task_control",
+                    "ai_agent_eval",
                 ],
             )
             self.assertEqual(manifest["operator_status_evidence"]["status"], "pass")
@@ -1358,6 +1575,90 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 0,
             )
             self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"]["live_command"],
+                "/ai_agent_eval",
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
+                5,
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_build_fire_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_fire_only_strict_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_tnt_wall_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_agentic_build_planner_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_model_checked"
+                ]
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_fire_planned_node_writes"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_fire_only_strict_planned_node_writes"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_tnt_wall_planned_node_writes"
+                ],
+                12,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_agentic_build_planner_planned_node_writes"
+                ],
+                4,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_model_adapter_requests"
+                ],
+                2,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_model_adapter_successes"
+                ],
+                2,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_adapter_mode"
+                ],
+                "mock_async_adapter",
+            )
+            self.assertFalse(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_world_mutation"
+                ]
+            )
+            self.assertEqual(
                 manifest["compat_import_staging_pilot_evidence"]["compat_import_staging_pilot_status"],
                 "pass",
             )
@@ -1431,7 +1732,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 14500)
+            self.assertLess(len(serialized), 17000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
@@ -1753,6 +2054,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_package",
                     "agent_product_loop_live_probe",
+                    "agent_prompt_eval_live_probe",
                     "compat_import_staging_pilot",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
@@ -1990,6 +2292,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_prompt_eval_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_prompt_eval_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2091,6 +2399,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_prompt_eval_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_prompt_eval_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2183,6 +2497,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_prompt_eval_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_prompt_eval_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2410,6 +2730,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_prompt_eval_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_prompt_eval_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2527,6 +2853,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_prompt_eval_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_prompt_eval_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2597,16 +2929,19 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-operator-action-approval-receipt.json",
             "ai-runtime-operator-action-execution-result.json",
             "ai-runtime-agent-product-loop-live-result.json",
+            "ai-runtime-agent-prompt-eval-live-result.json",
             "ai-runtime-compat-import-staging-pilot-result.json",
             "ai-runtime-operator-task-control-live-result.json",
             "ai-runtime-operator-task-control-command-result.json",
             "/ai_runtime_operator_status",
             "/ai_runtime_operator_task_control",
+            "/ai_agent_eval",
             "util/ai_native_operator_control_report.py",
             "util/ai_native_operator_action_approval_plan.py",
             "util/ai_native_operator_action_approval_receipt.py",
             "util/ai_native_operator_task_control_executor.py",
             "util/ai_native_agent_product_loop_live_probe.py",
+            "util/ai_native_agent_prompt_eval_live_probe.py",
             "util/ai_native_compat_import_staging_pilot.py",
             "util/ai_native_operator_task_control_live_probe.py",
             "util/ai_native_operator_task_control_command_probe.py",
@@ -2616,6 +2951,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "--operator-action-approval-receipt-max-bytes",
             "--operator-action-execution-result-max-bytes",
             "--agent-product-loop-live-result-max-bytes",
+            "--agent-prompt-eval-live-result-max-bytes",
+            "--agent-prompt-eval-live-timeout",
+            "--agent-prompt-eval-adapter-endpoint",
             "--compat-import-staging-pilot-result-max-bytes",
             "--compat-import-staging-pilot-timeout",
             "--operator-task-control-live-result-max-bytes",
@@ -2634,6 +2972,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "receipt artifacts",
             "receipt-gated task control executor",
             "first-party product-loop live result",
+            "Nova prompt eval live result",
             "compatibility import staging pilot result",
             "receipt-gated live task-control probe",
             "receipt-gated task-control command probe",
