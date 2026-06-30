@@ -510,10 +510,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "final_status": "pending_approval",
                         "route": "agentic_build_planner",
                         "final_route": "agentic_build_planner",
-                        "build_kind": "platform",
-                        "selected_candidate_id": "platform",
+                        "build_kind": "wall",
+                        "selected_candidate_id": "wall",
                         "candidate_count": 4,
-                        "planned_node_writes": 4,
+                        "planned_node_writes": 12,
                         "cleanup_status": "success",
                         "failure_count": 0,
                     },
@@ -1633,7 +1633,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_agentic_build_planner_planned_node_writes"
                 ],
-                4,
+                12,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
