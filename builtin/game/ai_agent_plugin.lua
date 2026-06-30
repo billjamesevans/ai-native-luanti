@@ -5659,7 +5659,52 @@ local function compact_eval_reply(reply)
 		planned_node_writes = reply.planned_node_writes,
 		planner_mode = reply.planner_mode,
 		selected_candidate_id = reply.selected_candidate_id,
+		adapter_selected_candidate_id = reply.adapter_selected_candidate_id,
+		model_selected_candidate_id = reply.model_selected_candidate_id,
+		selection_source = reply.selection_source,
+		intent_constraint_option_id = reply.intent_constraint_option_id,
+		intent_constraint_reason = reply.intent_constraint_reason,
 		candidate_count = reply.candidate_count,
+		adapter_tool_decision_source = reply.adapter_tool_decision_source,
+		adapter_model_selected_candidate_id =
+			reply.adapter_model_selected_candidate_id,
+		adapter_initial_model_selected_candidate_id =
+			reply.adapter_initial_model_selected_candidate_id,
+		adapter_rejected_model_selected_candidate_id =
+			reply.adapter_rejected_model_selected_candidate_id,
+		adapter_agent_repair_attempted = reply.adapter_agent_repair_attempted,
+		adapter_agent_repair_succeeded = reply.adapter_agent_repair_succeeded,
+		adapter_agent_repair_reason = reply.adapter_agent_repair_reason,
+		adapter_initial_missing_required_tool_calls =
+			reply.adapter_initial_missing_required_tool_calls,
+		adapter_required_tool_calls = reply.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls =
+			reply.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			reply.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = reply.build_option_decision_source,
+		adapter_memory_available = reply.adapter_memory_available,
+		adapter_memory_matched_case_id = reply.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = reply.adapter_memory_case_hint,
+		adapter_tool_trace_names = reply.adapter_tool_trace_names,
+		adapter_build_action_plan_status =
+			reply.adapter_build_action_plan_status,
+		adapter_build_action_plan_selected_candidate_id =
+			reply.adapter_build_action_plan_selected_candidate_id,
+		adapter_build_action_plan_step_count =
+			reply.adapter_build_action_plan_step_count,
+		adapter_build_action_plan_world_mutation_authority =
+			reply.adapter_build_action_plan_world_mutation_authority,
+		generated_build_option_status = reply.generated_build_option_status,
+		generated_build_option_reason = reply.generated_build_option_reason,
+		generated_candidate_id = reply.generated_candidate_id,
+		planner_model_status = reply.planner_model_status,
+		planner_model_reason = reply.planner_model_reason,
+		agentic_tool_success_required =
+			reply.agentic_tool_success_required,
+		agentic_planner_fallback_blocked =
+			reply.agentic_planner_fallback_blocked,
+		fallback_blocked_reason = reply.fallback_blocked_reason,
 		adapter_name = reply.adapter_name,
 		async_model_request = reply.async_model_request,
 	}
@@ -5693,7 +5738,66 @@ local function compact_eval_trace(trace)
 			planned_node_writes = response.planned_node_writes,
 			planner_mode = response.planner_mode,
 			selected_candidate_id = response.selected_candidate_id,
+			adapter_selected_candidate_id =
+				response.adapter_selected_candidate_id,
+			model_selected_candidate_id =
+				response.model_selected_candidate_id,
+			selection_source = response.selection_source,
+			intent_constraint_option_id = response.intent_constraint_option_id,
+			intent_constraint_reason = response.intent_constraint_reason,
 			candidate_count = response.candidate_count,
+			adapter_tool_decision_source =
+				response.adapter_tool_decision_source,
+			adapter_model_selected_candidate_id =
+				response.adapter_model_selected_candidate_id,
+			adapter_initial_model_selected_candidate_id =
+				response.adapter_initial_model_selected_candidate_id,
+			adapter_rejected_model_selected_candidate_id =
+				response.adapter_rejected_model_selected_candidate_id,
+			adapter_agent_repair_attempted =
+				response.adapter_agent_repair_attempted,
+			adapter_agent_repair_succeeded =
+				response.adapter_agent_repair_succeeded,
+			adapter_agent_repair_reason =
+				response.adapter_agent_repair_reason,
+			adapter_initial_missing_required_tool_calls =
+				response.adapter_initial_missing_required_tool_calls,
+			adapter_required_tool_calls =
+				response.adapter_required_tool_calls,
+			adapter_missing_required_tool_calls =
+				response.adapter_missing_required_tool_calls,
+			adapter_required_tool_calls_satisfied =
+				response.adapter_required_tool_calls_satisfied,
+			build_option_decision_source =
+				response.build_option_decision_source,
+			adapter_memory_available =
+				response.adapter_memory_available,
+			adapter_memory_matched_case_id =
+				response.adapter_memory_matched_case_id,
+			adapter_memory_case_hint =
+				response.adapter_memory_case_hint,
+			adapter_tool_trace_names =
+				response.adapter_tool_trace_names,
+			adapter_build_action_plan_status =
+				response.adapter_build_action_plan_status,
+			adapter_build_action_plan_selected_candidate_id =
+				response.adapter_build_action_plan_selected_candidate_id,
+			adapter_build_action_plan_step_count =
+				response.adapter_build_action_plan_step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				response.adapter_build_action_plan_world_mutation_authority,
+			generated_build_option_status =
+				response.generated_build_option_status,
+			generated_build_option_reason =
+				response.generated_build_option_reason,
+			generated_candidate_id = response.generated_candidate_id,
+			planner_model_status = response.planner_model_status,
+			planner_model_reason = response.planner_model_reason,
+			agentic_tool_success_required =
+				response.agentic_tool_success_required,
+			agentic_planner_fallback_blocked =
+				response.agentic_planner_fallback_blocked,
+			fallback_blocked_reason = response.fallback_blocked_reason,
 		},
 		context = {
 			build_kind = context.build_kind,

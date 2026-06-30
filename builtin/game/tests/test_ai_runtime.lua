@@ -6889,6 +6889,161 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(missing_custom_reports[1].ok == false)
 	assert(missing_custom_reports[1].status == "fail")
 	assert(missing_custom_reports[1].cases[1].case_id == "custom_cases_missing")
+
+	core.ai_agent_plugin.configure({
+		agentic_build_planner_first = true,
+		auto_apply_build_approvals = false,
+		max_lights = 16,
+	})
+	local agentic_eval_reports = {}
+	local agentic_eval_done = {}
+	local agentic_eval_requests = {}
+	core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+		agentic_eval_requests[#agentic_eval_requests + 1] = request
+		agentic_eval_done[#agentic_eval_done + 1] = done
+		assert(request.context.intent == "build_planning")
+		assert(request.private_prompt == nil)
+		return true, "queued"
+	end)
+	local agentic_queued, agentic_reason = core.ai_agent_plugin.run_prompt_eval({
+		owner = "AgenticEvalTester",
+		cases = "fire,fire_only,tnt,agentic",
+		context = {
+			pos = test_pos(4268),
+			world_id = "prompt-eval-agentic-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+		},
+	}, function(report)
+		agentic_eval_reports[#agentic_eval_reports + 1] = report
+	end)
+	assert(agentic_queued == true)
+	assert(agentic_reason == "queued")
+	assert(#agentic_eval_done == 4)
+	local function complete_agentic_prompt_eval_request(request, done)
+		local prompt = request.context.player_request
+		local selected_option_id = "platform"
+		local case_hint = "agentic_build_planner"
+		local plan_step_count = 4
+		if prompt == "build a wall of tnt" then
+			selected_option_id = "tnt_wall"
+			case_hint = "tnt_wall"
+			plan_step_count = 12
+		elseif prompt and prompt:find("fire", 1, true) then
+			selected_option_id = "fire"
+			case_hint = "fire_only_strict"
+			plan_step_count = 1
+		end
+		done({
+			ok = true,
+			message = "Use the tool-selected build option.",
+			adapter_name = "mock-agentic-prompt-eval",
+			elapsed_us = 72000,
+			response = {
+				agentic_execution = true,
+				selected_option_id = selected_option_id,
+				model_selected_option_id = selected_option_id,
+				tool_decision_source = "agents_sdk_function_tool",
+				required_tool_calls = {
+					"recall_build_prompt_memory",
+					"select_build_option",
+					"plan_build_actions",
+				},
+				missing_required_tool_calls = {},
+				required_tool_calls_satisfied = true,
+				tool_trace = {
+					{ tool_name = "recall_build_prompt_memory" },
+					{ tool_name = "select_build_option" },
+					{ tool_name = "plan_build_actions" },
+				},
+				build_action_plan = {
+					status = "ready",
+					selected_option_id = selected_option_id,
+					step_count = plan_step_count,
+					world_mutation_authority = "luanti",
+				},
+				tool_decisions = {
+					build_option = {
+						selected_option_id = selected_option_id,
+						candidate_count = request.context.candidate_count,
+						decision_source = "agent_selected_build_option",
+						memory_match = {
+							memory_available = true,
+							matched_case_id = "promoted_" .. case_hint,
+							case_hint = case_hint,
+						},
+					},
+					build_action_plan = {
+						status = "ready",
+						selected_option_id = selected_option_id,
+						step_count = plan_step_count,
+						world_mutation_authority = "luanti",
+					},
+				},
+			},
+		})
+	end
+	for index, done in ipairs(agentic_eval_done) do
+		complete_agentic_prompt_eval_request(agentic_eval_requests[index], done)
+	end
+	assert(#agentic_eval_reports == 1)
+	local agentic_report = agentic_eval_reports[1]
+	assert(agentic_report.ok == true, core.write_json(agentic_report))
+	assert(agentic_report.status == "pass")
+	local agentic_cases = {}
+	for _, case_report in ipairs(agentic_report.cases) do
+		agentic_cases[case_report.case_id] = case_report
+	end
+	local function assert_agentic_prompt_eval_case(case_report, selected_option_id)
+		assert(case_report ~= nil)
+		assert(case_report.initial_trace.route == "agentic_build_planner")
+		assert(case_report.final_trace.route == "agentic_build_planner")
+		assert(case_report.final_reply.status == "pending_approval")
+		assert(case_report.final_reply.selected_candidate_id == selected_option_id)
+		assert(case_report.final_reply.adapter_selected_candidate_id
+			== selected_option_id)
+		assert(case_report.final_reply.model_selected_candidate_id
+			== selected_option_id)
+		assert(case_report.final_reply.adapter_tool_decision_source
+			== "agents_sdk_function_tool")
+		assert(case_report.final_reply.adapter_required_tool_calls[1]
+			== "recall_build_prompt_memory")
+		assert(case_report.final_reply.adapter_required_tool_calls[2]
+			== "select_build_option")
+		assert(case_report.final_reply.adapter_required_tool_calls[3]
+			== "plan_build_actions")
+		assert(case_report.final_reply.adapter_missing_required_tool_calls[1] == nil)
+		assert(case_report.final_reply.adapter_required_tool_calls_satisfied == true)
+		assert(case_report.final_reply.adapter_tool_trace_names[1]
+			== "recall_build_prompt_memory")
+		assert(case_report.final_reply.adapter_tool_trace_names[2]
+			== "select_build_option")
+		assert(case_report.final_reply.adapter_tool_trace_names[3]
+			== "plan_build_actions")
+		assert(case_report.final_reply.adapter_build_action_plan_status == "ready")
+		assert(case_report.final_reply.adapter_build_action_plan_step_count > 0)
+		assert(case_report.final_reply.adapter_build_action_plan_world_mutation_authority
+			== "luanti")
+		assert(case_report.final_reply.build_option_decision_source
+			== "agent_selected_build_option")
+		assert(case_report.final_trace.response.adapter_tool_decision_source
+			== "agents_sdk_function_tool")
+		assert(case_report.final_trace.response.adapter_required_tool_calls[3]
+			== "plan_build_actions")
+		assert(case_report.final_trace.response.adapter_tool_trace_names[3]
+			== "plan_build_actions")
+		assert(case_report.cleanup.status == "success")
+	end
+	assert_agentic_prompt_eval_case(agentic_cases.build_fire, "fire")
+	assert_agentic_prompt_eval_case(agentic_cases.fire_only_strict, "fire")
+	assert_agentic_prompt_eval_case(agentic_cases.tnt_wall, "tnt_wall")
+	assert_agentic_prompt_eval_case(agentic_cases.agentic_build_planner, "platform")
+	core.ai_agent_plugin.set_model_adapter_async(nil)
+	core.ai_agent_plugin.configure({
+		agentic_build_planner_first = false,
+		auto_apply_build_approvals = false,
+		max_lights = 16,
+	})
 	end)
 
 _G.test_ai_agent_plugin_prompt_eval_surface()
