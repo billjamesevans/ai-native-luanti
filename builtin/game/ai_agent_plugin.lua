@@ -10,6 +10,7 @@ local approval_sequence = 0
 local request_trace_sequence = 0
 local request_traces = {}
 local model_adapter = nil
+local model_adapter_async = nil
 local default_capabilities = {}
 local settings = {
 	capability_profile = nil,
@@ -812,6 +813,12 @@ local function format_command_reply(result)
 			append(lines, "candidates=" .. tostring(result.candidate_count))
 		end
 	end
+	if result.trace_id then
+		append(lines, "trace_id=" .. tostring(result.trace_id))
+	end
+	if result.adapter_name then
+		append(lines, "adapter=" .. tostring(result.adapter_name))
+	end
 	if result.agent_id then
 		append(lines, "agent_id=" .. tostring(result.agent_id))
 	end
@@ -1025,6 +1032,15 @@ end
 function plugin.set_model_adapter(adapter)
 	assert(adapter == nil or type(adapter) == "function", "Model adapter must be a function")
 	model_adapter = adapter
+	if adapter ~= nil then
+		model_adapter_async = nil
+	end
+end
+
+function plugin.set_model_adapter_async(adapter)
+	assert(adapter == nil or type(adapter) == "function",
+		"Async model adapter must be a function")
+	model_adapter_async = adapter
 end
 
 local function remember_task(name, task_id)
@@ -3253,24 +3269,94 @@ end
 
 local function handle_model(name, prompt, context)
 	context = context or {}
-	local trace = start_request_trace(name, "model", "model_adapter", prompt, context, {
-		adapter_name = context.adapter_name or "ai_agent_plugin",
-	})
+	local adapter_name = context.adapter_name or "ai_agent_plugin"
+	local has_async_adapter = model_adapter_async ~= nil
+		and core.ai_model_ops and core.ai_model_ops.request_async
+	local trace = start_request_trace(name, "model",
+		has_async_adapter and "model_adapter_async" or "model_adapter",
+		prompt, context, {
+			adapter_name = adapter_name,
+		})
+	if has_async_adapter then
+		local completed = false
+		local returned_to_player = false
+		local completed_reply
+		local function complete_async_model(result)
+			completed = true
+			completed_reply = public_reply(name, "model",
+				result.ok and "success" or "blocked",
+				result.message or "Model adapter did not return a response.", {
+					reason = result.reason,
+					trace_id = trace.trace_id,
+					adapter_name = adapter_name,
+					async_model_request = true,
+				})
+			finish_request_trace(trace, completed_reply, {
+				adapter_name = adapter_name,
+				async_model_request = true,
+			})
+			if returned_to_player and core.chat_send_player then
+				core.chat_send_player(name, plugin.format_reply(completed_reply))
+			end
+		end
+		local queued, reason = core.ai_model_ops.request_async(prompt, {
+			agent_id = agent_id_for(name),
+			owner = name,
+			task_id = context.task_id,
+			private_prompt = context.private_prompt,
+			adapter_async = model_adapter_async,
+			adapter_name = adapter_name,
+			context = context,
+		}, complete_async_model)
+		if not queued then
+			return finish_request_trace(trace, public_reply(name, "model", "blocked",
+				"Model adapter request could not be queued.", {
+					reason = reason,
+					trace_id = trace.trace_id,
+					adapter_name = adapter_name,
+					async_model_request = true,
+				}), {
+					adapter_name = adapter_name,
+					async_model_request = true,
+				})
+		end
+		if completed then
+			return completed_reply
+		end
+		local queued_reply = public_reply(name, "model", "queued",
+			"Model adapter request queued.", {
+				reason = "model_adapter_queued",
+				trace_id = trace.trace_id,
+				adapter_name = adapter_name,
+				async_model_request = true,
+			})
+		trace.response = {
+			ok = true,
+			status = "queued",
+			action = "model",
+			reason = "model_adapter_queued",
+			message = "Model adapter request queued.",
+			trace_id = trace.trace_id,
+		}
+		returned_to_player = true
+		return queued_reply
+	end
 	local result = core.ai_model_ops.request(prompt, {
 		agent_id = agent_id_for(name),
 		owner = name,
 		task_id = context.task_id,
 		private_prompt = context.private_prompt,
 		adapter = model_adapter,
-		adapter_name = context.adapter_name or "ai_agent_plugin",
+		adapter_name = adapter_name,
 		context = context,
 	})
 	return finish_request_trace(trace, public_reply(name, "model",
 		result.ok and "success" or "blocked",
 		result.message or "Model adapter did not return a response.", {
 			reason = result.reason,
+			adapter_name = adapter_name,
 		}), {
-			adapter_name = context.adapter_name or "ai_agent_plugin",
+			adapter_name = adapter_name,
 		})
 end
 

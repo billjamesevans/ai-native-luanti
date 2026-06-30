@@ -245,6 +245,11 @@ function plugin.install_model_adapter()
 	core.ai_agent_plugin.set_model_adapter(function(request)
 		return plugin.call_sidecar(request)
 	end)
+	if core.ai_agent_plugin.set_model_adapter_async then
+		core.ai_agent_plugin.set_model_adapter_async(function(request, callback)
+			return plugin.call_sidecar_async(request, callback)
+		end)
+	end
 	return true, "installed"
 end
 

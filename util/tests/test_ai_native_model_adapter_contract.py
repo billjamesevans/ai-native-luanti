@@ -77,9 +77,17 @@ class AIModelAdapterContractTests(unittest.TestCase):
             report["contract"]["runtime_entrypoint"],
             "core.ai_model_ops.request",
         )
+        self.assertIn(
+            "core.ai_model_ops.request_async",
+            report["contract"]["runtime_entrypoints"],
+        )
         self.assertEqual(
             report["contract"]["agent_plugin_entrypoint"],
             "core.ai_agent_plugin.set_model_adapter",
+        )
+        self.assertIn(
+            "core.ai_agent_plugin.set_model_adapter_async",
+            report["contract"]["agent_plugin_entrypoints"],
         )
 
     def test_cli_writes_machine_readable_report(self):

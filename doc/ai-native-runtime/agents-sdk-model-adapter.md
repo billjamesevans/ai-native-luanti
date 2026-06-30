@@ -152,13 +152,15 @@ Probe commands:
 /ai_agents_sdk_adapter_probe_async
 ```
 
-The adapter installs itself into `core.ai_agent_plugin.set_model_adapter` when
-enabled, so unknown `/nova` prompts can flow through the Agents SDK sidecar.
-The synchronous probe is for contract/offline checks. Live sidecar checks should
-use the async probe path, which calls Luanti's callback HTTP API and lets the
-server continue stepping while the Agents SDK call is in flight. The Lua side
-only accepts loopback endpoints by default. The sidecar can perform hosted web
-search and function-tool reasoning, but it still returns a bounded
+The adapter installs itself into `core.ai_agent_plugin.set_model_adapter` and,
+when available, `core.ai_agent_plugin.set_model_adapter_async` when enabled, so
+unknown `/nova` prompts can flow through the Agents SDK sidecar without
+spin-waiting on a live provider call. The synchronous probe is for
+contract/offline checks. Live sidecar checks should use the async probe path,
+which calls Luanti's callback HTTP API and lets the server continue stepping
+while the Agents SDK call is in flight. The Lua side only accepts loopback
+endpoints by default. The sidecar can perform hosted web search and
+function-tool reasoning, but it still returns a bounded
 `ai_native_model_adapter_response`; the engine decides whether any proposed
 world action becomes a preview, approval, rollback-backed task, or refusal.
 

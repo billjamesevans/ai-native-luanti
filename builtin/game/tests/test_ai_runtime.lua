@@ -5439,6 +5439,73 @@ assert(timeout_record.status == "timeout")
 assert(timeout_record.private_payload == nil)
 assert(timeout_record.payload_retained == false)
 
+rawset(_G, "test_ai_agent_plugin_async_model_adapter_fallback", function(plugin_agent)
+	local async_adapter_calls = {}
+	local async_adapter_done
+	local before_async_metrics = core.get_ai_runtime_metrics()
+	core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+		async_adapter_calls[#async_adapter_calls + 1] = request
+		async_adapter_done = done
+		return true, "queued"
+	end)
+	local async_reply = core.ai_agent_plugin.handle_command("Wills", "what can you plan with tools next?", {
+		private_prompt = "synthetic async private prompt",
+	})
+	assert(async_reply.ok == true)
+	assert(async_reply.action == "model")
+	assert(async_reply.status == "queued")
+	assert(async_reply.reason == "model_adapter_queued")
+	assert(async_reply.trace_id ~= nil)
+	assert(async_reply.async_model_request == true)
+	assert(async_reply.adapter_name == "ai_agent_plugin")
+	assert(#async_adapter_calls == 1)
+	assert(async_adapter_calls[1].agent_id == plugin_agent.agent_id)
+	assert(async_adapter_calls[1].public_prompt == "what can you plan with tools next?")
+	assert(async_adapter_calls[1].private_prompt == nil)
+	assert(async_adapter_calls[1].safety.private_input_retained == false)
+	local queued_async_trace = core.ai_agent_plugin.get_model_traces({ limit = 1 })[1]
+	assert(queued_async_trace.trace_id == async_reply.trace_id)
+	assert(queued_async_trace.action == "model")
+	assert(queued_async_trace.route == "model_adapter_async")
+	assert(queued_async_trace.response.status == "queued")
+	assert(queued_async_trace.context.private_prompt == nil)
+
+	assert(async_adapter_done ~= nil)
+	async_adapter_done({
+		ok = true,
+		message = "async adapter response",
+		adapter_name = "mock-async",
+		elapsed_us = 75000,
+		response = {
+			agentic_execution = true,
+			tools_enabled = { "classify_world_action" },
+		},
+	})
+	local completed_async_trace = core.ai_agent_plugin.get_model_traces({ limit = 1 })[1]
+	assert(completed_async_trace.trace_id == async_reply.trace_id)
+	assert(completed_async_trace.response.status == "success")
+	assert(completed_async_trace.response.message == "async adapter response")
+	assert(completed_async_trace.async_model_request == true)
+	local after_async_metrics = core.get_ai_runtime_metrics()
+	assert(after_async_metrics.model_adapter_requests == before_async_metrics.model_adapter_requests + 1)
+	assert(after_async_metrics.model_adapter_successes == before_async_metrics.model_adapter_successes + 1)
+	assert(after_async_metrics.model_adapter_failures == before_async_metrics.model_adapter_failures)
+	assert(after_async_metrics.model_adapter_timeouts == before_async_metrics.model_adapter_timeouts)
+	local async_audit = core.get_ai_runtime_audit({ limit = 2 })
+	assert(async_audit[1].event_type == "model.request")
+	assert(async_audit[1].private_payload == nil)
+	assert(async_audit[1].payload_retained == false)
+	assert(async_audit[2].event_type == "model.adapter")
+	assert(async_audit[2].adapter_name == "mock-async")
+	assert(async_audit[2].status == "success")
+	assert(async_audit[2].private_payload == nil)
+	assert(async_audit[2].payload_retained == false)
+	core.ai_agent_plugin.set_model_adapter_async(nil)
+end)
+
+_G.test_ai_agent_plugin_async_model_adapter_fallback(plugin_agent)
+rawset(_G, "test_ai_agent_plugin_async_model_adapter_fallback", nil)
+
 assert(core.repair_agent ~= nil)
 core.repair_agent.configure({
 	repair_nodes = {
