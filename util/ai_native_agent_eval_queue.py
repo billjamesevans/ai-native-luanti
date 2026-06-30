@@ -1534,20 +1534,22 @@ def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
         return 0
     if isinstance(candidate.get("adapter_contract_resolution"), dict):
         return 1
+    if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
+        return 2
     expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
     selected = expected.get("selected_candidate_id")
     if (
         str(candidate.get("case_hint") or "").startswith("generated_")
         or (isinstance(selected, str) and selected.startswith("generated_"))
     ):
-        return 2
-    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 3
-    if isinstance(candidate.get("operator_label"), dict):
+    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 4
-    if candidate.get("ready_for_prompt_eval") is True:
+    if isinstance(candidate.get("operator_label"), dict):
         return 5
-    return 6
+    if candidate.get("ready_for_prompt_eval") is True:
+        return 6
+    return 7
 
 
 def _candidate_sort_key(candidate: dict[str, Any]) -> tuple[int, int, str, str]:
