@@ -155,6 +155,42 @@ def operator_labels_payload(prompt="build a bridge"):
     }
 
 
+def operator_feedback_line(prompt="build a bridge"):
+    payload = {
+        "schema_version": 1,
+        "event_kind": "ai_agent_operator_feedback",
+        "feedback": {
+            "feedback_id": "operator_feedback:11",
+            "owner": "Eval",
+            "agent_id": "nova_agent:Eval:guide",
+            "source_trace_id": "nova_trace:11",
+            "prompt": prompt,
+            "case_hint": "stone_bridge_platform",
+            "expected": {
+                "action": "build",
+                "build_kind": "platform",
+                "build_material_name": "stone",
+                "planned_node_writes": 12,
+                "route": "agentic_build_planner",
+            },
+            "review": {
+                "operator_reviewed": True,
+                "review_source": "ai_agent_feedback_chatcommand",
+                "no_world_mutation": True,
+            },
+        },
+        "safety": {
+            "public_safe_output": True,
+            "operator_reviewed": True,
+            "no_world_mutation": True,
+            "no_raw_assets": True,
+            "no_provider_prompts": True,
+            "no_family_world_coordinates": True,
+        },
+    }
+    return "[ai_agent_plugin] operator_feedback=" + json.dumps(payload, sort_keys=True)
+
+
 class AgentMemoryRefreshTests(unittest.TestCase):
     def test_builds_queue_and_case_pack_from_sidecar_player_request(self):
         module = load_refresh_module()
@@ -251,6 +287,36 @@ class AgentMemoryRefreshTests(unittest.TestCase):
         self.assertEqual(pack["cases"][0]["case_hint"], "stone_bridge_platform")
         self.assertEqual(pack["cases"][0]["promotion"]["mode"], "operator_label_overlay")
 
+    def test_refresh_harvests_operator_feedback_from_action_log(self):
+        module = load_refresh_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            action_log = root / "debug.log"
+            entry = build_planning_sidecar_entry()
+            entry["request"]["context"]["player_request"] = "build a bridge"
+            sidecar_log.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+            action_log.write_text(operator_feedback_line("build a bridge") + "\n", encoding="utf-8")
+
+            queue, pack = module.build_memory_artifacts(
+                agents_sdk_logs=[sidecar_log],
+                action_logs=[action_log],
+                from_operator_feedback=True,
+                generated_at="2026-06-30T13:30:00Z",
+                candidate_queue_source_path="local/benchmarks/ai-agent-eval-candidate-queue.json",
+            )
+
+        self.assertEqual(queue["status"], "ready")
+        self.assertEqual(queue["source_summary"]["operator_feedback_events_read"], 1)
+        self.assertEqual(queue["source_summary"]["operator_feedback_labels_generated"], 1)
+        self.assertEqual(queue["source_summary"]["operator_labels_read"], 1)
+        self.assertEqual(queue["source_summary"]["operator_labels_applied"], 1)
+        self.assertEqual(queue["candidates"][0]["review_status"], "operator_labeled_candidate_ready")
+        self.assertEqual(queue["candidates"][0]["expected"]["build_kind"], "platform")
+        self.assertEqual(pack["status"], "ready")
+        self.assertEqual(pack["summary"]["cases_total"], 1)
+        self.assertEqual(pack["cases"][0]["case_hint"], "stone_bridge_platform")
+
     def test_cli_writes_refresh_artifacts(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)
@@ -298,6 +364,54 @@ class AgentMemoryRefreshTests(unittest.TestCase):
             self.assertEqual(summary["operator_labels_applied"], 0)
             self.assertEqual(json.loads(candidate_queue.read_text(encoding="utf-8"))["status"], "ready")
             self.assertEqual(json.loads(case_pack.read_text(encoding="utf-8"))["summary"]["cases_total"], 2)
+
+    def test_cli_harvests_operator_feedback_from_action_log(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            action_log = root / "debug.log"
+            candidate_queue = root / "ai-agent-eval-candidate-queue.json"
+            case_pack = root / "ai-agent-prompt-eval-case-pack.json"
+            entry = build_planning_sidecar_entry()
+            entry["request"]["context"]["player_request"] = "build a bridge"
+            sidecar_log.write_text(json.dumps(entry) + "\n", encoding="utf-8")
+            action_log.write_text(operator_feedback_line("build a bridge") + "\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(REFRESH),
+                    "--root",
+                    str(root),
+                    "--agents-sdk-log",
+                    str(sidecar_log),
+                    "--action-log",
+                    str(action_log),
+                    "--from-operator-feedback",
+                    "--candidate-queue-output",
+                    str(candidate_queue),
+                    "--case-pack-output",
+                    str(case_pack),
+                    "--generated-at",
+                    "2026-06-30T13:30:00Z",
+                ],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            summary = json.loads(completed.stdout)
+            queue = json.loads(candidate_queue.read_text(encoding="utf-8"))
+            pack = json.loads(case_pack.read_text(encoding="utf-8"))
+
+            self.assertEqual(summary["case_pack_status"], "ready")
+            self.assertEqual(summary["operator_feedback_events_read"], 1)
+            self.assertEqual(summary["operator_feedback_labels_generated"], 1)
+            self.assertEqual(summary["operator_labels_applied"], 1)
+            self.assertEqual(queue["candidates"][0]["review_status"], "operator_labeled_candidate_ready")
+            self.assertEqual(pack["summary"]["cases_total"], 1)
 
 
 if __name__ == "__main__":
