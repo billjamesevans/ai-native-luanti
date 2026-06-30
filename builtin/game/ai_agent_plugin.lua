@@ -39,6 +39,7 @@ local settings = {
 	max_repair_radius = 2,
 	max_defend_distance = 8,
 	agentic_build_planner_first = false,
+	auto_apply_build_approvals = false,
 	capabilities = table.copy(default_capabilities),
 }
 
@@ -392,6 +393,9 @@ local function finish_request_trace(trace, result, extra)
 		message = bounded_trace_text(result and result.message, 1000),
 		approval_id = result and result.approval_id,
 		task_id = result and result.task_id,
+		approved_action = result and result.approved_action,
+		auto_applied_approval = result and result.auto_applied_approval,
+		auto_apply_policy = result and result.auto_apply_policy,
 		build_kind = result and result.build_kind,
 		build_width = result and result.build_width,
 		build_depth = result and result.build_depth,
@@ -1027,6 +1031,10 @@ function plugin.configure(options)
 	if options.agentic_build_planner_first ~= nil then
 		settings.agentic_build_planner_first =
 			options.agentic_build_planner_first == true
+	end
+	if options.auto_apply_build_approvals ~= nil then
+		settings.auto_apply_build_approvals =
+			options.auto_apply_build_approvals == true
 	end
 	if options.capabilities then
 		assert(type(options.capabilities) == "table", "Capabilities must be a table")
@@ -2818,6 +2826,45 @@ local function handle_build_plan(name, context)
 	})
 end
 
+function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
+	player_pending_approvals[name] = nil
+	local queued = queue_build_task(name, pending.context)
+	queued.message = "Build plan auto-applied and queued."
+	queued.auto_applied_approval = true
+	queued.auto_apply_policy = "ai_runtime.auto_apply_build_approvals"
+	queued.approved_action = "build"
+	queued.approval_id = pending.approval_id
+	queued.pending_action = nil
+	queued.plan = plan
+	queued.plan_status = result.status
+	queued.planned_node_writes = pending.planned_node_writes
+	queued.build_kind = pending.build_kind
+	queued.build_width = pending.build_width
+	queued.build_depth = pending.build_depth
+	queued.build_height = pending.build_height
+	queued.build_material_name = pending.build_material_name
+	queued.build_material_node = pending.build_material_node
+	queued.planner_mode = pending.planner_mode
+	queued.selected_candidate_id = pending.selected_candidate_id
+	queued.adapter_selected_candidate_id = pending.adapter_selected_candidate_id
+	queued.model_selected_candidate_id = pending.model_selected_candidate_id
+	queued.selection_source = pending.selection_source
+	queued.adapter_tool_decision_source = pending.adapter_tool_decision_source
+	queued.adapter_required_tool_calls = pending.adapter_required_tool_calls
+	queued.adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls
+	queued.adapter_required_tool_calls_satisfied =
+		pending.adapter_required_tool_calls_satisfied
+	queued.adapter_build_action_plan_status =
+		pending.adapter_build_action_plan_status
+	queued.adapter_build_action_plan_selected_candidate_id =
+		pending.adapter_build_action_plan_selected_candidate_id
+	queued.adapter_build_action_plan_step_count =
+		pending.adapter_build_action_plan_step_count
+	queued.adapter_build_action_plan_world_mutation_authority =
+		pending.adapter_build_action_plan_world_mutation_authority
+	return queued
+end
+
 local function create_build_pending_reply(name, context, message, extra)
 	context = context or {}
 	extra = extra or {}
@@ -2917,10 +2964,19 @@ local function create_build_pending_reply(name, context, message, extra)
 				generated_candidate_id = extra.generated_candidate_id,
 				planner_model_status = extra.planner_model_status,
 			planner_model_reason = extra.planner_model_reason,
-			planner_guidance = extra.planner_guidance,
+				planner_guidance = extra.planner_guidance,
 			trace_id = extra.trace_id,
 			adapter_name = extra.adapter_name,
 		})
+	if settings.auto_apply_build_approvals == true
+			and result
+			and result.ok == true
+			and result.status == "success"
+			and plan
+			and plan.will_mutate == false then
+		return plugin.auto_apply_build_pending_reply(name, pending, result, plan),
+			result, plan, pending
+	end
 	return reply, result, plan, pending
 end
 
