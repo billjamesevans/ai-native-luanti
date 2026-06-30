@@ -121,7 +121,8 @@ python3 util/ai_native_agent_memory_refresh.py \
   --from-operator-feedback \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
-  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json
+  --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --review-output local/benchmarks/ai-agent-review-queue.json
 ```
 
 For build-planning logs, `context.player_request` becomes the reviewed memory
@@ -129,6 +130,20 @@ prompt so future agent tool calls can match the exact player command.
 Unknown prompts stay in manual review until a maintainer supplies a public-safe
 `ai_native_agent_eval_operator_labels` file with a replayable build-output
 expectation.
+The optional review queue is the project-manager view of the same loop: it
+summarizes manual-review candidates, active adapter-contract regressions,
+resolved failures, verified live-probe coverage, and the next action to take.
+It is bounded and public-safe, and it does not include provider prompts,
+credentials, raw assets, or family-world coordinates.
+
+Inspect an existing queue and case pack with:
+
+```bash
+python3 util/ai_native_agent_review_queue.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --case-pack local/benchmarks/ai-agent-prompt-eval-case-pack.json \
+  --output local/benchmarks/ai-agent-review-queue.json
+```
 
 For a reviewed correction where the expected build output is known, create the
 candidate queue, label artifact, and prompt-memory case pack together:

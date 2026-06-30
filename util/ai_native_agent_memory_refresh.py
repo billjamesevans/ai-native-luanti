@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_agent_eval_promote as eval_promote
 import ai_native_agent_eval_queue as eval_queue
 import ai_native_agent_operator_feedback as operator_feedback
+import ai_native_agent_review_queue as review_queue
 
 
 def resolve_path(root: Path, value: str | Path) -> Path:
@@ -103,6 +104,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--feedback-id", default=None, help="Specific ai_agent_operator_feedback feedback_id to harvest.")
     parser.add_argument("--candidate-queue-output", required=True, help="Output candidate queue JSON path.")
     parser.add_argument("--case-pack-output", required=True, help="Output prompt-memory case pack JSON path.")
+    parser.add_argument("--review-output", default=None, help="Optional output Nova agent review queue JSON path.")
     parser.add_argument("--generated-at", default=None, help="ISO timestamp for deterministic artifacts.")
     parser.add_argument("--max-candidates", type=int, default=eval_queue.DEFAULT_MAX_CANDIDATES)
     parser.add_argument("--max-candidate-queue-bytes", type=int, default=eval_queue.DEFAULT_MAX_BYTES)
@@ -121,6 +123,7 @@ def main(argv: list[str] | None = None) -> int:
     operator_label_files = [resolve_path(root, path) for path in args.operator_labels]
     candidate_queue_output = resolve_path(root, args.candidate_queue_output)
     case_pack_output = resolve_path(root, args.case_pack_output)
+    review_output = resolve_path(root, args.review_output) if args.review_output else None
 
     candidate_queue, case_pack = build_memory_artifacts(
         agents_sdk_logs=agents_sdk_logs,
@@ -139,6 +142,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     write_json(candidate_queue_output, candidate_queue)
     write_json(case_pack_output, case_pack)
+    review_report: dict[str, Any] | None = None
+    if review_output is not None:
+        review_report = review_queue.build_review_queue(
+            candidate_queue,
+            case_pack,
+            generated_at=args.generated_at,
+            candidate_queue_path=relative_label(root, candidate_queue_output),
+            case_pack_path=relative_label(root, case_pack_output),
+        )
+        write_json(review_output, review_report)
 
     summary = {
         "candidate_queue": relative_label(root, candidate_queue_output),
@@ -183,8 +196,25 @@ def main(argv: list[str] | None = None) -> int:
         "case_pack_status": case_pack.get("status"),
         "cases_total": case_pack.get("summary", {}).get("cases_total", 0),
     }
+    if review_report is not None and review_output is not None:
+        summary.update({
+            "review_queue": relative_label(root, review_output),
+            "review_queue_status": review_report.get("status"),
+            "review_items_total": review_report.get("summary", {}).get(
+                "review_items_total", 0
+            ),
+            "review_action_items_total": review_report.get("summary", {}).get(
+                "action_items_total", 0
+            ),
+            "manual_review_required": review_report.get("summary", {}).get(
+                "manual_review_required", 0
+            ),
+        })
     print(json.dumps(summary, sort_keys=True))
-    return 0 if "fail" not in {candidate_queue.get("status"), case_pack.get("status")} else 1
+    statuses = {candidate_queue.get("status"), case_pack.get("status")}
+    if review_report is not None:
+        statuses.add(review_report.get("status"))
+    return 0 if "fail" not in statuses else 1
 
 
 if __name__ == "__main__":
