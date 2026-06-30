@@ -106,6 +106,7 @@ Refresh candidate queues and mounted prompt memory from runtime logs with:
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --from-operator-feedback \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json

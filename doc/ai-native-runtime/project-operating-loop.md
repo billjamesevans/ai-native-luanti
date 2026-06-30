@@ -145,12 +145,16 @@ python3 util/ai_native_agent_eval_promote.py \
 ```
 
 For routine sidecar operations, refresh both artifacts in one audited command:
+Add `--from-operator-feedback` when the action log may contain
+`/ai_agent_feedback` reviews; those reviews are converted into in-memory
+operator labels before prompt-memory promotion.
 
 ```bash
 python3 util/ai_native_agent_memory_refresh.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
   --nova-agent-log local/logs/nova-agent-requests.jsonl \
   --action-log local/logs/luanti-debug.log \
+  --from-operator-feedback \
   --operator-labels local/benchmarks/ai-agent-operator-labels.json \
   --candidate-queue-output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --case-pack-output local/benchmarks/ai-agent-prompt-eval-case-pack.json \
