@@ -360,6 +360,15 @@ def recall_build_prompt_memory_payload(
 
     cases = payload.get("cases") if isinstance(payload.get("cases"), list) else []
     reviewed_case_count = min(len(cases), MAX_MEMORY_CASES)
+    if reviewed_case_count == 0:
+        return {
+            "memory_available": False,
+            "selected_option_id": None,
+            "matched_case_id": None,
+            "reviewed_case_count": 0,
+            "direct_world_mutation": False,
+            "policy": "reviewed_case_pack_only",
+        }
     request_lower = request.lower()
     for case in cases[:MAX_MEMORY_CASES]:
         if not isinstance(case, dict):
@@ -523,12 +532,20 @@ def build_agent(model: str | None = None) -> Any:
 
 
 def adapter_health() -> dict[str, Any]:
+    case_pack = _load_reviewed_case_pack()
+    cases = case_pack.get("cases") if isinstance(case_pack, dict) and isinstance(case_pack.get("cases"), list) else []
     return {
         "service": "ai-native-luanti-agents-sdk-model-adapter",
         "status": "ready" if _sdk_ready() else "degraded",
         "agents_sdk_available": _sdk_available(),
         "openai_api_key_present": bool(os.getenv("OPENAI_API_KEY")),
         "web_search_tool_available": WebSearchTool is not None,
+        "reviewed_prompt_memory": {
+            "case_pack_configured": bool(os.getenv("AI_NATIVE_AGENT_CASE_PACK_PATH")),
+            "case_pack_available": case_pack is not None,
+            "case_count": min(len(cases), MAX_MEMORY_CASES),
+            "status": case_pack.get("status") if isinstance(case_pack, dict) else None,
+        },
         "tool_powers": tool_power_manifest(),
         "world_mutation_authority": "luanti",
         "adapter_name": ADAPTER_NAME,
