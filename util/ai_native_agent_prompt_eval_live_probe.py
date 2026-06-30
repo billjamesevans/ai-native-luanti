@@ -606,13 +606,15 @@ def run_probe(args) -> int:
             print(completed.stderr.strip()[-1200:], file=sys.stderr)
         return 1
 
+    world_artifact = world_dir / LIVE_ARTIFACT_NAME
     result = read_result(world_dir)
     if result.get("status") != "pass":
+        if world_artifact.is_file():
+            shutil.copyfile(world_artifact, output)
         reason = result.get("reason", "unknown")
         print(f"agent prompt eval live probe failed: {reason}", file=sys.stderr)
         return 1
 
-    world_artifact = world_dir / LIVE_ARTIFACT_NAME
     if not world_artifact.is_file():
         print("agent prompt eval live artifact missing", file=sys.stderr)
         return 1
