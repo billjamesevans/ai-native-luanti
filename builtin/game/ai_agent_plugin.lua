@@ -9,6 +9,8 @@ local task_sequence = 0
 local approval_sequence = 0
 local request_trace_sequence = 0
 local request_traces = {}
+local operator_feedback_sequence = 0
+local operator_feedback_events = {}
 local model_adapter = nil
 local model_adapter_async = nil
 local default_capabilities = {}
@@ -26,6 +28,7 @@ local settings = {
 	repair_nodes = {},
 	max_lights = 12,
 	max_request_traces = 50,
+	max_operator_feedback_events = 50,
 	max_entity_move_distance = 16,
 	max_follow_steps = 6,
 	max_follow_step_distance = 4,
@@ -99,6 +102,7 @@ local PRODUCT_SURFACES = {
 			"tasks",
 			"task <task_id>",
 			"traces",
+			"feedback last",
 			"pending plan",
 			"edit plan",
 			"discard plan",
@@ -331,6 +335,17 @@ local function log_request_trace(trace, event)
 	end
 end
 
+local function log_operator_feedback_event(event)
+	if not event or not core.write_json or not core.log then
+		return
+	end
+	local ok, encoded = pcall(core.write_json, event)
+	if ok and encoded then
+		core.log("action", "[ai_agent_plugin] operator_feedback="
+			.. bounded_trace_text(encoded, 4000))
+	end
+end
+
 local function remember_request_trace(entry)
 	entry = entry or {}
 	request_trace_sequence = request_trace_sequence + 1
@@ -423,6 +438,18 @@ end
 
 function plugin.get_model_traces(options)
 	return plugin.get_request_traces(options)
+end
+
+function plugin.get_operator_feedback(options)
+	options = options or {}
+	local limit = options.limit or #operator_feedback_events
+	limit = math.max(0, math.min(limit, #operator_feedback_events))
+	local result = {}
+	local start_index = #operator_feedback_events - limit + 1
+	for index = start_index, #operator_feedback_events do
+		result[#result + 1] = table.copy(operator_feedback_events[index])
+	end
+	return result
 end
 
 local function configure_product_surfaces()
@@ -2428,6 +2455,252 @@ local function parse_build_edit_options(raw_prompt, context)
 	return parse_build_options(prompt, context)
 end
 
+local function parse_feedback_bool(raw_value)
+	if raw_value == nil then
+		return nil
+	end
+	local value = tostring(raw_value):lower():trim()
+	if value == "1" or value == "true" or value == "yes"
+			or value == "y" or value == "on" then
+		return true
+	end
+	if value == "0" or value == "false" or value == "no"
+			or value == "n" or value == "off" then
+		return false
+	end
+	return nil
+end
+
+local function split_feedback_segments(raw)
+	local text = tostring(raw or ""):trim()
+	local segments = {}
+	if text == "" then
+		return segments
+	end
+	if text:find(";", 1, true) then
+		for segment in text:gmatch("[^;]+") do
+			segment = segment:trim()
+			if segment ~= "" then
+				segments[#segments + 1] = segment
+			end
+		end
+	else
+		for segment in text:gmatch("%S+") do
+			segments[#segments + 1] = segment
+		end
+	end
+	return segments
+end
+
+local function parse_operator_feedback_params(raw)
+	local params = {
+		use_latest = false,
+	}
+	for _, segment in ipairs(split_feedback_segments(raw)) do
+		if segment:lower() == "last" then
+			params.use_latest = true
+		else
+			local key, value = segment:match("^([%w_%-]+)%s*=%s*(.+)$")
+			if not key or not value then
+				return nil, "invalid_feedback_parameter"
+			end
+			key = key:lower():gsub("%-", "_")
+			value = value:trim()
+			if value == "" then
+				return nil, "invalid_feedback_parameter"
+			end
+			if key == "prompt" or key == "public_prompt" then
+				params.prompt = bounded_trace_text(value, 1000)
+			elseif key == "case" or key == "case_hint" then
+				params.case_hint = bounded_trace_text(value, 120)
+			elseif key == "label" or key == "label_id" then
+				params.label_id = bounded_trace_text(value, 160)
+			elseif key == "candidate" or key == "candidate_id" then
+				params.candidate_id = bounded_trace_text(value, 180)
+			elseif key == "trace" or key == "trace_id" then
+				params.trace_id = bounded_trace_text(value, 120)
+			elseif key == "source" or key == "source_kind" then
+				params.source_kind = bounded_trace_text(value, 120)
+			elseif key == "build_kind" or key == "kind" then
+				params.build_kind = bounded_trace_text(value:lower(), 80)
+			elseif key == "material" or key == "build_material"
+					or key == "build_material_name" then
+				params.build_material_name = bounded_trace_text(value:lower(), 80)
+			elseif key == "node" or key == "build_material_node" then
+				params.build_material_node = bounded_trace_text(value, 160)
+			elseif key == "planned_writes" or key == "planned_node_writes"
+					or key == "writes" or key == "count" then
+				params.planned_node_writes = parse_build_positive_int(value)
+				if not params.planned_node_writes then
+					return nil, "invalid_feedback_planned_writes"
+				end
+			elseif key == "route" then
+				params.route = bounded_trace_text(value, 120)
+			elseif key == "danger_refusal_allowed" then
+				local parsed = parse_feedback_bool(value)
+				if parsed == nil then
+					return nil, "invalid_feedback_bool"
+				end
+				params.danger_refusal_allowed = parsed
+			elseif key == "forbidden_extra_structure"
+					or key == "no_extra_structure"
+					or key == "extra_structure_forbidden" then
+				local parsed = parse_feedback_bool(value)
+				if parsed == nil then
+					return nil, "invalid_feedback_bool"
+				end
+				params.forbidden_extra_structure = parsed
+			else
+				return nil, "unknown_feedback_parameter"
+			end
+		end
+	end
+	if not params.prompt and not params.trace_id then
+		params.use_latest = true
+	end
+	return params
+end
+
+local function latest_feedback_trace_for(name, trace_id)
+	local traces = plugin.get_request_traces({ limit = settings.max_request_traces or 50 })
+	for index = #traces, 1, -1 do
+		local trace = traces[index]
+		if type(trace) == "table"
+				and type(trace.public_prompt) == "string"
+				and trace.public_prompt ~= ""
+				and (not trace_id or trace.trace_id == trace_id)
+				and (trace_id or trace.owner == name) then
+			return trace
+		end
+	end
+	return nil
+end
+
+local function expected_from_feedback_params(params)
+	if not params.build_kind or params.build_kind == "" then
+		return nil, "feedback_build_kind_required"
+	end
+	if not params.build_material_name or params.build_material_name == "" then
+		return nil, "feedback_material_required"
+	end
+	local expected = {
+		action = "build",
+		build_kind = params.build_kind,
+		build_material_name = params.build_material_name,
+	}
+	if params.build_material_node then
+		expected.build_material_node = params.build_material_node
+	end
+	if params.planned_node_writes then
+		expected.planned_node_writes = params.planned_node_writes
+	end
+	if params.route then
+		expected.route = params.route
+	end
+	if params.danger_refusal_allowed ~= nil then
+		expected.danger_refusal_allowed = params.danger_refusal_allowed
+	end
+	if params.forbidden_extra_structure ~= nil then
+		expected.forbidden_extra_structure = params.forbidden_extra_structure
+	end
+	return expected
+end
+
+function plugin.record_operator_feedback(name, param, context)
+	name = normalize_player_name(name)
+	context = context or {}
+	local params, reason = parse_operator_feedback_params(param)
+	if not params then
+		return public_reply(name, "agent_feedback", "blocked",
+			"Feedback parameters were invalid.", {
+				surface_id = "guide",
+				reason = reason,
+			})
+	end
+	local trace
+	if params.trace_id or params.use_latest then
+		trace = latest_feedback_trace_for(name, params.trace_id)
+		if not trace then
+			return public_reply(name, "agent_feedback", "blocked",
+				"No matching request trace was found for feedback.", {
+					surface_id = "guide",
+					reason = "feedback_trace_not_found",
+					trace_id = params.trace_id,
+				})
+		end
+		params.prompt = params.prompt or trace.public_prompt
+		params.source_trace_id = trace.trace_id
+	end
+	if not params.prompt or params.prompt == "" then
+		return public_reply(name, "agent_feedback", "blocked",
+			"Feedback requires a prompt or a matching recent trace.", {
+				surface_id = "guide",
+				reason = "feedback_prompt_required",
+			})
+	end
+	local expected, expected_reason = expected_from_feedback_params(params)
+	if not expected then
+		return public_reply(name, "agent_feedback", "blocked",
+			"Feedback expected behavior was incomplete.", {
+				surface_id = "guide",
+				reason = expected_reason,
+			})
+	end
+	operator_feedback_sequence = operator_feedback_sequence + 1
+	local feedback_id = "operator_feedback:" .. tostring(operator_feedback_sequence)
+	local feedback = {
+		feedback_id = feedback_id,
+		owner = name,
+		agent_id = surface_agent_id_for(name, "guide"),
+		created_us = trace_timestamp_us(),
+		prompt = bounded_trace_text(params.prompt, 1000),
+		source_trace_id = params.source_trace_id,
+		candidate_id = params.candidate_id,
+		source_kind = params.source_kind,
+		case_hint = params.case_hint
+			or ("operator_labeled_" .. expected.build_material_name
+				.. "_" .. expected.build_kind),
+		label_id = params.label_id,
+		expected = expected,
+		review = {
+			operator_reviewed = true,
+			review_source = "ai_agent_feedback_chatcommand",
+			no_world_mutation = true,
+		},
+	}
+	local event = {
+		schema_version = 1,
+		event_kind = "ai_agent_operator_feedback",
+		feedback = feedback,
+		safety = {
+			public_safe_output = true,
+			operator_reviewed = true,
+			no_world_mutation = true,
+			no_raw_assets = true,
+			no_provider_prompts = true,
+			no_family_world_coordinates = true,
+		},
+	}
+	operator_feedback_events[#operator_feedback_events + 1] = event
+	local max_events = math.max(1, settings.max_operator_feedback_events or 50)
+	while #operator_feedback_events > max_events do
+		table.remove(operator_feedback_events, 1)
+	end
+	log_operator_feedback_event(event)
+	return public_reply(name, "agent_feedback", "success",
+		"Operator feedback recorded for prompt-eval promotion.", {
+			surface_id = "guide",
+			feedback_id = feedback_id,
+			prompt = feedback.prompt,
+			source_trace_id = feedback.source_trace_id,
+			candidate_id = feedback.candidate_id,
+			source_kind = feedback.source_kind,
+			case_hint = feedback.case_hint,
+			expected = table.copy(expected),
+			no_world_mutation = true,
+		})
+end
+
 local function prompt_has_build_surface(prompt)
 	return prompt:find("build", 1, true)
 		or prompt:find("marker", 1, true)
@@ -3590,6 +3863,7 @@ local function handle_guide(name)
 			"tasks",
 			"task <task_id>",
 			"traces",
+			"feedback last",
 			"pending plan",
 			"edit plan",
 			"edit plan platform width N depth N",
@@ -5127,6 +5401,16 @@ core.register_chatcommand("ai_agent_eval", {
 		end
 		returned_to_player = true
 		return true, "AI agent prompt evaluation queued."
+	end,
+})
+
+core.register_chatcommand("ai_agent_feedback", {
+	params = "last; case=CASE; build_kind=KIND; material=MATERIAL; planned_writes=N",
+	description = "Record public-safe reviewed AI agent feedback for prompt-eval promotion.",
+	privs = { server = true },
+	func = function(name, param)
+		local result = plugin.record_operator_feedback(name or "Operator", param or "")
+		return result.ok, core.write_json(result)
 	end,
 })
 
