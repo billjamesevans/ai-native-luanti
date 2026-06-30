@@ -386,6 +386,17 @@ local function finish_request_trace(trace, result, extra)
 		planner_mode = result and result.planner_mode,
 		selected_candidate_id = result and result.selected_candidate_id,
 		candidate_count = result and result.candidate_count,
+		adapter_tool_decision_source = result and result.adapter_tool_decision_source,
+		adapter_required_tool_calls = result and result.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls =
+			result and result.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			result and result.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = result and result.build_option_decision_source,
+		adapter_memory_available = result and result.adapter_memory_available,
+		adapter_memory_matched_case_id = result and result.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = result and result.adapter_memory_case_hint,
+		adapter_tool_trace_names = result and result.adapter_tool_trace_names,
 	}
 	for key, value in pairs(extra) do
 		trace[key] = value
@@ -521,6 +532,16 @@ local function pending_approval_summary(pending)
 	if pending.selected_candidate_id then
 		append(parts, "selected_candidate=" .. tostring(pending.selected_candidate_id))
 	end
+	if pending.adapter_tool_decision_source then
+		append(parts, "tool_decision_source=" .. tostring(pending.adapter_tool_decision_source))
+	end
+	if pending.adapter_required_tool_calls_satisfied ~= nil then
+		append(parts, "required_tools_satisfied="
+			.. tostring(pending.adapter_required_tool_calls_satisfied))
+	end
+	if pending.adapter_memory_matched_case_id then
+		append(parts, "memory_match=" .. tostring(pending.adapter_memory_matched_case_id))
+	end
 	return table.concat(parts, " ")
 end
 
@@ -579,6 +600,16 @@ local function append_task_details(lines, result)
 	end
 	if result.selected_candidate_id then
 		append(lines, "selected_candidate=" .. tostring(result.selected_candidate_id))
+	end
+	if result.adapter_tool_decision_source then
+		append(lines, "tool_decision_source=" .. tostring(result.adapter_tool_decision_source))
+	end
+	if result.adapter_required_tool_calls_satisfied ~= nil then
+		append(lines, "required_tools_satisfied="
+			.. tostring(result.adapter_required_tool_calls_satisfied))
+	end
+	if result.adapter_memory_matched_case_id then
+		append(lines, "memory_match=" .. tostring(result.adapter_memory_matched_case_id))
 	end
 	if type(result.required_capabilities) == "table" then
 		append(lines, "required_capabilities="
@@ -1151,6 +1182,16 @@ local function compact_pending_approval(pending)
 		planner_mode = pending.planner_mode,
 		selected_candidate_id = pending.selected_candidate_id,
 		candidate_options = pending.candidate_options,
+		adapter_tool_decision_source = pending.adapter_tool_decision_source,
+		adapter_required_tool_calls = pending.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			pending.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = pending.build_option_decision_source,
+		adapter_memory_available = pending.adapter_memory_available,
+		adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = pending.adapter_memory_case_hint,
+		adapter_tool_trace_names = pending.adapter_tool_trace_names,
 		repair_radius = pending.repair_radius,
 		sample_limit = pending.sample_limit,
 	}
@@ -1175,6 +1216,16 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		planner_mode = extra.planner_mode,
 		selected_candidate_id = extra.selected_candidate_id,
 		candidate_options = extra.candidate_options,
+		adapter_tool_decision_source = extra.adapter_tool_decision_source,
+		adapter_required_tool_calls = extra.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			extra.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = extra.build_option_decision_source,
+		adapter_memory_available = extra.adapter_memory_available,
+		adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = extra.adapter_memory_case_hint,
+		adapter_tool_trace_names = extra.adapter_tool_trace_names,
 		repair_radius = extra.repair_radius,
 		sample_limit = extra.sample_limit,
 	}
@@ -2448,6 +2499,16 @@ local function create_build_pending_reply(name, context, message, extra)
 		selected_candidate_id = extra.selected_candidate_id,
 		candidate_options = extra.candidate_options,
 		candidate_count = extra.candidate_count,
+		adapter_tool_decision_source = extra.adapter_tool_decision_source,
+		adapter_required_tool_calls = extra.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			extra.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = extra.build_option_decision_source,
+		adapter_memory_available = extra.adapter_memory_available,
+		adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = extra.adapter_memory_case_hint,
+		adapter_tool_trace_names = extra.adapter_tool_trace_names,
 	})
 	local reply = public_reply(name, "build", "pending_approval",
 		message or "Build plan is pending approval before mutation.", {
@@ -2467,6 +2528,17 @@ local function create_build_pending_reply(name, context, message, extra)
 			selected_candidate_id = extra.selected_candidate_id,
 			candidate_options = extra.candidate_options,
 			candidate_count = extra.candidate_count,
+			adapter_tool_decision_source = extra.adapter_tool_decision_source,
+			adapter_required_tool_calls = extra.adapter_required_tool_calls,
+			adapter_missing_required_tool_calls =
+				extra.adapter_missing_required_tool_calls,
+			adapter_required_tool_calls_satisfied =
+				extra.adapter_required_tool_calls_satisfied,
+			build_option_decision_source = extra.build_option_decision_source,
+			adapter_memory_available = extra.adapter_memory_available,
+			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+			adapter_memory_case_hint = extra.adapter_memory_case_hint,
+			adapter_tool_trace_names = extra.adapter_tool_trace_names,
 			planner_model_status = extra.planner_model_status,
 			planner_model_reason = extra.planner_model_reason,
 			planner_guidance = extra.planner_guidance,
@@ -2608,6 +2680,66 @@ local function selected_agentic_candidate_id_from_model_result(model_result)
 	return nil
 end
 
+local function agentic_model_response(model_result)
+	if type(model_result) ~= "table" or type(model_result.response) ~= "table" then
+		return nil
+	end
+	return model_result.response
+end
+
+local function agentic_build_option_decision(response)
+	if type(response) ~= "table" or type(response.tool_decisions) ~= "table" then
+		return nil
+	end
+	local build_option = response.tool_decisions.build_option
+	if type(build_option) ~= "table" then
+		return nil
+	end
+	return build_option
+end
+
+local function agentic_tool_trace_names(response)
+	local names = {}
+	if type(response) ~= "table" or type(response.tool_trace) ~= "table" then
+		return names
+	end
+	for _, entry in ipairs(response.tool_trace) do
+		if type(entry) == "table" and type(entry.tool_name) == "string" then
+			names[#names + 1] = bounded_trace_text(entry.tool_name, 80)
+			if #names >= 8 then
+				break
+			end
+		end
+	end
+	return names
+end
+
+local function agentic_build_planner_adapter_metadata(model_result)
+	local response = agentic_model_response(model_result)
+	if not response then
+		return {}
+	end
+	local build_option = agentic_build_option_decision(response) or {}
+	local memory_match = type(build_option.memory_match) == "table"
+		and build_option.memory_match or {}
+	local missing_required = type(response.missing_required_tool_calls) == "table"
+		and table.copy(response.missing_required_tool_calls) or nil
+	local required = type(response.required_tool_calls) == "table"
+		and table.copy(response.required_tool_calls) or nil
+	return {
+		adapter_tool_decision_source = response.tool_decision_source,
+		adapter_required_tool_calls = required,
+		adapter_missing_required_tool_calls = missing_required,
+		adapter_required_tool_calls_satisfied =
+			response.required_tool_calls_satisfied,
+		build_option_decision_source = build_option.decision_source,
+		adapter_memory_available = memory_match.memory_available,
+		adapter_memory_matched_case_id = memory_match.matched_case_id,
+		adapter_memory_case_hint = memory_match.case_hint,
+		adapter_tool_trace_names = agentic_tool_trace_names(response),
+	}
+end
+
 local function build_agentic_candidate_options(name, raw_prompt, context)
 	local lower = raw_prompt:lower()
 	local candidates = {}
@@ -2714,6 +2846,7 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 		})
 	local function finish_with_pending(model_result, planner_mode)
 		model_result = model_result or {}
+		local adapter_metadata = agentic_build_planner_adapter_metadata(model_result)
 		local model_selected_id =
 			selected_agentic_candidate_id_from_model_result(model_result)
 		local final_selected = find_agentic_build_candidate(candidates, model_selected_id)
@@ -2729,6 +2862,24 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				planner_model_status = model_result.status,
 				planner_model_reason = model_result.reason,
 				planner_guidance = bounded_trace_text(model_result.message, 1000),
+				adapter_tool_decision_source =
+					adapter_metadata.adapter_tool_decision_source,
+				adapter_required_tool_calls =
+					adapter_metadata.adapter_required_tool_calls,
+				adapter_missing_required_tool_calls =
+					adapter_metadata.adapter_missing_required_tool_calls,
+				adapter_required_tool_calls_satisfied =
+					adapter_metadata.adapter_required_tool_calls_satisfied,
+				build_option_decision_source =
+					adapter_metadata.build_option_decision_source,
+				adapter_memory_available =
+					adapter_metadata.adapter_memory_available,
+				adapter_memory_matched_case_id =
+					adapter_metadata.adapter_memory_matched_case_id,
+				adapter_memory_case_hint =
+					adapter_metadata.adapter_memory_case_hint,
+				adapter_tool_trace_names =
+					adapter_metadata.adapter_tool_trace_names,
 				trace_id = trace.trace_id,
 				adapter_name = model_result.adapter_name or adapter_name,
 			})
@@ -2739,6 +2890,24 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 			selection_source = selection_source,
 			candidate_count = #public_candidates,
 			adapter_name = model_result.adapter_name or adapter_name,
+			adapter_tool_decision_source =
+				adapter_metadata.adapter_tool_decision_source,
+			adapter_required_tool_calls =
+				adapter_metadata.adapter_required_tool_calls,
+			adapter_missing_required_tool_calls =
+				adapter_metadata.adapter_missing_required_tool_calls,
+			adapter_required_tool_calls_satisfied =
+				adapter_metadata.adapter_required_tool_calls_satisfied,
+			build_option_decision_source =
+				adapter_metadata.build_option_decision_source,
+			adapter_memory_available =
+				adapter_metadata.adapter_memory_available,
+			adapter_memory_matched_case_id =
+				adapter_metadata.adapter_memory_matched_case_id,
+			adapter_memory_case_hint =
+				adapter_metadata.adapter_memory_case_hint,
+			adapter_tool_trace_names =
+				adapter_metadata.adapter_tool_trace_names,
 		})
 	end
 	if not model_adapter_async or not core.ai_model_ops or not core.ai_model_ops.request_async then
@@ -3470,7 +3639,17 @@ local function handle_pending_plan(name)
 		planner_mode = pending.planner_mode,
 		selected_candidate_id = pending.selected_candidate_id,
 		candidate_options = pending.candidate_options,
-		})
+		adapter_tool_decision_source = pending.adapter_tool_decision_source,
+		adapter_required_tool_calls = pending.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			pending.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = pending.build_option_decision_source,
+		adapter_memory_available = pending.adapter_memory_available,
+		adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = pending.adapter_memory_case_hint,
+		adapter_tool_trace_names = pending.adapter_tool_trace_names,
+	})
 end
 
 local function update_build_pending_plan(name, pending, raw_prompt)
