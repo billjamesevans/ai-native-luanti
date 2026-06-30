@@ -67,9 +67,18 @@ python3 util/ai_native_agent_eval_queue.py \
   --verified-live-probe local/logs/live-probes \
   --output local/benchmarks/ai-agent-eval-candidate-queue.json \
   --generated-at 2026-06-30T00:00:00Z
+
+python3 util/ai_native_agent_request_response_log_gate.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --output local/benchmarks/ai-agent-request-response-log-gate.json \
+  --generated-at 2026-06-30T00:00:00Z
 ```
 
-The queue is review-first. Ready candidates such as fire-only and TNT-wall
+The log gate is the immediate regression check for the player-facing failures:
+`build me a fire and only a fire` must select the fire option, `build a wall of
+tnt` must select the TNT wall instead of refusing game-world danger, and an
+open-ended generated build must retain `propose_build_option` tool evidence. The
+queue remains review-first. Ready candidates such as fire-only and TNT-wall
 regressions can be promoted into `/ai_agent_eval`; unknown prompts require an
 operator label before they become pass/fail tests. The same queue marks missing
 Agents SDK required-tool calls as high-priority adapter-contract regressions with
@@ -259,13 +268,14 @@ default to their recommended cadence; use explicit `--soak-iterations` and
 Keep this ranked next-issue queue current after every milestone slice:
 
 1. #253 Promoted Pi one-hour and overnight evidence for current alpha.
-   Current quick proof is clean for `dce016208`; use when the Pi lane is clear
-   for a longer run. Gate: backup-first side-by-side deploy, recorded backup
-   artifact plus SHA, and clean one-hour low-power evidence before overnight.
+   Current one-hour proof is clean for `062c6b2ef`; use when the Pi lane is
+   clear for the overnight run. Gate: backup-first side-by-side deploy,
+   recorded backup artifact plus SHA, and clean overnight low-power evidence.
 2. #254 First-party AI agent productization lane.
    Use for parallel local work while Pi evidence is occupied. Gate: live
-   product-loop probe, streamed Agents SDK build-planning tool evidence, the
-   agent quality gate, and one-command local verifier.
+   product-loop probe, streamed Agents SDK build-planning tool evidence,
+   request/response log gate, the agent quality gate, and one-command local
+   verifier.
 3. #255 Compatibility import scale-up after staged apply pilot.
    Use after runtime, quick Pi evidence, and product-loop evidence remain
    clean. Gate: dry-run or approval-gated apply with rollback metadata.

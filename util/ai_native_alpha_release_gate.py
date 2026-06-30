@@ -155,14 +155,14 @@ PROJECT_OPERATING_LOOP = {
         {
             "issue": "#253",
             "title": "Promoted Pi one-hour and overnight evidence for current alpha",
-            "when": "after quick current-commit Pi proof is clean and the Pi lane is clear",
-            "gate": "backup-first side-by-side Pi deploy, recorded backup artifact and SHA, then clean one-hour low-power evidence before overnight",
+            "when": "after one-hour current-commit Pi proof is clean and the Pi lane is clear",
+            "gate": "backup-first side-by-side Pi deploy, recorded backup artifact and SHA, then clean overnight low-power evidence",
         },
         {
             "issue": "#254",
             "title": "First-party AI agent productization lane",
             "when": "parallel local work while Pi evidence is occupied",
-            "gate": "live product-loop probe, streamed Agents SDK build-planning evidence, agent quality gate, and one-command local verifier",
+            "gate": "live product-loop probe, streamed Agents SDK build-planning evidence, request/response log gate, agent quality gate, and one-command local verifier",
         },
         {
             "issue": "#255",

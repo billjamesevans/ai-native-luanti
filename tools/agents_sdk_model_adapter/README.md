@@ -154,6 +154,20 @@ Resolved adapter-contract failures stay retained as evidence, but they do not
 become manual labeling backlog once a later passing run satisfies the required
 tool contract.
 
+Before treating a live sidecar as healthy, verify that the retained
+request/response log proves the critical player-facing build contracts:
+
+```bash
+python3 util/ai_native_agent_request_response_log_gate.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --output local/benchmarks/ai-agent-request-response-log-gate.json
+```
+
+The log gate fails if `build me a fire and only a fire` selects anything other
+than the single fire option, if `build a wall of tnt` is refused as real-world
+danger, or if an open-ended generated build lacks `propose_build_option`,
+`select_build_option`, and `plan_build_actions` tool evidence.
+
 Inspect an existing queue and case pack with:
 
 ```bash
@@ -189,6 +203,7 @@ python3 util/ai_native_agent_quality_gate.py \
   --review-queue local/benchmarks/ai-agent-review-queue.json \
   --adapter-contract-eval local/benchmarks/ai-agent-adapter-contract-eval.json \
   --live-prompt-eval local/benchmarks/ai-agent-prompt-eval-live-latest.json \
+  --request-response-log-gate local/benchmarks/ai-agent-request-response-log-gate.json \
   --compat-import-staging-pilot local/benchmarks/ai-runtime-compat-import-staging-pilot-result.json \
   --output local/benchmarks/ai-agent-quality-gate.json
 ```
@@ -201,7 +216,9 @@ adapter-contract replay failures, a failed latest live prompt eval, or a failed
 compatibility staging pilot remain deploy-blocking. When supplied, the
 compatibility staging pilot proves dry-run import planning, bounded
 disposable-world apply, rollback, and refusal gates without touching the family
-server or private assets.
+server or private assets. When supplied, the request/response log gate also
+blocks on retained evidence for the fire-only, TNT-wall, and generated-build
+tool contracts.
 In `agents_sdk_sidecar` mode, the live prompt eval must also retain untruncated
 case evidence showing that each build case used an accepted agent tool-contract
 source, satisfied `recall_build_prompt_memory`, `select_build_option`, and

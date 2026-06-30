@@ -74,6 +74,10 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             "streamed Agents SDK build-planning evidence",
             queue_by_issue["#254"]["gate"],
         )
+        self.assertIn(
+            "request/response log gate",
+            queue_by_issue["#254"]["gate"],
+        )
         self.assertEqual(
             operating_loop["maintenance_invariants"][0]["name"],
             "operating_loop_maintenance",

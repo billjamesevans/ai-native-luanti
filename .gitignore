@@ -41,6 +41,8 @@ build/.cmake/
 .gradle
 # Clang
 .cache
+__pycache__/
+*.py[cod]
 # AppImage
 *.AppImage
 *.zsync
@@ -147,3 +149,4 @@ client/mod_storage.sqlite
 
 # Local AI-native benchmark evidence
 /local/benchmarks/
+/local/logs/

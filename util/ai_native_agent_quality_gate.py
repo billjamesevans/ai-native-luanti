@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_agent_adapter_contract_eval as adapter_contract_eval
 import ai_native_agent_eval_promote as eval_promote
 import ai_native_agent_eval_queue as eval_queue
+import ai_native_agent_request_response_log_gate as request_response_log_gate_module
 import ai_native_agent_prompt_eval_live_probe as prompt_eval_live_probe
 import ai_native_agent_review_queue as review_queue
 import ai_native_compat_import_staging_pilot as compat_import_staging_pilot
@@ -109,6 +110,11 @@ def _prompt_eval_summary(live_prompt_eval: dict[str, Any]) -> dict[str, Any]:
     return summary if isinstance(summary, dict) else {}
 
 
+def _request_log_summary(request_response_log: dict[str, Any]) -> dict[str, Any]:
+    summary = request_response_log.get("source_summary")
+    return summary if isinstance(summary, dict) else {}
+
+
 def _violations(payload: dict[str, Any]) -> list[Any]:
     violations = payload.get("violations")
     return violations if isinstance(violations, list) else []
@@ -130,6 +136,7 @@ def build_quality_gate(
     review: dict[str, Any],
     adapter_eval: dict[str, Any] | None = None,
     live_prompt_eval: dict[str, Any] | None = None,
+    request_response_log_gate: dict[str, Any] | None = None,
     compat_import_pilot: dict[str, Any] | None = None,
     generated_at: str | None = None,
     candidate_queue_path: str | None = None,
@@ -137,12 +144,14 @@ def build_quality_gate(
     review_queue_path: str | None = None,
     adapter_contract_eval_path: str | None = None,
     live_prompt_eval_path: str | None = None,
+    request_response_log_gate_path: str | None = None,
     compat_import_pilot_path: str | None = None,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> dict[str, Any]:
     generated_at = generated_at or utc_now()
     adapter_eval = adapter_eval or {}
     live_prompt_eval = live_prompt_eval or {}
+    request_response_log_gate = request_response_log_gate or {}
     compat_import_pilot = compat_import_pilot or {}
     violations: list[dict[str, str]] = []
     attention: list[dict[str, Any]] = []
@@ -158,6 +167,14 @@ def build_quality_gate(
             "kind": "invalid_adapter_contract_eval_kind",
             "details": str(adapter_eval.get("artifact_kind")),
         })
+    if (
+        request_response_log_gate
+        and request_response_log_gate.get("artifact_kind") != request_response_log_gate_module.REPORT_KIND
+    ):
+        violations.append({
+            "kind": "invalid_request_response_log_gate_kind",
+            "details": str(request_response_log_gate.get("artifact_kind")),
+        })
 
     for name, payload in (
         ("candidate_queue", candidate_queue),
@@ -165,6 +182,7 @@ def build_quality_gate(
         ("review_queue", review),
         ("adapter_contract_eval", adapter_eval),
         ("live_prompt_eval", live_prompt_eval),
+        ("request_response_log_gate", request_response_log_gate),
         ("compat_import_staging_pilot", compat_import_pilot),
     ):
         if payload and _artifact_private(payload):
@@ -175,6 +193,7 @@ def build_quality_gate(
     review_summary = _review_summary(review)
     adapter_summary = _adapter_summary(adapter_eval)
     live_prompt_summary = _prompt_eval_summary(live_prompt_eval)
+    request_log_summary = _request_log_summary(request_response_log_gate)
 
     active_contract_failures = _int(
         candidate_summary.get("adapter_contract_failures_active"),
@@ -232,6 +251,24 @@ def build_quality_gate(
             })
         if _violations(adapter_eval):
             violations.append({"kind": "adapter_contract_eval_violations", "details": str(len(_violations(adapter_eval)))})
+    request_response_log_gate_status = None
+    if request_response_log_gate:
+        request_response_log_gate_status = request_response_log_gate.get("status")
+        if request_response_log_gate_status != "pass":
+            violations.append({
+                "kind": "request_response_log_gate_not_passing",
+                "details": bounded_text(request_response_log_gate_status, 120) or "unknown",
+            })
+        if _violations(request_response_log_gate):
+            violations.append({
+                "kind": "request_response_log_gate_violations",
+                "details": str(len(_violations(request_response_log_gate))),
+            })
+        if _action_items(request_response_log_gate) or request_response_log_gate.get("failures"):
+            violations.append({
+                "kind": "request_response_log_gate_failures",
+                "details": str(_list_len(request_response_log_gate.get("failures"))),
+            })
     live_prompt_eval_status = None
     live_prompt_evidence: dict[str, Any] = {}
     if live_prompt_eval:
@@ -283,6 +320,7 @@ def build_quality_gate(
             "review_queue_path": review_queue_path,
             "adapter_contract_eval_path": adapter_contract_eval_path,
             "live_prompt_eval_path": live_prompt_eval_path,
+            "request_response_log_gate_path": request_response_log_gate_path,
             "compat_import_staging_pilot_path": compat_import_pilot_path,
         },
         "summary": {
@@ -291,7 +329,11 @@ def build_quality_gate(
             "review_queue_status": bounded_text(review.get("status"), 80),
             "adapter_contract_eval_status": bounded_text(adapter_eval_status, 80),
             "live_prompt_eval_status": bounded_text(live_prompt_eval_status, 80),
+            "request_response_log_gate_status": bounded_text(request_response_log_gate_status, 80),
             "compat_import_staging_pilot_status": bounded_text(compat_import_status, 80),
+            "request_response_log_entries_read": _int(request_log_summary.get("entries_read")),
+            "request_response_log_cases_passed": _int(request_log_summary.get("cases_passed")),
+            "request_response_log_cases_failed": _int(request_log_summary.get("cases_failed")),
             "live_prompt_eval_cases_total": _int(live_prompt_summary.get("cases_total")),
             "live_prompt_eval_cases_passed": _int(live_prompt_summary.get("cases_passed")),
             "live_prompt_eval_cases_failed": _int(live_prompt_summary.get("cases_failed")),
@@ -388,6 +430,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--adapter-contract-eval", default=None, help="Optional adapter-contract replay result JSON path.")
     parser.add_argument("--live-prompt-eval", default=None, help="Optional latest live prompt-eval probe result JSON path.")
     parser.add_argument(
+        "--request-response-log-gate",
+        default=None,
+        help="Optional request/response log gate JSON path.",
+    )
+    parser.add_argument(
         "--compat-import-staging-pilot",
         default=None,
         help="Optional compatibility import staging pilot JSON path.",
@@ -412,6 +459,10 @@ def main(argv: list[str] | None = None) -> int:
         resolve_path(root, args.live_prompt_eval)
         if args.live_prompt_eval else None
     )
+    request_response_log_gate_path = (
+        resolve_path(root, args.request_response_log_gate)
+        if args.request_response_log_gate else None
+    )
     compat_import_pilot_path = (
         resolve_path(root, args.compat_import_staging_pilot)
         if args.compat_import_staging_pilot else None
@@ -426,6 +477,7 @@ def main(argv: list[str] | None = None) -> int:
         ("review_queue", review_queue_path),
         ("adapter_contract_eval", adapter_contract_eval_path),
         ("live_prompt_eval", live_prompt_eval_path),
+        ("request_response_log_gate", request_response_log_gate_path),
         ("compat_import_staging_pilot", compat_import_pilot_path),
     ):
         if path is None:
@@ -442,6 +494,7 @@ def main(argv: list[str] | None = None) -> int:
         review=payloads["review_queue"],
         adapter_eval=payloads["adapter_contract_eval"],
         live_prompt_eval=payloads["live_prompt_eval"],
+        request_response_log_gate=payloads["request_response_log_gate"],
         compat_import_pilot=payloads["compat_import_staging_pilot"],
         generated_at=args.generated_at,
         candidate_queue_path=relative_label(root, candidate_queue_path),
@@ -449,6 +502,7 @@ def main(argv: list[str] | None = None) -> int:
         review_queue_path=relative_label(root, review_queue_path),
         adapter_contract_eval_path=relative_label(root, adapter_contract_eval_path),
         live_prompt_eval_path=relative_label(root, live_prompt_eval_path),
+        request_response_log_gate_path=relative_label(root, request_response_log_gate_path),
         compat_import_pilot_path=relative_label(root, compat_import_pilot_path),
         max_bytes=max(1000, args.max_bytes),
     )
@@ -465,6 +519,7 @@ def main(argv: list[str] | None = None) -> int:
         "review_queue_status": report.get("summary", {}).get("review_queue_status"),
         "adapter_contract_eval_status": report.get("summary", {}).get("adapter_contract_eval_status"),
         "live_prompt_eval_status": report.get("summary", {}).get("live_prompt_eval_status"),
+        "request_response_log_gate_status": report.get("summary", {}).get("request_response_log_gate_status"),
         "compat_import_staging_pilot_status": report.get("summary", {}).get("compat_import_staging_pilot_status"),
     }, sort_keys=True))
     return 1 if report.get("status") == "fail" else 0

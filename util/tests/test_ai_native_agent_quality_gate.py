@@ -331,6 +331,29 @@ def live_prompt_eval_payload(**overrides):
     return payload
 
 
+def request_response_log_gate_payload(**overrides):
+    payload = {
+        "schema_version": 1,
+        "artifact_kind": "ai_native_agent_request_response_log_gate",
+        "generated_at": "2026-06-30T18:00:00Z",
+        "status": "pass",
+        "source_summary": {
+            "files_read": 1,
+            "lines_read": 383,
+            "entries_read": 383,
+            "case_count": 4,
+            "cases_passed": 4,
+            "cases_failed": 0,
+        },
+        "cases": [],
+        "failures": [],
+        "violations": [],
+        "safety": {"public_safe_output": True, "no_world_mutation": True},
+    }
+    payload.update(overrides)
+    return payload
+
+
 class AgentQualityGateTests(unittest.TestCase):
     def test_ready_artifacts_pass_quality_gate(self):
         module = load_quality_gate_module()
@@ -367,6 +390,60 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 5)
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 4)
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 4)
+
+    def test_request_response_log_gate_pass_is_recorded(self):
+        module = load_quality_gate_module()
+
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            request_response_log_gate=request_response_log_gate_payload(),
+            generated_at="2026-06-30T18:05:00Z",
+        )
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["request_response_log_gate_status"], "pass")
+        self.assertEqual(report["summary"]["request_response_log_entries_read"], 383)
+        self.assertEqual(report["summary"]["request_response_log_cases_passed"], 4)
+        self.assertEqual(report["summary"]["request_response_log_cases_failed"], 0)
+
+    def test_request_response_log_gate_failure_fails_gate(self):
+        module = load_quality_gate_module()
+
+        failed_log_gate = request_response_log_gate_payload(
+            status="fail",
+            source_summary={
+                **request_response_log_gate_payload()["source_summary"],
+                "cases_passed": 3,
+                "cases_failed": 1,
+            },
+            failures=[
+                {
+                    "case_id": "fire_only_strict",
+                    "failures": ["selected_option_id_mismatch"],
+                }
+            ],
+        )
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            request_response_log_gate=failed_log_gate,
+            generated_at="2026-06-30T18:05:00Z",
+        )
+
+        self.assertEqual(report["status"], "fail")
+        self.assertTrue(any(
+            item["kind"] == "request_response_log_gate_not_passing"
+            for item in report["violations"]
+        ))
+        self.assertTrue(any(
+            item["kind"] == "request_response_log_gate_failures"
+            for item in report["violations"]
+        ))
 
     def test_live_prompt_eval_failure_fails_gate(self):
         module = load_quality_gate_module()
