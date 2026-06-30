@@ -1368,13 +1368,15 @@ local function compact_pending_approval(pending)
 				pending.adapter_build_action_plan_step_count,
 			adapter_build_action_plan_world_mutation_authority =
 				pending.adapter_build_action_plan_world_mutation_authority,
-			generated_build_option_status = pending.generated_build_option_status,
-			generated_build_option_reason = pending.generated_build_option_reason,
-			generated_candidate_id = pending.generated_candidate_id,
-			repair_radius = pending.repair_radius,
-			sample_limit = pending.sample_limit,
-		}
-	end
+		generated_build_option_status = pending.generated_build_option_status,
+		generated_build_option_reason = pending.generated_build_option_reason,
+		generated_candidate_id = pending.generated_candidate_id,
+		agentic_tool_success_required =
+			pending.agentic_tool_success_required,
+		repair_radius = pending.repair_radius,
+		sample_limit = pending.sample_limit,
+	}
+end
 
 local function remember_pending_approval(name, action, plan, context, extra)
 	extra = extra or {}
@@ -1405,29 +1407,32 @@ local function remember_pending_approval(name, action, plan, context, extra)
 			extra.adapter_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			extra.adapter_rejected_model_selected_candidate_id,
-			adapter_required_tool_calls = extra.adapter_required_tool_calls,
-			adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
-			adapter_required_tool_calls_satisfied =
-				extra.adapter_required_tool_calls_satisfied,
-			build_option_decision_source = extra.build_option_decision_source,
-			adapter_memory_available = extra.adapter_memory_available,
-			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
-			adapter_memory_case_hint = extra.adapter_memory_case_hint,
-			adapter_tool_trace_names = extra.adapter_tool_trace_names,
-			adapter_build_action_plan_status =
-				extra.adapter_build_action_plan_status,
-			adapter_build_action_plan_selected_candidate_id =
-				extra.adapter_build_action_plan_selected_candidate_id,
-			adapter_build_action_plan_step_count =
-				extra.adapter_build_action_plan_step_count,
-			adapter_build_action_plan_world_mutation_authority =
-				extra.adapter_build_action_plan_world_mutation_authority,
-			generated_build_option_status = extra.generated_build_option_status,
-			generated_build_option_reason = extra.generated_build_option_reason,
-			generated_candidate_id = extra.generated_candidate_id,
-			repair_radius = extra.repair_radius,
-			sample_limit = extra.sample_limit,
-		}
+		adapter_required_tool_calls = extra.adapter_required_tool_calls,
+		adapter_missing_required_tool_calls =
+			extra.adapter_missing_required_tool_calls,
+		adapter_required_tool_calls_satisfied =
+			extra.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = extra.build_option_decision_source,
+		adapter_memory_available = extra.adapter_memory_available,
+		adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = extra.adapter_memory_case_hint,
+		adapter_tool_trace_names = extra.adapter_tool_trace_names,
+		adapter_build_action_plan_status =
+			extra.adapter_build_action_plan_status,
+		adapter_build_action_plan_selected_candidate_id =
+			extra.adapter_build_action_plan_selected_candidate_id,
+		adapter_build_action_plan_step_count =
+			extra.adapter_build_action_plan_step_count,
+		adapter_build_action_plan_world_mutation_authority =
+			extra.adapter_build_action_plan_world_mutation_authority,
+		generated_build_option_status = extra.generated_build_option_status,
+		generated_build_option_reason = extra.generated_build_option_reason,
+		generated_candidate_id = extra.generated_candidate_id,
+		agentic_tool_success_required =
+			extra.agentic_tool_success_required,
+		repair_radius = extra.repair_radius,
+		sample_limit = extra.sample_limit,
+	}
 	player_pending_approvals[name] = pending
 	return pending
 end
@@ -4954,23 +4959,28 @@ local function handle_pending_plan(name)
 			pending.adapter_rejected_model_selected_candidate_id,
 		adapter_required_tool_calls = pending.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
-			adapter_required_tool_calls_satisfied =
-				pending.adapter_required_tool_calls_satisfied,
-			build_option_decision_source = pending.build_option_decision_source,
-			adapter_memory_available = pending.adapter_memory_available,
-			adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
-			adapter_memory_case_hint = pending.adapter_memory_case_hint,
-			adapter_tool_trace_names = pending.adapter_tool_trace_names,
-			adapter_build_action_plan_status =
-				pending.adapter_build_action_plan_status,
-			adapter_build_action_plan_selected_candidate_id =
-				pending.adapter_build_action_plan_selected_candidate_id,
-			adapter_build_action_plan_step_count =
-				pending.adapter_build_action_plan_step_count,
-			adapter_build_action_plan_world_mutation_authority =
-				pending.adapter_build_action_plan_world_mutation_authority,
-		})
-	end
+		adapter_required_tool_calls_satisfied =
+			pending.adapter_required_tool_calls_satisfied,
+		build_option_decision_source = pending.build_option_decision_source,
+		adapter_memory_available = pending.adapter_memory_available,
+		adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
+		adapter_memory_case_hint = pending.adapter_memory_case_hint,
+		adapter_tool_trace_names = pending.adapter_tool_trace_names,
+		adapter_build_action_plan_status =
+			pending.adapter_build_action_plan_status,
+		adapter_build_action_plan_selected_candidate_id =
+			pending.adapter_build_action_plan_selected_candidate_id,
+		adapter_build_action_plan_step_count =
+			pending.adapter_build_action_plan_step_count,
+		adapter_build_action_plan_world_mutation_authority =
+			pending.adapter_build_action_plan_world_mutation_authority,
+		generated_build_option_status = pending.generated_build_option_status,
+		generated_build_option_reason = pending.generated_build_option_reason,
+		generated_candidate_id = pending.generated_candidate_id,
+		agentic_tool_success_required =
+			pending.agentic_tool_success_required,
+	})
+end
 
 local function update_build_pending_plan(name, pending, raw_prompt)
 	local edited_context, reason = parse_build_edit_options(raw_prompt, pending.context)
