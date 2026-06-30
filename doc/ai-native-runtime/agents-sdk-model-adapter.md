@@ -46,6 +46,12 @@ The Agents SDK sidecar owns:
 The sidecar must not execute world mutations directly. It returns a bounded
 `ai_native_model_adapter_response`; Luanti remains the only writer.
 
+The default player-facing build policy is preview then approval. Test worlds can
+opt in to `ai_runtime.auto_apply_build_approvals = true`; this only skips the
+second player approval prompt after Luanti has validated the selected build
+plan. The mutation still runs as a normal rollback-backed engine task owned by
+Luanti, and the reply records `auto_applied_approval = true`.
+
 ## Reference Implementation
 
 Reference path:
