@@ -292,6 +292,80 @@ def nova_agent_log_entry(prompt="build a wall of tnt"):
     }
 
 
+def nova_agent_fire_only_option_log_entry():
+    return {
+        "ts": "2026-06-30T12:14:00Z",
+        "player": "Eval",
+        "prompt": "build me a fire and only a fire",
+        "model": "gpt-5-nano",
+        "source": "agents_sdk_tool_plan",
+        "tool_decision_source": "agents_sdk_submit_nova_plan_tool",
+        "required_tool_calls": [
+            "recall_build_prompt_memory",
+            "analyze_build_intent",
+            "draft_build_options",
+            "validate_plan_contract",
+            "submit_nova_plan",
+        ],
+        "missing_required_tool_calls": [],
+        "required_tool_calls_satisfied": True,
+        "ok": True,
+        "label": "single fire",
+        "message": "Placing one fire from reviewed prompt memory.",
+        "selected_option_id": "reviewed_prompt_memory",
+        "decision_reason": "The strict prompt asks for one fire and no extra structure.",
+        "contract_satisfied": True,
+        "prompt_contract": {
+            "intent": "build",
+            "material": "fire",
+            "contract_kind": "single_fire",
+            "contract_required": True,
+        },
+        "reviewed_prompt_memory": {
+            "matched_case_id": "promoted_fire_only_strict_abc123",
+            "case_hint": "fire_only_strict",
+            "match_quality": "exact",
+        },
+        "build_options": [
+            {
+                "option_id": "reviewed_prompt_memory",
+                "source": "reviewed_prompt_memory",
+                "label": "single fire",
+                "build_kind": "fire",
+                "build_material_name": "fire",
+                "planned_node_writes": 1,
+                "contract_satisfied": True,
+                "action_count": 1,
+            },
+            {
+                "option_id": "generic_structure",
+                "source": "fallback",
+                "label": "generic structure",
+                "build_kind": "house",
+                "build_material_name": "stone",
+                "planned_node_writes": 100,
+                "contract_satisfied": False,
+                "action_count": 2,
+            },
+        ],
+        "actions": [
+            {
+                "type": "place_node",
+                "material": "fire",
+                "offset": {"x": 0, "y": 1, "z": 0},
+                "count": 1,
+            }
+        ],
+        "tool_trace": [
+            {"tool_name": "recall_build_prompt_memory"},
+            {"tool_name": "analyze_build_intent"},
+            {"tool_name": "draft_build_options"},
+            {"tool_name": "validate_plan_contract"},
+            {"tool_name": "submit_nova_plan"},
+        ],
+    }
+
+
 def operator_labels_payload(prompt="build a bridge"):
     return {
         "schema_version": 1,
@@ -1216,6 +1290,60 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertTrue(candidate["observed"]["contract_satisfied"])
         self.assertEqual(candidate["observed"]["planned_node_writes"], 75)
         self.assertEqual(candidate["expected"]["planned_node_writes"], 12)
+
+    def test_nova_agent_log_candidate_records_agentic_option_selection(self):
+        module = load_queue_module()
+
+        candidate = module.candidate_from_nova_agent_log_entry(nova_agent_fire_only_option_log_entry())
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["source_kind"], "nova_agent_sidecar_request_response")
+        self.assertEqual(candidate["case_hint"], "fire_only_strict")
+        self.assertEqual(candidate["route"], "agents_sdk_tool_plan")
+        self.assertEqual(candidate["observed_status"], "success")
+        self.assertEqual(candidate["observed"]["selected_option_id"], "reviewed_prompt_memory")
+        self.assertEqual(candidate["observed"]["selected_candidate_id"], "reviewed_prompt_memory")
+        self.assertEqual(
+            candidate["observed"]["decision_reason"],
+            "The strict prompt asks for one fire and no extra structure.",
+        )
+        self.assertEqual(
+            candidate["observed"]["required_tool_calls"],
+            [
+                "recall_build_prompt_memory",
+                "analyze_build_intent",
+                "draft_build_options",
+                "validate_plan_contract",
+                "submit_nova_plan",
+            ],
+        )
+        self.assertEqual(candidate["observed"]["missing_required_tool_calls"], [])
+        self.assertTrue(candidate["observed"]["required_tool_calls_satisfied"])
+        self.assertEqual(
+            candidate["observed"]["tool_trace_names"],
+            [
+                "recall_build_prompt_memory",
+                "analyze_build_intent",
+                "draft_build_options",
+                "validate_plan_contract",
+                "submit_nova_plan",
+            ],
+        )
+        self.assertEqual(candidate["observed"]["build_option_count"], 2)
+        self.assertEqual(candidate["observed"]["build_options"][0]["option_id"], "reviewed_prompt_memory")
+        self.assertTrue(candidate["observed"]["build_options"][0]["contract_satisfied"])
+        self.assertEqual(
+            candidate["observed"]["reviewed_prompt_memory_matched_case_id"],
+            "promoted_fire_only_strict_abc123",
+        )
+        self.assertEqual(candidate["expected"]["route"], "agentic_build_planner")
+        self.assertEqual(candidate["expected"]["planned_node_writes"], 1)
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "pass")
+        self.assertEqual(
+            candidate["adapter_tool_contract"]["expected"]["tool_decision_source"],
+            "agents_sdk_submit_nova_plan_tool",
+        )
+        self.assertFalse(candidate["ready_for_adapter_contract_eval"])
 
     def test_cli_writes_candidate_queue(self):
         with tempfile.TemporaryDirectory() as tmpdir:
