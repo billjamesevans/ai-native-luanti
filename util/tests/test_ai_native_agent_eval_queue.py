@@ -557,6 +557,8 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertIn("Agent Improvement Loop", combined)
         self.assertIn("agents-sdk-model-adapter.jsonl", combined)
         self.assertIn("--operator-labels", combined)
+        self.assertIn("--from-operator-feedback", combined)
+        self.assertIn("/ai_agent_feedback", combined)
         self.assertIn("ai_native_agent_eval_operator_labels", combined)
         loop_sections = []
         for body in bodies:

@@ -15,6 +15,10 @@ import ai_native_agent_memory_refresh as memory_refresh
 import ai_native_agent_operator_label as operator_label
 
 
+OPERATOR_FEEDBACK_MARKER = "operator_feedback="
+OPERATOR_FEEDBACK_KIND = "ai_agent_operator_feedback"
+
+
 def resolve_path(root: Path, value: str | Path) -> Path:
     path = Path(value)
     if path.is_absolute():
@@ -29,6 +33,82 @@ def relative_label(root: Path, path: Path) -> str:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def extract_operator_feedback_json(line: str) -> dict[str, Any] | None:
+    raw = line.strip()
+    if OPERATOR_FEEDBACK_MARKER in raw:
+        raw = raw.split(OPERATOR_FEEDBACK_MARKER, 1)[1].strip()
+    if not raw.startswith("{"):
+        return None
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict) or payload.get("event_kind") != OPERATOR_FEEDBACK_KIND:
+        return None
+    return payload
+
+
+def read_operator_feedback_events(paths: list[Path]) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    events: list[dict[str, Any]] = []
+    summary = {
+        "operator_feedback_events_read": 0,
+        "operator_feedback_events_skipped_private": 0,
+        "operator_feedback_missing_logs": 0,
+    }
+    for path in paths:
+        if not path.is_file():
+            summary["operator_feedback_missing_logs"] += 1
+            continue
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            payload = extract_operator_feedback_json(raw)
+            if payload is None:
+                continue
+            summary["operator_feedback_events_read"] += 1
+            if eval_queue.has_private_content(payload) or eval_queue.has_forbidden_key(payload):
+                summary["operator_feedback_events_skipped_private"] += 1
+                continue
+            events.append(payload)
+    return events, summary
+
+
+def operator_feedback_inputs(
+    events: list[dict[str, Any]],
+    *,
+    feedback_id: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    for event in events:
+        feedback = event.get("feedback") if isinstance(event.get("feedback"), dict) else {}
+        if feedback_id and feedback.get("feedback_id") != feedback_id:
+            continue
+        matches.append(event)
+    if not matches:
+        raise operator_label.OperatorLabelError("no matching operator feedback found")
+    event = matches[-1]
+    feedback = event.get("feedback") if isinstance(event.get("feedback"), dict) else {}
+    expected = eval_queue.safe_expected_from_operator_label(feedback.get("expected"))
+    if expected is None:
+        raise operator_label.OperatorLabelError("operator feedback expected build behavior is invalid")
+    prompt = feedback.get("prompt")
+    candidate_id = feedback.get("candidate_id")
+    if not isinstance(prompt, str) and not isinstance(candidate_id, str):
+        raise operator_label.OperatorLabelError("operator feedback needs prompt or candidate_id")
+    inputs = {
+        "candidate_id": candidate_id if isinstance(candidate_id, str) and candidate_id else None,
+        "prompt": prompt if isinstance(prompt, str) and prompt else None,
+        "source_kind": feedback.get("source_kind") if isinstance(feedback.get("source_kind"), str) else None,
+        "case_hint": feedback.get("case_hint") if isinstance(feedback.get("case_hint"), str) else None,
+        "label_id": feedback.get("label_id") if isinstance(feedback.get("label_id"), str) else None,
+        "expected": expected,
+    }
+    summary = {
+        "operator_feedback_id": feedback.get("feedback_id"),
+        "operator_feedback_source_trace_id": feedback.get("source_trace_id"),
+        "operator_feedback_case_hint": inputs["case_hint"],
+    }
+    return inputs, summary
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -47,8 +127,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--source-kind", default=None, help="Optional source_kind match guard.")
     parser.add_argument("--case-hint", default=None, help="Prompt-memory case hint.")
     parser.add_argument("--label-id", default=None, help="Stable reviewed label id.")
-    parser.add_argument("--build-kind", required=True, help="Expected build kind, such as fire, wall, or platform.")
-    parser.add_argument("--build-material-name", required=True, help="Expected material name, such as fire or tnt.")
+    parser.add_argument(
+        "--from-operator-feedback",
+        action="store_true",
+        help="Use the latest public-safe ai_agent_operator_feedback event from action logs.",
+    )
+    parser.add_argument("--feedback-id", default=None, help="Specific ai_agent_operator_feedback feedback_id to use.")
+    parser.add_argument("--build-kind", default=None, help="Expected build kind, such as fire, wall, or platform.")
+    parser.add_argument("--build-material-name", default=None, help="Expected material name, such as fire or tnt.")
     parser.add_argument("--build-material-node", default=None, help="Optional expected Luanti node name.")
     parser.add_argument("--planned-node-writes", type=int, default=None, help="Expected planned write count.")
     parser.add_argument("--route", default=None, help="Optional expected route.")
@@ -163,15 +249,39 @@ def main(argv: list[str] | None = None) -> int:
     operator_label_output = resolve_path(root, args.operator_label_output)
     case_pack_output = resolve_path(root, args.case_pack_output)
     try:
-        expected = operator_label.expected_build_behavior(
-            build_kind=args.build_kind,
-            build_material_name=args.build_material_name,
-            build_material_node=args.build_material_node,
-            planned_node_writes=args.planned_node_writes,
-            route=args.route,
-            danger_refusal_allowed=args.danger_refusal_allowed,
-            forbidden_extra_structure=args.forbidden_extra_structure,
-        )
+        operator_feedback_summary: dict[str, Any] = {}
+        if args.from_operator_feedback:
+            feedback_events, read_summary = read_operator_feedback_events(action_logs)
+            feedback_inputs, operator_feedback_summary = operator_feedback_inputs(
+                feedback_events,
+                feedback_id=args.feedback_id,
+            )
+            operator_feedback_summary.update(read_summary)
+            expected = feedback_inputs["expected"]
+            candidate_id = args.candidate_id or feedback_inputs["candidate_id"]
+            prompt = args.prompt or feedback_inputs["prompt"]
+            source_kind = args.source_kind or feedback_inputs["source_kind"]
+            case_hint = args.case_hint or feedback_inputs["case_hint"]
+            label_id = args.label_id or feedback_inputs["label_id"]
+        else:
+            if not args.build_kind or not args.build_material_name:
+                raise operator_label.OperatorLabelError(
+                    "--build-kind and --build-material-name are required unless --from-operator-feedback is used"
+                )
+            expected = operator_label.expected_build_behavior(
+                build_kind=args.build_kind,
+                build_material_name=args.build_material_name,
+                build_material_node=args.build_material_node,
+                planned_node_writes=args.planned_node_writes,
+                route=args.route,
+                danger_refusal_allowed=args.danger_refusal_allowed,
+                forbidden_extra_structure=args.forbidden_extra_structure,
+            )
+            candidate_id = args.candidate_id
+            prompt = args.prompt
+            source_kind = args.source_kind
+            case_hint = args.case_hint
+            label_id = args.label_id
         _, _, _, summary = build_feedback_packet(
             root=root,
             agents_sdk_logs=agents_sdk_logs,
@@ -180,11 +290,11 @@ def main(argv: list[str] | None = None) -> int:
             candidate_queue_output=candidate_queue_output,
             operator_label_output=operator_label_output,
             case_pack_output=case_pack_output,
-            candidate_id=args.candidate_id,
-            prompt=args.prompt,
-            source_kind=args.source_kind,
-            case_hint=args.case_hint,
-            label_id=args.label_id,
+            candidate_id=candidate_id,
+            prompt=prompt,
+            source_kind=source_kind,
+            case_hint=case_hint,
+            label_id=label_id,
             expected=expected,
             allow_unmatched=args.allow_unmatched,
             generated_at=args.generated_at,
@@ -193,6 +303,7 @@ def main(argv: list[str] | None = None) -> int:
             max_cases=args.max_cases,
             max_case_pack_bytes=args.max_case_pack_bytes,
         )
+        summary.update(operator_feedback_summary)
     except operator_label.OperatorLabelError as exc:
         print(json.dumps({"status": "fail", "error": str(exc)}, sort_keys=True), file=sys.stderr)
         return 1
