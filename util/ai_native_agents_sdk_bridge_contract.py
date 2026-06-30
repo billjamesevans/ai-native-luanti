@@ -102,6 +102,9 @@ def validate_contract() -> dict:
         "OPENAI_API_KEY",
         "endpoint_not_loopback",
         "no_provider_credentials_required",
+        "require_live_agent",
+        "live_agent_execution",
+        "live_web_lookup_available",
         "no_forbidden_payload_keys",
         "tool_powers_declared",
         "no_direct_world_mutation_tools",
@@ -148,6 +151,9 @@ def validate_contract() -> dict:
         "http.llm",
         "The sidecar must not execute world mutations directly",
         "Luanti remains the only writer",
+        "--require-live-agent",
+        "agentic_execution",
+        "live_web_lookup_available",
         "OPENAI_API_KEY",
     ):
         _require(phrase in doc, "doc_missing_phrase", phrase, violations)

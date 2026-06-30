@@ -375,6 +375,16 @@ core.register_node(":ai_runtime_test:hazard", {
 	groups = { hazard = 1 },
 })
 
+core.register_node(":ai_runtime_test:fire", {
+	description = "AI Runtime Test Fire",
+	groups = { fire = 1 },
+})
+
+core.register_node(":ai_runtime_test:tnt", {
+	description = "AI Runtime Test TNT",
+	groups = { tnt = 1 },
+})
+
 local function test_pos(x)
 	return { x = x, y = 32, z = 4100 }
 end
@@ -4888,6 +4898,122 @@ local completed_radius_repair = core.get_ai_task(approved_repair_radius.task_id)
 assert(completed_radius_repair.status == "completed")
 assert(completed_radius_repair.last_result.changed == 2)
 
+rawset(_G, "test_ai_agent_plugin_freeform_build_intents", function()
+core.ai_agent_plugin.configure({
+	capability_profile = "clean",
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	platform_node = "ai_runtime_test:stone",
+	path_node = "ai_runtime_test:stone",
+	fire_node = "ai_runtime_test:fire",
+	wall_node = "ai_runtime_test:stone",
+	tnt_node = "ai_runtime_test:tnt",
+	build_material_nodes = {
+		fire = "ai_runtime_test:fire",
+		tnt = "ai_runtime_test:tnt",
+	},
+	repair_nodes = {
+		["ai_runtime_test:hazard"] = true,
+	},
+	max_lights = 16,
+	max_repair_radius = 2,
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
+})
+
+local fire_pos = test_pos(4227)
+set_test_node(fire_pos, { name = "air" })
+local fire_build = core.ai_agent_plugin.handle_command("Wills", "build a fire", {
+	pos = fire_pos,
+	world_id = "product-loop-world",
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(fire_build.ok == true)
+assert(fire_build.action == "build")
+assert(fire_build.status == "pending_approval")
+assert(fire_build.build_kind == "fire")
+assert(fire_build.build_material_name == "fire")
+assert(fire_build.build_material_node == "ai_runtime_test:fire")
+assert(fire_build.planned_node_writes == 1)
+assert(get_test_node(fire_pos).name == "air")
+local fire_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(fire_trace.public_prompt == "build a fire")
+assert(fire_trace.route == "deterministic_build_parser")
+assert(fire_trace.context.build_kind == "fire")
+assert(fire_trace.context.build_material_node == "ai_runtime_test:fire")
+assert(fire_trace.response.status == "pending_approval")
+local approved_fire = core.ai_agent_plugin.handle_command("Wills", "approve build", {})
+assert(approved_fire.ok == true)
+assert(approved_fire.action == "approve")
+assert(approved_fire.approved_action == "build")
+core.step_ai_tasks()
+assert(get_test_node(fire_pos).name == "ai_runtime_test:fire")
+local completed_fire = core.get_ai_task(approved_fire.task_id)
+assert(completed_fire.status == "completed")
+assert(completed_fire.last_result.metrics.node_writes == 1)
+
+local tnt_wall_pos = test_pos(4232)
+for x = 0, 3 do
+	for y = 0, 2 do
+		set_test_node(vector.add(tnt_wall_pos, { x = x, y = y, z = 0 }), {
+			name = "air",
+		})
+	end
+end
+local tnt_wall = core.ai_agent_plugin.handle_command("Wills", "build a wall of tnt", {
+	pos = tnt_wall_pos,
+	world_id = "product-loop-world",
+	get_node = get_test_node,
+	set_node = set_test_node,
+})
+assert(tnt_wall.ok == true)
+assert(tnt_wall.action == "build")
+assert(tnt_wall.status == "pending_approval")
+assert(tnt_wall.reason ~= "dangerous")
+assert(tnt_wall.reason ~= "unsafe")
+assert(tnt_wall.build_kind == "wall")
+assert(tnt_wall.build_width == 4)
+assert(tnt_wall.build_height == 3)
+assert(tnt_wall.build_material_name == "tnt")
+assert(tnt_wall.build_material_node == "ai_runtime_test:tnt")
+assert(tnt_wall.planned_node_writes == 12)
+local tnt_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(tnt_trace.public_prompt == "build a wall of tnt")
+assert(tnt_trace.context.build_kind == "wall")
+assert(tnt_trace.context.build_material_name == "tnt")
+assert(tnt_trace.context.build_material_node == "ai_runtime_test:tnt")
+assert(tnt_trace.response.build_material_node == "ai_runtime_test:tnt")
+local traces_reply = core.ai_agent_plugin.handle_command("Wills", "traces", {})
+assert(traces_reply.ok == true)
+assert(traces_reply.action == "request_traces")
+assert(#traces_reply.traces >= 2)
+local approved_tnt_wall = core.ai_agent_plugin.handle_command("Wills", "approve build", {})
+assert(approved_tnt_wall.ok == true)
+assert(approved_tnt_wall.action == "approve")
+assert(approved_tnt_wall.approved_action == "build")
+core.step_ai_tasks()
+for x = 0, 3 do
+	for y = 0, 2 do
+		assert(get_test_node(vector.add(tnt_wall_pos, { x = x, y = y, z = 0 })).name
+			== "ai_runtime_test:tnt")
+	end
+end
+local completed_tnt_wall = core.get_ai_task(approved_tnt_wall.task_id)
+assert(completed_tnt_wall.status == "completed")
+assert(completed_tnt_wall.last_result.metrics.node_writes == 12)
+end)
+
+_G.test_ai_agent_plugin_freeform_build_intents()
+rawset(_G, "test_ai_agent_plugin_freeform_build_intents", nil)
+
 local guide_reply = core.ai_agent_plugin.handle_command("Wills", "guide", {})
 assert(guide_reply.ok == true)
 assert(guide_reply.action == "guide")
@@ -5228,6 +5354,15 @@ assert(adapter_calls[1].private_prompt == nil)
 assert(adapter_calls[1].safety.public_safe_request == true)
 assert(adapter_calls[1].safety.private_input_retained == false)
 assert(adapter_calls[1].bounds.max_response_bytes == 4000)
+rawset(_G, "model_traces", core.ai_agent_plugin.get_model_traces({ limit = 1 }))
+assert(#_G.model_traces == 1)
+assert(_G.model_traces[1].action == "model")
+assert(_G.model_traces[1].route == "model_adapter")
+assert(_G.model_traces[1].public_prompt == "what should we explore next?")
+assert(_G.model_traces[1].response.status == "success")
+assert(_G.model_traces[1].response.message == "mock adapter response")
+assert(_G.model_traces[1].context.private_prompt == nil)
+rawset(_G, "model_traces", nil)
 
 local plugin_audit = core.get_ai_runtime_audit({ limit = 10 })
 local model_record = plugin_audit[#plugin_audit - 1]
@@ -5619,6 +5754,8 @@ core.build_agent.configure({
 	marker_node = "ai_runtime_test:stone",
 	platform_node = "ai_runtime_test:stone",
 	path_node = "ai_runtime_test:stone",
+	fire_node = "ai_runtime_test:fire",
+	wall_node = "ai_runtime_test:stone",
 	max_nodes_per_task = 16,
 })
 
@@ -5660,6 +5797,24 @@ local build_definitions = {
 		options = {
 			length = 3,
 			direction = { x = 1, y = 0, z = 0 },
+		},
+	},
+	{
+		kind = "fire",
+		expected_label = "build fire",
+		expected_count = 1,
+		options = {
+			material_node = "ai_runtime_test:fire",
+		},
+	},
+	{
+		kind = "wall",
+		expected_label = "build wall",
+		expected_count = 6,
+		options = {
+			width = 3,
+			height = 2,
+			material_node = "ai_runtime_test:tnt",
 		},
 	},
 }

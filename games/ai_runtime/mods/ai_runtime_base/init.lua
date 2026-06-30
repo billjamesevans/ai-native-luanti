@@ -35,6 +35,15 @@ core.ai_agent_plugin.configure({
 	capability_profile = "clean",
 	light_node = "ai_runtime_base:cobble",
 	marker_node = "ai_runtime_base:cobble",
+	platform_node = "ai_runtime_base:stone",
+	path_node = "ai_runtime_base:cobble",
+	fire_node = "ai_runtime_base:fire",
+	wall_node = "ai_runtime_base:stone",
+	tnt_node = "ai_runtime_base:tnt",
+	build_material_nodes = {
+		fire = "ai_runtime_base:fire",
+		tnt = "ai_runtime_base:tnt",
+	},
 	agent_entity_name = helper_entity_name,
 	repair_nodes = {},
 	max_lights = 8,
@@ -87,6 +96,21 @@ core.register_node("ai_runtime_base:cobble", {
 	description = "AI Runtime Cobble",
 	tiles = {texture},
 	groups = {cracky = 3},
+})
+
+core.register_node("ai_runtime_base:fire", {
+	description = "AI Runtime Fire",
+	tiles = {texture},
+	drawtype = "plantlike",
+	walkable = false,
+	buildable_to = true,
+	groups = {fire = 1},
+})
+
+core.register_node("ai_runtime_base:tnt", {
+	description = "AI Runtime TNT",
+	tiles = {texture},
+	groups = {cracky = 3, tnt = 1},
 })
 
 core.register_alias("mapgen_stone", "ai_runtime_base:stone")

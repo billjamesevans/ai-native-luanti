@@ -10,6 +10,10 @@ The first-party plugin splits `/nova` behavior into Builder, Repair, Guide,
 Defender, and Importer role agents. In this clean profile, Builder, Repair,
 and Guide can receive only their relevant clean grants; Defender does not get
 `combat.defend`, and Importer does not get `import.assets` by default.
+The profile also registers simple code-only fire and TNT nodes so `/nova build
+a fire` and `/nova build a wall of tnt` exercise the real build planner,
+approval, rollback, and trace paths without requiring private content or a
+larger game package.
 
 Default rollback storage is enabled for this profile so rollback-backed build and repair commands can persist local rollback metadata before mutating a disposable world.
 

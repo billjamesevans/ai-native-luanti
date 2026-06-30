@@ -6,6 +6,8 @@ local settings = {
 	marker_node = "default:mese_post_light",
 	platform_node = "default:stone",
 	path_node = "default:stone",
+	fire_node = "fire:basic_flame",
+	wall_node = "default:stone",
 	max_nodes_per_task = 32,
 	sample_limit = 8,
 }
@@ -44,6 +46,13 @@ local function add_placement(placements, pos, node_name)
 	}
 end
 
+local function material_node(options, fallback_field)
+	local node_name = options.material_node or options.node_name or settings[fallback_field]
+	assert(type(node_name) == "string" and node_name ~= "",
+		"Build material node must be a non-empty string")
+	return node_name
+end
+
 local function placement_positions(placements)
 	local positions = {}
 	for _, placement in ipairs(placements) do
@@ -71,15 +80,16 @@ end
 local function light_placements(origin, options)
 	local placements = {}
 	local count = clamp_count(positive_int(options.count, 1))
+	local node_name = material_node(options, "light_node")
 	for index = 0, count - 1 do
-		add_placement(placements, offset_pos(origin, index, 1, 0), settings.light_node)
+		add_placement(placements, offset_pos(origin, index, 1, 0), node_name)
 	end
 	return placements
 end
 
-local function marker_placements(origin)
+local function marker_placements(origin, options)
 	local placements = {}
-	add_placement(placements, origin, settings.marker_node)
+	add_placement(placements, origin, material_node(options, "marker_node"))
 	return placements
 end
 
@@ -87,6 +97,7 @@ local function platform_placements(origin, options)
 	local placements = {}
 	local width = positive_int(options.width, 2)
 	local depth = positive_int(options.depth, 2)
+	local node_name = material_node(options, "platform_node")
 	while width * depth > settings.max_nodes_per_task do
 		if depth >= width and depth > 1 then
 			depth = depth - 1
@@ -98,7 +109,7 @@ local function platform_placements(origin, options)
 	end
 	for x = 0, width - 1 do
 		for z = 0, depth - 1 do
-			add_placement(placements, offset_pos(origin, x, 0, z), settings.platform_node)
+			add_placement(placements, offset_pos(origin, x, 0, z), node_name)
 		end
 	end
 	return placements
@@ -115,8 +126,41 @@ local function path_placements(origin, options)
 	end
 	dx = dx == 0 and 0 or (dx > 0 and 1 or -1)
 	dz = dz == 0 and 0 or (dz > 0 and 1 or -1)
+	local node_name = material_node(options, "path_node")
 	for index = 0, length - 1 do
-		add_placement(placements, offset_pos(origin, dx * index, 0, dz * index), settings.path_node)
+		add_placement(placements, offset_pos(origin, dx * index, 0, dz * index), node_name)
+	end
+	return placements
+end
+
+local function fire_placements(origin, options)
+	local placements = {}
+	local count = clamp_count(positive_int(options.count, 1))
+	local node_name = material_node(options, "fire_node")
+	for index = 0, count - 1 do
+		add_placement(placements, offset_pos(origin, index, 0, 0), node_name)
+	end
+	return placements
+end
+
+local function wall_placements(origin, options)
+	local placements = {}
+	local width = positive_int(options.width, 4)
+	local height = positive_int(options.height, 3)
+	local node_name = material_node(options, "wall_node")
+	while width * height > settings.max_nodes_per_task do
+		if width >= height and width > 1 then
+			width = width - 1
+		elseif height > 1 then
+			height = height - 1
+		else
+			break
+		end
+	end
+	for x = 0, width - 1 do
+		for y = 0, height - 1 do
+			add_placement(placements, offset_pos(origin, x, y, 0), node_name)
+		end
 	end
 	return placements
 end
@@ -126,12 +170,14 @@ local placement_builders = {
 	marker = marker_placements,
 	platform = platform_placements,
 	path = path_placements,
+	fire = fire_placements,
+	wall = wall_placements,
 }
 
 local function build_plan_data(options, require_task_id)
 	assert(type(options) == "table", "Build task options must be a table")
 	assert(type(options.kind) == "string" and placement_builders[options.kind],
-		"Build task kind must be one of lights, marker, platform, or path")
+		"Build task kind must be one of lights, marker, platform, path, fire, or wall")
 	if require_task_id then
 		assert(type(options.task_id) == "string" and options.task_id ~= "", "Build task id is required")
 	end
@@ -144,7 +190,14 @@ end
 
 function build_agent.configure(options)
 	options = options or {}
-	for _, field in ipairs({ "light_node", "marker_node", "platform_node", "path_node" }) do
+	for _, field in ipairs({
+		"light_node",
+		"marker_node",
+		"platform_node",
+		"path_node",
+		"fire_node",
+		"wall_node",
+	}) do
 		if options[field] then
 			assert(type(options[field]) == "string" and options[field] ~= "",
 				"Build node names must be non-empty strings")
@@ -177,6 +230,7 @@ function build_agent.plan(options)
 		plan = {
 			kind = options.kind,
 			origin = origin,
+			material_node = placements[1] and placements[1].node_name or options.material_node,
 			placement_count = placement_count,
 			mutation_class = "build",
 			rollback_policy = options.rollback_policy or "snapshot",
@@ -211,6 +265,7 @@ function build_agent.define_task(options)
 		mutation_class = "build",
 		metadata = {
 			kind = options.kind,
+			material_node = placements[1] and placements[1].node_name or options.material_node,
 			placement_count = placement_count,
 		},
 		budget = {
