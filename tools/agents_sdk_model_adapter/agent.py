@@ -830,6 +830,13 @@ def _combined_generated_options(
     return options
 
 
+def _generated_options_from_result(generated: dict[str, Any] | None) -> list[dict[str, Any]]:
+    if not isinstance(generated, dict):
+        return []
+    option = generated.get("generated_option")
+    return [option] if isinstance(option, dict) else []
+
+
 def _find_generated_option(
     generated_options: list[dict[str, Any]],
     selected_id: str,
@@ -878,12 +885,16 @@ def select_build_option_payload(
     candidates = _candidate_entries(candidate_summary)
     selected_id = str(selected_option_id or "").strip()
     memory = recall_build_prompt_memory_payload(player_request, candidate_summary)
-    generated = propose_build_option_payload(candidate_summary, player_request)
-    generated_option_list = _combined_generated_options(generated, generated_options)
+    generated_requirement = propose_build_option_payload(candidate_summary, player_request)
+    generated_option_list = _combined_generated_options(None, generated_options)
+    generated_requirement_options = _combined_generated_options(
+        generated_requirement,
+        generated_options,
+    )
     generated_option = _find_generated_option(generated_option_list, selected_id)
     required_generated_option = _required_generated_option_for_request(
         player_request,
-        generated_option_list,
+        generated_requirement_options,
     )
     selected = next((item for item in candidates if item["option_id"] == selected_id), None)
     decision_source = "agent_selected_build_option"
@@ -902,12 +913,16 @@ def select_build_option_payload(
     for option in generated_option_list:
         alternatives.append(str(option.get("option_id") or "generated_agent_option"))
     generated_status = "ready" if isinstance(generated_option, dict) else (
-        generated.get("status") if isinstance(generated, dict) else None
+        "tool_call_required"
+        if isinstance(required_generated_option, dict)
+        else generated_requirement.get("status") if isinstance(generated_requirement, dict) else None
     )
     generated_reason = (
         generated_option.get("reason")
         if isinstance(generated_option, dict) and generated_option.get("reason")
-        else generated.get("reason") if isinstance(generated, dict) else None
+        else required_generated_option.get("reason")
+        if isinstance(required_generated_option, dict) and required_generated_option.get("reason")
+        else generated_requirement.get("reason") if isinstance(generated_requirement, dict) else None
     )
 
     if locked_option and selected_id != locked_option["option_id"]:
@@ -1017,9 +1032,8 @@ def _selected_build_plan_entry(
             "build_material_name": selected.get("material") or "default",
             "planned_node_writes": selected.get("planned_node_writes") or 0,
         }
-    generated = propose_build_option_payload(candidate_summary, player_request)
     generated_option = _find_generated_option(
-        _combined_generated_options(generated, generated_options),
+        _combined_generated_options(None, generated_options),
         selected_id,
     )
     if isinstance(generated_option, dict):
@@ -1212,6 +1226,7 @@ def recommend_build_option_payload(candidate_summary: str, player_request: str) 
         preferred,
         player_request,
         "compatibility fallback selected an executable build option",
+        _generated_options_from_result(generated),
     )
     selected_result["decision_source"] = decision_source
     selected_result["memory_match"] = memory
@@ -1245,10 +1260,13 @@ def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
         decisions["build_option"]["decision_source"] = "offline_adapter_fallback"
         selected = decisions["build_option"].get("selected_option_id")
         if isinstance(selected, str) and selected:
+            generated_option = decisions["build_option"].get("generated_option")
+            generated_options = [generated_option] if isinstance(generated_option, dict) else []
             decisions["build_action_plan"] = plan_build_actions_payload(
                 str(context.get("candidate_summary") or ""),
                 player_request,
                 selected,
+                generated_options,
             )
     return decisions
 
@@ -1543,6 +1561,9 @@ def build_agent(model: str | None = None) -> Any:
             "generic for the player request. When you propose a custom "
             "bounded option, pass a generated option_id plus build_kind, "
             "material, dimensions, and reason through propose_build_option; "
+            "if reviewed prompt memory suggests a generated_ option, call "
+            "propose_build_option in this run to materialize the generated "
+            "option before selecting it; "
             "then call select_build_option with the option id you chose. "
             "Then call plan_build_actions for that selected option before "
             "producing final output. "
@@ -1601,7 +1622,10 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             "decide which executable option best matches the player request. "
             "Call propose_build_option when the fixed candidates are too "
             "generic; for custom generated options pass a generated option_id, "
-            "build_kind, material, bounded dimensions, and reason. Then call "
+            "build_kind, material, bounded dimensions, and reason. If reviewed "
+            "prompt memory points at a generated_ option, call "
+            "propose_build_option first to materialize that option in this "
+            "tool run. Then call "
             "select_build_option using the exact candidate_summary, "
             "player_request, chosen option id, and a short selection reason. "
             "Then call plan_build_actions with the same "
