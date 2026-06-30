@@ -193,8 +193,9 @@ python3 util/ai_native_agent_adapter_contract_eval.py \
 The replay runner selects only candidates marked
 `ready_for_adapter_contract_eval = true`, refuses non-loopback endpoints, avoids
 world mutation, and fails runs where required function tools are missing,
-`required_tool_calls_satisfied` is not true, or the decision source is not
-`agents_sdk_function_tool`.
+`required_tool_calls_satisfied` is not true, or the decision source is not one
+of the accepted agent tool-contract sources: `agents_sdk_function_tool`,
+`agents_sdk_repair_function_tool`, or `local_agent_tool_contract_fast_path`.
 
 Case packs are for harnesses and disposable-world probes. They run through
 `core.ai_agent_plugin.run_prompt_eval({ cases = "custom", custom_cases = ... })`

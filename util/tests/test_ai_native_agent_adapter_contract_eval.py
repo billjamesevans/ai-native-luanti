@@ -140,6 +140,14 @@ def fixed_bad_response(request):
     return response
 
 
+def fixed_local_fast_path_response(request):
+    response = fixed_good_response(request)
+    response["response"]["tool_decision_source"] = "local_agent_tool_contract_fast_path"
+    response["response"]["local_tool_contract_reason"] = "agents_sdk_model_timeout"
+    response["response"]["agent_model_timeout"] = True
+    return response
+
+
 class AgentAdapterContractEvalTests(unittest.TestCase):
     def test_replays_ready_adapter_contract_candidate_successfully(self):
         module = load_module(CONTRACT_EVAL, "ai_native_agent_adapter_contract_eval_success")
@@ -160,6 +168,27 @@ class AgentAdapterContractEvalTests(unittest.TestCase):
         self.assertEqual(case["response"]["missing_required_tool_calls"], [])
         self.assertTrue(case["checks"]["required_tool_calls_present"])
         self.assertFalse(PRIVATE_PATTERNS.search(json.dumps(report, sort_keys=True)))
+
+    def test_replay_accepts_local_tool_contract_fast_path(self):
+        module = load_module(CONTRACT_EVAL, "ai_native_agent_adapter_contract_eval_local_fast_path")
+
+        report = module.build_adapter_contract_eval(
+            candidate_queue_payload(),
+            generated_at="2026-06-30T14:10:00Z",
+            request_runner=fixed_local_fast_path_response,
+        )
+
+        self.assertEqual(report["status"], "pass")
+        case = report["cases"][0]
+        self.assertTrue(case["ok"])
+        self.assertEqual(
+            case["response"]["tool_decision_source"],
+            "local_agent_tool_contract_fast_path",
+        )
+        self.assertIn(
+            "local_agent_tool_contract_fast_path",
+            case["expected"]["tool_decision_sources"],
+        )
 
     def test_replay_failure_reports_missing_required_tool(self):
         module = load_module(CONTRACT_EVAL, "ai_native_agent_adapter_contract_eval_failure")

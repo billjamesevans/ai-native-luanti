@@ -965,6 +965,28 @@ class AgentEvalQueueTests(unittest.TestCase):
             ],
         )
 
+    def test_local_tool_contract_fast_path_can_be_prompt_eval_candidate(self):
+        module = load_queue_module()
+        entry = agents_sdk_generated_option_entry()
+        entry["response"]["response"]["tool_decision_source"] = "local_agent_tool_contract_fast_path"
+        entry["response"]["response"]["local_tool_contract_reason"] = "agents_sdk_model_timeout"
+
+        candidate = module.candidate_from_agents_sdk_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["case_hint"], "generated_dimensioned_wall")
+        self.assertTrue(candidate["ready_for_prompt_eval"])
+        self.assertFalse(candidate["ready_for_adapter_contract_eval"])
+        self.assertEqual(
+            candidate["observed"]["tool_decision_source"],
+            "local_agent_tool_contract_fast_path",
+        )
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "pass")
+        self.assertIn(
+            "local_agent_tool_contract_fast_path",
+            candidate["adapter_tool_contract"]["expected"]["tool_decision_sources"],
+        )
+
     def test_verified_live_probe_cases_become_prompt_eval_candidates(self):
         module = load_queue_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1006,6 +1028,24 @@ class AgentEvalQueueTests(unittest.TestCase):
                 "plan_build_actions",
             ],
         )
+
+    def test_verified_live_probe_accepts_local_tool_contract_fast_path(self):
+        module = load_queue_module()
+        case = verified_live_probe_payload()["cases"][0]
+        case["reply"]["adapter_tool_decision_source"] = "local_agent_tool_contract_fast_path"
+
+        candidate = module.candidate_from_verified_live_probe_case(
+            verified_live_probe_payload([case]),
+            case,
+        )
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["case_hint"], "fire_only_strict")
+        self.assertEqual(
+            candidate["observed"]["tool_decision_source"],
+            "local_agent_tool_contract_fast_path",
+        )
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "pass")
 
     def test_verified_live_probe_reader_ignores_prompt_eval_live_artifact(self):
         module = load_queue_module()

@@ -73,10 +73,14 @@ availability, bounded public-safe response metadata,
 `required_tool_calls_satisfied = true` for the build-planning probe, and
 `world_mutation_authority = luanti`. It does not write secrets to the report.
 
-For build-planning requests, live responses should include
-`tool_decision_source = agents_sdk_function_tool` plus a bounded `tool_trace`
-containing `recall_build_prompt_memory`, `select_build_option`, and
-`plan_build_actions`. The action-plan tool is read-only; it records the intended
+For build-planning requests, live responses should include a healthy
+tool-contract source (`agents_sdk_function_tool`,
+`agents_sdk_repair_function_tool`, or `local_agent_tool_contract_fast_path`)
+plus a bounded `tool_trace` containing `recall_build_prompt_memory`,
+`select_build_option`, and `plan_build_actions`. The local fast path is only for
+bounded build-planning requests after the live SDK path or repair path failed;
+it keeps the game responsive while preserving explicit evidence that the model
+path needed recovery. The action-plan tool is read-only; it records the intended
 Luanti workflow and confirms that the engine, not the sidecar, owns preview,
 approval, rollback, task execution, and improvement evidence.
 For open-ended build requests, the `propose_build_option` function tool may
@@ -188,8 +192,8 @@ latest live prompt eval as `fail`. When supplied, the compatibility staging pilo
 must also pass: it proves dry-run import planning, bounded disposable-world apply,
 rollback, and refusal gates without touching the family server or private assets.
 In `agents_sdk_sidecar` mode, the live prompt eval must also retain untruncated
-case evidence showing that each build case used `agents_sdk_function_tool`,
-satisfied `recall_build_prompt_memory`, `select_build_option`, and
+case evidence showing that each build case used an accepted agent tool-contract
+source, satisfied `recall_build_prompt_memory`, `select_build_option`, and
 `plan_build_actions`, and left world mutation authority with Luanti.
 
 For a reviewed correction where the expected build output is known, create the
