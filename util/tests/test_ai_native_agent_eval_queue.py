@@ -97,18 +97,54 @@ def nova_trace_line(prompt="build a wall of tnt"):
     return "[ai_agent_plugin] request_trace=" + json.dumps(payload, sort_keys=True)
 
 
+def nova_agent_log_entry(prompt="build a wall of tnt"):
+    return {
+        "ts": "2026-06-30T12:10:00Z",
+        "player": "Eval",
+        "prompt": prompt,
+        "model": "gpt-5-nano",
+        "source": "agents_sdk",
+        "ok": True,
+        "label": "tnt wall",
+        "message": "Building a tnt wall.",
+        "correction_source": "prompt_contract",
+        "contract_satisfied": True,
+        "prompt_contract": {
+            "intent": "build",
+            "material": "tnt",
+            "contract_kind": "tnt_wall",
+            "contract_required": True,
+        },
+        "actions": [
+            {
+                "type": "fill_box",
+                "material": "tnt",
+                "offset": {"x": 0, "y": 1, "z": 0},
+                "size": {"x": 15, "y": 5, "z": 1},
+            }
+        ],
+        "tool_trace": [
+            {"tool_name": "analyze_build_intent", "result": {"contract_kind": "tnt_wall"}},
+            {"tool_name": "validate_plan_contract", "result": {"contract_satisfied": False}},
+        ],
+    }
+
+
 class AgentEvalQueueTests(unittest.TestCase):
     def test_builds_public_safe_eval_candidates_from_sidecar_and_nova_logs(self):
         module = load_queue_module()
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)
             sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            nova_agent_log = root / "nova-agent-requests.jsonl"
             action_log = root / "debug.log"
             sidecar_log.write_text(json.dumps(agents_sdk_log_entry()) + "\n", encoding="utf-8")
+            nova_agent_log.write_text(json.dumps(nova_agent_log_entry()) + "\n", encoding="utf-8")
             action_log.write_text(nova_trace_line() + "\n", encoding="utf-8")
 
             payload = module.build_eval_candidate_queue(
                 agents_sdk_logs=[sidecar_log],
+                nova_agent_logs=[nova_agent_log],
                 action_logs=[action_log],
                 generated_at="2026-06-30T12:30:00Z",
             )
@@ -116,26 +152,43 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(payload["artifact_kind"], "ai_native_agent_eval_candidate_queue")
         self.assertEqual(payload["status"], "ready")
         self.assertEqual(payload["source_summary"]["agents_sdk_log_entries_read"], 1)
+        self.assertEqual(payload["source_summary"]["nova_agent_log_entries_read"], 1)
         self.assertEqual(payload["source_summary"]["nova_request_traces_read"], 1)
-        self.assertEqual(payload["source_summary"]["candidates_total"], 2)
-        self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 2)
+        self.assertEqual(payload["source_summary"]["candidates_total"], 3)
+        self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 3)
         self.assertTrue(payload["safety"]["public_safe_output"])
         self.assertFalse(PRIVATE_PATTERNS.search(json.dumps(payload, sort_keys=True)))
 
-        by_hint = {candidate["case_hint"]: candidate for candidate in payload["candidates"]}
-        fire = by_hint["fire_only_strict"]
+        fire = next(candidate for candidate in payload["candidates"] if candidate["case_hint"] == "fire_only_strict")
         self.assertTrue(fire["ready_for_prompt_eval"])
         self.assertEqual(fire["expected"]["build_kind"], "fire")
         self.assertEqual(fire["expected"]["build_material_name"], "fire")
         self.assertEqual(fire["expected"]["planned_node_writes"], 1)
         self.assertTrue(fire["expected"]["forbidden_extra_structure"])
 
-        tnt = by_hint["tnt_wall"]
-        self.assertEqual(tnt["source_kind"], "nova_request_trace")
-        self.assertEqual(tnt["expected"]["build_kind"], "wall")
-        self.assertEqual(tnt["expected"]["build_material_name"], "tnt")
-        self.assertEqual(tnt["expected"]["planned_node_writes"], 12)
-        self.assertFalse(tnt["expected"]["danger_refusal_allowed"])
+        tnt_sources = {
+            candidate["source_kind"]: candidate
+            for candidate in payload["candidates"]
+            if candidate["case_hint"] == "tnt_wall"
+        }
+        self.assertIn("nova_request_trace", tnt_sources)
+        self.assertIn("nova_agent_sidecar_request_response", tnt_sources)
+        trace_tnt = tnt_sources["nova_request_trace"]
+        self.assertEqual(trace_tnt["expected"]["build_kind"], "wall")
+        self.assertEqual(trace_tnt["expected"]["build_material_name"], "tnt")
+        self.assertEqual(trace_tnt["expected"]["planned_node_writes"], 12)
+        self.assertFalse(trace_tnt["expected"]["danger_refusal_allowed"])
+        sidecar_tnt = tnt_sources["nova_agent_sidecar_request_response"]
+        self.assertEqual(sidecar_tnt["observed"]["contract_kind"], "tnt_wall")
+        self.assertTrue(sidecar_tnt["observed"]["contract_satisfied"])
+        self.assertEqual(sidecar_tnt["observed"]["correction_source"], "prompt_contract")
+        self.assertEqual(sidecar_tnt["observed"]["build_kind"], "wall")
+        self.assertEqual(sidecar_tnt["observed"]["build_material_name"], "tnt")
+        self.assertEqual(sidecar_tnt["observed"]["planned_node_writes"], 75)
+        self.assertEqual(
+            sidecar_tnt["observed"]["tool_trace_names"],
+            ["analyze_build_intent", "validate_plan_contract"],
+        )
 
     def test_private_entries_are_skipped_and_not_retained(self):
         module = load_queue_module()
@@ -205,12 +258,54 @@ class AgentEvalQueueTests(unittest.TestCase):
             ["recall_build_prompt_memory", "recommend_build_option"],
         )
 
+    def test_agents_sdk_candidate_extracts_embedded_player_request_from_wrapper_prompt(self):
+        module = load_queue_module()
+        entry = agents_sdk_log_entry(
+            "\n".join(
+                [
+                    "Plan a Luanti build request using only the listed executable options.",
+                    "Luanti will enforce capabilities, approval, rollback, and world mutation.",
+                    "Player request: build a small shelter",
+                    "Options:",
+                    "- fire: Single fire kind=fire material=fire planned_writes=1",
+                ]
+            )
+        )
+
+        candidate = module.candidate_from_agents_sdk_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["prompt"], "build a small shelter")
+        self.assertEqual(candidate["prompt_source"], "request.public_prompt.player_request")
+        self.assertNotEqual(candidate["case_hint"], "fire_only_strict")
+        self.assertFalse(candidate["ready_for_prompt_eval"])
+
+    def test_nova_agent_log_candidate_records_contract_and_correction(self):
+        module = load_queue_module()
+
+        candidate = module.candidate_from_nova_agent_log_entry(nova_agent_log_entry())
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["source_kind"], "nova_agent_sidecar_request_response")
+        self.assertEqual(candidate["case_hint"], "tnt_wall")
+        self.assertEqual(candidate["priority"], "high")
+        self.assertEqual(candidate["route"], "agents_sdk")
+        self.assertEqual(candidate["action"], "build")
+        self.assertEqual(candidate["observed_status"], "corrected")
+        self.assertEqual(candidate["observed_reason"], "prompt_contract")
+        self.assertEqual(candidate["observed"]["contract_kind"], "tnt_wall")
+        self.assertTrue(candidate["observed"]["contract_satisfied"])
+        self.assertEqual(candidate["observed"]["planned_node_writes"], 75)
+        self.assertEqual(candidate["expected"]["planned_node_writes"], 12)
+
     def test_cli_writes_candidate_queue(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)
             sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            nova_agent_log = root / "nova-agent-requests.jsonl"
             output = root / "candidate-queue.json"
             sidecar_log.write_text(json.dumps(agents_sdk_log_entry("build a fire")) + "\n", encoding="utf-8")
+            nova_agent_log.write_text(json.dumps(nova_agent_log_entry()) + "\n", encoding="utf-8")
 
             completed = subprocess.run(
                 [
@@ -220,6 +315,8 @@ class AgentEvalQueueTests(unittest.TestCase):
                     str(root),
                     "--agents-sdk-log",
                     str(sidecar_log),
+                    "--nova-agent-log",
+                    str(nova_agent_log),
                     "--output",
                     str(output),
                     "--generated-at",
@@ -234,7 +331,11 @@ class AgentEvalQueueTests(unittest.TestCase):
             self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
             payload = json.loads(output.read_text(encoding="utf-8"))
             self.assertEqual(payload["status"], "ready")
-            self.assertEqual(payload["candidates"][0]["case_hint"], "build_fire")
+            self.assertEqual(payload["source_summary"]["nova_agent_log_entries_read"], 1)
+            self.assertEqual(
+                {candidate["case_hint"] for candidate in payload["candidates"]},
+                {"build_fire", "tnt_wall"},
+            )
 
     def test_docs_include_agent_improvement_loop(self):
         bodies = [path.read_text(encoding="utf-8") for path in (README, OPERATING_LOOP, ADAPTER_DOC)]
