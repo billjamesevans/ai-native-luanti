@@ -18,6 +18,7 @@ REPORT_KIND = "ai_native_agent_eval_candidate_queue"
 OPERATOR_LABEL_KIND = "ai_native_agent_eval_operator_labels"
 VERIFIED_LIVE_PROBE_KIND = "disposable_live_ai_runtime_nova_auto_apply_probe"
 VERIFIED_LIVE_RESULT_KIND = "ai_native_nova_auto_apply_live_result"
+PROMPT_EVAL_LIVE_RESULT_KIND = "ai_native_agent_prompt_eval_live_result"
 DEFAULT_MAX_BYTES = 32000
 DEFAULT_MAX_CANDIDATES = 50
 
@@ -1270,10 +1271,13 @@ def _read_verified_live_probe_candidates(
         if not isinstance(payload, dict):
             violations.append({"kind": "invalid_verified_live_probe_payload", "details": str(path)})
             continue
-        if payload.get("live_result_kind") != VERIFIED_LIVE_RESULT_KIND:
+        live_result_kind = payload.get("live_result_kind")
+        if live_result_kind == PROMPT_EVAL_LIVE_RESULT_KIND:
+            continue
+        if live_result_kind != VERIFIED_LIVE_RESULT_KIND:
             violations.append({
                 "kind": "invalid_verified_live_probe_kind",
-                "details": str(payload.get("live_result_kind")),
+                "details": str(live_result_kind),
             })
             continue
         files_read += 1
