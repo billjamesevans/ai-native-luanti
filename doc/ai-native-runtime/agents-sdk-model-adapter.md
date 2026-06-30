@@ -99,6 +99,26 @@ bounded JSON report. The report verifies `tool_powers` and confirms every
 declared tool has `direct_world_mutation = false`. It is intended for local and
 Pi release evidence before enabling live provider credentials.
 
+Live-agent readiness is a separate, stricter gate for deployments that have the
+Agents SDK dependency and a server-local `OPENAI_API_KEY` configured outside the
+repository:
+
+```bash
+uv run --project tools/agents_sdk_model_adapter \
+  python util/ai_native_agents_sdk_sidecar_readiness.py \
+  --mode managed-http \
+  --port 8766 \
+  --require-live-agent \
+  --output local/benchmarks/agents-sdk-sidecar-live-readiness.json
+```
+
+That mode keeps the endpoint loopback-only, does not print or retain the key,
+and requires provider-backed `agentic_execution = true`,
+`web_search_tool_available = true`, `live_web_lookup_available = true`,
+bounded public-safe response metadata, and `world_mutation_authority = luanti`.
+It is the evidence path for proving the sidecar is actually running Agents SDK
+agents with hosted web lookup instead of only publishing the offline contract.
+
 ## Luanti Adapter
 
 The Lua adapter is disabled by default and is loaded only when:
@@ -169,6 +189,7 @@ Run:
 ```bash
 python3 util/ai_native_agents_sdk_bridge_contract.py
 python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode managed-http --port 8766
+uv run --project tools/agents_sdk_model_adapter python util/ai_native_agents_sdk_sidecar_readiness.py --mode managed-http --port 8766 --require-live-agent
 python3 tools/agents_sdk_model_adapter/main.py --smoke
 bin/luantiserver --run-unittests --test-module TestAIRuntime
 ```

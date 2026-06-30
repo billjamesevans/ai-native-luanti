@@ -7,15 +7,24 @@ local player_entity_ids = {}
 local player_pending_approvals = {}
 local task_sequence = 0
 local approval_sequence = 0
+local request_trace_sequence = 0
+local request_traces = {}
 local model_adapter = nil
 local default_capabilities = {}
 local settings = {
 	capability_profile = nil,
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
+	platform_node = "default:stone",
+	path_node = "default:stone",
+	fire_node = "fire:basic_flame",
+	wall_node = "default:stone",
+	tnt_node = "tnt:tnt",
+	build_material_nodes = {},
 	agent_entity_name = "ai_demo_benchmark:helper",
 	repair_nodes = {},
 	max_lights = 12,
+	max_request_traces = 50,
 	max_entity_move_distance = 16,
 	max_follow_steps = 6,
 	max_follow_step_distance = 4,
@@ -48,6 +57,9 @@ local PRODUCT_SURFACES = {
 			"build marker",
 			"build plan platform width N depth N",
 			"build platform width N depth N",
+			"build fire",
+			"build wall width N height N",
+			"build wall of tnt",
 			"approve build",
 			"light",
 		},
@@ -83,6 +95,7 @@ local PRODUCT_SURFACES = {
 			"commands",
 			"tasks",
 			"task <task_id>",
+			"traces",
 			"pending plan",
 			"edit plan",
 			"discard plan",
@@ -250,13 +263,137 @@ local function next_approval_id(name, action)
 	return "nova_agent:" .. name .. ":" .. action .. ":approval:" .. approval_sequence
 end
 
+local function bounded_trace_text(value, max_bytes)
+	if value == nil then
+		return nil
+	end
+	local text = tostring(value)
+	max_bytes = max_bytes or 1000
+	if #text <= max_bytes then
+		return text
+	end
+	return text:sub(1, max_bytes) .. "...<truncated>"
+end
+
+local function trace_timestamp_us()
+	return core.get_us_time and core.get_us_time() or 0
+end
+
+local function compact_trace_context(context)
+	context = context or {}
+	return {
+		surface_id = context.surface_id,
+		task_id = context.task_id,
+		build_kind = context.build_kind,
+		build_width = context.build_width,
+		build_depth = context.build_depth,
+		build_height = context.build_height,
+		build_count = context.build_count,
+		build_material_name = context.build_material_name,
+		build_material_node = context.build_material_node,
+		adapter_name = context.adapter_name,
+	}
+end
+
+local function compact_trace_entry(entry)
+	local result = table.copy(entry or {})
+	if entry and entry.request then
+		result.request = table.copy(entry.request)
+	end
+	if entry and entry.response then
+		result.response = table.copy(entry.response)
+	end
+	if entry and entry.context then
+		result.context = table.copy(entry.context)
+	end
+	return result
+end
+
+local function remember_request_trace(entry)
+	entry = entry or {}
+	request_trace_sequence = request_trace_sequence + 1
+	entry.trace_id = entry.trace_id or ("nova_trace:" .. request_trace_sequence)
+	entry.trace_kind = entry.trace_kind or "agent_request"
+	entry.created_us = entry.created_us or trace_timestamp_us()
+	request_traces[#request_traces + 1] = entry
+	local max_traces = math.max(1, settings.max_request_traces or 50)
+	while #request_traces > max_traces do
+		table.remove(request_traces, 1)
+	end
+	return entry
+end
+
+local function start_request_trace(name, action, route, prompt, context, extra)
+	extra = extra or {}
+	return remember_request_trace({
+		owner = name,
+		agent_id = extra.agent_id or agent_id_for(name),
+		action = action,
+		route = route,
+		public_prompt = bounded_trace_text(prompt, 1000),
+		context = compact_trace_context(context),
+		request = {
+			action = action,
+			route = route,
+			surface_id = extra.surface_id or (context and context.surface_id),
+			adapter_name = extra.adapter_name,
+		},
+	})
+end
+
+local function finish_request_trace(trace, result, extra)
+	if not trace then
+		return result
+	end
+	extra = extra or {}
+	trace.completed_us = trace_timestamp_us()
+	trace.response = {
+		ok = result and result.ok or false,
+		status = result and result.status,
+		action = result and result.action,
+		reason = result and result.reason,
+		message = bounded_trace_text(result and result.message, 1000),
+		approval_id = result and result.approval_id,
+		task_id = result and result.task_id,
+		build_kind = result and result.build_kind,
+		build_width = result and result.build_width,
+		build_depth = result and result.build_depth,
+		build_height = result and result.build_height,
+		build_material_name = result and result.build_material_name,
+		build_material_node = result and result.build_material_node,
+		planned_node_writes = result and result.planned_node_writes,
+	}
+	for key, value in pairs(extra) do
+		trace[key] = value
+	end
+	return result
+end
+
+function plugin.get_request_traces(options)
+	options = options or {}
+	local limit = options.limit or #request_traces
+	limit = math.max(0, math.min(limit, #request_traces))
+	local result = {}
+	local start_index = #request_traces - limit + 1
+	for index = start_index, #request_traces do
+		result[#result + 1] = compact_trace_entry(request_traces[index])
+	end
+	return result
+end
+
+function plugin.get_model_traces(options)
+	return plugin.get_request_traces(options)
+end
+
 local function configure_product_surfaces()
 	if core.build_agent then
 		core.build_agent.configure({
 			light_node = settings.light_node,
 			marker_node = settings.marker_node,
-			platform_node = settings.marker_node,
-			path_node = settings.marker_node,
+			platform_node = settings.platform_node,
+			path_node = settings.path_node,
+			fire_node = settings.fire_node,
+			wall_node = settings.wall_node,
 			max_nodes_per_task = settings.max_lights,
 			sample_limit = settings.max_lights,
 		})
@@ -350,7 +487,25 @@ local function pending_approval_summary(pending)
 	if pending.planned_node_writes then
 		append(parts, "planned_writes=" .. tostring(pending.planned_node_writes))
 	end
+	if pending.build_kind then
+		append(parts, "build_kind=" .. tostring(pending.build_kind))
+	end
+	if pending.build_material_node then
+		append(parts, "material=" .. tostring(pending.build_material_node))
+	end
 	return table.concat(parts, " ")
+end
+
+local function append_build_material_details(lines, result)
+	if result.build_height then
+		append(lines, "height=" .. tostring(result.build_height))
+	end
+	if result.build_material_name then
+		append(lines, "material_name=" .. tostring(result.build_material_name))
+	end
+	if result.build_material_node then
+		append(lines, "material=" .. tostring(result.build_material_node))
+	end
 end
 
 local function join_limited(values, limit)
@@ -424,7 +579,7 @@ local function format_command_reply(result)
 			append(lines, "surfaces=" .. join_limited(surfaces, 8))
 		end
 		if type(result.commands) == "table" then
-			append(lines, "commands=" .. join_limited(result.commands, 32))
+			append(lines, "commands=" .. join_limited(result.commands, 64))
 		end
 		local pending = pending_approval_summary(result.pending_approval)
 		if pending then
@@ -457,6 +612,7 @@ local function format_command_reply(result)
 		if result.build_depth then
 			append(lines, "depth=" .. tostring(result.build_depth))
 		end
+		append_build_material_details(lines, result)
 		if result.last_result_status then
 			append(lines, "last_result_status=" .. tostring(result.last_result_status))
 		end
@@ -483,6 +639,7 @@ local function format_command_reply(result)
 		if result.build_depth then
 			append(lines, "depth=" .. tostring(result.build_depth))
 		end
+		append_build_material_details(lines, result)
 		if result.repair_radius then
 			append(lines, "radius=" .. tostring(result.repair_radius))
 		end
@@ -552,6 +709,7 @@ local function format_command_reply(result)
 		if result.build_depth then
 			append(lines, "depth=" .. tostring(result.build_depth))
 		end
+		append_build_material_details(lines, result)
 		if result.repair_radius then
 			append(lines, "radius=" .. tostring(result.repair_radius))
 		end
@@ -578,6 +736,7 @@ local function format_command_reply(result)
 		if result.build_depth then
 			append(lines, "depth=" .. tostring(result.build_depth))
 		end
+		append_build_material_details(lines, result)
 		if result.repair_radius then
 			append(lines, "radius=" .. tostring(result.repair_radius))
 		end
@@ -602,6 +761,18 @@ local function format_command_reply(result)
 		for _, record in ipairs(result.audit_events or {}) do
 			append(summaries, tostring(record.event_type or "event") .. ":"
 				.. tostring(record.status or "unknown"))
+		end
+		if #summaries > 0 then
+			append(lines, "recent=" .. join_limited(summaries, 5))
+		end
+	elseif result.action == "request_traces" then
+		append(lines, "traces=" .. tostring(#(result.traces or {})))
+		local summaries = {}
+		for _, trace in ipairs(result.traces or {}) do
+			local response = trace.response or {}
+			append(summaries, tostring(trace.action or "request") .. ":"
+				.. tostring(trace.route or "unknown") .. ":"
+				.. tostring(response.status or "unknown"))
 		end
 		if #summaries > 0 then
 			append(lines, "recent=" .. join_limited(summaries, 5))
@@ -661,6 +832,35 @@ function plugin.configure(options)
 	end
 	if options.marker_node then
 		settings.marker_node = options.marker_node
+		if not options.platform_node then
+			settings.platform_node = options.marker_node
+		end
+		if not options.path_node then
+			settings.path_node = options.marker_node
+		end
+		if not options.wall_node then
+			settings.wall_node = options.marker_node
+		end
+	end
+	if options.platform_node then
+		settings.platform_node = options.platform_node
+	end
+	if options.path_node then
+		settings.path_node = options.path_node
+	end
+	if options.fire_node then
+		settings.fire_node = options.fire_node
+	end
+	if options.wall_node then
+		settings.wall_node = options.wall_node
+	end
+	if options.tnt_node then
+		settings.tnt_node = options.tnt_node
+	end
+	if options.build_material_nodes then
+		assert(type(options.build_material_nodes) == "table",
+			"Build material nodes must be a table")
+		settings.build_material_nodes = table.copy(options.build_material_nodes)
 	end
 	if options.agent_entity_name then
 		settings.agent_entity_name = options.agent_entity_name
@@ -670,6 +870,9 @@ function plugin.configure(options)
 	end
 	if options.max_lights then
 		settings.max_lights = options.max_lights
+	end
+	if options.max_request_traces then
+		settings.max_request_traces = options.max_request_traces
 	end
 	if options.max_entity_move_distance then
 		settings.max_entity_move_distance = options.max_entity_move_distance
@@ -868,6 +1071,10 @@ local function approval_context(context)
 		build_kind = context.build_kind,
 		build_width = context.build_width,
 		build_depth = context.build_depth,
+		build_height = context.build_height,
+		build_count = context.build_count,
+		build_material_name = context.build_material_name,
+		build_material_node = context.build_material_node,
 		repair_radius = context.repair_radius,
 		sample_limit = context.sample_limit,
 		max_node_writes_per_step = context.max_node_writes_per_step,
@@ -889,6 +1096,9 @@ local function compact_pending_approval(pending)
 		build_kind = pending.build_kind,
 		build_width = pending.build_width,
 		build_depth = pending.build_depth,
+		build_height = pending.build_height,
+		build_material_name = pending.build_material_name,
+		build_material_node = pending.build_material_node,
 		repair_radius = pending.repair_radius,
 		sample_limit = pending.sample_limit,
 	}
@@ -907,6 +1117,9 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		build_kind = extra.build_kind,
 		build_width = extra.build_width,
 		build_depth = extra.build_depth,
+		build_height = extra.build_height,
+		build_material_name = extra.build_material_name,
+		build_material_node = extra.build_material_node,
 		repair_radius = extra.repair_radius,
 		sample_limit = extra.sample_limit,
 	}
@@ -1854,6 +2067,82 @@ local function build_depth_for(context)
 	return context.build_depth or 2
 end
 
+local function build_height_for(context)
+	context = context or {}
+	return context.build_height or 3
+end
+
+local function build_count_for(context)
+	context = context or {}
+	return context.build_count or 1
+end
+
+local function node_is_registered(node_name)
+	return type(node_name) == "string"
+		and node_name ~= ""
+		and (not core.registered_nodes or core.registered_nodes[node_name] ~= nil)
+end
+
+local function append_candidate_node(candidates, node_name)
+	if type(node_name) ~= "string" or node_name == "" then
+		return
+	end
+	for _, existing in ipairs(candidates) do
+		if existing == node_name then
+			return
+		end
+	end
+	candidates[#candidates + 1] = node_name
+end
+
+local function material_node_candidates(material_name)
+	local candidates = {}
+	if settings.build_material_nodes then
+		append_candidate_node(candidates, settings.build_material_nodes[material_name])
+	end
+	if material_name == "tnt" then
+		append_candidate_node(candidates, settings.tnt_node)
+		append_candidate_node(candidates, "mcl_tnt:tnt")
+		append_candidate_node(candidates, "tnt:tnt")
+		append_candidate_node(candidates, "experimental:tnt")
+	elseif material_name == "fire" then
+		append_candidate_node(candidates, settings.fire_node)
+		append_candidate_node(candidates, "mcl_fire:fire")
+		append_candidate_node(candidates, "fire:basic_flame")
+		append_candidate_node(candidates, "fire:permanent_flame")
+	elseif material_name == "stone" then
+		append_candidate_node(candidates, settings.platform_node)
+		append_candidate_node(candidates, settings.marker_node)
+	end
+	return candidates
+end
+
+local function resolve_build_material_node(material_name, fallback_node)
+	if not material_name then
+		return fallback_node
+	end
+	for _, node_name in ipairs(material_node_candidates(material_name)) do
+		if node_is_registered(node_name) then
+			return node_name
+		end
+	end
+	return nil
+end
+
+local function parse_build_material_name(lower_prompt)
+	if lower_prompt:find("tnt", 1, true) then
+		return "tnt"
+	end
+	if lower_prompt:find("fire", 1, true) or lower_prompt:find("flame", 1, true) then
+		return "fire"
+	end
+	return nil
+end
+
+local function parse_named_build_int(lower_prompt, name)
+	return parse_build_positive_int(lower_prompt:match(name .. "%s+([%-%d]+)"))
+end
+
 local function build_options_for(name, context, task_id)
 	context = context or {}
 	local kind = build_kind_for(context)
@@ -1872,13 +2161,29 @@ local function build_options_for(name, context, task_id)
 		operation_label = "ai_agent_plugin.build",
 		sample_limit = context.sample_limit or settings.max_lights,
 	}
+	if context.build_material_node then
+		options.material_node = context.build_material_node
+	end
 	if kind == "platform" then
 		options.width = build_width_for(context)
 		options.depth = build_depth_for(context)
+		options.material_node = options.material_node or settings.platform_node
 		options.max_node_writes_per_step = options.max_node_writes_per_step
 			or math.min(options.width * options.depth, settings.max_lights)
+	elseif kind == "wall" then
+		options.width = build_width_for(context)
+		options.height = build_height_for(context)
+		options.material_node = options.material_node or settings.wall_node
+		options.max_node_writes_per_step = options.max_node_writes_per_step
+			or math.min(options.width * options.height, settings.max_lights)
+	elseif kind == "fire" then
+		options.count = build_count_for(context)
+		options.material_node = options.material_node or settings.fire_node
+		options.max_node_writes_per_step = options.max_node_writes_per_step
+			or math.min(options.count, settings.max_lights)
 	else
 		options.kind = "marker"
+		options.material_node = options.material_node or settings.marker_node
 		options.max_node_writes_per_step = options.max_node_writes_per_step or 1
 	end
 	return options
@@ -1886,12 +2191,64 @@ end
 
 local function parse_build_options(raw_prompt, context)
 	local parsed = table.copy(context or {})
-	if raw_prompt:lower():find("platform", 1, true) then
+	local lower = raw_prompt:lower()
+	local material_name = parse_build_material_name(lower)
+	if lower:find("wall", 1, true) then
+		parsed.build_kind = "wall"
+		parsed.build_material_name = material_name
+		parsed.build_material_node = resolve_build_material_node(
+			material_name, settings.wall_node)
+		if not parsed.build_material_node then
+			return nil, "build_material_unavailable"
+		end
+		local x_width, x_height = lower:match("(%d+)%s*x%s*(%d+)")
+		local width = parse_named_build_int(lower, "width")
+			or parse_named_build_int(lower, "wide")
+			or parse_named_build_int(lower, "length")
+			or parse_build_positive_int(x_width or "4")
+		local height = parse_named_build_int(lower, "height")
+			or parse_named_build_int(lower, "high")
+			or parse_named_build_int(lower, "tall")
+			or parse_build_positive_int(x_height or "3")
+		if not width or not height then
+			return nil, "invalid_build_dimensions"
+		end
+		if width * height > settings.max_lights then
+			return nil, "build_shape_out_of_bounds"
+		end
+		parsed.build_width = width
+		parsed.build_depth = nil
+		parsed.build_height = height
+	elseif material_name == "fire" then
+		parsed.build_kind = "fire"
+		parsed.build_material_name = "fire"
+		parsed.build_material_node = resolve_build_material_node("fire", settings.fire_node)
+		if not parsed.build_material_node then
+			return nil, "build_material_unavailable"
+		end
+		local count = parse_build_positive_int(lower:match("(%d+)%s+fires?") or "1")
+		if not count then
+			return nil, "invalid_build_dimensions"
+		end
+		if count > settings.max_lights then
+			return nil, "build_shape_out_of_bounds"
+		end
+		parsed.build_count = count
+		parsed.build_width = nil
+		parsed.build_depth = nil
+		parsed.build_height = nil
+	elseif lower:find("platform", 1, true) then
 		parsed.build_kind = "platform"
-		local width_text = raw_prompt:match("[Ww][Ii][Dd][Tt][Hh]%s+([%-%d]+)")
-		local depth_text = raw_prompt:match("[Dd][Ee][Pp][Tt][Hh]%s+([%-%d]+)")
+		parsed.build_material_name = material_name
+		parsed.build_material_node = resolve_build_material_node(
+			material_name, settings.platform_node)
+		if material_name and not parsed.build_material_node then
+			return nil, "build_material_unavailable"
+		end
+		local width_text = lower:match("width%s+([%-%d]+)")
+		local depth_text = lower:match("depth%s+([%-%d]+)")
 		if not width_text or not depth_text then
-			local x_width, x_depth = raw_prompt:match("(%d+)%s*[Xx]%s*(%d+)")
+			local x_width, x_depth = lower:match("(%d+)%s*x%s*(%d+)")
 			width_text = width_text or x_width
 			depth_text = depth_text or x_depth
 		end
@@ -1905,10 +2262,18 @@ local function parse_build_options(raw_prompt, context)
 		end
 		parsed.build_width = width
 		parsed.build_depth = depth
+		parsed.build_height = nil
 	else
 		parsed.build_kind = "marker"
+		parsed.build_material_name = material_name
+		parsed.build_material_node = resolve_build_material_node(
+			material_name, settings.marker_node)
+		if material_name and not parsed.build_material_node then
+			return nil, "build_material_unavailable"
+		end
 		parsed.build_width = nil
 		parsed.build_depth = nil
+		parsed.build_height = nil
 	end
 	return parsed, nil
 end
@@ -1917,18 +2282,32 @@ local function parse_build_edit_options(raw_prompt, context)
 	local lower = raw_prompt:lower()
 	local has_shape = raw_prompt:match("[Ww][Ii][Dd][Tt][Hh]%s+([%-%d]+)")
 		or raw_prompt:match("[Dd][Ee][Pp][Tt][Hh]%s+([%-%d]+)")
+		or raw_prompt:match("[Hh][Ee][Ii][Gg][Hh][Tt]%s+([%-%d]+)")
 		or raw_prompt:match("%d+%s*[Xx]%s*%d+")
 	if not lower:find("marker", 1, true)
 			and not lower:find("platform", 1, true)
+			and not lower:find("wall", 1, true)
+			and not lower:find("fire", 1, true)
+			and not lower:find("tnt", 1, true)
 			and not has_shape then
 		return nil, "no_plan_edit_parameters"
 	end
 	local prompt = raw_prompt
 	if has_shape and not lower:find("platform", 1, true)
+			and not lower:find("wall", 1, true)
 			and not lower:find("marker", 1, true) then
 		prompt = raw_prompt .. " platform"
 	end
 	return parse_build_options(prompt, context)
+end
+
+local function prompt_has_build_surface(prompt)
+	return prompt:find("build", 1, true)
+		or prompt:find("marker", 1, true)
+		or prompt:find("platform", 1, true)
+		or prompt:find("wall", 1, true)
+		or prompt:find("fire", 1, true)
+		or prompt:find("tnt", 1, true)
 end
 
 local function queue_build_task(name, context)
@@ -1962,6 +2341,10 @@ local function build_plan_for(name, context)
 	plan.build_kind = build_options.kind
 	plan.build_width = build_options.width
 	plan.build_depth = build_options.depth
+	plan.build_height = build_options.height
+	plan.build_count = build_options.count
+	plan.build_material_name = context.build_material_name
+	plan.build_material_node = build_options.material_node
 	return result, plan
 end
 
@@ -1974,6 +2357,9 @@ local function handle_build_plan(name, context)
 		build_kind = plan.build_kind,
 		build_width = plan.build_width,
 		build_depth = plan.build_depth,
+		build_height = plan.build_height,
+		build_material_name = plan.build_material_name,
+		build_material_node = plan.build_material_node,
 	})
 end
 
@@ -1986,6 +2372,9 @@ local function handle_build(name, context)
 		build_kind = plan.build_kind,
 		build_width = plan.build_width,
 		build_depth = plan.build_depth,
+		build_height = plan.build_height,
+		build_material_name = plan.build_material_name,
+		build_material_node = plan.build_material_node,
 	})
 	return public_reply(name, "build", "pending_approval",
 		"Build plan is pending approval before mutation.", {
@@ -1997,6 +2386,9 @@ local function handle_build(name, context)
 			build_kind = plan.build_kind,
 			build_width = plan.build_width,
 			build_depth = plan.build_depth,
+			build_height = plan.build_height,
+			build_material_name = plan.build_material_name,
+			build_material_node = plan.build_material_node,
 			plan_status = result.status,
 		})
 end
@@ -2346,6 +2738,7 @@ local function handle_guide(name)
 			"commands",
 			"tasks",
 			"task <task_id>",
+			"traces",
 			"pending plan",
 			"edit plan",
 			"edit plan platform width N depth N",
@@ -2367,6 +2760,9 @@ local function handle_guide(name)
 			"build plan",
 			"build marker",
 			"build platform width N depth N",
+			"build fire",
+			"build wall width N height N",
+			"build wall of tnt",
 			"repair plan",
 			"repair radius N",
 			"repair",
@@ -2424,6 +2820,14 @@ local function handle_audit(name, requested_task_id)
 		target_kind = target_kind,
 		target_id = target_id,
 		audit_events = audit_events_for(name, 50, filter),
+	})
+end
+
+local function handle_request_traces(name)
+	plugin.ensure_surface_agent(name, "guide")
+	return public_reply(name, "request_traces", "success", "Recent Nova request traces returned.", {
+		surface_id = "guide",
+		traces = plugin.get_request_traces({ limit = 25 }),
 	})
 end
 
@@ -2633,6 +3037,12 @@ local function handle_pending_plan(name)
 		plan_status = plan.status,
 		candidate_count = pending.candidate_count,
 		planned_node_writes = pending.planned_node_writes,
+		build_kind = pending.build_kind,
+		build_width = pending.build_width,
+		build_depth = pending.build_depth,
+		build_height = pending.build_height,
+		build_material_name = pending.build_material_name,
+		build_material_node = pending.build_material_node,
 	})
 end
 
@@ -2656,6 +3066,9 @@ local function update_build_pending_plan(name, pending, raw_prompt)
 	pending.build_kind = plan.build_kind
 	pending.build_width = plan.build_width
 	pending.build_depth = plan.build_depth
+	pending.build_height = plan.build_height
+	pending.build_material_name = plan.build_material_name
+	pending.build_material_node = plan.build_material_node
 	pending.repair_radius = nil
 	pending.sample_limit = nil
 	player_pending_approvals[name] = pending
@@ -2671,6 +3084,9 @@ local function update_build_pending_plan(name, pending, raw_prompt)
 			build_kind = pending.build_kind,
 			build_width = pending.build_width,
 			build_depth = pending.build_depth,
+			build_height = pending.build_height,
+			build_material_name = pending.build_material_name,
+			build_material_node = pending.build_material_node,
 		})
 end
 
@@ -2837,6 +3253,9 @@ end
 
 local function handle_model(name, prompt, context)
 	context = context or {}
+	local trace = start_request_trace(name, "model", "model_adapter", prompt, context, {
+		adapter_name = context.adapter_name or "ai_agent_plugin",
+	})
 	local result = core.ai_model_ops.request(prompt, {
 		agent_id = agent_id_for(name),
 		owner = name,
@@ -2846,9 +3265,12 @@ local function handle_model(name, prompt, context)
 		adapter_name = context.adapter_name or "ai_agent_plugin",
 		context = context,
 	})
-	return public_reply(name, "model", result.ok and "success" or "blocked",
+	return finish_request_trace(trace, public_reply(name, "model",
+		result.ok and "success" or "blocked",
 		result.message or "Model adapter did not return a response.", {
 			reason = result.reason,
+		}), {
+			adapter_name = context.adapter_name or "ai_agent_plugin",
 		})
 end
 
@@ -2865,6 +3287,10 @@ function plugin.handle_command(name, param, context)
 	end
 	if prompt == "guide" or prompt == "help" or prompt == "commands" then
 		return handle_guide(name)
+	end
+	if prompt == "traces" or prompt == "trace" or prompt == "logs"
+			or prompt == "model traces" or prompt == "request traces" then
+		return handle_request_traces(name)
 	end
 	local requested_audit_task_id = raw_prompt:match("^[Aa][Uu][Dd][Ii][Tt]%s+(.+)$")
 		or raw_prompt:match("^[Hh][Ii][Ss][Tt][Oo][Rr][Yy]%s+(.+)$")
@@ -2949,16 +3375,24 @@ function plugin.handle_command(name, param, context)
 		return handle_light(name, prompt, context)
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
-			and (prompt:find("build", 1, true) or prompt:find("marker", 1, true)) then
+			and prompt_has_build_surface(prompt) then
+		local trace = start_request_trace(name, "build_plan",
+			"deterministic_build_parser", raw_prompt, context, {
+				surface_id = "builder",
+			})
 		local build_context, reason = parse_build_options(raw_prompt, context)
 		if not build_context then
-			return public_reply(name, "build_plan", "blocked",
+			return finish_request_trace(trace, public_reply(name, "build_plan", "blocked",
 				"Build plan parameters are outside the configured bounds.", {
 					surface_id = "builder",
 					reason = reason,
-				})
+				}))
 		end
-		return handle_build_plan(name, build_context)
+		trace.context = compact_trace_context(build_context)
+		return finish_request_trace(trace, handle_build_plan(name, build_context), {
+			selected_intent = build_context.build_kind,
+			build_material_node = build_context.build_material_node,
+		})
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
 			and (prompt:find("repair", 1, true) or prompt:find("fix", 1, true)) then
@@ -2992,15 +3426,23 @@ function plugin.handle_command(name, param, context)
 		return handle_import_plan(name, context)
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
+		local trace = start_request_trace(name, "build",
+			"deterministic_build_parser", raw_prompt, context, {
+				surface_id = "builder",
+			})
 		local build_context, reason = parse_build_options(raw_prompt, context)
 		if not build_context then
-			return public_reply(name, "build", "blocked",
+			return finish_request_trace(trace, public_reply(name, "build", "blocked",
 				"Build parameters are outside the configured bounds.", {
 					surface_id = "builder",
 					reason = reason,
-				})
+				}))
 		end
-		return handle_build(name, build_context)
+		trace.context = compact_trace_context(build_context)
+		return finish_request_trace(trace, handle_build(name, build_context), {
+			selected_intent = build_context.build_kind,
+			build_material_node = build_context.build_material_node,
+		})
 	end
 	return handle_model(name, prompt, context)
 end

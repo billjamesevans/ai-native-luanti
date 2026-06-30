@@ -49,6 +49,22 @@ The readiness report verifies that `tool_powers` includes function tools and
 `WebSearchTool`, and that every declared power has
 `direct_world_mutation = false`.
 
+Live agent readiness, with `openai-agents` installed and `OPENAI_API_KEY`
+provided by the local secret environment:
+
+```bash
+uv run --project tools/agents_sdk_model_adapter \
+  python util/ai_native_agents_sdk_sidecar_readiness.py \
+  --mode managed-http \
+  --port 8766 \
+  --require-live-agent \
+  --output local/benchmarks/agents-sdk-sidecar-live-readiness.json
+```
+
+This stricter probe must show `agentic_execution = true`, hosted web lookup
+availability, bounded public-safe response metadata, and
+`world_mutation_authority = luanti`. It does not write secrets to the report.
+
 Adapter endpoint:
 
 ```text

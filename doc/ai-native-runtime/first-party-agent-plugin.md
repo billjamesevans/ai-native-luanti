@@ -15,7 +15,7 @@ split into five first-party role agents:
 
 | Surface | Agent id shape | Clean profile boundary | Runtime path |
 | --- | --- | --- | --- |
-| Builder Agent | `nova_agent:<player>:builder` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Build and light mutations require preview, explicit approval for marker/platform builds, and rollback metadata before writes. | `core.build_agent.plan`, `core.build_agent.define_task` |
+| Builder Agent | `nova_agent:<player>:builder` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Build and light mutations require preview, explicit approval for marker/platform/fire/wall builds, and rollback metadata before writes. | `core.build_agent.plan`, `core.build_agent.define_task` |
 | Repair Agent | `nova_agent:<player>:repair` | Granted only `world.read`, `world.place`, and optional `task.cancel` when the clean profile declares them. Repair mutation requires preview, explicit approval, and rollback metadata before writes. | `core.repair_agent.plan_area`, `core.repair_agent.queue_apply_task` |
 | Guide Agent | `nova_agent:<player>:guide` | Granted `world.read` plus optional `task.cancel` and `http.llm` when configured. It owns read-only guide, task, audit, rollback-review, and owner task-control views. | `core.get_ai_task`, `core.get_ai_runtime_audit`, `core.cancel_ai_task` |
 | Defender Agent | `nova_agent:<player>:defender` | Not granted in the default clean profile. A server profile or optional plugin must explicitly grant `combat.defend`. | `core.ai_player_ops.defend` |
@@ -40,7 +40,7 @@ The plugin uses:
 - `core.register_ai_agent` for one agent per player.
 - `core.queue_ai_task` for all task-backed work.
 - `core.cancel_ai_task` for player-owned cancellation.
-- `core.build_agent.plan` and `core.build_agent.define_task` for read-only build previews and rollback-backed light, marker, and bounded platform build tasks.
+- `core.build_agent.plan` and `core.build_agent.define_task` for read-only build previews and rollback-backed light, marker, fire, wall, and bounded platform build tasks.
 - `core.repair_agent.queue_apply_task` for rollback-backed repair apply tasks.
 - `core.ai_import_ops.plan` for dry-run-only Importer planning tasks that
   require `import.assets` and never copy assets or mutate worlds.
@@ -68,6 +68,10 @@ Implemented deterministic commands:
 - `tasks`, `task status`, `builder`: returns known plugin task records.
 - `task <task_id>`, `task status <task_id>`: returns one remembered
   player-owned plugin task by id without exposing unrelated runtime tasks.
+- `traces`, `logs`, `model traces`, `request traces`: returns recent
+  public-safe Nova request/response traces, including visible prompt, route,
+  selected build intent/material, response status, and bounded response
+  message. Private prompts and raw provider payloads are not retained.
 - `pending`, `pending plan`, `plan`, `review plan`: returns the current
   player-owned pending build or repair approval without queuing mutation.
 - `edit plan platform width N depth N`, `plan edit platform width N depth N`:
@@ -101,6 +105,12 @@ Implemented deterministic commands:
 - `build plan platform width N depth N`, `build platform width N depth N`:
   plans a bounded platform before approval. `width * depth` must fit within
   the configured build write budget, and the apply path remains rollback-backed.
+- `build fire`, `build a fire`: plans a bounded fire placement using the
+  configured or registered game fire node.
+- `build wall width N height N`, `build a wall of tnt`: plans a bounded wall
+  before approval. Requested game materials such as TNT are allowed when the
+  node exists and the request fits the server's capability, protection,
+  budget, approval, and rollback gates.
 - `repair plan`, `preview repair`: returns a read-only repair plan before mutation.
 - `repair plan radius N`, `repair radius N`: plans a bounded wider repair
   area before approval. `N` must be within the configured `max_repair_radius`
@@ -154,6 +164,13 @@ authority.
 The Lua bridge is explicit opt-in through `ai_runtime.enable_agents_sdk_adapter`
 and uses `/ai_agents_sdk_adapter_probe` for public-safe verification.
 
+Nova request traces are intentionally separate from provider payload retention.
+`core.ai_agent_plugin.get_request_traces({ limit = N })` and the chat-facing
+`traces` command keep bounded public prompt/response summaries for debugging bad
+agent behavior. They are meant to answer "why did Nova do that?" after a player
+command, without storing private prompts, raw API responses, credentials, or
+unbounded media data.
+
 ## Configuration
 
 Games or server mods can configure game-specific nodes without changing the engine fork:
@@ -163,11 +180,21 @@ core.ai_agent_plugin.configure({
 	capability_profile = "clean",
 	light_node = "default:torch",
 	marker_node = "default:mese_post_light",
+	platform_node = "default:stone",
+	path_node = "default:stone",
+	fire_node = "fire:basic_flame",
+	wall_node = "default:stone",
+	tnt_node = "tnt:tnt",
+	build_material_nodes = {
+		fire = "fire:basic_flame",
+		tnt = "tnt:tnt",
+	},
 	agent_entity_name = "ai_runtime_base:helper",
 	repair_nodes = {
 		["fire:basic_flame"] = true,
 	},
 	max_lights = 12,
+	max_request_traces = 50,
 	max_entity_move_distance = 16,
 	max_follow_steps = 6,
 	max_follow_step_distance = 4,
@@ -190,7 +217,9 @@ core.ai_agent_plugin.configure({
 
 The default capability policy is empty. A game package or operator mod must declare a named `capability_profile` and explicit `capabilities` table before newly registered player agents receive grants. The role agents inherit only the subset of configured capabilities relevant to their surface; for example, a clean profile with `http.llm` does not automatically grant model access to the builder, and a clean profile without `import.assets` creates an Importer Agent with no import grant.
 
-The default node/entity settings are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content.
+The default node/entity settings are intentionally generic and may not match every game. A game package should set nodes appropriate to its own content. The material resolver prefers explicitly configured `build_material_nodes`, then common Luanti/MineClone names such as `mcl_tnt:tnt`, `tnt:tnt`, `mcl_fire:fire`, and `fire:basic_flame` when those nodes are registered.
+
+The build surface does not refuse a requested in-game material because it is explosive, fiery, or otherwise game-dangerous. That policy belongs to the server's capability profile and world-write controls: registered node availability, protected-area checks, write budgets, preview approval, and rollback metadata. If a player asks for a TNT wall and the node exists within those bounds, Nova should plan the TNT wall.
 
 `agent_entity_name` is the registered entity type used for queued bounded entity movement. The clean `games/ai_runtime` profile registers and configures the code-only `ai_runtime_base:helper` entity for normal playtesting. The `ai_demo_benchmark:helper` entity remains a benchmark fixture behind its explicit dev setting and should not be required by the default product profile.
 
