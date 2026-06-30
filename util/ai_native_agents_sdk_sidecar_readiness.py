@@ -95,6 +95,16 @@ def _public_response_summary(response: dict[str, Any]) -> dict[str, Any]:
         "tool_powers": nested.get("tool_powers") if isinstance(nested.get("tool_powers"), list) else [],
         "tool_decision_source": nested.get("tool_decision_source"),
         "selected_option_id": nested.get("selected_option_id"),
+        "build_action_plan_status": (
+            nested.get("build_action_plan", {}).get("status")
+            if isinstance(nested.get("build_action_plan"), dict)
+            else None
+        ),
+        "build_action_plan_step_count": (
+            nested.get("build_action_plan", {}).get("step_count")
+            if isinstance(nested.get("build_action_plan"), dict)
+            else None
+        ),
         "required_tool_calls": (
             nested.get("required_tool_calls")
             if isinstance(nested.get("required_tool_calls"), list)
@@ -129,6 +139,7 @@ def _tool_powers_safe(tool_powers: Any) -> bool:
         "classify_world_action",
         "recall_build_prompt_memory",
         "select_build_option",
+        "plan_build_actions",
         "recommend_build_option",
     }
     if not required.issubset(names):
@@ -218,6 +229,10 @@ def _offline_smoke(report: dict[str, Any]) -> dict[str, Any]:
         report["checks"]["required_tool_calls_satisfied"] = (
             report["response"].get("required_tool_calls_satisfied") is True
             and not report["response"].get("missing_required_tool_calls")
+            and "plan_build_actions" in report["response"].get("required_tool_calls", [])
+            and "plan_build_actions" in report["response"].get("tool_trace_names", [])
+            and report["response"].get("build_action_plan_status") == "ready"
+            and report["response"].get("build_action_plan_step_count") == 4
         )
     else:
         report["checks"]["required_tool_calls_satisfied"] = (
@@ -320,6 +335,10 @@ def _probe_http(
         report["checks"]["required_tool_calls_satisfied"] = (
             report["response"].get("required_tool_calls_satisfied") is True
             and not report["response"].get("missing_required_tool_calls")
+            and "plan_build_actions" in report["response"].get("required_tool_calls", [])
+            and "plan_build_actions" in report["response"].get("tool_trace_names", [])
+            and report["response"].get("build_action_plan_status") == "ready"
+            and report["response"].get("build_action_plan_step_count") == 4
         )
     else:
         report["checks"]["required_tool_calls_satisfied"] = (

@@ -92,9 +92,14 @@ The first-party Agents SDK sidecar places a public `tool_powers` manifest inside
 capability, preview, approval, task, audit, and rollback APIs.
 
 For build-planning responses, first-party adapters should also include a bounded
-`tool_trace`, `tool_decision_source`, and `tool_decisions.build_option` object.
-`tool_decision_source = agents_sdk_function_tool` means the executable selection
-came from an SDK function-tool call. Fallback labels such as
+`tool_trace`, `tool_decision_source`, `tool_decisions.build_option`, and
+`tool_decisions.build_action_plan` object. `tool_decision_source =
+agents_sdk_function_tool` means the executable selection came from an SDK
+function-tool call. The build-action plan should use
+`plan_kind = "luanti_build_action_plan_v1"`, keep
+`direct_world_mutation = false`, and set `world_mutation_authority = "luanti"`.
+It is the sidecar's read-only handoff to the engine preview, approval,
+rollback-backed task, and improvement-evidence path. Fallback labels such as
 `offline_adapter_fallback` or `adapter_fallback_after_agent_no_tool` are allowed
 but should be treated as eval/improvement signals, not proof of healthy live
 agent behavior. Luanti may honor `selected_option_id` only when it matches one

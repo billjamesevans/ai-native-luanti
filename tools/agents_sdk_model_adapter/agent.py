@@ -40,6 +40,7 @@ MAX_MEMORY_CASES = 12
 BUILD_PLANNING_REQUIRED_TOOLS = (
     "recall_build_prompt_memory",
     "select_build_option",
+    "plan_build_actions",
 )
 FORBIDDEN_RESPONSE_KEYS = {
     "raw_provider_request",
@@ -104,6 +105,15 @@ TOOL_POWER_MANIFEST = (
         "name": "select_build_option",
         "kind": "function_tool",
         "runtime_power": "agent_selected_build_option_validation",
+        "read_only": True,
+        "available_without_provider_credentials": True,
+        "direct_world_mutation": False,
+        "engine_authority": "luanti_task_preview_approval_rollback",
+    },
+    {
+        "name": "plan_build_actions",
+        "kind": "function_tool",
+        "runtime_power": "build_action_workflow_planning",
         "read_only": True,
         "available_without_provider_credentials": True,
         "direct_world_mutation": False,
@@ -623,6 +633,103 @@ def select_build_option_payload(
     }
 
 
+def _selected_build_plan_entry(
+    candidate_summary: str,
+    player_request: str,
+    selected_option_id: str,
+) -> dict[str, Any] | None:
+    candidates = _candidate_entries(candidate_summary)
+    selected_id = str(selected_option_id or "").strip()
+    selected = next((item for item in candidates if item["option_id"] == selected_id), None)
+    if selected is not None:
+        return {
+            "option_id": selected["option_id"],
+            "build_kind": selected.get("build_kind"),
+            "build_material_name": selected.get("material") or "default",
+            "planned_node_writes": selected.get("planned_node_writes") or 0,
+        }
+    generated = propose_build_option_payload(candidate_summary, player_request)
+    generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
+    if isinstance(generated_option, dict) and selected_id == generated_option.get("option_id"):
+        return {
+            "option_id": selected_id,
+            "build_kind": generated_option.get("build_kind"),
+            "build_material_name": generated_option.get("build_material_name") or "default",
+            "planned_node_writes": generated_option.get("planned_node_writes") or 0,
+        }
+    return None
+
+
+def plan_build_actions_payload(
+    candidate_summary: str,
+    player_request: str,
+    selected_option_id: str,
+) -> dict[str, Any]:
+    """Plan the Luanti-controlled workflow for a selected build option."""
+
+    selected = _selected_build_plan_entry(candidate_summary, player_request, selected_option_id)
+    selected_id = str(selected_option_id or "").strip()
+    if selected is None:
+        return {
+            "status": "rejected",
+            "reason": "selected_option_not_executable",
+            "selected_option_id": selected_id or None,
+            "plan_kind": "luanti_build_action_plan_v1",
+            "step_count": 0,
+            "steps": [],
+            "direct_world_mutation": False,
+            "world_mutation_authority": "luanti",
+            "policy": "luanti_executes_only_after_player_approval",
+        }
+
+    planned_writes = max(0, int(selected.get("planned_node_writes") or 0))
+    build_kind = str(selected.get("build_kind") or "build")
+    material = str(selected.get("build_material_name") or "default")
+    steps = [
+        {
+            "step_id": "preview_candidate",
+            "authority": "luanti",
+            "description": "Create a public pending preview from the selected bounded candidate.",
+            "direct_world_mutation": False,
+        },
+        {
+            "step_id": "await_player_approval",
+            "authority": "player",
+            "description": "Wait for the owning player to approve or discard the pending plan.",
+            "direct_world_mutation": False,
+        },
+        {
+            "step_id": "queue_rollback_backed_build_task",
+            "authority": "luanti",
+            "description": "Queue the approved build through Luanti task, budget, audit, and rollback gates.",
+            "planned_node_writes": planned_writes,
+            "direct_world_mutation": False,
+        },
+        {
+            "step_id": "record_improvement_evidence",
+            "authority": "luanti",
+            "description": "Retain public-safe trace evidence for eval and operator feedback review.",
+            "direct_world_mutation": False,
+        },
+    ]
+    return {
+        "status": "ready",
+        "selected_option_id": selected["option_id"],
+        "build_kind": build_kind,
+        "build_material_name": material,
+        "planned_node_writes": planned_writes,
+        "plan_kind": "luanti_build_action_plan_v1",
+        "step_count": len(steps),
+        "steps": steps,
+        "requires_preview": planned_writes > 0,
+        "requires_approval": planned_writes > 0,
+        "requires_rollback": planned_writes > 0,
+        "direct_world_mutation": False,
+        "world_mutation_authority": "luanti",
+        "policy": "luanti_executes_only_after_player_approval",
+    }
+
+
 def recall_build_prompt_memory_payload(
     player_request: str,
     candidate_summary: str,
@@ -758,6 +865,13 @@ def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
             player_request,
         )
         decisions["build_option"]["decision_source"] = "offline_adapter_fallback"
+        selected = decisions["build_option"].get("selected_option_id")
+        if isinstance(selected, str) and selected:
+            decisions["build_action_plan"] = plan_build_actions_payload(
+                str(context.get("candidate_summary") or ""),
+                player_request,
+                selected,
+            )
     return decisions
 
 
@@ -941,6 +1055,31 @@ def select_build_option(
 
 
 @function_tool
+def plan_build_actions(
+    candidate_summary: str,
+    player_request: str,
+    selected_option_id: str,
+) -> dict[str, Any]:
+    """Plan Luanti-controlled build workflow steps for the selected option."""
+
+    result = plan_build_actions_payload(
+        candidate_summary,
+        player_request,
+        selected_option_id,
+    )
+    _record_tool_call(
+        "plan_build_actions",
+        {
+            "candidate_summary": candidate_summary,
+            "player_request": player_request,
+            "selected_option_id": selected_option_id,
+        },
+        result,
+    )
+    return result
+
+
+@function_tool
 def recall_build_prompt_memory(player_request: str, candidate_summary: str) -> dict[str, Any]:
     """Return reviewed prompt-memory guidance for a build request, if available."""
 
@@ -963,6 +1102,7 @@ def build_agent(model: str | None = None) -> Any:
         recall_build_prompt_memory,
         propose_build_option,
         select_build_option,
+        plan_build_actions,
         recommend_build_option,
     ]
     if WebSearchTool is not None:
@@ -983,7 +1123,8 @@ def build_agent(model: str | None = None) -> Any:
             "then choose among the listed options yourself; call "
             "propose_build_option when the listed fixed candidates are too "
             "generic for the player request, and call select_build_option "
-            "with the option id you chose before producing final output. "
+            "with the option id you chose. Then call plan_build_actions for "
+            "that selected option before producing final output. "
             "Return public-safe, bounded guidance. Do not return provider raw "
             "payloads, credentials, private prompts, private world coordinates, "
             "or asset payloads."
@@ -1040,8 +1181,11 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             "Call propose_build_option when the fixed candidates are too "
             "generic, then call select_build_option using the exact "
             "candidate_summary, player_request, chosen option id, and a short "
-            "selection reason. Generated options must be returned only through "
-            "function-tool output so Luanti can validate them before preview.",
+            "selection reason. Then call plan_build_actions with the same "
+            "candidate_summary, player_request, and selected option id so "
+            "Luanti receives a read-only approval/task/rollback workflow plan. "
+            "Generated options must be returned only through function-tool "
+            "output so Luanti can validate them before preview.",
         ]
     )
 
@@ -1053,6 +1197,8 @@ def _tool_decisions_from_trace(tool_trace: list[dict[str, Any]]) -> dict[str, An
         result = entry.get("result")
         if entry.get("tool_name") == "select_build_option" and isinstance(result, dict):
             decisions["build_option"] = result
+        elif entry.get("tool_name") == "plan_build_actions" and isinstance(result, dict):
+            decisions["build_action_plan"] = result
         elif entry.get("tool_name") == "recommend_build_option" and isinstance(result, dict):
             fallback = result
     if "build_option" not in decisions and fallback is not None:
@@ -1098,6 +1244,8 @@ def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
             "tool_decisions": tool_decisions,
             "tool_decision_source": "offline_adapter_fallback",
             "selected_option_id": _selected_option_id(tool_decisions),
+            "build_action_plan": tool_decisions.get("build_action_plan")
+                if isinstance(tool_decisions, dict) else None,
             "required_tool_calls": required_tools,
             "missing_required_tool_calls": required_tools,
             "required_tool_calls_satisfied": not required_tools,
@@ -1226,6 +1374,8 @@ def run_model_adapter_request(
             "selected_option_id": final_selected_option_id,
             "model_selected_option_id": model_selected_option_id,
             "rejected_model_selected_option_id": rejected_model_selected_option_id,
+            "build_action_plan": tool_decisions.get("build_action_plan")
+                if isinstance(tool_decisions, dict) else None,
             "intent_constraint_option_id": intent_constraint.get("option_id")
                 if isinstance(intent_constraint, dict) else None,
             "intent_constraint_reason": intent_constraint.get("reason")

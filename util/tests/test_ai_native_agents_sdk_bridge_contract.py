@@ -44,6 +44,7 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertIn("recommend_build_option", response["response"]["tools_enabled"])
         self.assertIn("propose_build_option", response["response"]["tools_enabled"])
         self.assertIn("select_build_option", response["response"]["tools_enabled"])
+        self.assertIn("plan_build_actions", response["response"]["tools_enabled"])
         self.assertIn("recall_build_prompt_memory", response["response"]["tools_enabled"])
         self.assertEqual(response["response"]["tool_trace"], [])
         self.assertEqual(response["response"]["tool_decision_source"], "offline_adapter_fallback")
@@ -53,6 +54,7 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertIn("recommend_build_option", {power["name"] for power in tool_powers})
         self.assertIn("propose_build_option", {power["name"] for power in tool_powers})
         self.assertIn("select_build_option", {power["name"] for power in tool_powers})
+        self.assertIn("plan_build_actions", {power["name"] for power in tool_powers})
         self.assertIn("recall_build_prompt_memory", {power["name"] for power in tool_powers})
         self.assertTrue(all(power["direct_world_mutation"] is False for power in tool_powers))
 
@@ -97,6 +99,42 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(result["requires_approval"])
         self.assertTrue(result["requires_rollback"])
         self.assertFalse(result["direct_world_mutation"])
+
+    def test_build_action_plan_tool_is_read_only_and_workflow_bounded(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        result = module.plan_build_actions_payload(
+            "platform:platform:default:4|tnt_wall:wall:tnt:12",
+            "build a wall of tnt",
+            "tnt_wall",
+        )
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["selected_option_id"], "tnt_wall")
+        self.assertEqual(result["build_kind"], "wall")
+        self.assertEqual(result["build_material_name"], "tnt")
+        self.assertEqual(result["planned_node_writes"], 12)
+        self.assertEqual(result["plan_kind"], "luanti_build_action_plan_v1")
+        self.assertEqual(result["step_count"], 4)
+        self.assertEqual(
+            [step["step_id"] for step in result["steps"]],
+            [
+                "preview_candidate",
+                "await_player_approval",
+                "queue_rollback_backed_build_task",
+                "record_improvement_evidence",
+            ],
+        )
+        self.assertTrue(result["requires_preview"])
+        self.assertTrue(result["requires_approval"])
+        self.assertTrue(result["requires_rollback"])
+        self.assertFalse(result["direct_world_mutation"])
+        self.assertTrue(all(step["direct_world_mutation"] is False for step in result["steps"]))
+        self.assertEqual(result["world_mutation_authority"], "luanti")
 
     def test_build_option_validator_rejects_fire_only_mismatch(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
@@ -234,11 +272,11 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertFalse(nested["tool_decisions"]["build_option"]["direct_world_mutation"])
         self.assertEqual(
             nested["required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
         )
         self.assertEqual(
             nested["missing_required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
         )
         self.assertFalse(nested["required_tool_calls_satisfied"])
 
@@ -273,11 +311,21 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertFalse(build_option["direct_world_mutation"])
         self.assertEqual(
             nested["required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option", "propose_build_option"],
+            [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+                "propose_build_option",
+            ],
         )
         self.assertEqual(
             nested["missing_required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option", "propose_build_option"],
+            [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+                "propose_build_option",
+            ],
         )
 
     def test_live_agent_response_uses_tool_trace_decision(self):
@@ -320,12 +368,29 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
                             "direct_world_mutation": False,
                         },
                     },
+                    {
+                        "tool_name": "plan_build_actions",
+                        "result": {
+                            "status": "ready",
+                            "selected_option_id": "fire",
+                            "step_count": 4,
+                            "direct_world_mutation": False,
+                            "world_mutation_authority": "luanti",
+                        },
+                    },
                 ],
                 "tool_decisions": {
                     "build_option": {
                         "selected_option_id": "fire",
                         "candidate_count": 2,
                         "direct_world_mutation": False,
+                    },
+                    "build_action_plan": {
+                        "status": "ready",
+                        "selected_option_id": "fire",
+                        "step_count": 4,
+                        "direct_world_mutation": False,
+                        "world_mutation_authority": "luanti",
                     },
                 },
             }
@@ -345,9 +410,12 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertEqual(nested["tool_decision_source"], "agents_sdk_function_tool")
         self.assertEqual(nested["tool_trace"][0]["tool_name"], "recall_build_prompt_memory")
         self.assertEqual(nested["tool_trace"][1]["tool_name"], "select_build_option")
+        self.assertEqual(nested["tool_trace"][2]["tool_name"], "plan_build_actions")
+        self.assertEqual(nested["build_action_plan"]["selected_option_id"], "fire")
+        self.assertEqual(nested["build_action_plan"]["step_count"], 4)
         self.assertEqual(
             nested["required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
         )
         self.assertEqual(nested["missing_required_tool_calls"], [])
         self.assertTrue(nested["required_tool_calls_satisfied"])
@@ -385,6 +453,16 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
                             "direct_world_mutation": False,
                         },
                     },
+                    {
+                        "tool_name": "plan_build_actions",
+                        "result": {
+                            "status": "ready",
+                            "selected_option_id": "platform",
+                            "step_count": 4,
+                            "direct_world_mutation": False,
+                            "world_mutation_authority": "luanti",
+                        },
+                    },
                 ],
                 "tool_decisions": {
                     "build_option": {
@@ -392,6 +470,13 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
                         "selection_status": "accepted",
                         "candidate_count": 2,
                         "direct_world_mutation": False,
+                    },
+                    "build_action_plan": {
+                        "status": "ready",
+                        "selected_option_id": "platform",
+                        "step_count": 4,
+                        "direct_world_mutation": False,
+                        "world_mutation_authority": "luanti",
                     },
                 },
             }
@@ -505,9 +590,17 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(
             nested["required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option", "propose_build_option"],
+            [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+                "propose_build_option",
+            ],
         )
-        self.assertEqual(nested["missing_required_tool_calls"], ["propose_build_option"])
+        self.assertEqual(
+            nested["missing_required_tool_calls"],
+            ["plan_build_actions", "propose_build_option"],
+        )
         self.assertFalse(nested["required_tool_calls_satisfied"])
         self.assertEqual(
             nested["tool_decisions"]["build_option"]["decision_source"],
@@ -562,8 +655,27 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
                     {"tool_name": "recall_build_prompt_memory", "result": {}},
                     {"tool_name": "propose_build_option", "result": propose_result},
                     {"tool_name": "select_build_option", "result": select_result},
+                    {
+                        "tool_name": "plan_build_actions",
+                        "result": {
+                            "status": "ready",
+                            "selected_option_id": "generated_tower_wall",
+                            "step_count": 4,
+                            "direct_world_mutation": False,
+                            "world_mutation_authority": "luanti",
+                        },
+                    },
                 ],
-                "tool_decisions": {"build_option": select_result},
+                "tool_decisions": {
+                    "build_option": select_result,
+                    "build_action_plan": {
+                        "status": "ready",
+                        "selected_option_id": "generated_tower_wall",
+                        "step_count": 4,
+                        "direct_world_mutation": False,
+                        "world_mutation_authority": "luanti",
+                    },
+                },
             }
 
         try:
@@ -581,10 +693,16 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertEqual(nested["tool_decision_source"], "agents_sdk_function_tool")
         self.assertEqual(
             nested["required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option", "propose_build_option"],
+            [
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+                "propose_build_option",
+            ],
         )
         self.assertEqual(nested["missing_required_tool_calls"], [])
         self.assertTrue(nested["required_tool_calls_satisfied"])
+        self.assertEqual(nested["build_action_plan"]["step_count"], 4)
         self.assertEqual(
             nested["tool_decisions"]["build_option"]["decision_source"],
             "agent_selected_generated_build_option",
@@ -634,11 +752,11 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(
             nested["required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
         )
         self.assertEqual(
             nested["missing_required_tool_calls"],
-            ["recall_build_prompt_memory", "select_build_option"],
+            ["recall_build_prompt_memory", "select_build_option", "plan_build_actions"],
         )
         self.assertFalse(nested["required_tool_calls_satisfied"])
         self.assertEqual(

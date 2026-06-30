@@ -419,17 +419,25 @@ local function finish_request_trace(trace, result, extra)
 		adapter_required_tool_calls = result and result.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls =
 			result and result.adapter_missing_required_tool_calls,
-		adapter_required_tool_calls_satisfied =
-			result and result.adapter_required_tool_calls_satisfied,
-		build_option_decision_source = result and result.build_option_decision_source,
-		adapter_memory_available = result and result.adapter_memory_available,
-		adapter_memory_matched_case_id = result and result.adapter_memory_matched_case_id,
-		adapter_memory_case_hint = result and result.adapter_memory_case_hint,
-		adapter_tool_trace_names = result and result.adapter_tool_trace_names,
-		generated_build_option_status = result and result.generated_build_option_status,
-		generated_build_option_reason = result and result.generated_build_option_reason,
-		generated_candidate_id = result and result.generated_candidate_id,
-	}
+			adapter_required_tool_calls_satisfied =
+				result and result.adapter_required_tool_calls_satisfied,
+			build_option_decision_source = result and result.build_option_decision_source,
+			adapter_memory_available = result and result.adapter_memory_available,
+			adapter_memory_matched_case_id = result and result.adapter_memory_matched_case_id,
+			adapter_memory_case_hint = result and result.adapter_memory_case_hint,
+			adapter_tool_trace_names = result and result.adapter_tool_trace_names,
+			adapter_build_action_plan_status =
+				result and result.adapter_build_action_plan_status,
+			adapter_build_action_plan_selected_candidate_id =
+				result and result.adapter_build_action_plan_selected_candidate_id,
+			adapter_build_action_plan_step_count =
+				result and result.adapter_build_action_plan_step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				result and result.adapter_build_action_plan_world_mutation_authority,
+			generated_build_option_status = result and result.generated_build_option_status,
+			generated_build_option_reason = result and result.generated_build_option_reason,
+			generated_candidate_id = result and result.generated_candidate_id,
+		}
 	for key, value in pairs(extra) do
 		trace[key] = value
 	end
@@ -1240,19 +1248,27 @@ local function compact_pending_approval(pending)
 			pending.adapter_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			pending.adapter_rejected_model_selected_candidate_id,
-		adapter_required_tool_calls = pending.adapter_required_tool_calls,
-		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
-		adapter_required_tool_calls_satisfied =
-			pending.adapter_required_tool_calls_satisfied,
-		build_option_decision_source = pending.build_option_decision_source,
-		adapter_memory_available = pending.adapter_memory_available,
-		adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
-		adapter_memory_case_hint = pending.adapter_memory_case_hint,
-		adapter_tool_trace_names = pending.adapter_tool_trace_names,
-		repair_radius = pending.repair_radius,
-		sample_limit = pending.sample_limit,
-	}
-end
+			adapter_required_tool_calls = pending.adapter_required_tool_calls,
+			adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
+			adapter_required_tool_calls_satisfied =
+				pending.adapter_required_tool_calls_satisfied,
+			build_option_decision_source = pending.build_option_decision_source,
+			adapter_memory_available = pending.adapter_memory_available,
+			adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
+			adapter_memory_case_hint = pending.adapter_memory_case_hint,
+			adapter_tool_trace_names = pending.adapter_tool_trace_names,
+			adapter_build_action_plan_status =
+				pending.adapter_build_action_plan_status,
+			adapter_build_action_plan_selected_candidate_id =
+				pending.adapter_build_action_plan_selected_candidate_id,
+			adapter_build_action_plan_step_count =
+				pending.adapter_build_action_plan_step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				pending.adapter_build_action_plan_world_mutation_authority,
+			repair_radius = pending.repair_radius,
+			sample_limit = pending.sample_limit,
+		}
+	end
 
 local function remember_pending_approval(name, action, plan, context, extra)
 	extra = extra or {}
@@ -1283,18 +1299,26 @@ local function remember_pending_approval(name, action, plan, context, extra)
 			extra.adapter_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			extra.adapter_rejected_model_selected_candidate_id,
-		adapter_required_tool_calls = extra.adapter_required_tool_calls,
-		adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
-		adapter_required_tool_calls_satisfied =
-			extra.adapter_required_tool_calls_satisfied,
-		build_option_decision_source = extra.build_option_decision_source,
-		adapter_memory_available = extra.adapter_memory_available,
-		adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
-		adapter_memory_case_hint = extra.adapter_memory_case_hint,
-		adapter_tool_trace_names = extra.adapter_tool_trace_names,
-		repair_radius = extra.repair_radius,
-		sample_limit = extra.sample_limit,
-	}
+			adapter_required_tool_calls = extra.adapter_required_tool_calls,
+			adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
+			adapter_required_tool_calls_satisfied =
+				extra.adapter_required_tool_calls_satisfied,
+			build_option_decision_source = extra.build_option_decision_source,
+			adapter_memory_available = extra.adapter_memory_available,
+			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+			adapter_memory_case_hint = extra.adapter_memory_case_hint,
+			adapter_tool_trace_names = extra.adapter_tool_trace_names,
+			adapter_build_action_plan_status =
+				extra.adapter_build_action_plan_status,
+			adapter_build_action_plan_selected_candidate_id =
+				extra.adapter_build_action_plan_selected_candidate_id,
+			adapter_build_action_plan_step_count =
+				extra.adapter_build_action_plan_step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				extra.adapter_build_action_plan_world_mutation_authority,
+			repair_radius = extra.repair_radius,
+			sample_limit = extra.sample_limit,
+		}
 	player_pending_approvals[name] = pending
 	return pending
 end
@@ -2821,19 +2845,27 @@ local function create_build_pending_reply(name, context, message, extra)
 			extra.adapter_model_selected_candidate_id,
 		adapter_rejected_model_selected_candidate_id =
 			extra.adapter_rejected_model_selected_candidate_id,
-		adapter_required_tool_calls = extra.adapter_required_tool_calls,
-		adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
-		adapter_required_tool_calls_satisfied =
-			extra.adapter_required_tool_calls_satisfied,
-		build_option_decision_source = extra.build_option_decision_source,
-		adapter_memory_available = extra.adapter_memory_available,
-		adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
-		adapter_memory_case_hint = extra.adapter_memory_case_hint,
-		adapter_tool_trace_names = extra.adapter_tool_trace_names,
-		generated_build_option_status = extra.generated_build_option_status,
-		generated_build_option_reason = extra.generated_build_option_reason,
-		generated_candidate_id = extra.generated_candidate_id,
-	})
+			adapter_required_tool_calls = extra.adapter_required_tool_calls,
+			adapter_missing_required_tool_calls = extra.adapter_missing_required_tool_calls,
+			adapter_required_tool_calls_satisfied =
+				extra.adapter_required_tool_calls_satisfied,
+			build_option_decision_source = extra.build_option_decision_source,
+			adapter_memory_available = extra.adapter_memory_available,
+			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+			adapter_memory_case_hint = extra.adapter_memory_case_hint,
+			adapter_tool_trace_names = extra.adapter_tool_trace_names,
+			adapter_build_action_plan_status =
+				extra.adapter_build_action_plan_status,
+			adapter_build_action_plan_selected_candidate_id =
+				extra.adapter_build_action_plan_selected_candidate_id,
+			adapter_build_action_plan_step_count =
+				extra.adapter_build_action_plan_step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				extra.adapter_build_action_plan_world_mutation_authority,
+			generated_build_option_status = extra.generated_build_option_status,
+			generated_build_option_reason = extra.generated_build_option_reason,
+			generated_candidate_id = extra.generated_candidate_id,
+		})
 	local reply = public_reply(name, "build", "pending_approval",
 		message or "Build plan is pending approval before mutation.", {
 			surface_id = "builder",
@@ -2863,19 +2895,27 @@ local function create_build_pending_reply(name, context, message, extra)
 			adapter_rejected_model_selected_candidate_id =
 				extra.adapter_rejected_model_selected_candidate_id,
 			adapter_required_tool_calls = extra.adapter_required_tool_calls,
-			adapter_missing_required_tool_calls =
-				extra.adapter_missing_required_tool_calls,
-			adapter_required_tool_calls_satisfied =
-				extra.adapter_required_tool_calls_satisfied,
-			build_option_decision_source = extra.build_option_decision_source,
-			adapter_memory_available = extra.adapter_memory_available,
-			adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
-			adapter_memory_case_hint = extra.adapter_memory_case_hint,
-			adapter_tool_trace_names = extra.adapter_tool_trace_names,
-			generated_build_option_status = extra.generated_build_option_status,
-			generated_build_option_reason = extra.generated_build_option_reason,
-			generated_candidate_id = extra.generated_candidate_id,
-			planner_model_status = extra.planner_model_status,
+				adapter_missing_required_tool_calls =
+					extra.adapter_missing_required_tool_calls,
+				adapter_required_tool_calls_satisfied =
+					extra.adapter_required_tool_calls_satisfied,
+				build_option_decision_source = extra.build_option_decision_source,
+				adapter_memory_available = extra.adapter_memory_available,
+				adapter_memory_matched_case_id = extra.adapter_memory_matched_case_id,
+				adapter_memory_case_hint = extra.adapter_memory_case_hint,
+				adapter_tool_trace_names = extra.adapter_tool_trace_names,
+				adapter_build_action_plan_status =
+					extra.adapter_build_action_plan_status,
+				adapter_build_action_plan_selected_candidate_id =
+					extra.adapter_build_action_plan_selected_candidate_id,
+				adapter_build_action_plan_step_count =
+					extra.adapter_build_action_plan_step_count,
+				adapter_build_action_plan_world_mutation_authority =
+					extra.adapter_build_action_plan_world_mutation_authority,
+				generated_build_option_status = extra.generated_build_option_status,
+				generated_build_option_reason = extra.generated_build_option_reason,
+				generated_candidate_id = extra.generated_candidate_id,
+				planner_model_status = extra.planner_model_status,
 			planner_model_reason = extra.planner_model_reason,
 			planner_guidance = extra.planner_guidance,
 			trace_id = extra.trace_id,
@@ -3292,6 +3332,13 @@ local function agentic_build_planner_adapter_metadata(model_result)
 		return {}
 	end
 	local build_option = agentic_build_option_decision(response) or {}
+	local build_action_plan = {}
+	if type(response.build_action_plan) == "table" then
+		build_action_plan = response.build_action_plan
+	elseif type(response.tool_decisions) == "table"
+			and type(response.tool_decisions.build_action_plan) == "table" then
+		build_action_plan = response.tool_decisions.build_action_plan
+	end
 	local memory_match = type(build_option.memory_match) == "table"
 		and build_option.memory_match or {}
 	local missing_required = type(response.missing_required_tool_calls) == "table"
@@ -3308,17 +3355,23 @@ local function agentic_build_planner_adapter_metadata(model_result)
 			response.intent_constraint_option_id,
 		adapter_intent_constraint_reason =
 			response.intent_constraint_reason,
-		adapter_required_tool_calls = required,
-		adapter_missing_required_tool_calls = missing_required,
-		adapter_required_tool_calls_satisfied =
-			response.required_tool_calls_satisfied,
-		build_option_decision_source = build_option.decision_source,
-		adapter_memory_available = memory_match.memory_available,
-		adapter_memory_matched_case_id = memory_match.matched_case_id,
-		adapter_memory_case_hint = memory_match.case_hint,
-		adapter_tool_trace_names = agentic_tool_trace_names(response),
-	}
-end
+			adapter_required_tool_calls = required,
+			adapter_missing_required_tool_calls = missing_required,
+			adapter_required_tool_calls_satisfied =
+				response.required_tool_calls_satisfied,
+			build_option_decision_source = build_option.decision_source,
+			adapter_memory_available = memory_match.memory_available,
+			adapter_memory_matched_case_id = memory_match.matched_case_id,
+			adapter_memory_case_hint = memory_match.case_hint,
+			adapter_tool_trace_names = agentic_tool_trace_names(response),
+			adapter_build_action_plan_status = build_action_plan.status,
+			adapter_build_action_plan_selected_candidate_id =
+				build_action_plan.selected_option_id,
+			adapter_build_action_plan_step_count = build_action_plan.step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				build_action_plan.world_mutation_authority,
+		}
+	end
 
 local function build_agentic_candidate_options(name, raw_prompt, context)
 	local lower = raw_prompt:lower()
@@ -3510,20 +3563,28 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 					adapter_metadata.adapter_missing_required_tool_calls,
 				adapter_required_tool_calls_satisfied =
 					adapter_metadata.adapter_required_tool_calls_satisfied,
-				build_option_decision_source =
-					adapter_metadata.build_option_decision_source,
-				adapter_memory_available =
-					adapter_metadata.adapter_memory_available,
-				adapter_memory_matched_case_id =
-					adapter_metadata.adapter_memory_matched_case_id,
-				adapter_memory_case_hint =
-					adapter_metadata.adapter_memory_case_hint,
-				adapter_tool_trace_names =
-					adapter_metadata.adapter_tool_trace_names,
-				generated_build_option_status = generated_option_status,
-				generated_build_option_reason = generated_option_reason,
-				generated_candidate_id = generated_candidate_id,
-				trace_id = trace.trace_id,
+					build_option_decision_source =
+						adapter_metadata.build_option_decision_source,
+					adapter_memory_available =
+						adapter_metadata.adapter_memory_available,
+					adapter_memory_matched_case_id =
+						adapter_metadata.adapter_memory_matched_case_id,
+					adapter_memory_case_hint =
+						adapter_metadata.adapter_memory_case_hint,
+					adapter_tool_trace_names =
+						adapter_metadata.adapter_tool_trace_names,
+					adapter_build_action_plan_status =
+						adapter_metadata.adapter_build_action_plan_status,
+					adapter_build_action_plan_selected_candidate_id =
+						adapter_metadata.adapter_build_action_plan_selected_candidate_id,
+					adapter_build_action_plan_step_count =
+						adapter_metadata.adapter_build_action_plan_step_count,
+					adapter_build_action_plan_world_mutation_authority =
+						adapter_metadata.adapter_build_action_plan_world_mutation_authority,
+					generated_build_option_status = generated_option_status,
+					generated_build_option_reason = generated_option_reason,
+					generated_candidate_id = generated_candidate_id,
+					trace_id = trace.trace_id,
 				adapter_name = model_result.adapter_name or adapter_name,
 		})
 		return finish_request_trace(trace, pending_reply, {
@@ -3548,20 +3609,28 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				adapter_metadata.adapter_missing_required_tool_calls,
 			adapter_required_tool_calls_satisfied =
 				adapter_metadata.adapter_required_tool_calls_satisfied,
-			build_option_decision_source =
-				adapter_metadata.build_option_decision_source,
-			adapter_memory_available =
-				adapter_metadata.adapter_memory_available,
-			adapter_memory_matched_case_id =
-				adapter_metadata.adapter_memory_matched_case_id,
-			adapter_memory_case_hint =
-				adapter_metadata.adapter_memory_case_hint,
-			adapter_tool_trace_names =
-				adapter_metadata.adapter_tool_trace_names,
-			generated_build_option_status = generated_option_status,
-			generated_build_option_reason = generated_option_reason,
-			generated_candidate_id = generated_candidate_id,
-		})
+				build_option_decision_source =
+					adapter_metadata.build_option_decision_source,
+				adapter_memory_available =
+					adapter_metadata.adapter_memory_available,
+				adapter_memory_matched_case_id =
+					adapter_metadata.adapter_memory_matched_case_id,
+				adapter_memory_case_hint =
+					adapter_metadata.adapter_memory_case_hint,
+				adapter_tool_trace_names =
+					adapter_metadata.adapter_tool_trace_names,
+				adapter_build_action_plan_status =
+					adapter_metadata.adapter_build_action_plan_status,
+				adapter_build_action_plan_selected_candidate_id =
+					adapter_metadata.adapter_build_action_plan_selected_candidate_id,
+				adapter_build_action_plan_step_count =
+					adapter_metadata.adapter_build_action_plan_step_count,
+				adapter_build_action_plan_world_mutation_authority =
+					adapter_metadata.adapter_build_action_plan_world_mutation_authority,
+				generated_build_option_status = generated_option_status,
+				generated_build_option_reason = generated_option_reason,
+				generated_candidate_id = generated_candidate_id,
+			})
 	end
 	if not model_adapter_async or not core.ai_model_ops or not core.ai_model_ops.request_async then
 		return finish_with_pending({
@@ -4312,15 +4381,23 @@ local function handle_pending_plan(name)
 			pending.adapter_rejected_model_selected_candidate_id,
 		adapter_required_tool_calls = pending.adapter_required_tool_calls,
 		adapter_missing_required_tool_calls = pending.adapter_missing_required_tool_calls,
-		adapter_required_tool_calls_satisfied =
-			pending.adapter_required_tool_calls_satisfied,
-		build_option_decision_source = pending.build_option_decision_source,
-		adapter_memory_available = pending.adapter_memory_available,
-		adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
-		adapter_memory_case_hint = pending.adapter_memory_case_hint,
-		adapter_tool_trace_names = pending.adapter_tool_trace_names,
-	})
-end
+			adapter_required_tool_calls_satisfied =
+				pending.adapter_required_tool_calls_satisfied,
+			build_option_decision_source = pending.build_option_decision_source,
+			adapter_memory_available = pending.adapter_memory_available,
+			adapter_memory_matched_case_id = pending.adapter_memory_matched_case_id,
+			adapter_memory_case_hint = pending.adapter_memory_case_hint,
+			adapter_tool_trace_names = pending.adapter_tool_trace_names,
+			adapter_build_action_plan_status =
+				pending.adapter_build_action_plan_status,
+			adapter_build_action_plan_selected_candidate_id =
+				pending.adapter_build_action_plan_selected_candidate_id,
+			adapter_build_action_plan_step_count =
+				pending.adapter_build_action_plan_step_count,
+			adapter_build_action_plan_world_mutation_authority =
+				pending.adapter_build_action_plan_world_mutation_authority,
+		})
+	end
 
 local function update_build_pending_plan(name, pending, raw_prompt)
 	local edited_context, reason = parse_build_edit_options(raw_prompt, pending.context)
