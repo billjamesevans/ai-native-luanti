@@ -219,6 +219,14 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
             "generated_tower_wall",
         )
         self.assertFalse(build_option["direct_world_mutation"])
+        self.assertEqual(
+            nested["required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option", "propose_build_option"],
+        )
+        self.assertEqual(
+            nested["missing_required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option", "propose_build_option"],
+        )
 
     def test_live_agent_response_uses_tool_trace_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
@@ -290,6 +298,171 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(nested["missing_required_tool_calls"], [])
         self.assertTrue(nested["required_tool_calls_satisfied"])
+
+    def test_live_generated_option_requires_propose_tool_trace(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build me a tower"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build me a tower",
+            "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+
+        async def fake_run_sdk_agent(_request, model=None):
+            generated = {
+                "option_id": "generated_tower_wall",
+                "build_kind": "wall",
+                "build_width": 3,
+                "build_height": 4,
+                "build_material_name": "stone",
+                "planned_node_writes": 12,
+            }
+            return {
+                "final_output": "Use the generated tower option.",
+                "tool_trace": [
+                    {
+                        "tool_name": "recall_build_prompt_memory",
+                        "result": {
+                            "memory_available": False,
+                            "selected_option_id": None,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                    {
+                        "tool_name": "recommend_build_option",
+                        "result": {
+                            "selected_option_id": "generated_tower_wall",
+                            "candidate_count": 2,
+                            "decision_source": "generated_build_option_tool",
+                            "generated_option_status": "ready",
+                            "generated_option": generated,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                ],
+                "tool_decisions": {
+                    "build_option": {
+                        "selected_option_id": "generated_tower_wall",
+                        "candidate_count": 2,
+                        "decision_source": "generated_build_option_tool",
+                        "generated_option_status": "ready",
+                        "generated_option": generated,
+                        "direct_world_mutation": False,
+                    },
+                },
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertTrue(nested["agentic_execution"])
+        self.assertEqual(nested["selected_option_id"], "generated_tower_wall")
+        self.assertEqual(
+            nested["tool_decision_source"],
+            "adapter_fallback_after_agent_missing_required_tool",
+        )
+        self.assertEqual(
+            nested["required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option", "propose_build_option"],
+        )
+        self.assertEqual(nested["missing_required_tool_calls"], ["propose_build_option"])
+        self.assertFalse(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            nested["tool_decisions"]["build_option"]["decision_source"],
+            "offline_adapter_fallback",
+        )
+
+    def test_live_generated_option_with_propose_tool_trace_is_healthy(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build me a tower"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build me a tower",
+            "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+
+        async def fake_run_sdk_agent(_request, model=None):
+            generated = {
+                "option_id": "generated_tower_wall",
+                "build_kind": "wall",
+                "build_width": 3,
+                "build_height": 4,
+                "build_material_name": "stone",
+                "planned_node_writes": 12,
+            }
+            propose_result = {
+                "status": "ready",
+                "generated_option": generated,
+                "direct_world_mutation": False,
+            }
+            recommend_result = {
+                "selected_option_id": "generated_tower_wall",
+                "candidate_count": 2,
+                "decision_source": "generated_build_option_tool",
+                "generated_option_status": "ready",
+                "generated_option": generated,
+                "direct_world_mutation": False,
+            }
+            return {
+                "final_output": "Use the generated tower option.",
+                "tool_trace": [
+                    {"tool_name": "recall_build_prompt_memory", "result": {}},
+                    {"tool_name": "propose_build_option", "result": propose_result},
+                    {"tool_name": "recommend_build_option", "result": recommend_result},
+                ],
+                "tool_decisions": {"build_option": recommend_result},
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertTrue(nested["agentic_execution"])
+        self.assertEqual(nested["selected_option_id"], "generated_tower_wall")
+        self.assertEqual(nested["tool_decision_source"], "agents_sdk_function_tool")
+        self.assertEqual(
+            nested["required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option", "propose_build_option"],
+        )
+        self.assertEqual(nested["missing_required_tool_calls"], [])
+        self.assertTrue(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            nested["tool_decisions"]["build_option"]["decision_source"],
+            "generated_build_option_tool",
+        )
 
     def test_build_planning_missing_required_tool_is_labeled_for_improvement(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)

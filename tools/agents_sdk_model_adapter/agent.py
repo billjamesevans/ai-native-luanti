@@ -628,11 +628,32 @@ def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
     return decisions
 
 
-def _required_tool_names_for_request(request: dict[str, Any]) -> list[str]:
+def _build_option_uses_generated(tool_decisions: dict[str, Any] | None) -> bool:
+    if not isinstance(tool_decisions, dict):
+        return False
+    build_option = tool_decisions.get("build_option")
+    if not isinstance(build_option, dict):
+        return False
+    selected = build_option.get("selected_option_id")
+    return (
+        isinstance(build_option.get("generated_option"), dict)
+        or build_option.get("generated_option_status") == "ready"
+        or build_option.get("decision_source") == "generated_build_option_tool"
+        or (isinstance(selected, str) and selected.startswith("generated_"))
+    )
+
+
+def _required_tool_names_for_request(
+    request: dict[str, Any],
+    tool_decisions: dict[str, Any] | None = None,
+) -> list[str]:
     context = _safe_context(request.get("context"))
+    required: list[str] = []
     if context.get("intent") == "build_planning" and context.get("candidate_summary"):
-        return list(BUILD_PLANNING_REQUIRED_TOOLS)
-    return []
+        required.extend(BUILD_PLANNING_REQUIRED_TOOLS)
+        if _build_option_uses_generated(tool_decisions):
+            required.append("propose_build_option")
+    return required
 
 
 def _tool_trace_names(tool_trace: Any) -> list[str]:
@@ -648,8 +669,12 @@ def _tool_trace_names(tool_trace: Any) -> list[str]:
     return names
 
 
-def _missing_required_tool_names(request: dict[str, Any], tool_trace: Any) -> list[str]:
-    required = _required_tool_names_for_request(request)
+def _missing_required_tool_names(
+    request: dict[str, Any],
+    tool_trace: Any,
+    tool_decisions: dict[str, Any] | None = None,
+) -> list[str]:
+    required = _required_tool_names_for_request(request, tool_decisions)
     if not required:
         return []
     called = set(_tool_trace_names(tool_trace))
@@ -825,7 +850,7 @@ async def _run_sdk_agent(request: dict[str, Any], model: str | None = None) -> d
 def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
     prompt = _bounded_text(request.get("public_prompt"), 400)
     tool_decisions = _tool_decisions_for_request(request)
-    required_tools = _required_tool_names_for_request(request)
+    required_tools = _required_tool_names_for_request(request, tool_decisions)
     return {
         "schema_version": 1,
         "response_kind": "ai_native_model_adapter_response",
@@ -911,15 +936,19 @@ def run_model_adapter_request(
     tool_trace = agent_result.get("tool_trace") if isinstance(agent_result, dict) else []
     tool_decisions = agent_result.get("tool_decisions") if isinstance(agent_result, dict) else {}
     decision_source = "agents_sdk_function_tool"
-    required_tools = _required_tool_names_for_request(request)
-    missing_required_tools = _missing_required_tool_names(request, tool_trace)
+    required_tools = _required_tool_names_for_request(request, tool_decisions)
+    missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
     if missing_required_tools:
         fallback_decisions = _tool_decisions_for_request(request)
         if fallback_decisions:
             tool_decisions = fallback_decisions
+        required_tools = _required_tool_names_for_request(request, tool_decisions)
+        missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
         decision_source = "adapter_fallback_after_agent_missing_required_tool"
     elif not tool_decisions:
         tool_decisions = _tool_decisions_for_request(request)
+        required_tools = _required_tool_names_for_request(request, tool_decisions)
+        missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
         decision_source = "adapter_fallback_after_agent_no_tool"
 
     response = _sanitize_response({
