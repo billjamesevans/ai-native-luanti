@@ -43,6 +43,25 @@ clean-checkout gates, local runtime evidence, compatibility/parity review,
 backup-first Pi side-by-side promotion requirements, release closeout evidence,
 and the public/private content boundary.
 
+## Agent Improvement Loop
+
+Live agent behavior must feed the eval backlog. After a bad Nova response or a
+surprising Agents SDK sidecar result, collect the public-safe sidecar JSONL and
+Luanti action/debug log, then produce an eval candidate queue:
+
+```bash
+python3 util/ai_native_agent_eval_queue.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The queue is review-first. Ready candidates such as fire-only and TNT-wall
+regressions can be promoted into `/ai_agent_eval`; unknown prompts require an
+operator label before they become pass/fail tests. This keeps improvement tied
+to observed failures while preserving the public/private boundary.
+
 ## Pi Promotion Loop
 
 Pi promotion is an operator lane, not a contributor default. Promote only after

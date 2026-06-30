@@ -88,6 +88,27 @@ public-safe sidecar request/response logs. The log records the public prompt,
 safe context, status, reason, elapsed time, and tool metadata; it drops private
 prompt fields, provider raw payloads, credentials, headers, and asset payloads.
 
+## Agent Improvement Loop
+
+The sidecar log is an input to the eval backlog, not just a debug file. After a
+bad or surprising Nova interaction, pair the sidecar JSONL with the Luanti
+action/debug log and build a bounded candidate queue:
+
+```bash
+python3 util/ai_native_agent_eval_queue.py \
+  --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
+  --action-log local/logs/luanti-debug.log \
+  --output local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The queue is public-safe and review-first. It skips entries containing private
+fields, credentials, raw provider payloads, private prompts, asset payloads, or
+private world references. Known regressions such as `build me a fire and only a
+fire` and `build a wall of tnt` are labeled with ready prompt-eval assertions;
+unknown prompts stay in `needs_operator_label` until a maintainer records the
+expected behavior.
+
 Managed readiness probe, without provider credentials:
 
 ```bash
