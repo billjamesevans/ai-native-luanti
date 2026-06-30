@@ -657,6 +657,34 @@ class AgentEvalQueueTests(unittest.TestCase):
             ],
         )
 
+    def test_generated_option_survives_small_candidate_queue(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            entries = []
+            for index in range(8):
+                entry = agents_sdk_log_entry("build me a fire and only a fire")
+                entry["created_at"] = f"2026-06-30T12:00:{index:02d}Z"
+                entries.append(json.dumps(entry))
+            generated = agents_sdk_generated_option_entry()
+            generated["created_at"] = "2026-06-30T12:01:00Z"
+            entries.append(json.dumps(generated))
+            sidecar_log.write_text("\n".join(entries) + "\n", encoding="utf-8")
+
+            payload = module.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T12:30:00Z",
+                max_candidates=3,
+                max_bytes=100000,
+            )
+
+        self.assertEqual(payload["source_summary"]["candidates_total"], 3)
+        self.assertIn(
+            "generated_dimensioned_wall",
+            {candidate["case_hint"] for candidate in payload["candidates"]},
+        )
+
     def test_agents_sdk_candidate_extracts_embedded_player_request_from_wrapper_prompt(self):
         module = load_queue_module()
         entry = agents_sdk_log_entry(
