@@ -35,6 +35,15 @@ def load_agent_prompt_eval_module():
     return module
 
 
+def load_nova_auto_apply_module():
+    path = ROOT / "util" / "ai_native_nova_auto_apply_live_probe.py"
+    assert path.is_file(), f"missing {path}"
+    spec = importlib.util.spec_from_file_location("ai_native_nova_auto_apply_live_probe", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 class AIRuntimeVerificationHarnessTests(unittest.TestCase):
     def write_operator_status_artifact(self, path, *, payload=None, source="live_command"):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -568,6 +577,170 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             },
             "bounds": {
                 "max_bytes": 22000,
+                "output_bytes": 0,
+                "truncated": False,
+            },
+        }
+        payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def write_nova_auto_apply_live_artifact(self, path, *, adapter_mode="mock_async_adapter"):
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        def case_payload(case_id, prompt, candidate, kind, material, node, writes):
+            return {
+                "case_id": case_id,
+                "prompt": prompt,
+                "expected_candidate": candidate,
+                "expected_node": node,
+                "expected_writes": writes,
+                "prepared_center_node": "air",
+                "center_node": node,
+                "node_count": writes,
+                "non_air_count": writes,
+                "status": "pass",
+                "ok": True,
+                "checks": {
+                    "initial_agentic_queued": True,
+                    "agentic_route": True,
+                    "reply_queued": True,
+                    "auto_applied": True,
+                    "approved_build": True,
+                    "selected_candidate": True,
+                    "kind": True,
+                    "material": True,
+                    "node": True,
+                    "planned_writes": True,
+                    "required_tools": True,
+                    "action_plan_ready": True,
+                    "world_mutation_authority": True,
+                    "task_completed": True,
+                    "rollback_record": True,
+                    "node_count": True,
+                    "no_extra_nodes": True,
+                },
+                "initial_reply": {
+                    "ok": True,
+                    "action": "build_plan",
+                    "status": "queued",
+                    "reason": "agentic_build_planner_queued",
+                    "planner_mode": "agentic_model_adapter",
+                    "selected_candidate_id": candidate,
+                    "candidate_count": 5,
+                },
+                "reply": {
+                    "ok": True,
+                    "action": "build",
+                    "status": "queued",
+                    "task_id": f"nova_agent:{case_id}:build:1",
+                    "approval_id": f"nova_agent:{case_id}:build:approval:1",
+                    "approved_action": "build",
+                    "auto_applied_approval": True,
+                    "auto_apply_policy": "ai_runtime.auto_apply_build_approvals",
+                    "planner_mode": "agentic_model_adapter",
+                    "selected_candidate_id": candidate,
+                    "adapter_selected_candidate_id": candidate,
+                    "model_selected_candidate_id": candidate,
+                    "selection_source": "model_tool_decision",
+                    "build_kind": kind,
+                    "build_material_name": material,
+                    "build_material_node": node,
+                    "planned_node_writes": writes,
+                    "adapter_tool_decision_source": "agents_sdk_function_tool",
+                    "adapter_required_tool_calls_satisfied": True,
+                    "adapter_missing_required_tool_calls": [],
+                    "adapter_build_action_plan_status": "ready",
+                    "adapter_build_action_plan_step_count": 4,
+                    "adapter_build_action_plan_world_mutation_authority": "luanti",
+                },
+                "trace": {
+                    "trace_id": f"nova_trace:{case_id}",
+                    "route": "agentic_build_planner",
+                    "action": "build",
+                    "public_prompt": prompt,
+                    "response": {
+                        "status": "queued",
+                        "auto_applied_approval": True,
+                        "selected_candidate_id": candidate,
+                    },
+                },
+                "task": {
+                    "task_id": f"nova_agent:{case_id}:build:1",
+                    "status": "completed",
+                    "last_result": {
+                        "ok": True,
+                        "status": "success",
+                        "reason": "changed",
+                        "changed": writes,
+                        "rollback_record_id": f"rollback:nova_agent:{case_id}:build:1",
+                        "rollback_storage_ref": f"rollback://world/nova_agent:{case_id}:build:1",
+                        "metrics": {"node_writes": writes},
+                    },
+                },
+            }
+
+        payload = {
+            "schema_version": 1,
+            "live_result_kind": "ai_native_nova_auto_apply_live_result",
+            "generated_at": "2026-06-28T12:00:00Z",
+            "status": "pass",
+            "ok": True,
+            "reason": "nova auto-apply live probe passed",
+            "runtime_context": {
+                "mode": "disposable_live_ai_runtime_nova_auto_apply_probe",
+                "gameid": "ai_runtime",
+                "adapter_mode": adapter_mode,
+                "command": "/nova",
+                "requires_live_pi": False,
+                "requires_private_world": False,
+                "requires_private_assets": False,
+                "requires_model_network": adapter_mode == "agents_sdk_sidecar",
+                "world_mutation_performed": True,
+                "world_mutation_scope": "disposable_synthetic_ai_runtime_world",
+            },
+            "summary": {
+                "cases_total": 2,
+                "cases_passed": 2,
+                "cases_failed": 0,
+                "fire_only_strict_checked": True,
+                "tnt_wall_checked": True,
+                "agentic_build_planner_checked": True,
+                "auto_apply_checked": True,
+                "rollback_checked": True,
+            },
+            "cases": [
+                case_payload(
+                    "fire_only_strict",
+                    "build me a fire and only a fire",
+                    "fire",
+                    "fire",
+                    "fire",
+                    "ai_runtime_base:fire",
+                    1,
+                ),
+                case_payload(
+                    "tnt_wall",
+                    "build a wall of tnt",
+                    "tnt_wall",
+                    "wall",
+                    "tnt",
+                    "ai_runtime_base:tnt",
+                    12,
+                ),
+            ],
+            "safety": {
+                "public_safe_output": True,
+                "disposable_live_world_only": True,
+                "world_mutation_performed": True,
+                "world_mutation_scope": "disposable_synthetic_ai_runtime_world",
+                "world_mutation_authority": "luanti",
+                "no_raw_assets": True,
+                "no_provider_prompts": True,
+                "no_family_world_coordinates": True,
+                "no_private_prompt_retained": True,
+            },
+            "bounds": {
+                "max_bytes": 26000,
                 "output_bytes": 0,
                 "truncated": False,
             },
@@ -1126,6 +1299,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 return load_harness_module().CommandRun(
                     0, 0.25, "agent prompt eval live probe ok", ""
                 )
+            if step.id == "nova_auto_apply_live_probe":
+                output_path = pathlib.Path(
+                    step.actual_command[step.actual_command.index("--output") + 1]
+                )
+                self.write_nova_auto_apply_live_artifact(output_path)
+                return load_harness_module().CommandRun(
+                    0, 0.25, "nova auto apply live probe ok", ""
+                )
             if step.id == "compat_import_staging_pilot":
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
@@ -1166,6 +1347,39 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             tnt_underplanned["prompt_eval"]["cases"][2]["planned_node_writes"] = 1
             with self.assertRaisesRegex(ValueError, "TNT wall must plan exactly twelve node writes"):
                 probe.validate_live_result(tnt_underplanned)
+
+    def test_nova_auto_apply_validator_requires_exact_build_write_counts(self):
+        probe = load_nova_auto_apply_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact = pathlib.Path(tmpdir) / "nova-auto-apply.json"
+            self.write_nova_auto_apply_live_artifact(artifact)
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+            evidence = probe.validate_live_result(payload)
+            self.assertEqual(evidence["nova_auto_apply_status"], "pass")
+            self.assertEqual(
+                evidence["nova_auto_apply_fire_only_strict_planned_node_writes"],
+                1,
+            )
+            self.assertEqual(
+                evidence["nova_auto_apply_tnt_wall_planned_node_writes"],
+                12,
+            )
+
+            fire_extra = json.loads(json.dumps(payload))
+            fire_extra["cases"][0]["node_count"] = 2
+            with self.assertRaisesRegex(ValueError, "fire_only_strict wrote the wrong node count"):
+                probe.validate_live_result(fire_extra)
+
+            tnt_underplanned = json.loads(json.dumps(payload))
+            tnt_underplanned["cases"][1]["reply"]["planned_node_writes"] = 1
+            with self.assertRaisesRegex(ValueError, "tnt_wall planned writes are invalid"):
+                probe.validate_live_result(tnt_underplanned)
+
+            no_auto_apply = json.loads(json.dumps(payload))
+            no_auto_apply["cases"][0]["reply"]["auto_applied_approval"] = False
+            with self.assertRaisesRegex(ValueError, "fire_only_strict was not auto-applied"):
+                probe.validate_live_result(no_auto_apply)
 
     def test_success_manifest_is_bounded_private_safe_and_records_artifacts(self):
         harness = load_harness_module()
@@ -1232,6 +1446,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "operator_status_live_command",
                     "agent_product_loop_live_probe",
                     "agent_prompt_eval_live_probe",
+                    "nova_auto_apply_live_probe",
                     "compat_import_staging_pilot",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
@@ -1274,6 +1489,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["agent_prompt_eval_live_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-agent-prompt-eval-live-result.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["nova_auto_apply_live_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-nova-auto-apply-live-result.json",
             )
             self.assertEqual(
                 manifest["artifact_paths"]["compat_import_staging_pilot_result"],
@@ -1659,6 +1878,72 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 ]
             )
             self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"]["nova_auto_apply_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"]["live_command"],
+                "/nova",
+            )
+            self.assertTrue(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_fire_only_strict_checked"
+                ]
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_fire_only_strict_planned_node_writes"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_fire_only_strict_changed_nodes"
+                ],
+                1,
+            )
+            self.assertTrue(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_tnt_wall_checked"
+                ]
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_tnt_wall_planned_node_writes"
+                ],
+                12,
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_tnt_wall_changed_nodes"
+                ],
+                12,
+            )
+            self.assertTrue(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_agentic_build_planner_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_auto_apply_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_rollback_checked"
+                ]
+            )
+            self.assertEqual(
+                manifest["nova_auto_apply_live_evidence"]["nova_auto_apply_adapter_mode"],
+                "mock_async_adapter",
+            )
+            self.assertTrue(
+                manifest["nova_auto_apply_live_evidence"][
+                    "nova_auto_apply_world_mutation"
+                ]
+            )
+            self.assertEqual(
                 manifest["compat_import_staging_pilot_evidence"]["compat_import_staging_pilot_status"],
                 "pass",
             )
@@ -1732,7 +2017,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 17000)
+            self.assertLess(len(serialized), 19000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
@@ -2055,6 +2340,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "operator_status_package",
                     "agent_product_loop_live_probe",
                     "agent_prompt_eval_live_probe",
+                    "nova_auto_apply_live_probe",
                     "compat_import_staging_pilot",
                     "operator_task_control_live_probe",
                     "operator_task_control_command_probe",
@@ -2298,6 +2584,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     )
                     self.write_agent_prompt_eval_live_artifact(output_path)
                     return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
+                if step.id == "nova_auto_apply_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_nova_auto_apply_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "nova auto apply live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2405,6 +2697,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     )
                     self.write_agent_prompt_eval_live_artifact(output_path)
                     return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
+                if step.id == "nova_auto_apply_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_nova_auto_apply_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "nova auto apply live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2503,6 +2801,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     )
                     self.write_agent_prompt_eval_live_artifact(output_path)
                     return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
+                if step.id == "nova_auto_apply_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_nova_auto_apply_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "nova auto apply live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2736,6 +3040,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     )
                     self.write_agent_prompt_eval_live_artifact(output_path)
                     return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
+                if step.id == "nova_auto_apply_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_nova_auto_apply_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "nova auto apply live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2859,6 +3169,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     )
                     self.write_agent_prompt_eval_live_artifact(output_path)
                     return harness.CommandRun(0, 0.25, "agent prompt eval live probe ok", "")
+                if step.id == "nova_auto_apply_live_probe":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_nova_auto_apply_live_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "nova auto apply live probe ok", "")
                 if step.id == "compat_import_staging_pilot":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2930,6 +3246,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-operator-action-execution-result.json",
             "ai-runtime-agent-product-loop-live-result.json",
             "ai-runtime-agent-prompt-eval-live-result.json",
+            "ai-runtime-nova-auto-apply-live-result.json",
             "ai-runtime-compat-import-staging-pilot-result.json",
             "ai-runtime-operator-task-control-live-result.json",
             "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
@@ -2942,6 +3259,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "util/ai_native_operator_task_control_executor.py",
             "util/ai_native_agent_product_loop_live_probe.py",
             "util/ai_native_agent_prompt_eval_live_probe.py",
+            "util/ai_native_nova_auto_apply_live_probe.py",
             "util/ai_native_compat_import_staging_pilot.py",
             "util/ai_native_operator_task_control_live_probe.py",
             "util/ai_native_operator_task_control_command_probe.py",
@@ -2954,6 +3272,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "--agent-prompt-eval-live-result-max-bytes",
             "--agent-prompt-eval-live-timeout",
             "--agent-prompt-eval-adapter-endpoint",
+            "--nova-auto-apply-live-result-max-bytes",
+            "--nova-auto-apply-adapter-endpoint",
             "--compat-import-staging-pilot-result-max-bytes",
             "--compat-import-staging-pilot-timeout",
             "--operator-taREDACTED_KEY_FIXTURE",
@@ -2973,6 +3293,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "receipt-gated task control executor",
             "first-party product-loop live result",
             "Nova prompt eval live result",
+            "Nova auto-apply live result",
             "compatibility import staging pilot result",
             "receipt-gated live task-control probe",
             "receipt-gated task-control command probe",

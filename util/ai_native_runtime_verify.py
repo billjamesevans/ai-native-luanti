@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ai_native_benchmark_capture
 import ai_native_agent_product_loop_live_probe
 import ai_native_agent_prompt_eval_live_probe
+import ai_native_nova_auto_apply_live_probe
 import ai_native_compat_import_staging_pilot
 import ai_native_operator_action_approval_plan
 import ai_native_operator_action_approval_receipt
@@ -36,6 +37,7 @@ OPERATOR_ACTION_APPROVAL_RECEIPT_NAME = "ai-runtime-operator-action-approval-rec
 OPERATOR_ACTION_EXECUTION_RESULT_NAME = "ai-runtime-operator-action-execution-result.json"
 AGENT_PRODUCT_LOOP_LIVE_RESULT_NAME = "ai-runtime-agent-product-loop-live-result.json"
 AGENT_PROMPT_EVAL_LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-result.json"
+NOVA_AUTO_APPLY_LIVE_RESULT_NAME = "ai-runtime-nova-auto-apply-live-result.json"
 COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME = "ai-runtime-compat-import-staging-pilot-result.json"
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
 OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json"
@@ -182,6 +184,10 @@ def agent_product_loop_live_result_artifact_path(args) -> Path:
 
 def agent_prompt_eval_live_result_artifact_path(args) -> Path:
     return physical_run_dir(args) / AGENT_PROMPT_EVAL_LIVE_RESULT_NAME
+
+
+def nova_auto_apply_live_result_artifact_path(args) -> Path:
+    return physical_run_dir(args) / NOVA_AUTO_APPLY_LIVE_RESULT_NAME
 
 
 def compat_import_staging_pilot_result_artifact_path(args) -> Path:
@@ -332,6 +338,7 @@ def build_steps(args) -> list[CommandStep]:
         build_operator_status_step(args),
         build_agent_product_loop_live_step(args),
         build_agent_prompt_eval_live_step(args),
+        build_nova_auto_apply_live_step(args),
         build_compat_import_staging_pilot_step(args),
         build_operator_task_control_live_step(args),
         build_operator_task_control_command_step(args),
@@ -544,6 +551,59 @@ def build_agent_prompt_eval_live_step(args) -> CommandStep:
     return CommandStep(
         "agent_prompt_eval_live_probe",
         "Nova prompt eval command probe in disposable ai_runtime world",
+        actual,
+        manifest,
+    )
+
+
+def build_nova_auto_apply_live_step(args) -> CommandStep:
+    actual = [
+        args.python,
+        "util/ai_native_nova_auto_apply_live_probe.py",
+        "--root",
+        ".",
+        "--server-bin",
+        args.server_bin,
+        "--output",
+        str(nova_auto_apply_live_result_artifact_path(args)),
+        "--generated-at",
+        operator_status_generated_at(args),
+        "--max-bytes",
+        str(args.nova_auto_apply_live_result_max_bytes),
+        "--timeout",
+        str(args.nova_auto_apply_live_timeout),
+    ]
+    manifest = python_manifest_command(
+        "util/ai_native_nova_auto_apply_live_probe.py",
+        "--root",
+        ".",
+        "--server-bin",
+        server_manifest_bin(args.server_bin),
+        "--output",
+        logical_path(args, NOVA_AUTO_APPLY_LIVE_RESULT_NAME),
+        "--generated-at",
+        operator_status_generated_at(args),
+        "--max-bytes",
+        str(args.nova_auto_apply_live_result_max_bytes),
+        "--timeout",
+        str(args.nova_auto_apply_live_timeout),
+    )
+    if args.nova_auto_apply_adapter_endpoint:
+        actual += [
+            "--adapter-endpoint",
+            args.nova_auto_apply_adapter_endpoint,
+            "--adapter-timeout",
+            str(args.nova_auto_apply_adapter_timeout),
+        ]
+        manifest += [
+            "--adapter-endpoint",
+            "<loopback-agents-sdk-adapter-endpoint>",
+            "--adapter-timeout",
+            str(args.nova_auto_apply_adapter_timeout),
+        ]
+    return CommandStep(
+        "nova_auto_apply_live_probe",
+        "Nova auto-applied build probe in disposable ai_runtime world",
         actual,
         manifest,
     )
@@ -1465,6 +1525,36 @@ def agent_prompt_eval_live_evidence(args) -> tuple[dict, list[str]]:
     return evidence, reasons
 
 
+def nova_auto_apply_live_evidence(args) -> tuple[dict, list[str]]:
+    path = nova_auto_apply_live_result_artifact_path(args)
+    source_path = logical_path(args, NOVA_AUTO_APPLY_LIVE_RESULT_NAME)
+    evidence = {
+        "nova_auto_apply_status": "fail",
+        "nova_auto_apply_path": source_path,
+        "source_kind": "disposable_live_ai_runtime_nova_auto_apply_probe",
+        "live_command": "/nova",
+        "direct_command_execution": True,
+    }
+    reasons = []
+    if not path.is_file():
+        reasons.append("nova_auto_apply_live_probe artifact missing")
+        evidence["failure_count"] = len(reasons)
+        return evidence, reasons
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        evidence.update(
+            ai_native_nova_auto_apply_live_probe.validate_live_result(
+                payload,
+                max_bytes=args.nova_auto_apply_live_result_max_bytes,
+            )
+        )
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        reasons.append(f"nova_auto_apply_live_probe artifact invalid: {type(exc).__name__}")
+    evidence["nova_auto_apply_status"] = "fail" if reasons else "pass"
+    evidence["failure_count"] = len(reasons)
+    return evidence, reasons
+
+
 def compat_import_staging_pilot_evidence(args) -> tuple[dict, list[str]]:
     path = compat_import_staging_pilot_result_artifact_path(args)
     source_path = logical_path(args, COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME)
@@ -1593,6 +1683,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
                 args,
                 AGENT_PROMPT_EVAL_LIVE_RESULT_NAME,
             )
+        if step.id == "nova_auto_apply_live_probe":
+            artifact_paths["nova_auto_apply_live_result"] = logical_path(
+                args,
+                NOVA_AUTO_APPLY_LIVE_RESULT_NAME,
+            )
         if step.id == "compat_import_staging_pilot":
             artifact_paths["compat_import_staging_pilot_result"] = logical_path(
                 args,
@@ -1636,6 +1731,11 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         agent_prompt_eval_live, agent_prompt_eval_failures = agent_prompt_eval_live_evidence(args)
         failure_reasons.extend(agent_prompt_eval_failures)
 
+    nova_auto_apply_live = None
+    if any(step.id == "nova_auto_apply_live_probe" for step, _ in command_results):
+        nova_auto_apply_live, nova_auto_apply_failures = nova_auto_apply_live_evidence(args)
+        failure_reasons.extend(nova_auto_apply_failures)
+
     compat_import_staging_pilot = None
     if any(step.id == "compat_import_staging_pilot" for step, _ in command_results):
         compat_import_staging_pilot, compat_import_failures = compat_import_staging_pilot_evidence(args)
@@ -1669,7 +1769,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "requires_private_world": False,
             "requires_private_assets": False,
             "requires_live_pi": False,
-            "requires_model_network": args.agent_prompt_eval_adapter_endpoint is not None,
+            "requires_model_network": args.agent_prompt_eval_adapter_endpoint is not None
+            or args.nova_auto_apply_adapter_endpoint is not None,
         },
         "notes": [
             "Runs local utility contracts, the branch benchmark gate, and focused AI runtime unit smoke.",
@@ -1679,6 +1780,7 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
             "First-party agent product-loop proof uses a disposable ai_runtime world and synthetic public nodes.",
             "Compatibility import pilot runs public-safe inventory, dry-run, reviewed staging apply, rollback, and refusal gates in a disposable ai_runtime world.",
             "Nova prompt eval runs /ai_agent_eval for fire, strict fire-only, TNT wall, agentic build-planner, and async model-adapter regression coverage.",
+            "Nova auto-apply proof runs /nova-style commands for strict fire-only and TNT-wall mutations through the agentic build-planner and rollback-backed task path.",
         ]
         + (
             [
@@ -1698,6 +1800,8 @@ def build_manifest(args, command_results: list[tuple[CommandStep, CommandRun]], 
         manifest["agent_product_loop_live_evidence"] = agent_product_loop_live
     if agent_prompt_eval_live is not None:
         manifest["agent_prompt_eval_live_evidence"] = agent_prompt_eval_live
+    if nova_auto_apply_live is not None:
+        manifest["nova_auto_apply_live_evidence"] = nova_auto_apply_live
     if compat_import_staging_pilot is not None:
         manifest["compat_import_staging_pilot_evidence"] = compat_import_staging_pilot
     if operator_task_control_live is not None:
@@ -1915,6 +2019,32 @@ def parse_args(argv=None):
         "--agent-prompt-eval-model-prompt",
         default=ai_native_agent_prompt_eval_live_probe.DEFAULT_MODEL_PROMPT,
         help="Model prompt used for the Nova prompt-eval model case.",
+    )
+    parser.add_argument(
+        "--nova-auto-apply-live-result-max-bytes",
+        type=int,
+        default=26000,
+        help="Maximum byte budget for the Nova auto-apply live probe artifact.",
+    )
+    parser.add_argument(
+        "--nova-auto-apply-live-timeout",
+        type=float,
+        default=160.0,
+        help="Seconds to wait for the disposable Nova auto-apply live probe.",
+    )
+    parser.add_argument(
+        "--nova-auto-apply-adapter-endpoint",
+        help=(
+            "Optional loopback Agents SDK model adapter endpoint for real model "
+            "calls during the Nova auto-apply probe. When omitted, the probe "
+            "uses a deterministic mock async adapter."
+        ),
+    )
+    parser.add_argument(
+        "--nova-auto-apply-adapter-timeout",
+        type=float,
+        default=90.0,
+        help="Seconds for the Agents SDK adapter HTTP request when endpoint is set.",
     )
     parser.add_argument(
         "--compat-import-staging-pilot-result-max-bytes",
