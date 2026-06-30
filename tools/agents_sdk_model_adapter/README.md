@@ -86,6 +86,12 @@ choice as `adapter_fallback_after_agent_missing_required_tool`, records
 `missing_required_tool_calls`, and sets `required_tool_calls_satisfied = false`
 so bad agent behavior is visible in logs and eval queues. If the model returns no
 tool decision at all, the source is `adapter_fallback_after_agent_no_tool`.
+Exact player constraints are also enforced by the tool contract: prompts such as
+`build a fire`, `build me a fire and only a fire`, and `build a wall of tnt`
+must select the matching executable candidate. If a live agent selects a generic
+platform or other mismatch, the sidecar marks the run as
+`adapter_fallback_after_agent_violated_player_request_constraints` and returns
+the constrained executable option while retaining the bad tool trace for review.
 The eval queue treats missing required tool calls as high-priority
 adapter-contract regressions with `ready_for_adapter_contract_eval = true`; they
 are not silently downgraded to generic manual review.
