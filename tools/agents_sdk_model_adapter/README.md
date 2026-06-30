@@ -112,6 +112,19 @@ python3 util/ai_native_agent_memory_refresh.py \
 For build-planning logs, `context.player_request` becomes the reviewed memory
 prompt so future agent tool calls can match the exact player command.
 
+Replay adapter-contract failures against the loopback sidecar with:
+
+```bash
+python3 util/ai_native_agent_adapter_contract_eval.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-adapter-contract-eval.json \
+  --endpoint http://127.0.0.1:8766/v1/model-adapter
+```
+
+The runner selects `ready_for_adapter_contract_eval` cases and fails runs that
+drop required Agents SDK function tools or fall back to a non-agentic build
+decision source.
+
 Adapter endpoint:
 
 ```text

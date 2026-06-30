@@ -18,6 +18,7 @@ PYPROJECT = BRIDGE_DIR / "pyproject.toml"
 README = BRIDGE_DIR / "README.md"
 DOC = ROOT / "doc" / "ai-native-runtime" / "agents-sdk-model-adapter.md"
 READINESS = ROOT / "util" / "ai_native_agents_sdk_sidecar_readiness.py"
+ADAPTER_CONTRACT_EVAL = ROOT / "util" / "ai_native_agent_adapter_contract_eval.py"
 RUNTIME_README = ROOT / "doc" / "ai-native-runtime" / "README.md"
 MODEL_CONTRACT = ROOT / "doc" / "ai-native-runtime" / "model-adapter-contract.md"
 LUA_PLUGIN = ROOT / "builtin" / "game" / "ai_agents_sdk_adapter_plugin.lua"
@@ -50,7 +51,7 @@ def _load_agent_module():
 
 def validate_contract() -> dict:
     violations: list[dict] = []
-    for path in (AGENT, MAIN, PYPROJECT, README, DOC, READINESS, LUA_PLUGIN):
+    for path in (AGENT, MAIN, PYPROJECT, README, DOC, READINESS, ADAPTER_CONTRACT_EVAL, LUA_PLUGIN):
         _require(path.exists(), "missing_file", str(path), violations)
     if violations:
         return {"status": "fail", "violations": violations}
@@ -58,6 +59,7 @@ def validate_contract() -> dict:
     agent_source = _read(AGENT)
     main_source = _read(MAIN)
     readiness_source = _read(READINESS)
+    adapter_contract_eval_source = _read(ADAPTER_CONTRACT_EVAL)
     pyproject = _read(PYPROJECT)
     readme = _read(README)
     doc = _read(DOC)
@@ -127,6 +129,19 @@ def validate_contract() -> dict:
         _require(phrase in readiness_source, "readiness_source_missing_phrase", phrase, violations)
 
     for phrase in (
+        'REPORT_KIND = "ai_native_agent_adapter_contract_eval_result"',
+        "loopback_endpoint",
+        "ready_for_adapter_contract_eval",
+        "adapter_replay_request",
+        "agents_sdk_function_tool",
+        "required_tool_calls_satisfied",
+        "world_mutation_authority",
+        "no_world_mutation",
+        "no_raw_provider_payloads",
+    ):
+        _require(phrase in adapter_contract_eval_source, "adapter_contract_eval_missing_phrase", phrase, violations)
+
+    for phrase in (
         'core.settings:get_bool("ai_runtime.enable_agents_sdk_adapter", false)',
         'core.register_chatcommand("ai_agents_sdk_adapter_probe"',
         "http://127.0.0.1:8766/v1/model-adapter",
@@ -157,7 +172,11 @@ def validate_contract() -> dict:
     _require("openai-agents" in pyproject, "pyproject_missing_openai_agents", str(PYPROJECT), violations)
     _require("WebSearchTool" in readme, "readme_missing_web_search_tool", str(README), violations)
     _require("function_tool" in readme, "readme_missing_function_tool", str(README), violations)
+    _require("ai_native_agent_adapter_contract_eval.py" in readme,
+        "readme_missing_adapter_contract_eval", str(README), violations)
     _require("Agents SDK Model Adapter" in runtime_readme, "runtime_readme_missing_link", str(RUNTIME_README), violations)
+    _require("ai_native_agent_adapter_contract_eval.py" in runtime_readme,
+        "runtime_readme_missing_adapter_contract_eval", str(RUNTIME_README), violations)
     _require("tools/agents_sdk_model_adapter" in model_contract, "model_contract_missing_bridge", str(MODEL_CONTRACT), violations)
 
     for phrase in (
@@ -172,6 +191,8 @@ def validate_contract() -> dict:
         "agentic_execution",
         "live_web_lookup_available",
         "OPENAI_API_KEY",
+        "ai_native_agent_adapter_contract_eval.py",
+        "ready_for_adapter_contract_eval",
     ):
         _require(phrase in doc, "doc_missing_phrase", phrase, violations)
 
@@ -233,6 +254,7 @@ def validate_contract() -> dict:
             "http_adapter_endpoint": True,
             "lua_sidecar_adapter": True,
             "sidecar_readiness_probe": True,
+            "adapter_contract_eval": True,
             "tool_power_manifest": True,
             "offline_smoke": True,
             "public_safe_docs": True,

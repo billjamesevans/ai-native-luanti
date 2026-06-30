@@ -88,6 +88,23 @@ python3 util/ai_native_agent_memory_refresh.py \
   --generated-at 2026-06-30T00:00:00Z
 ```
 
+Replay sidecar adapter-contract failures against the loopback model adapter
+before treating a live agent run as healthy:
+
+```bash
+python3 util/ai_native_agent_adapter_contract_eval.py \
+  --candidate-queue local/benchmarks/ai-agent-eval-candidate-queue.json \
+  --output local/benchmarks/ai-agent-adapter-contract-eval.json \
+  --endpoint http://127.0.0.1:8766/v1/model-adapter \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
+The replay runner selects only candidates marked
+`ready_for_adapter_contract_eval = true`, refuses non-loopback endpoints, avoids
+world mutation, and fails runs where required function tools are missing,
+`required_tool_calls_satisfied` is not true, or the decision source is not
+`agents_sdk_function_tool`.
+
 Case packs are for harnesses and disposable-world probes. They run through
 `core.ai_agent_plugin.run_prompt_eval({ cases = "custom", custom_cases = ... })`
 so promoted cases exercise the same preview, approval, cleanup, trace, and
