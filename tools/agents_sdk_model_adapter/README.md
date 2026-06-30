@@ -112,6 +112,12 @@ That file must be an `ai_native_agent_prompt_eval_case_pack`. The sidecar only
 uses it through the read-only `recall_build_prompt_memory` tool; it never mutates
 world state or bypasses Luanti approval/rollback gates.
 
+Case packs record whether each memory case is merely replayable or
+`default_gate_eligible`. Default-gate eligibility requires repeated trusted
+evidence with satisfied required-tool calls; single observations and operator
+label overlays stay review-gated even though the sidecar can still use them as
+read-only prompt memory.
+
 Refresh candidate queues and mounted prompt memory from runtime logs with:
 
 ```bash

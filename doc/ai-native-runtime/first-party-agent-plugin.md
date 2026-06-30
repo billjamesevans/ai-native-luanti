@@ -241,6 +241,11 @@ read-only prompt memory through `AI_NATIVE_AGENT_CASE_PACK_PATH`. That is the
 runtime improvement loop: bad traces become candidate queues, reviewed queues
 become regression cases, and reviewed cases can bias future agent tool decisions
 without bypassing approval or rollback.
+Repeated verified behavior can advance one step further. If the same public
+prompt expectation is observed from enough independent trusted source kinds and
+each observation satisfies the required Agents SDK tool contract, the generated
+case pack marks that case `default_gate_eligible`; single observations and
+operator-label overlays remain maintainer-review-gated before the default gate.
 For unknown prompts, the reviewed queue step is explicit: a maintainer adds a
 public-safe `ai_native_agent_eval_operator_labels` file with the expected
 build output, then reruns the memory refresh with `--operator-labels`. The label

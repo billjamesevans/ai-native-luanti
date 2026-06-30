@@ -291,6 +291,12 @@ def build_quality_gate(
             "ready_for_prompt_eval": _int(candidate_summary.get("ready_for_prompt_eval")),
             "unique_ready_for_prompt_eval": _int(review_summary.get("unique_ready_for_prompt_eval")),
             "case_pack_cases_total": case_count,
+            "case_pack_default_gate_eligible_cases": _int(
+                case_summary.get("default_gate_eligible_cases")
+            ),
+            "case_pack_review_required_cases": _int(case_summary.get("review_required_cases")),
+            "case_pack_requires_maintainer_review_before_default_gate":
+                case_summary.get("requires_maintainer_review_before_default_gate") is True,
             "manual_review_required": manual_review_required,
             "review_items_total": review_items_total,
             "review_action_items_total": review_action_items_total,

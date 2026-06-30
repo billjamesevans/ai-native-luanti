@@ -48,6 +48,7 @@ def build_memory_artifacts(
     max_candidate_queue_bytes: int = eval_queue.DEFAULT_MAX_BYTES,
     max_cases: int = eval_promote.DEFAULT_MAX_CASES,
     max_case_pack_bytes: int = eval_promote.DEFAULT_MAX_BYTES,
+    auto_default_gate_min_sources: int = eval_promote.DEFAULT_AUTO_DEFAULT_GATE_MIN_SOURCES,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     candidate_queue_path = candidate_queue_source_path or "ai-agent-eval-candidate-queue.json"
     operator_label_payloads: list[dict[str, Any]] = []
@@ -82,6 +83,7 @@ def build_memory_artifacts(
         source_path=candidate_queue_source_path,
         max_cases=max(0, max_cases),
         max_bytes=max(1000, max_case_pack_bytes),
+        auto_default_gate_min_sources=max(1, auto_default_gate_min_sources),
     )
     return candidate_queue, case_pack
 
@@ -110,6 +112,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--max-candidate-queue-bytes", type=int, default=eval_queue.DEFAULT_MAX_BYTES)
     parser.add_argument("--max-cases", type=int, default=eval_promote.DEFAULT_MAX_CASES)
     parser.add_argument("--max-case-pack-bytes", type=int, default=eval_promote.DEFAULT_MAX_BYTES)
+    parser.add_argument(
+        "--auto-default-gate-min-sources",
+        type=int,
+        default=eval_promote.DEFAULT_AUTO_DEFAULT_GATE_MIN_SOURCES,
+        help="Independent trusted source kinds required before prompt memory is default-gate eligible.",
+    )
     return parser.parse_args(argv)
 
 
@@ -139,6 +147,7 @@ def main(argv: list[str] | None = None) -> int:
         max_candidate_queue_bytes=args.max_candidate_queue_bytes,
         max_cases=args.max_cases,
         max_case_pack_bytes=args.max_case_pack_bytes,
+        auto_default_gate_min_sources=args.auto_default_gate_min_sources,
     )
     write_json(candidate_queue_output, candidate_queue)
     write_json(case_pack_output, case_pack)
@@ -195,6 +204,14 @@ def main(argv: list[str] | None = None) -> int:
         "case_pack": relative_label(root, case_pack_output),
         "case_pack_status": case_pack.get("status"),
         "cases_total": case_pack.get("summary", {}).get("cases_total", 0),
+        "default_gate_eligible_cases": case_pack.get("summary", {}).get(
+            "default_gate_eligible_cases",
+            0,
+        ),
+        "review_required_cases": case_pack.get("summary", {}).get(
+            "review_required_cases",
+            0,
+        ),
     }
     if review_report is not None and review_output is not None:
         summary.update({
