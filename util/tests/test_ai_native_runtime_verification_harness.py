@@ -35,6 +35,15 @@ def load_agent_prompt_eval_module():
     return module
 
 
+def load_agent_improvement_module():
+    path = ROOT / "util" / "ai_native_agent_improvement_loop_verify.py"
+    assert path.is_file(), f"missing {path}"
+    spec = importlib.util.spec_from_file_location("ai_native_agent_improvement_loop_verify", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def load_nova_auto_apply_module():
     path = ROOT / "util" / "ai_native_nova_auto_apply_live_probe.py"
     assert path.is_file(), f"missing {path}"
@@ -425,6 +434,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             },
         }
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
+        path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    def write_agent_improvement_loop_artifact(self, path):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        module = load_agent_improvement_module()
+        payload = module.build_report(
+            generated_at="2026-06-28T12:00:00Z",
+            max_bytes=32000,
+        )
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def write_agent_prompt_eval_live_artifact(self, path, *, adapter_mode="mock_async_adapter"):
@@ -1291,6 +1309,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     step.actual_command[step.actual_command.index("--output") + 1]
                 )
                 self.write_agent_product_loop_live_artifact(output_path)
+            if step.id == "agent_improvement_loop_verify":
+                output_path = pathlib.Path(
+                    step.actual_command[step.actual_command.index("--output") + 1]
+                )
+                self.write_agent_improvement_loop_artifact(output_path)
+                return load_harness_module().CommandRun(
+                    0, 0.25, "agent improvement loop verification ok", ""
+                )
             if step.id == "agent_prompt_eval_live_probe":
                 output_path = pathlib.Path(
                     step.actual_command[step.actual_command.index("--output") + 1]
@@ -1381,6 +1407,32 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "fire_only_strict was not auto-applied"):
                 probe.validate_live_result(no_auto_apply)
 
+    def test_agent_improvement_loop_validator_requires_memory_and_contract_evidence(self):
+        verifier = load_agent_improvement_module()
+        payload = verifier.build_report(
+            generated_at="2026-06-28T12:00:00Z",
+            max_bytes=32000,
+        )
+
+        evidence = verifier.validate_report(payload)
+        self.assertEqual(evidence["agent_improvement_loop_status"], "pass")
+        self.assertEqual(evidence["agent_improvement_loop_case_pack_cases"], 3)
+        self.assertEqual(evidence["agent_improvement_loop_adapter_contract_failures"], 1)
+        self.assertIn(
+            "stone_bridge_platform",
+            evidence["agent_improvement_loop_case_hints"],
+        )
+
+        missing_case = json.loads(json.dumps(payload))
+        missing_case["summary"]["case_hints"].remove("stone_bridge_platform")
+        with self.assertRaisesRegex(ValueError, "missing case hint stone_bridge_platform"):
+            verifier.validate_report(missing_case)
+
+        missing_adapter_failure = json.loads(json.dumps(payload))
+        missing_adapter_failure["summary"]["adapter_contract_failures"] = 0
+        with self.assertRaisesRegex(ValueError, "adapter_contract_failures is invalid"):
+            verifier.validate_report(missing_adapter_failure)
+
     def test_success_manifest_is_bounded_private_safe_and_records_artifacts(self):
         harness = load_harness_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1445,6 +1497,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_live_command",
                     "agent_product_loop_live_probe",
+                    "agent_improvement_loop_verify",
                     "agent_prompt_eval_live_probe",
                     "nova_auto_apply_live_probe",
                     "compat_import_staging_pilot",
@@ -1485,6 +1538,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(
                 manifest["artifact_paths"]["agent_product_loop_live_result"],
                 "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-agent-product-loop-live-result.json",
+            )
+            self.assertEqual(
+                manifest["artifact_paths"]["agent_improvement_loop_result"],
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-agent-improvement-loop-result.json",
             )
             self.assertEqual(
                 manifest["artifact_paths"]["agent_prompt_eval_live_result"],
@@ -1794,6 +1851,51 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 0,
             )
             self.assertEqual(
+                manifest["agent_improvement_loop_evidence"]["agent_improvement_loop_status"],
+                "pass",
+            )
+            self.assertEqual(
+                manifest["agent_improvement_loop_evidence"][
+                    "agent_improvement_loop_prompt_eval_candidates"
+                ],
+                3,
+            )
+            self.assertEqual(
+                manifest["agent_improvement_loop_evidence"][
+                    "agent_improvement_loop_case_pack_cases"
+                ],
+                3,
+            )
+            self.assertEqual(
+                manifest["agent_improvement_loop_evidence"][
+                    "agent_improvement_loop_adapter_contract_failures"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_improvement_loop_evidence"][
+                    "agent_improvement_loop_adapter_contract_eval_ready"
+                ],
+                1,
+            )
+            self.assertEqual(
+                manifest["agent_improvement_loop_evidence"][
+                    "agent_improvement_loop_operator_feedback"
+                ],
+                1,
+            )
+            self.assertIn(
+                "stone_bridge_platform",
+                manifest["agent_improvement_loop_evidence"][
+                    "agent_improvement_loop_case_hints"
+                ],
+            )
+            self.assertFalse(
+                manifest["agent_improvement_loop_evidence"][
+                    "agent_improvement_loop_world_mutation"
+                ]
+            )
+            self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_status"],
                 "pass",
             )
@@ -2017,7 +2119,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 19000)
+            self.assertLess(len(serialized), 21000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 
@@ -2339,6 +2441,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "branch_benchmark_gate",
                     "operator_status_package",
                     "agent_product_loop_live_probe",
+                    "agent_improvement_loop_verify",
                     "agent_prompt_eval_live_probe",
                     "nova_auto_apply_live_probe",
                     "compat_import_staging_pilot",
@@ -2578,6 +2681,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_improvement_loop_verify":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_improvement_loop_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent improvement loop verification ok", "")
                 if step.id == "agent_prompt_eval_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2691,6 +2800,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_improvement_loop_verify":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_improvement_loop_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent improvement loop verification ok", "")
                 if step.id == "agent_prompt_eval_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -2795,6 +2910,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_improvement_loop_verify":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_improvement_loop_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent improvement loop verification ok", "")
                 if step.id == "agent_prompt_eval_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -3034,6 +3155,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_improvement_loop_verify":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_improvement_loop_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent improvement loop verification ok", "")
                 if step.id == "agent_prompt_eval_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -3163,6 +3290,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         step.actual_command[step.actual_command.index("--output") + 1]
                     )
                     self.write_agent_product_loop_live_artifact(output_path)
+                if step.id == "agent_improvement_loop_verify":
+                    output_path = pathlib.Path(
+                        step.actual_command[step.actual_command.index("--output") + 1]
+                    )
+                    self.write_agent_improvement_loop_artifact(output_path)
+                    return harness.CommandRun(0, 0.25, "agent improvement loop verification ok", "")
                 if step.id == "agent_prompt_eval_live_probe":
                     output_path = pathlib.Path(
                         step.actual_command[step.actual_command.index("--output") + 1]
@@ -3245,6 +3378,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-operator-action-approval-receipt.json",
             "ai-runtime-operator-action-execution-result.json",
             "ai-runtime-agent-product-loop-live-result.json",
+            "ai-runtime-agent-improvement-loop-result.json",
             "ai-runtime-agent-prompt-eval-live-result.json",
             "ai-runtime-nova-auto-apply-live-result.json",
             "ai-runtime-compat-import-staging-pilot-result.json",
@@ -3258,6 +3392,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "util/ai_native_operator_action_approval_receipt.py",
             "util/ai_native_operator_task_control_executor.py",
             "util/ai_native_agent_product_loop_live_probe.py",
+            "util/ai_native_agent_improvement_loop_verify.py",
             "util/ai_native_agent_prompt_eval_live_probe.py",
             "util/ai_native_nova_auto_apply_live_probe.py",
             "util/ai_native_compat_import_staging_pilot.py",
@@ -3269,6 +3404,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "--operator-action-approval-receipt-max-bytes",
             "--operator-action-execution-result-max-bytes",
             "--agent-product-loop-live-result-max-bytes",
+            "--agent-improvement-loop-result-max-bytes",
             "--agent-prompt-eval-live-result-max-bytes",
             "--agent-prompt-eval-live-timeout",
             "--agent-prompt-eval-adapter-endpoint",
@@ -3292,6 +3428,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "receipt artifacts",
             "receipt-gated task control executor",
             "first-party product-loop live result",
+            "Agent improvement-loop result",
             "Nova prompt eval live result",
             "Nova auto-apply live result",
             "compatibility import staging pilot result",

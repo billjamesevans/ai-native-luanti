@@ -49,6 +49,16 @@ Live agent behavior must feed the eval backlog. After a bad Nova response or a
 surprising Agents SDK sidecar result, collect the public-safe sidecar JSONL and
 Luanti action/debug log, then produce an eval candidate queue:
 
+Before touching live logs, run the synthetic verifier to prove the log-to-memory
+mechanics still work end to end:
+
+```bash
+python3 util/ai_native_agent_improvement_loop_verify.py \
+  --root . \
+  --output local/benchmarks/ai-runtime-agent-improvement-loop-result.json \
+  --generated-at 2026-06-30T00:00:00Z
+```
+
 ```bash
 python3 util/ai_native_agent_eval_queue.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \
