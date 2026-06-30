@@ -77,9 +77,10 @@ python3 util/ai_native_runtime_verify.py --hardware-class local-mac
 ```
 
 The harness runs the AI-native utility contracts, the product-profile hygiene gate, the branch
-benchmark gate, the live operator status command probe, the Nova prompt eval probe, the
-Nova auto-apply probe, the compatibility import staging pilot, the receipt-gated task-control command probe, and the focused
-`TestAIRuntime` smoke in a repeatable order. It writes
+benchmark gate, the live operator status command probe, the agent product-loop proof, the agent
+improvement-loop proof, the Nova prompt eval probe, the Nova auto-apply probe, the compatibility
+import staging pilot, the receipt-gated task-control command probe, and the focused `TestAIRuntime`
+smoke in a repeatable order. It writes
 `ai-runtime-verification-manifest.json` under
 `local/benchmarks/<hardware-class>/<date>/<commit>/` with bounded command statuses, durations,
 failure reasons, and local artifact paths. The product-profile step writes
@@ -116,6 +117,13 @@ importer-preview surfaces without private content. It also captures a compact
 same-world operator-status snapshot proving the live status surface sees the product-loop tasks,
 rollback records, and import review without retaining private payloads. Rollback review remains
 read-only in this probe, including targeted rollback-record lookup. It then runs
+`util/ai_native_agent_improvement_loop_verify.py` and writes
+`ai-runtime-agent-improvement-loop-result.json`. That Agent improvement-loop result uses
+synthetic public-safe Agents SDK sidecar logs, Nova action logs, and in-game operator feedback to
+prove the log-to-memory path: fire-only and TNT-wall observations become prompt-eval cases, a
+reviewed bridge correction becomes a prompt-memory case, and a missing required function-tool call
+becomes an adapter-contract replay candidate. It requires no live Pi, no private world, no private
+assets, no provider prompts, no model-network calls, and no world mutation. It then runs
 `util/ai_native_agent_prompt_eval_live_probe.py` against a disposable live `ai_runtime` world and
 writes `ai-runtime-agent-prompt-eval-live-result.json`. That probe executes the registered
 `/ai_agent_eval` command for the fire case, runs `core.ai_agent_plugin.run_prompt_eval` for
@@ -170,6 +178,9 @@ read-only, public-safe, pending-approval cleanup only, no world mutation, five-c
 bounded by `--agent-prompt-eval-live-result-max-bytes` and
 `--agent-prompt-eval-live-timeout`; optional real adapter checks use
 `--agent-prompt-eval-adapter-endpoint` and `--agent-prompt-eval-adapter-timeout`.
+The Agent improvement-loop result must stay synthetic-log-only, public-safe, review-gated,
+non-mutating, provider-prompt-free, and bounded by
+`--agent-improvement-loop-result-max-bytes`.
 The Nova auto-apply live result must stay disposable-world-only, public-safe, rollback-backed,
 agentic-build-planner-only, auto-apply-policy explicit, exact-count verified, and bounded by
 `--nova-auto-apply-live-result-max-bytes`; optional real adapter checks use
@@ -218,6 +229,7 @@ directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifes
 `ai-runtime-operator-action-approval-receipt.json` and
 `ai-runtime-operator-action-execution-result.json` and
 `ai-runtime-agent-product-loop-live-result.json` and
+`ai-runtime-agent-improvement-loop-result.json` and
 `ai-runtime-agent-prompt-eval-live-result.json` and
 `ai-runtime-nova-auto-apply-live-result.json` and
 `ai-runtime-compat-import-staging-pilot-result.json` and
