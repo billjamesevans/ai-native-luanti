@@ -155,8 +155,14 @@ Implemented deterministic commands:
   label the selection as
   `tool_decision_source = agents_sdk_function_tool` and include
   `select_build_option` in the adapter tool trace; missing tool calls are
-  fallback/eval signals. The pending plan and bounded `nova_request_trace`
-  response retain `adapter_tool_decision_source`,
+  fallback/eval signals. Exact player requests for one fire or a TNT wall are
+  intent constraints; if the model selects a generic platform or another
+  mismatch, the plugin keeps the constrained executable candidate and records
+  `selection_source = model_tool_decision_rejected_intent_constraint`. The
+  pending plan and bounded `nova_request_trace` response retain
+  `model_selected_candidate_id`, `selection_source`,
+  `intent_constraint_option_id`, `intent_constraint_reason`,
+  `adapter_tool_decision_source`,
   `adapter_required_tool_calls`, `adapter_missing_required_tool_calls`,
   `adapter_required_tool_calls_satisfied`, `build_option_decision_source`,
   `adapter_memory_matched_case_id`, `adapter_tool_trace_names`,

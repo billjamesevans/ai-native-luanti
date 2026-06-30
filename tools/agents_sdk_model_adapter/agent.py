@@ -326,6 +326,38 @@ def _candidate_entries(candidate_summary: str) -> list[dict[str, Any]]:
     return candidates
 
 
+def _has_candidate(candidates: list[dict[str, Any]], option_id: str) -> bool:
+    return any(candidate.get("option_id") == option_id for candidate in candidates)
+
+
+def _locked_build_option_for_request(
+    player_request: str,
+    candidates: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    request = str(player_request or "").lower()
+    if not candidates:
+        return None
+    if (
+        "only a fire" in request
+        or (
+            ("build a fire" in request or "build me a fire" in request)
+            and "tnt" not in request
+            and "wall" not in request
+            and "platform" not in request
+        )
+    ) and _has_candidate(candidates, "fire"):
+        return {
+            "option_id": "fire",
+            "reason": "player_request_requires_fire_only",
+        }
+    if "tnt" in request and "wall" in request and _has_candidate(candidates, "tnt_wall"):
+        return {
+            "option_id": "tnt_wall",
+            "reason": "player_request_requires_tnt_wall",
+        }
+    return None
+
+
 def _generated_build_budget(candidates: list[dict[str, Any]]) -> int:
     candidate_budget = max(
         [int(item.get("planned_node_writes") or 0) for item in candidates] + [12]
@@ -509,6 +541,7 @@ def select_build_option_payload(
     generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
     selected = next((item for item in candidates if item["option_id"] == selected_id), None)
     decision_source = "agent_selected_build_option"
+    locked_option = _locked_build_option_for_request(player_request, candidates)
 
     if selected is None and isinstance(generated_option, dict) and selected_id == generated_option.get("option_id"):
         selected = {
@@ -522,6 +555,28 @@ def select_build_option_payload(
     alternatives = [item["option_id"] for item in candidates[:6]]
     if isinstance(generated_option, dict):
         alternatives.append(str(generated_option.get("option_id") or "generated_agent_option"))
+
+    if locked_option and selected_id != locked_option["option_id"]:
+        return {
+            "selected_option_id": None,
+            "selection_status": "rejected",
+            "selection_reason": _bounded_text(selection_reason, 400),
+            "rejection_reason": "selection_violates_player_request_constraints",
+            "required_option_id": locked_option["option_id"],
+            "required_option_reason": locked_option["reason"],
+            "candidate_count": len(candidates),
+            "alternatives": alternatives,
+            "decision_source": "agent_selection_rejected",
+            "memory_match": memory,
+            "generated_option_status": generated.get("status") if isinstance(generated, dict) else None,
+            "generated_option_reason": generated.get("reason") if isinstance(generated, dict) else None,
+            "generated_option": generated_option if isinstance(generated_option, dict) else None,
+            "requires_preview": True,
+            "requires_approval": True,
+            "requires_rollback": True,
+            "direct_world_mutation": False,
+            "policy": "luanti_executes_only_after_player_approval",
+        }
 
     if selected is None:
         return {
@@ -765,6 +820,69 @@ def _selected_option_id(decisions: dict[str, Any]) -> str | None:
         selected = build_option.get("selected_option_id")
         if isinstance(selected, str) and selected:
             return selected
+    return None
+
+
+def _model_selected_option_id(
+    decisions: dict[str, Any] | None,
+    tool_trace: Any,
+) -> str | None:
+    if isinstance(decisions, dict):
+        selected = _selected_option_id(decisions)
+        if selected:
+            return selected
+    if not isinstance(tool_trace, list):
+        return None
+    for entry in tool_trace:
+        if not isinstance(entry, dict) or entry.get("tool_name") != "select_build_option":
+            continue
+        args = entry.get("args")
+        if isinstance(args, dict):
+            selected = args.get("selected_option_id")
+            if isinstance(selected, str) and selected:
+                return selected
+        result = entry.get("result")
+        if isinstance(result, dict):
+            selected = result.get("selected_option_id")
+            if isinstance(selected, str) and selected:
+                return selected
+    return None
+
+
+def _intent_constraint_for_request(request: dict[str, Any]) -> dict[str, Any] | None:
+    context = _safe_context(request.get("context"))
+    if context.get("intent") != "build_planning" or not context.get("candidate_summary"):
+        return None
+    candidates = _candidate_entries(str(context.get("candidate_summary") or ""))
+    return _locked_build_option_for_request(
+        str(context.get("player_request") or ""),
+        candidates,
+    )
+
+
+def _build_decision_fallback_reason(
+    request: dict[str, Any],
+    decisions: dict[str, Any] | None,
+) -> str | None:
+    context = _safe_context(request.get("context"))
+    if context.get("intent") != "build_planning" or not context.get("candidate_summary"):
+        return None
+    if not isinstance(decisions, dict):
+        return "agent_no_build_option"
+    build_option = decisions.get("build_option")
+    if not isinstance(build_option, dict):
+        return "agent_no_build_option"
+
+    candidates = _candidate_entries(str(context.get("candidate_summary") or ""))
+    locked = _locked_build_option_for_request(
+        str(context.get("player_request") or ""),
+        candidates,
+    )
+    selected = build_option.get("selected_option_id")
+    if build_option.get("selection_status") == "rejected" or not selected:
+        return "agent_invalid_build_selection"
+    if locked and selected != locked["option_id"]:
+        return "agent_violated_player_request_constraints"
     return None
 
 
@@ -1047,6 +1165,8 @@ def run_model_adapter_request(
 
     tool_trace = agent_result.get("tool_trace") if isinstance(agent_result, dict) else []
     tool_decisions = agent_result.get("tool_decisions") if isinstance(agent_result, dict) else {}
+    model_tool_decisions = tool_decisions if isinstance(tool_decisions, dict) else {}
+    model_selected_option_id = _model_selected_option_id(model_tool_decisions, tool_trace)
     decision_source = "agents_sdk_function_tool"
     required_tools = _required_tool_names_for_request(request, tool_decisions)
     missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
@@ -1062,6 +1182,30 @@ def run_model_adapter_request(
         required_tools = _required_tool_names_for_request(request, tool_decisions)
         missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
         decision_source = "adapter_fallback_after_agent_no_tool"
+    else:
+        fallback_reason = _build_decision_fallback_reason(request, tool_decisions)
+        if fallback_reason:
+            fallback_decisions = _tool_decisions_for_request(request)
+            if fallback_decisions:
+                tool_decisions = fallback_decisions
+                required_tools = _required_tool_names_for_request(request, tool_decisions)
+                missing_required_tools = _missing_required_tool_names(
+                    request,
+                    tool_trace,
+                    tool_decisions,
+                )
+                decision_source = f"adapter_fallback_after_{fallback_reason}"
+
+    final_selected_option_id = _selected_option_id(tool_decisions)
+    intent_constraint = _intent_constraint_for_request(request)
+    rejected_model_selected_option_id = None
+    if (
+        model_selected_option_id
+        and final_selected_option_id
+        and model_selected_option_id != final_selected_option_id
+        and decision_source.startswith("adapter_fallback_after_agent_")
+    ):
+        rejected_model_selected_option_id = model_selected_option_id
 
     response = _sanitize_response({
         "schema_version": 1,
@@ -1079,7 +1223,13 @@ def run_model_adapter_request(
             "tool_trace": tool_trace,
             "tool_decisions": tool_decisions,
             "tool_decision_source": decision_source,
-            "selected_option_id": _selected_option_id(tool_decisions),
+            "selected_option_id": final_selected_option_id,
+            "model_selected_option_id": model_selected_option_id,
+            "rejected_model_selected_option_id": rejected_model_selected_option_id,
+            "intent_constraint_option_id": intent_constraint.get("option_id")
+                if isinstance(intent_constraint, dict) else None,
+            "intent_constraint_reason": intent_constraint.get("reason")
+                if isinstance(intent_constraint, dict) else None,
             "required_tool_calls": required_tools,
             "missing_required_tool_calls": missing_required_tools,
             "required_tool_calls_satisfied": not missing_required_tools,
