@@ -128,6 +128,7 @@ def _tool_powers_safe(tool_powers: Any) -> bool:
         "summarize_runtime_capabilities",
         "classify_world_action",
         "recall_build_prompt_memory",
+        "select_build_option",
         "recommend_build_option",
     }
     if not required.issubset(names):

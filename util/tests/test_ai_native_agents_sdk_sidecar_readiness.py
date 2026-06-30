@@ -40,6 +40,11 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
                 "direct_world_mutation": False,
             },
             {
+                "name": "select_build_option",
+                "kind": "function_tool",
+                "direct_world_mutation": False,
+            },
+            {
                 "name": "recommend_build_option",
                 "kind": "function_tool",
                 "direct_world_mutation": False,
@@ -140,6 +145,7 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
                         "summarize_runtime_capabilities",
                         "classify_world_action",
                         "recall_build_prompt_memory",
+                        "select_build_option",
                         "recommend_build_option",
                         "WebSearchTool",
                     ],
@@ -148,13 +154,13 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
                     "selected_option_id": "tnt_wall",
                     "required_tool_calls": [
                         "recall_build_prompt_memory",
-                        "recommend_build_option",
+                        "select_build_option",
                     ],
                     "missing_required_tool_calls": [],
                     "required_tool_calls_satisfied": True,
                     "tool_trace": [
                         {"tool_name": "recall_build_prompt_memory"},
-                        {"tool_name": "recommend_build_option"},
+                        {"tool_name": "select_build_option"},
                     ],
                     "world_mutation_authority": "luanti",
                 },
@@ -188,7 +194,7 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
         self.assertEqual(report["response"]["selected_option_id"], "tnt_wall")
         self.assertEqual(
             report["response"]["tool_trace_names"],
-            ["recall_build_prompt_memory", "recommend_build_option"],
+            ["recall_build_prompt_memory", "select_build_option"],
         )
         self.assertEqual(report["response"]["world_mutation_authority"], "luanti")
 
@@ -223,9 +229,9 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
                     "tool_decision_source": "adapter_fallback_after_agent_missing_required_tool",
                     "required_tool_calls": [
                         "recall_build_prompt_memory",
-                        "recommend_build_option",
+                        "select_build_option",
                     ],
-                    "missing_required_tool_calls": ["recommend_build_option"],
+                    "missing_required_tool_calls": ["select_build_option"],
                     "required_tool_calls_satisfied": False,
                     "tool_trace": [{"tool_name": "recall_build_prompt_memory"}],
                     "world_mutation_authority": "luanti",
@@ -249,7 +255,7 @@ class AgentsSdkSidecarReadinessTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "fail", report)
         self.assertFalse(report["checks"]["required_tool_calls_satisfied"])
-        self.assertEqual(report["response"]["missing_required_tool_calls"], ["recommend_build_option"])
+        self.assertEqual(report["response"]["missing_required_tool_calls"], ["select_build_option"])
 
     def test_cli_writes_output_file(self):
         with tempfile.TemporaryDirectory() as tmpdir:
