@@ -75,6 +75,9 @@ def validate_contract() -> dict:
         "TOOL_POWER_MANIFEST",
         "def tool_power_manifest",
         "recall_build_prompt_memory",
+        "BUILD_PLANNING_REQUIRED_TOOLS",
+        "required_tool_calls_satisfied",
+        "adapter_fallback_after_agent_missing_required_tool",
         "_TOOL_TRACE",
         '"tool_trace": tool_trace',
         '"tool_powers": tool_power_manifest()',
@@ -114,6 +117,8 @@ def validate_contract() -> dict:
         "no_forbidden_payload_keys",
         "tool_powers_declared",
         "no_direct_world_mutation_tools",
+        "require_build_planning_tools",
+        "required_tool_calls_satisfied",
     ):
         _require(phrase in readiness_source, "readiness_source_missing_phrase", phrase, violations)
 
@@ -189,6 +194,8 @@ def validate_contract() -> dict:
             "offline_response_missing_prompt_memory_tool", str(response), violations)
         _require(nested.get("tool_decision_source") == "offline_adapter_fallback",
             "offline_response_decision_source_invalid", str(response), violations)
+        _require(nested.get("required_tool_calls_satisfied") is not False,
+            "offline_response_required_tools_invalid", str(response), violations)
         tool_powers = nested.get("tool_powers") if isinstance(nested.get("tool_powers"), list) else []
         _require(any(power.get("name") == "WebSearchTool" for power in tool_powers if isinstance(power, dict)),
             "offline_response_missing_web_search_power", str(response), violations)

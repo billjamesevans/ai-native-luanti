@@ -148,6 +148,15 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         )
         self.assertEqual(nested["tool_decision_source"], "offline_adapter_fallback")
         self.assertFalse(nested["tool_decisions"]["build_option"]["direct_world_mutation"])
+        self.assertEqual(
+            nested["required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
+        self.assertEqual(
+            nested["missing_required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
+        self.assertFalse(nested["required_tool_calls_satisfied"])
 
     def test_live_agent_response_uses_tool_trace_decision(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
@@ -171,14 +180,24 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         async def fake_run_sdk_agent(_request, model=None):
             return {
                 "final_output": "Use the fire option.",
-                "tool_trace": [{
-                    "tool_name": "recommend_build_option",
-                    "result": {
-                        "selected_option_id": "fire",
-                        "candidate_count": 2,
-                        "direct_world_mutation": False,
+                "tool_trace": [
+                    {
+                        "tool_name": "recall_build_prompt_memory",
+                        "result": {
+                            "memory_available": False,
+                            "selected_option_id": None,
+                            "direct_world_mutation": False,
+                        },
                     },
-                }],
+                    {
+                        "tool_name": "recommend_build_option",
+                        "result": {
+                            "selected_option_id": "fire",
+                            "candidate_count": 2,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                ],
                 "tool_decisions": {
                     "build_option": {
                         "selected_option_id": "fire",
@@ -201,7 +220,70 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(nested["agentic_execution"])
         self.assertEqual(nested["selected_option_id"], "fire")
         self.assertEqual(nested["tool_decision_source"], "agents_sdk_function_tool")
-        self.assertEqual(nested["tool_trace"][0]["tool_name"], "recommend_build_option")
+        self.assertEqual(nested["tool_trace"][0]["tool_name"], "recall_build_prompt_memory")
+        self.assertEqual(nested["tool_trace"][1]["tool_name"], "recommend_build_option")
+        self.assertEqual(
+            nested["required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
+        self.assertEqual(nested["missing_required_tool_calls"], [])
+        self.assertTrue(nested["required_tool_calls_satisfied"])
+
+    def test_build_planning_missing_required_tool_is_labeled_for_improvement(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build a wall of tnt"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build a wall of tnt",
+            "candidate_summary": "platform:platform:default:4|tnt_wall:wall:tnt:12",
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+
+        async def fake_run_sdk_agent(_request, model=None):
+            return {
+                "final_output": "I can make that dramatic.",
+                "tool_trace": [],
+                "tool_decisions": {},
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertTrue(response["ok"])
+        nested = response["response"]
+        self.assertTrue(nested["agentic_execution"])
+        self.assertEqual(nested["selected_option_id"], "tnt_wall")
+        self.assertEqual(
+            nested["tool_decision_source"],
+            "adapter_fallback_after_agent_missing_required_tool",
+        )
+        self.assertEqual(
+            nested["required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
+        self.assertEqual(
+            nested["missing_required_tool_calls"],
+            ["recall_build_prompt_memory", "recommend_build_option"],
+        )
+        self.assertFalse(nested["required_tool_calls_satisfied"])
+        self.assertEqual(
+            nested["tool_decisions"]["build_option"]["decision_source"],
+            "offline_adapter_fallback",
+        )
 
     def test_request_response_log_is_public_safe_jsonl(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
