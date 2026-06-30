@@ -71,11 +71,8 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
                 "plan_build_actions",
             ],
         )
-        self.assertEqual(result["expected_option_id"], "generated_shelter_floor")
-        self.assertEqual(
-            result["generated_option_hint"]["option_id"],
-            "generated_shelter_floor",
-        )
+        self.assertIsNone(result["expected_option_id"])
+        self.assertIsNone(result["generated_option_hint"])
         self.assertEqual(
             result["propose_build_option_args"],
             {

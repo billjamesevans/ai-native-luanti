@@ -572,15 +572,10 @@ def inspect_build_site_context_payload(
             "select_build_option",
             "plan_build_actions",
         ]
-        proposal = propose_build_option_payload(candidate_summary, player_request)
-        proposed_option = proposal.get("generated_option") if isinstance(proposal, dict) else None
-        if isinstance(proposed_option, dict) and proposal.get("status") == "ready":
-            generated_option_hint = proposed_option
-            expected_option_id = str(proposed_option.get("option_id") or "") or None
-            propose_args = {
-                "candidate_summary": candidate_summary,
-                "player_request": player_request,
-            }
+        propose_args = {
+            "candidate_summary": candidate_summary,
+            "player_request": player_request,
+        }
     else:
         constraints.append("choose_best_bounded_candidate")
 

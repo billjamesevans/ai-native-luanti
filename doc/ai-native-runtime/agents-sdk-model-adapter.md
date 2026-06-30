@@ -342,8 +342,8 @@ Luanti preview, approval, rollback, task, and improvement-evidence workflow.
 Generated options insert `propose_build_option` before `select_build_option`
 in `required_tool_calls`.
 `inspect_build_site_context` returns `required_next_tool =
-propose_build_option`, a generated-option hint, and the minimal proposal-tool
-arguments for open-ended requests such as shelter, tower, bridge, path, house,
+propose_build_option` and the minimal proposal-tool arguments for open-ended
+requests such as shelter, tower, bridge, path, house,
 base, floor, or room. If a live run selects a generated option without that tool
 call, the adapter labels the response as
 `adapter_fallback_after_agent_missing_required_tool` and records
