@@ -7213,22 +7213,90 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(queued == true)
 	assert(reason == "queued")
 	assert(#eval_reports == 0)
-	assert(#async_eval_done == 4)
-	assert(async_eval_requests[1].public_prompt:find("build a small shelter", 1, true) ~= nil)
+	assert(#async_eval_done == 5)
+	assert(async_eval_requests[1].public_prompt:find("build a stone bridge", 1, true) ~= nil)
 	assert(async_eval_requests[1].context.surface_id == "builder")
 	assert(async_eval_requests[1].context.selected_candidate_id == "platform")
-	assert(async_eval_requests[2].public_prompt:find(
-		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
+	assert(async_eval_requests[2].public_prompt:find("build a small shelter", 1, true) ~= nil)
 	assert(async_eval_requests[2].context.surface_id == "builder")
-	assert(async_eval_requests[2].context.selected_candidate_id
-		== "generated_openrealm_lakeside_village")
+	assert(async_eval_requests[2].context.selected_candidate_id == "platform")
 	assert(async_eval_requests[3].public_prompt:find(
 		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
 	assert(async_eval_requests[3].context.surface_id == "builder")
 	assert(async_eval_requests[3].context.selected_candidate_id
 		== "generated_openrealm_lakeside_village")
-	assert(async_eval_requests[4].public_prompt == "what can you plan with tools next?")
+	assert(async_eval_requests[4].public_prompt:find(
+		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
+	assert(async_eval_requests[4].context.surface_id == "builder")
+	assert(async_eval_requests[4].context.selected_candidate_id
+		== "generated_openrealm_lakeside_village")
+	assert(async_eval_requests[5].public_prompt == "what can you plan with tools next?")
 	async_eval_done[1]({
+		ok = true,
+		message = "eval async stone bridge response",
+		adapter_name = "mock-eval-stone-bridge",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			selected_option_id = "generated_bridge_platform",
+			model_selected_option_id = "generated_bridge_platform",
+			tool_decision_source = "agents_sdk_generated_tool_completion",
+			required_tool_calls = {
+				"recall_build_prompt_memory",
+				"propose_build_option",
+				"select_build_option",
+				"plan_build_actions",
+			},
+			missing_required_tool_calls = {},
+			required_tool_calls_satisfied = true,
+			tool_trace = {
+				{ tool_name = "recall_build_prompt_memory" },
+				{ tool_name = "propose_build_option" },
+				{ tool_name = "select_build_option" },
+				{ tool_name = "plan_build_actions" },
+			},
+			generated_build_option = {
+				option_id = "generated_bridge_platform",
+				label = "Generated bridge platform",
+				reason = "player asked for a bridge-like surface",
+				build_kind = "platform",
+				build_width = 8,
+				build_depth = 2,
+				build_material_name = "stone",
+				planned_node_writes = 16,
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "generated_bridge_platform",
+				step_count = 16,
+				world_mutation_authority = "luanti",
+			},
+			tool_decisions = {
+				build_option = {
+					selected_option_id = "generated_bridge_platform",
+					decision_source = "agent_selected_generated_build_option",
+					generated_option = {
+						option_id = "generated_bridge_platform",
+						label = "Generated bridge platform",
+						reason = "player asked for a bridge-like surface",
+						build_kind = "platform",
+						build_width = 8,
+						build_depth = 2,
+						build_material_name = "stone",
+						planned_node_writes = 16,
+					},
+				},
+				build_action_plan = {
+					status = "ready",
+					selected_option_id = "generated_bridge_platform",
+					step_count = 16,
+					world_mutation_authority = "luanti",
+				},
+			},
+		},
+	})
+	assert(#eval_reports == 0)
+	async_eval_done[2]({
 		ok = true,
 		message = "eval async build planner response",
 		adapter_name = "mock-eval-build-planner",
@@ -7239,7 +7307,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[2]({
+	async_eval_done[3]({
 		ok = true,
 		message = "eval async OpenRealm village response",
 		adapter_name = "mock-eval-openrealm",
@@ -7284,7 +7352,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[3]({
+	async_eval_done[4]({
 		ok = true,
 		message = "eval async player-loop OpenRealm response",
 		adapter_name = "mock-eval-player-loop-openrealm",
@@ -7330,7 +7398,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[4]({
+	async_eval_done[5]({
 		ok = true,
 		message = "eval async adapter response",
 		adapter_name = "mock-eval-async",
@@ -7346,13 +7414,14 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_report.ok == true, core.write_json(eval_report))
 	assert(eval_report.status == "pass")
 	assert(eval_report.owner == "EvalTester")
-	assert(#eval_report.cases == 7)
+	assert(#eval_report.cases == 8)
 	local eval_cases = {}
 	for _, case_report in ipairs(eval_report.cases) do
 		eval_cases[case_report.case_id] = case_report
 		assert(case_report.status == "pass")
 		assert(case_report.ok == true)
 	end
+	assert(eval_cases.stone_bridge ~= nil)
 	assert(eval_cases.build_fire.reply.status == "pending_approval")
 	assert(eval_cases.build_fire.reply.build_kind == "fire")
 	assert(eval_cases.build_fire.reply.build_material_node == "ai_runtime_test:fire")
@@ -7376,6 +7445,23 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.tnt_wall.trace.response.build_material_node == "ai_runtime_test:tnt")
 	assert(eval_cases.tnt_wall.cleanup.action == "discard_approval")
 	assert(eval_cases.tnt_wall.cleanup.status == "success")
+	assert(eval_cases.stone_bridge.queued_status == "queued")
+	assert(eval_cases.stone_bridge.initial_trace.route == "agentic_build_planner")
+	assert(eval_cases.stone_bridge.final_status == "pending_approval")
+	assert(eval_cases.stone_bridge.final_reply.selected_candidate_id
+		== "generated_bridge_platform")
+	assert(eval_cases.stone_bridge.final_reply.build_kind == "platform")
+	assert(eval_cases.stone_bridge.final_reply.build_material_name == "stone")
+	assert(eval_cases.stone_bridge.final_reply.build_width == 8)
+	assert(eval_cases.stone_bridge.final_reply.build_depth == 2)
+	assert(eval_cases.stone_bridge.final_reply.planned_node_writes == 16)
+	assert(eval_cases.stone_bridge.final_reply.generated_build_option_status
+		== "validated")
+	assert(eval_cases.stone_bridge.final_reply.generated_candidate_id
+		== "generated_bridge_platform")
+	assert(eval_cases.stone_bridge.final_trace.response.status == "pending_approval")
+	assert(eval_cases.stone_bridge.cleanup.action == "discard_approval")
+	assert(eval_cases.stone_bridge.cleanup.status == "success")
 	assert(eval_cases.agentic_build_planner.queued_status == "queued")
 	assert(eval_cases.agentic_build_planner.initial_trace.route == "agentic_build_planner")
 	assert(eval_cases.agentic_build_planner.final_status == "pending_approval")
@@ -7437,8 +7523,8 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.model.final_status == "success")
 	assert(eval_cases.model.final_trace.response.status == "success")
 	assert(eval_cases.model.final_trace.context.private_prompt == nil)
-	assert(eval_report.metrics.model_adapter_requests_delta == 4)
-	assert(eval_report.metrics.model_adapter_successes_delta == 4)
+	assert(eval_report.metrics.model_adapter_requests_delta == 5)
+	assert(eval_report.metrics.model_adapter_successes_delta == 5)
 	assert(eval_report.metrics.model_adapter_failures_delta == 0)
 	assert(eval_report.metrics.model_adapter_timeouts_delta == 0)
 	assert(eval_report.safety.audit_private_payload_retained == false)

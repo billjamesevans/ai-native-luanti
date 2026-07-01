@@ -7406,6 +7406,7 @@ local EVAL_DEFAULT_CASES = {
 	"build_fire",
 	"fire_only_strict",
 	"tnt_wall",
+	"stone_bridge",
 	"agentic_build_planner",
 	"openrealm_village",
 	"player_agent_loop",
@@ -8134,6 +8135,8 @@ local function normalize_eval_case(value)
 		return "fire_only_strict"
 	elseif value == "tnt" or value == "walltnt" or value == "tntwall" then
 		return "tnt_wall"
+	elseif value == "bridge" or value == "stonebridge" or value == "buildstonebridge" then
+		return "stone_bridge"
 	elseif value == "agentic" or value == "planner" or value == "buildplanner"
 			or value == "agenticbuildplanner" or value == "shelter" then
 		return "agentic_build_planner"
@@ -8324,29 +8327,43 @@ function plugin.run_prompt_eval(options, callback)
 				run_build_eval_case(report, owner, case_id,
 					"build me a fire and only a fire", context, expected)
 			end
-		elseif case_id == "tnt_wall" then
-			local expected = {
-				build_kind = "wall",
-				build_material_name = "tnt",
-				build_material_node = settings.tnt_node,
-				planned_node_writes = 12,
-				selected_candidate_id = "tnt_wall",
-			}
-			if agentic_build_planner_available() then
-				expected.route = "agentic_build_planner"
-				if run_agentic_build_eval_case(report, owner, "build a wall of tnt",
+			elseif case_id == "tnt_wall" then
+				local expected = {
+					build_kind = "wall",
+					build_material_name = "tnt",
+					build_material_node = settings.tnt_node,
+					planned_node_writes = 12,
+					selected_candidate_id = "tnt_wall",
+				}
+				if agentic_build_planner_available() then
+					expected.route = "agentic_build_planner"
+					if run_agentic_build_eval_case(report, owner, "build a wall of tnt",
+							context, async_case_done, case_id, expected) then
+						pending_async_count = pending_async_count + 1
+					end
+				else
+					run_build_eval_case(report, owner, case_id, "build a wall of tnt",
+						context, expected)
+				end
+			elseif case_id == "stone_bridge" then
+				local expected = {
+					route = "agentic_build_planner",
+					build_kind = "platform",
+					build_material_name = "stone",
+					planned_node_writes = 16,
+					selected_candidate_id = "generated_bridge_platform",
+					build_width = 8,
+					build_depth = 2,
+				}
+				if run_agentic_build_eval_case(report, owner, "build a stone bridge",
 						context, async_case_done, case_id, expected) then
 					pending_async_count = pending_async_count + 1
 				end
-			else
-				run_build_eval_case(report, owner, case_id, "build a wall of tnt",
-					context, expected)
-			end
-		elseif case_id == "agentic_build_planner" then
-			if run_agentic_build_eval_case(report, owner, "build a small shelter",
-					context, async_case_done) then
-				pending_async_count = pending_async_count + 1
-			end
+			elseif case_id == "agentic_build_planner" then
+				if run_agentic_build_eval_case(report, owner, "build a small shelter",
+						context, async_case_done) then
+					pending_async_count = pending_async_count + 1
+				end
 		elseif case_id == "openrealm_village" then
 			local expected = {
 				route = "agentic_build_planner",

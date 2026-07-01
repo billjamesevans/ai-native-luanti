@@ -25,6 +25,7 @@ ENFORCED_GOLDEN_PROMPT_CASE_IDS = (
     "build_fire",
     "fire_only_strict",
     "tnt_wall",
+    "stone_bridge",
     "agentic_build_planner",
     "openrealm_village",
     "player_agent_loop",
@@ -153,6 +154,8 @@ def write_probe_world(
             "    route = trace.route,",
             "    final_route = final_trace.route,",
             "    build_kind = effective_reply.build_kind,",
+            "    build_width = effective_reply.build_width,",
+            "    build_depth = effective_reply.build_depth,",
             "    build_material_name = effective_reply.build_material_name,",
             "    planned_node_writes = effective_reply.planned_node_writes,",
             "    planner_mode = effective_reply.planner_mode,",
@@ -230,6 +233,7 @@ def write_probe_world(
             "      build_fire = cases.build_fire ~= nil,",
             "      fire_only_strict = cases.fire_only_strict ~= nil,",
             "      tnt_wall = cases.tnt_wall ~= nil,",
+            "      stone_bridge = cases.stone_bridge ~= nil,",
             "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
             "      openrealm_village = cases.openrealm_village ~= nil,",
             "      player_agent_loop = cases.player_agent_loop ~= nil,",
@@ -247,15 +251,72 @@ def write_probe_world(
             "  end",
             "  core.ai_agent_plugin.set_model_adapter_async(function(request, done)",
             "    core.after(0.1, function()",
+            "      local response = {",
+            "        agentic_execution = true,",
+            "        tools_enabled = { \"recommend_build_option\", \"classify_world_action\" },",
+            "      }",
+            "      local prompt = tostring(request.public_prompt or \"\"):lower()",
+            "      if prompt:find(\"stone bridge\", 1, true) then",
+            "        response = {",
+            "          agentic_execution = true,",
+            "          selected_option_id = \"generated_bridge_platform\",",
+            "          model_selected_option_id = \"generated_bridge_platform\",",
+            "          tool_decision_source = \"agents_sdk_generated_tool_completion\",",
+            "          required_tool_calls = { \"recall_build_prompt_memory\", \"propose_build_option\", \"select_build_option\", \"plan_build_actions\" },",
+            "          missing_required_tool_calls = {},",
+            "          required_tool_calls_satisfied = true,",
+            "          tool_trace = {",
+            "            { tool_name = \"recall_build_prompt_memory\" },",
+            "            { tool_name = \"propose_build_option\" },",
+            "            { tool_name = \"select_build_option\" },",
+            "            { tool_name = \"plan_build_actions\" },",
+            "          },",
+            "          generated_build_option = {",
+            "            option_id = \"generated_bridge_platform\",",
+            "            label = \"Generated bridge platform\",",
+            "            reason = \"player asked for a bridge-like surface\",",
+            "            build_kind = \"platform\",",
+            "            build_width = 8,",
+            "            build_depth = 2,",
+            "            build_material_name = \"stone\",",
+            "            planned_node_writes = 16,",
+            "          },",
+            "          build_action_plan = {",
+            "            status = \"ready\",",
+            "            selected_option_id = \"generated_bridge_platform\",",
+            "            step_count = 16,",
+            "            world_mutation_authority = \"luanti\",",
+            "          },",
+            "          tool_decisions = {",
+            "            build_option = {",
+            "              selected_option_id = \"generated_bridge_platform\",",
+            "              decision_source = \"agent_selected_generated_build_option\",",
+            "              generated_option = {",
+            "                option_id = \"generated_bridge_platform\",",
+            "                label = \"Generated bridge platform\",",
+            "                reason = \"player asked for a bridge-like surface\",",
+            "                build_kind = \"platform\",",
+            "                build_width = 8,",
+            "                build_depth = 2,",
+            "                build_material_name = \"stone\",",
+            "                planned_node_writes = 16,",
+            "              },",
+            "            },",
+            "            build_action_plan = {",
+            "              status = \"ready\",",
+            "              selected_option_id = \"generated_bridge_platform\",",
+            "              step_count = 16,",
+            "              world_mutation_authority = \"luanti\",",
+            "            },",
+            "          },",
+            "        }",
+            "      end",
             "      done({",
             "        ok = true,",
             "        message = \"Mock agent prompt-eval adapter response.\",",
             "        adapter_name = \"mock-agent-prompt-eval-adapter\",",
             "        elapsed_us = 1000,",
-            "        response = {",
-            "          agentic_execution = true,",
-            "          tools_enabled = { \"recommend_build_option\", \"classify_world_action\" },",
-            "        },",
+            "        response = response,",
             "      })",
             "    end)",
             "    return true, \"queued\"",
@@ -298,6 +359,7 @@ def write_probe_world(
             "    \"build_fire\",",
             "    \"fire_only_strict\",",
             "    \"tnt_wall\",",
+            "    \"stone_bridge\",",
             "    \"agentic_build_planner\",",
             "    \"openrealm_village\",",
             "    \"player_agent_loop\",",
@@ -350,6 +412,7 @@ def write_probe_world(
             "      build_fire_checked = eval.case_ids.build_fire == true,",
             "      fire_only_strict_checked = eval.case_ids.fire_only_strict == true,",
             "      tnt_wall_checked = eval.case_ids.tnt_wall == true,",
+            "      stone_bridge_checked = eval.case_ids.stone_bridge == true,",
             "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
             "      openrealm_village_checked = eval.case_ids.openrealm_village == true,",
             "      player_agent_loop_checked = eval.case_ids.player_agent_loop == true,",
@@ -591,15 +654,16 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 7:
+    if prompt_eval.get("cases_total") != 8:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 7 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 8 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
     for case_id in (
         "build_fire",
         "fire_only_strict",
         "tnt_wall",
+        "stone_bridge",
         "agentic_build_planner",
         "openrealm_village",
         "player_agent_loop",
@@ -624,6 +688,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         fire = case_map.get("build_fire", {})
         fire_only = case_map.get("fire_only_strict", {})
         tnt = case_map.get("tnt_wall", {})
+        stone_bridge = case_map.get("stone_bridge", {})
         planner = case_map.get("agentic_build_planner", {})
         openrealm = case_map.get("openrealm_village", {})
         player_loop = case_map.get("player_agent_loop", {})
@@ -651,6 +716,27 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval TNT wall material is invalid")
         if tnt.get("planned_node_writes") != 12:
             raise ValueError("agent prompt eval TNT wall must plan exactly twelve node writes")
+        if stone_bridge.get("status") != "pass":
+            raise ValueError("agent prompt eval stone bridge case is invalid")
+        if stone_bridge.get("prompt") != "build a stone bridge":
+            raise ValueError("agent prompt eval stone bridge prompt is invalid")
+        if stone_bridge.get("route") != "agentic_build_planner" \
+                and stone_bridge.get("final_route") != "agentic_build_planner":
+            raise ValueError("agent prompt eval stone bridge route is invalid")
+        if stone_bridge.get("build_kind") != "platform":
+            raise ValueError("agent prompt eval stone bridge build kind is invalid")
+        if stone_bridge.get("build_material_name") != "stone":
+            raise ValueError("agent prompt eval stone bridge material is invalid")
+        if stone_bridge.get("build_width") != 8 or stone_bridge.get("build_depth") != 2:
+            raise ValueError("agent prompt eval stone bridge dimensions are invalid")
+        if stone_bridge.get("planned_node_writes") != 16:
+            raise ValueError("agent prompt eval stone bridge must plan exactly sixteen node writes")
+        if stone_bridge.get("selected_candidate_id") != "generated_bridge_platform":
+            raise ValueError("agent prompt eval stone bridge selected candidate is invalid")
+        if stone_bridge.get("generated_candidate_id") != "generated_bridge_platform":
+            raise ValueError("agent prompt eval stone bridge generated candidate is invalid")
+        if stone_bridge.get("generated_build_option_status") != "validated":
+            raise ValueError("agent prompt eval stone bridge generated option was not validated")
         if planner.get("status") != "pass":
             raise ValueError("agent prompt eval build planner case is invalid")
         if planner.get("route") != "agentic_build_planner" and planner.get("final_route") != "agentic_build_planner":
@@ -766,6 +852,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner"):
                 _require_agentic_tool_case(case_map.get(case_id, {}), case_id)
             _require_agentic_tool_case(
+                stone_bridge,
+                "stone_bridge",
+                {"propose_build_option"},
+            )
+            _require_agentic_tool_case(
                 openrealm,
                 "openrealm_village",
                 {"propose_build_option"},
@@ -777,7 +868,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 7 or summary.get("cases_passed") != 7:
+    if summary.get("cases_total") != 8 or summary.get("cases_passed") != 8:
         raise ValueError("agent prompt eval summary case counts are invalid")
     if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
         raise ValueError("agent prompt eval golden prompt suite is invalid")
@@ -799,6 +890,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "build_fire_checked",
         "fire_only_strict_checked",
         "tnt_wall_checked",
+        "stone_bridge_checked",
         "agentic_build_planner_checked",
         "openrealm_village_checked",
         "player_agent_loop_checked",
@@ -847,6 +939,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             "build_fire",
             "fire_only_strict",
             "tnt_wall",
+            "stone_bridge",
             "agentic_build_planner",
             "openrealm_village",
             "player_agent_loop",
@@ -864,6 +957,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_build_fire_checked": True,
         "agent_prompt_eval_fire_only_strict_checked": True,
         "agent_prompt_eval_tnt_wall_checked": True,
+        "agent_prompt_eval_stone_bridge_checked": True,
         "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_openrealm_village_checked": True,
         "agent_prompt_eval_player_agent_loop_checked": True,
@@ -877,6 +971,8 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_fire_planned_node_writes": 1,
         "agent_prompt_eval_fire_only_strict_planned_node_writes": 1,
         "agent_prompt_eval_tnt_wall_planned_node_writes": 12,
+        "agent_prompt_eval_stone_bridge_planned_node_writes": 16,
+        "agent_prompt_eval_stone_bridge_candidate_id": "generated_bridge_platform",
         "agent_prompt_eval_agentic_build_planner_planned_node_writes": next(
             (
                 item.get("planned_node_writes")
@@ -894,7 +990,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],
         "agent_prompt_eval_requires_model_network": runtime_context.get("requires_model_network") is True,
         "agent_prompt_eval_agentic_tool_cases": agentic_tool_cases,
-        "agent_prompt_eval_agentic_tool_cases_required": 6 if adapter_mode == "agents_sdk_sidecar" else 0,
+        "agent_prompt_eval_agentic_tool_cases_required": 7 if adapter_mode == "agents_sdk_sidecar" else 0,
         "agent_prompt_eval_world_mutation": False,
     }
 

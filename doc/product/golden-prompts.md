@@ -5,9 +5,9 @@ Raspberry Pi fork test server before a public alpha cut.
 
 The full OpenRealm backlog currently contains eleven product prompts. The
 runtime gate enforces the implemented subset first: fire, strict fire-only, TNT
-wall, agentic build-planner selection, the OpenRealm village template,
-player-like multi-turn creator review, and model/tool routing. New prompts move
-from backlog to enforced only when the
+wall, stone bridge generation, agentic build-planner selection, the OpenRealm
+village template, player-like multi-turn creator review, and model/tool routing.
+New prompts move from backlog to enforced only when the
 runtime can validate them with repeatable public-safe evidence.
 
 | Prompt | Expected Build | Material | Writes | Approval | Rollback |
@@ -41,8 +41,13 @@ runtime can validate them with repeatable public-safe evidence.
 
 - Suite: `openrealm_creator_loop`
 - Backlog total: `11`
-- Enforced runtime prompt cases: `6`
+- Enforced runtime prompt cases: `7`
 - Supporting model/tool route case: `1`
+- Stone bridge generation: `Build a stone bridge` must produce a
+  tool-validated `generated_bridge_platform` option, preserve stone material,
+  validate an `8 x 2` platform shape, plan exactly `16` node writes, require
+  approval, and expose `propose_build_option`/`select_build_option`/
+  `plan_build_actions` evidence.
 - Player-loop option review: `Nova, options` returns selected and alternate
   pending build choices from runtime state, including an `openrealm.plan.v1`
   safety/preview contract for each executable option.
