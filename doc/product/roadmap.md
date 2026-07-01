@@ -39,25 +39,31 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 follow-up side-by-side fork deploy advanced the Pi test lane to
-  `b7ed7e371`.
+  `43146b09f`.
 - Backup:
-  `raspberrypi_luanti_20260701-043657.tgz`
-  (`b2c0ea5b653a46918768344ad39402339fffad2111293f212486ba25a946df1c`).
+  `raspberrypi_luanti_20260701-053407.tgz`
+  (`0404fd277b183f52eb25e43bf4beffd45b75342b9713015ba5b44bf3f75e2ea8`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
 - Agents SDK sidecar service `ai-native-luanti-agents-sdk-adapter.service`
   stayed active on loopback TCP `8766`.
 - memory refresh quality gate passed with live prompt eval `pass`,
-  compatibility import staging pilot `pass`, `6/6` required agentic tool cases,
+  compatibility import staging pilot `pass`, `7/7` required agentic tool cases,
   `0` attention items, and `0` violations. The retained quality gate artifact
-  was generated at `2026-07-01T09:42:04Z`.
-- request/response log gate passed with `878` Agents SDK sidecar log entries
+  was generated at `2026-07-01T10:39:36Z`.
+- request/response log gate passed with `1010` Agents SDK sidecar log entries
   read, `5/5` checked cases passed, and `0` violations.
-- live prompt eval passed `7/7` cases; the OpenRealm golden subset passed
-  `6/6`, with `7` model-adapter requests, `7` successes, `0` failures, and
+- live prompt eval passed `8/8` cases; the OpenRealm golden subset passed
+  `7/7`, with `8` model-adapter requests, `8` successes, `0` failures, and
   `0` timeouts. The retained live prompt-eval artifact was generated at
-  `2026-07-01T09:41:22Z`.
+  `2026-07-01T10:39:04Z`.
+- the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
+  and selected `generated_bridge_platform`, preserved `stone` material,
+  produced a bounded `6 x 2` platform preview with `12` planned node writes,
+  and exposed `inspect_build_site_context`, `recall_build_prompt_memory`,
+  `propose_build_option`, `select_build_option`, and `plan_build_actions` in
+  the Agents SDK tool trace.
 - the live Pi prompt gate now checks `player_agent_loop`, starting from natural
   chat (`Nova, Build a cozy lakeside village with floating lanterns`), then
   verifying `Nova, options`, `Nova, pending plan`, `Nova, no`, and the

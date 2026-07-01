@@ -5,22 +5,29 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `b7ed7e371`
-- Backup artifact label: `raspberrypi_luanti_20260701-043657.tgz`
+- Fork commit: `43146b09f`
+- Backup artifact label: `raspberrypi_luanti_20260701-053407.tgz`
 - Backup SHA-256:
-  `b2c0ea5b653a46918768344ad39402339fffad2111293f212486ba25a946df1c`
+  `0404fd277b183f52eb25e43bf4beffd45b75342b9713015ba5b44bf3f75e2ea8`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: `ai-native-luanti-agents-sdk-adapter.service` active on
   loopback TCP `8766`.
 - Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
-  pilot `pass`; agentic tool cases `6/6`; attention items `0`; violations
-  `0`; retained artifact generated at `2026-07-01T09:42:04Z`.
-- Request/response log gate: `pass`; `878` Agents SDK sidecar log entries
+  pilot `pass`; agentic tool cases `7/7`; attention items `0`; violations
+  `0`; retained artifact generated at `2026-07-01T10:39:36Z`.
+- Request/response log gate: `pass`; `1010` Agents SDK sidecar log entries
   read; `5/5` checked cases passed; violations `0`.
-- Live prompt eval: `7/7` cases passed; the OpenRealm golden subset passed
-  `6/6`; model adapter requests `7`, successes `7`, failures `0`, timeouts
-  `0`; retained artifact generated at `2026-07-01T09:41:22Z`.
+- Live prompt eval: `8/8` cases passed; the OpenRealm golden subset passed
+  `7/7`; model adapter requests `8`, successes `8`, failures `0`, timeouts
+  `0`; retained artifact generated at `2026-07-01T10:39:04Z`.
+- Stone bridge generation proof: the live Pi sidecar call for
+  "Build a stone bridge" returned `generated_bridge_platform` through
+  `agents_sdk_generated_tool_completion`, produced a `stone` `platform`
+  preview with dimensions `6 x 2` and `12` planned node writes, and included
+  `inspect_build_site_context`, `recall_build_prompt_memory`,
+  `propose_build_option`, `select_build_option`, and `plan_build_actions` in
+  the Agents SDK tool trace.
 - Player-loop check: `Nova, options` returns pending build choices and the
   selected candidate from runtime state without world mutation. Each executable
   option carries an `openrealm.plan.v1` safety/preview contract.
