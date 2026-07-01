@@ -149,6 +149,11 @@ def write_probe_world(
             "  local followup_final_reply = case.followup_final_reply or {}",
             "  local followup_initial_trace = case.followup_initial_trace or {}",
             "  local followup_final_trace = case.followup_final_trace or {}",
+            "  local seed_reply = case.seed_reply or {}",
+            "  local width_edit_reply = case.width_edit_reply or {}",
+            "  local width_edit_trace = case.width_edit_trace or {}",
+            "  local material_edit_reply = case.material_edit_reply or {}",
+            "  local material_edit_trace = case.material_edit_trace or {}",
             "  local effective_reply = final_reply.status and final_reply or reply",
             "  return {",
             "    case_id = case.case_id,",
@@ -264,6 +269,42 @@ def write_probe_world(
             "    followup_adapter_selected_candidate_id = followup_final_reply.adapter_selected_candidate_id,",
             "    followup_model_selected_candidate_id = followup_final_reply.model_selected_candidate_id,",
             "    followup_candidate_count = followup_final_reply.candidate_count,",
+            "    material_prompt = case.material_prompt,",
+            "    seed_status = seed_reply.status,",
+            "    seed_action = seed_reply.action,",
+            "    seed_approval_id = seed_reply.approval_id,",
+            "    seed_build_kind = seed_reply.build_kind,",
+            "    seed_build_width = seed_reply.build_width,",
+            "    seed_build_depth = seed_reply.build_depth,",
+            "    seed_planned_node_writes = seed_reply.planned_node_writes,",
+            "    width_edit_handled = case.width_edit_handled == true,",
+            "    width_edit_status = width_edit_reply.status,",
+            "    width_edit_action = width_edit_reply.action,",
+            "    width_edit_approval_id = width_edit_reply.approval_id,",
+            "    width_edit_no_world_mutation = width_edit_reply.no_world_mutation,",
+            "    width_edit_build_kind = width_edit_reply.build_kind,",
+            "    width_edit_build_width = width_edit_reply.build_width,",
+            "    width_edit_build_depth = width_edit_reply.build_depth,",
+            "    width_edit_planned_node_writes = width_edit_reply.planned_node_writes,",
+            "    width_edit_trace_route = width_edit_trace.route,",
+            "    width_edit_trace_action = width_edit_trace.action,",
+            "    width_edit_trace_public_prompt = width_edit_trace.public_prompt,",
+            "    width_edit_trace_status = width_edit_trace.response and width_edit_trace.response.status or nil,",
+            "    material_edit_handled = case.material_edit_handled == true,",
+            "    material_edit_status = material_edit_reply.status,",
+            "    material_edit_action = material_edit_reply.action,",
+            "    material_edit_approval_id = material_edit_reply.approval_id,",
+            "    material_edit_no_world_mutation = material_edit_reply.no_world_mutation,",
+            "    material_edit_build_kind = material_edit_reply.build_kind,",
+            "    material_edit_build_width = material_edit_reply.build_width,",
+            "    material_edit_build_depth = material_edit_reply.build_depth,",
+            "    material_edit_build_material_name = material_edit_reply.build_material_name,",
+            "    material_edit_build_material_node = material_edit_reply.build_material_node,",
+            "    material_edit_planned_node_writes = material_edit_reply.planned_node_writes,",
+            "    material_edit_trace_route = material_edit_trace.route,",
+            "    material_edit_trace_action = material_edit_trace.action,",
+            "    material_edit_trace_public_prompt = material_edit_trace.public_prompt,",
+            "    material_edit_trace_status = material_edit_trace.response and material_edit_trace.response.status or nil,",
             "    cleanup_status = case.cleanup and case.cleanup.status or nil,",
             "    failure_count = #(case.failures or {}),",
             "  }",
@@ -297,6 +338,7 @@ def write_probe_world(
             "      openrealm_village = cases.openrealm_village ~= nil,",
             "      player_agent_loop = cases.player_agent_loop ~= nil,",
             "      natural_chat_followup = cases.natural_chat_followup ~= nil,",
+            "      natural_pending_edit = cases.natural_pending_edit ~= nil,",
             "      model = cases.model ~= nil,",
             "    },",
             "    cases = summaries,",
@@ -556,6 +598,25 @@ def write_probe_world(
             "    and followup_checks.followup_player_followup_context == true",
             "    and followup_checks.followup_loop_seed_turn == true",
             "    and followup_checks.followup_loop_followup_turn == true",
+            "  local pending_edit_case = report_cases.natural_pending_edit or {}",
+            "  local pending_edit_checks = pending_edit_case.checks or {}",
+            "  local natural_pending_edit_checked =",
+            "    pending_edit_checks.seed_pending == true",
+            "    and pending_edit_checks.seed_platform == true",
+            "    and pending_edit_checks.width_handled == true",
+            "    and pending_edit_checks.width_success == true",
+            "    and pending_edit_checks.width_same_approval == true",
+            "    and pending_edit_checks.width_no_world_mutation == true",
+            "    and pending_edit_checks.width_dimensions == true",
+            "    and pending_edit_checks.width_trace_logged == true",
+            "    and pending_edit_checks.material_handled == true",
+            "    and pending_edit_checks.material_success == true",
+            "    and pending_edit_checks.material_same_approval == true",
+            "    and pending_edit_checks.material_no_world_mutation == true",
+            "    and pending_edit_checks.material_preserved_dimensions == true",
+            "    and pending_edit_checks.material_tnt == true",
+            "    and pending_edit_checks.material_trace_logged == true",
+            "    and pending_edit_checks.cleanup_discarded == true",
             "  local payload = {",
             "    schema_version = 1,",
             "    live_result_kind = \"ai_native_agent_prompt_eval_live_result\",",
@@ -596,6 +657,7 @@ def write_probe_world(
             "      player_agent_loop_review_traces_checked = player_loop_review_traces_checked == true,",
             "      player_agent_loop_option_selection_checked = player_loop_option_selection_checked == true,",
             "      natural_chat_followup_checked = natural_chat_followup_checked == true,",
+            "      natural_pending_edit_checked = natural_pending_edit_checked == true,",
             "      model_checked = eval.case_ids.model == true,",
             "      model_adapter_requests = eval.metrics.model_adapter_requests_delta or 0,",
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
@@ -834,9 +896,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 11:
+    if prompt_eval.get("cases_total") != 12:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 11 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 12 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
     for case_id in (
@@ -850,6 +912,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "openrealm_village",
         "player_agent_loop",
         "natural_chat_followup",
+        "natural_pending_edit",
         "model",
     ):
         if case_ids.get(case_id) is not True:
@@ -878,6 +941,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         openrealm = case_map.get("openrealm_village", {})
         player_loop = case_map.get("player_agent_loop", {})
         natural_followup = case_map.get("natural_chat_followup", {})
+        natural_pending_edit = case_map.get("natural_pending_edit", {})
         model = case_map.get("model", {})
         if fire.get("status") != "pass" or fire.get("build_kind") != "fire":
             raise ValueError("agent prompt eval fire case is invalid")
@@ -1136,6 +1200,70 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             "followup_loop_has_followup_turn",
         ):
             _require_bool(natural_followup, field)
+        if natural_pending_edit.get("status") != "pass":
+            raise ValueError("agent prompt eval natural pending edit case is invalid")
+        if natural_pending_edit.get("prompt") != "Nova, make it wider":
+            raise ValueError("agent prompt eval natural pending edit prompt is invalid")
+        if natural_pending_edit.get("material_prompt") != "Nova, use tnt instead":
+            raise ValueError("agent prompt eval natural pending edit material prompt is invalid")
+        if natural_pending_edit.get("seed_status") != "pending_approval" \
+                or natural_pending_edit.get("seed_action") != "build" \
+                or natural_pending_edit.get("seed_build_kind") != "platform" \
+                or natural_pending_edit.get("seed_build_width") != 2 \
+                or natural_pending_edit.get("seed_build_depth") != 1 \
+                or natural_pending_edit.get("seed_planned_node_writes") != 2:
+            raise ValueError("agent prompt eval natural pending edit seed is invalid")
+        seed_approval_id = natural_pending_edit.get("seed_approval_id")
+        if not isinstance(seed_approval_id, str) or not seed_approval_id:
+            raise ValueError("agent prompt eval natural pending edit approval id missing")
+        if natural_pending_edit.get("width_edit_handled") is not True \
+                or natural_pending_edit.get("width_edit_status") != "success" \
+                or natural_pending_edit.get("width_edit_action") != "edit_plan":
+            raise ValueError("agent prompt eval natural pending edit width reply is invalid")
+        if natural_pending_edit.get("width_edit_approval_id") != seed_approval_id:
+            raise ValueError("agent prompt eval natural pending edit width approval id changed")
+        if natural_pending_edit.get("width_edit_no_world_mutation") is not True:
+            raise ValueError("agent prompt eval natural pending edit width mutated the world")
+        if natural_pending_edit.get("width_edit_build_kind") != "platform" \
+                or natural_pending_edit.get("width_edit_build_width") != 3 \
+                or natural_pending_edit.get("width_edit_build_depth") != 1 \
+                or natural_pending_edit.get("width_edit_planned_node_writes") != 3:
+            raise ValueError("agent prompt eval natural pending edit width dimensions are invalid")
+        _require_natural_review_trace(
+            natural_pending_edit,
+            prefix="width_edit",
+            label="pending edit width",
+            expected_action="edit_plan",
+            expected_status="success",
+            expected_public_prompt="make it wider",
+        )
+        if natural_pending_edit.get("material_edit_handled") is not True \
+                or natural_pending_edit.get("material_edit_status") != "success" \
+                or natural_pending_edit.get("material_edit_action") != "edit_plan":
+            raise ValueError("agent prompt eval natural pending edit material reply is invalid")
+        if natural_pending_edit.get("material_edit_approval_id") != seed_approval_id:
+            raise ValueError("agent prompt eval natural pending edit material approval id changed")
+        if natural_pending_edit.get("material_edit_no_world_mutation") is not True:
+            raise ValueError("agent prompt eval natural pending edit material mutated the world")
+        if natural_pending_edit.get("material_edit_build_kind") != "platform" \
+                or natural_pending_edit.get("material_edit_build_width") != 3 \
+                or natural_pending_edit.get("material_edit_build_depth") != 1 \
+                or natural_pending_edit.get("material_edit_planned_node_writes") != 3:
+            raise ValueError("agent prompt eval natural pending edit material dimensions are invalid")
+        if natural_pending_edit.get("material_edit_build_material_name") != "tnt" \
+                or not isinstance(natural_pending_edit.get("material_edit_build_material_node"), str) \
+                or not natural_pending_edit.get("material_edit_build_material_node"):
+            raise ValueError("agent prompt eval natural pending edit material is invalid")
+        _require_natural_review_trace(
+            natural_pending_edit,
+            prefix="material_edit",
+            label="pending edit material",
+            expected_action="edit_plan",
+            expected_status="success",
+            expected_public_prompt="use tnt instead",
+        )
+        if natural_pending_edit.get("cleanup_status") != "success":
+            raise ValueError("agent prompt eval natural pending edit cleanup is invalid")
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
@@ -1197,7 +1325,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 11 or summary.get("cases_passed") != 11:
+    if summary.get("cases_total") != 12 or summary.get("cases_passed") != 12:
         raise ValueError("agent prompt eval summary case counts are invalid")
     if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
         raise ValueError("agent prompt eval golden prompt suite is invalid")
@@ -1228,6 +1356,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "player_agent_loop_review_traces_checked",
         "player_agent_loop_option_selection_checked",
         "natural_chat_followup_checked",
+        "natural_pending_edit_checked",
         "model_checked",
     ):
         _require_bool(summary, field)
@@ -1345,6 +1474,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_player_agent_loop_selected_option_after_player_choice": "marker",
         "agent_prompt_eval_natural_chat_followup_candidate_id": "fire",
         "agent_prompt_eval_natural_chat_followup_context_checked": True,
+        "agent_prompt_eval_natural_pending_edit_checked": True,
+        "agent_prompt_eval_natural_pending_edit_width": 3,
+        "agent_prompt_eval_natural_pending_edit_material": "tnt",
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],

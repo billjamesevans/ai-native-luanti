@@ -8031,6 +8031,7 @@ local EVAL_DEFAULT_CASES = {
 	"openrealm_village",
 	"player_agent_loop",
 	"natural_chat_followup",
+	"natural_pending_edit",
 	"model",
 }
 local EVAL_MAX_OUTPUT_BYTES = 20000
@@ -8927,6 +8928,114 @@ function plugin._run_natural_chat_followup_eval_case(report, owner, context, asy
 	return async_required
 end
 
+function plugin._run_natural_pending_edit_eval_case(report, owner, context)
+	local case_report = {
+		case_id = "natural_pending_edit",
+		owner = owner,
+		prompt = "Nova, make it wider",
+		material_prompt = "Nova, use tnt instead",
+		checks = {},
+	}
+	report.cases[#report.cases + 1] = case_report
+	local seed_context = table.copy(context or {})
+	seed_context.build_kind = "platform"
+	seed_context.build_width = 2
+	seed_context.build_depth = 1
+	seed_context.build_material_name = nil
+	seed_context.build_material_node = nil
+	local seed_reply = create_build_pending_reply(owner, seed_context,
+		"Build plan is pending approval before mutation.", {
+			planner_mode = "deterministic_pending_edit_fixture",
+			selected_candidate_id = "platform",
+			selection_source = "deterministic_pending_edit_fixture",
+		})
+	local seed_approval_id = seed_reply and seed_reply.approval_id
+	local width_handled, width_reply = plugin.handle_natural_chat_message(owner,
+		case_report.prompt, {
+			suppress_chat_send = true,
+			player_turn_source = "natural_pending_edit_eval",
+		})
+	local width_trace = plugin.latest_player_request_trace(owner)
+	local material_handled, material_reply =
+		plugin.handle_natural_chat_message(owner, case_report.material_prompt, {
+			suppress_chat_send = true,
+			player_turn_source = "natural_pending_edit_eval",
+		})
+	local material_trace = plugin.latest_player_request_trace(owner)
+	local expected_tnt_node = resolve_build_material_node("tnt", settings.platform_node)
+	local cleanup = plugin.handle_command(owner, "discard plan", {})
+
+	case_report.seed_reply = compact_eval_reply(seed_reply)
+	case_report.width_edit_handled = width_handled == true
+	case_report.width_edit_reply = compact_eval_reply(width_reply)
+	case_report.width_edit_trace = compact_eval_trace(width_trace)
+	case_report.material_edit_handled = material_handled == true
+	case_report.material_edit_reply = compact_eval_reply(material_reply)
+	case_report.material_edit_trace = compact_eval_trace(material_trace)
+	case_report.cleanup = cleanup and {
+		action = cleanup.action,
+		status = cleanup.status,
+		reason = cleanup.reason,
+	} or nil
+	case_report.checks.seed_pending = seed_reply
+		and seed_reply.status == "pending_approval"
+		and seed_reply.action == "build"
+	case_report.checks.seed_platform = seed_reply
+		and seed_reply.build_kind == "platform"
+		and seed_reply.build_width == 2
+		and seed_reply.build_depth == 1
+		and seed_reply.planned_node_writes == 2
+	case_report.checks.width_handled = width_handled == true
+	case_report.checks.width_success = width_reply
+		and width_reply.status == "success"
+		and width_reply.action == "edit_plan"
+	case_report.checks.width_same_approval = width_reply
+		and width_reply.approval_id == seed_approval_id
+	case_report.checks.width_no_world_mutation = width_reply
+		and width_reply.no_world_mutation == true
+	case_report.checks.width_dimensions = width_reply
+		and width_reply.build_kind == "platform"
+		and width_reply.build_width == 3
+		and width_reply.build_depth == 1
+		and width_reply.planned_node_writes == 3
+	case_report.checks.width_trace_logged = width_trace
+		and width_trace.route == "natural_chat_review"
+		and width_trace.action == "edit_plan"
+		and width_trace.public_prompt == "make it wider"
+		and width_trace.response
+		and width_trace.response.status == "success"
+	case_report.checks.material_handled = material_handled == true
+	case_report.checks.material_success = material_reply
+		and material_reply.status == "success"
+		and material_reply.action == "edit_plan"
+	case_report.checks.material_same_approval = material_reply
+		and material_reply.approval_id == seed_approval_id
+	case_report.checks.material_no_world_mutation = material_reply
+		and material_reply.no_world_mutation == true
+	case_report.checks.material_preserved_dimensions = material_reply
+		and material_reply.build_kind == "platform"
+		and material_reply.build_width == 3
+		and material_reply.build_depth == 1
+		and material_reply.planned_node_writes == 3
+	case_report.checks.material_tnt = material_reply
+		and material_reply.build_material_name == "tnt"
+		and material_reply.build_material_node == expected_tnt_node
+	case_report.checks.material_trace_logged = material_trace
+		and material_trace.route == "natural_chat_review"
+		and material_trace.action == "edit_plan"
+		and material_trace.public_prompt == "use tnt instead"
+		and material_trace.response
+		and material_trace.response.status == "success"
+	case_report.checks.cleanup_discarded = cleanup
+		and cleanup.action == "discard_approval"
+		and cleanup.status == "success"
+	local ok, failures = eval_checks_status(case_report.checks)
+	case_report.ok = ok
+	case_report.status = ok and "pass" or "fail"
+	case_report.failures = failures
+	case_report.owner = nil
+end
+
 local function audit_payload_retained(records)
 	for _, record in ipairs(records or {}) do
 		if record.private_payload ~= nil or record.payload_retained == true then
@@ -9045,6 +9154,10 @@ local function normalize_eval_case(value)
 			or value == "naturalchatfollowup" or value == "refinement"
 			or value == "followuprefinement" then
 		return "natural_chat_followup"
+	elseif value == "pendingedit" or value == "naturalpendingedit"
+			or value == "naturaledit" or value == "editpending"
+			or value == "editplan" or value == "planedit" then
+		return "natural_pending_edit"
 	elseif value == "model" or value == "unknown" or value == "adapter" then
 		return "model"
 	end
@@ -9326,6 +9439,8 @@ function plugin.run_prompt_eval(options, callback)
 						context, async_case_done) then
 					pending_async_count = pending_async_count + 1
 				end
+			elseif case_id == "natural_pending_edit" then
+				plugin._run_natural_pending_edit_eval_case(report, owner, context)
 			elseif case_id == "model" then
 				if run_model_eval_case(report, owner,
 					options.model_prompt or EVAL_DEFAULT_MODEL_PROMPT,

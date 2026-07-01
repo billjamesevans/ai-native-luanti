@@ -820,12 +820,61 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "cleanup_status": "success",
             "failure_count": 0,
         }
+        natural_pending_edit_case = {
+            "case_id": "natural_pending_edit",
+            "status": "pass",
+            "ok": True,
+            "prompt": "Nova, make it wider",
+            "material_prompt": "Nova, use tnt instead",
+            "seed_status": "pending_approval",
+            "seed_action": "build",
+            "seed_approval_id": "approval:natural-edit",
+            "seed_build_kind": "platform",
+            "seed_build_width": 2,
+            "seed_build_depth": 1,
+            "seed_planned_node_writes": 2,
+            "width_edit_handled": True,
+            "width_edit_status": "success",
+            "width_edit_action": "edit_plan",
+            "width_edit_approval_id": "approval:natural-edit",
+            "width_edit_no_world_mutation": True,
+            "width_edit_build_kind": "platform",
+            "width_edit_build_width": 3,
+            "width_edit_build_depth": 1,
+            "width_edit_planned_node_writes": 3,
+            "width_edit_trace_route": "natural_chat_review",
+            "width_edit_trace_action": "edit_plan",
+            "width_edit_trace_public_prompt": "make it wider",
+            "width_edit_trace_status": "success",
+            "material_edit_handled": True,
+            "material_edit_status": "success",
+            "material_edit_action": "edit_plan",
+            "material_edit_approval_id": "approval:natural-edit",
+            "material_edit_no_world_mutation": True,
+            "material_edit_build_kind": "platform",
+            "material_edit_build_width": 3,
+            "material_edit_build_depth": 1,
+            "material_edit_build_material_name": "tnt",
+            "material_edit_build_material_node": "ai_runtime_test:tnt",
+            "material_edit_planned_node_writes": 3,
+            "material_edit_trace_route": "natural_chat_review",
+            "material_edit_trace_action": "edit_plan",
+            "material_edit_trace_public_prompt": "use tnt instead",
+            "material_edit_trace_status": "success",
+            "cleanup_status": "success",
+            "failure_count": 0,
+        }
         payload["prompt_eval"]["cases"].insert(3, stone_bridge_case)
         payload["prompt_eval"]["cases"].insert(4, small_cabin_case)
         payload["prompt_eval"]["cases"].insert(5, path_to_hill_case)
+        payload["prompt_eval"]["cases"].insert(
+            len(payload["prompt_eval"]["cases"]) - 1,
+            natural_pending_edit_case,
+        )
         payload["prompt_eval"]["case_ids"]["stone_bridge"] = True
         payload["prompt_eval"]["case_ids"]["small_cabin"] = True
         payload["prompt_eval"]["case_ids"]["path_to_hill"] = True
+        payload["prompt_eval"]["case_ids"]["natural_pending_edit"] = True
         payload["prompt_eval"]["cases_total"] = len(payload["prompt_eval"]["cases"])
         payload["prompt_eval"]["cases_passed"] = len(payload["prompt_eval"]["cases"])
         payload["prompt_eval"]["cases_failed"] = 0
@@ -835,6 +884,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["summary"]["stone_bridge_checked"] = True
         payload["summary"]["small_cabin_checked"] = True
         payload["summary"]["path_to_hill_checked"] = True
+        payload["summary"]["natural_pending_edit_checked"] = True
         payload["summary"]["golden_prompt_case_ids"]["stone_bridge"] = True
         payload["summary"]["golden_prompt_case_ids"]["small_cabin"] = True
         payload["summary"]["golden_prompt_case_ids"]["path_to_hill"] = True
@@ -2446,7 +2496,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
-                11,
+                12,
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2486,6 +2536,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_player_agent_loop_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_natural_pending_edit_checked"
                 ]
             )
             self.assertTrue(
@@ -2587,13 +2642,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_requests"
                 ],
-                11,
+                12,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_successes"
                 ],
-                11,
+                12,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][

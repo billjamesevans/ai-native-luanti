@@ -44,6 +44,9 @@ class OpenRealmGoldenPromptTests(unittest.TestCase):
         self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_review_traces_checked"])
         self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_option_selection_checked"])
         self.assertTrue(evidence["agent_prompt_eval_natural_chat_followup_checked"])
+        self.assertTrue(evidence["agent_prompt_eval_natural_pending_edit_checked"])
+        self.assertEqual(evidence["agent_prompt_eval_natural_pending_edit_width"], 3)
+        self.assertEqual(evidence["agent_prompt_eval_natural_pending_edit_material"], "tnt")
         self.assertEqual(
             evidence["agent_prompt_eval_player_agent_loop_selected_option_after_player_choice"],
             "marker",

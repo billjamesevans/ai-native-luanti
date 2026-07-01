@@ -153,6 +153,53 @@ def path_to_hill_prompt_eval_case():
     }
 
 
+def natural_pending_edit_prompt_eval_case():
+    return {
+        "case_id": "natural_pending_edit",
+        "status": "pass",
+        "ok": True,
+        "prompt": "Nova, make it wider",
+        "material_prompt": "Nova, use tnt instead",
+        "seed_status": "pending_approval",
+        "seed_action": "build",
+        "seed_approval_id": "approval:natural-edit",
+        "seed_build_kind": "platform",
+        "seed_build_width": 2,
+        "seed_build_depth": 1,
+        "seed_planned_node_writes": 2,
+        "width_edit_handled": True,
+        "width_edit_status": "success",
+        "width_edit_action": "edit_plan",
+        "width_edit_approval_id": "approval:natural-edit",
+        "width_edit_no_world_mutation": True,
+        "width_edit_build_kind": "platform",
+        "width_edit_build_width": 3,
+        "width_edit_build_depth": 1,
+        "width_edit_planned_node_writes": 3,
+        "width_edit_trace_route": "natural_chat_review",
+        "width_edit_trace_action": "edit_plan",
+        "width_edit_trace_public_prompt": "make it wider",
+        "width_edit_trace_status": "success",
+        "material_edit_handled": True,
+        "material_edit_status": "success",
+        "material_edit_action": "edit_plan",
+        "material_edit_approval_id": "approval:natural-edit",
+        "material_edit_no_world_mutation": True,
+        "material_edit_build_kind": "platform",
+        "material_edit_build_width": 3,
+        "material_edit_build_depth": 1,
+        "material_edit_build_material_name": "tnt",
+        "material_edit_build_material_node": "ai_runtime_test:tnt",
+        "material_edit_planned_node_writes": 3,
+        "material_edit_trace_route": "natural_chat_review",
+        "material_edit_trace_action": "edit_plan",
+        "material_edit_trace_public_prompt": "use tnt instead",
+        "material_edit_trace_status": "success",
+        "cleanup_status": "success",
+        "failure_count": 0,
+    }
+
+
 def candidate_queue_payload(**overrides):
     payload = {
         "schema_version": 1,
@@ -637,9 +684,14 @@ def live_prompt_eval_payload(**overrides):
     prompt_eval["cases"].insert(3, stone_bridge_prompt_eval_case())
     prompt_eval["cases"].insert(4, small_cabin_prompt_eval_case())
     prompt_eval["cases"].insert(5, path_to_hill_prompt_eval_case())
+    prompt_eval["cases"].insert(
+        len(prompt_eval["cases"]) - 1,
+        natural_pending_edit_prompt_eval_case(),
+    )
     prompt_eval["case_ids"]["stone_bridge"] = True
     prompt_eval["case_ids"]["small_cabin"] = True
     prompt_eval["case_ids"]["path_to_hill"] = True
+    prompt_eval["case_ids"]["natural_pending_edit"] = True
     prompt_eval["cases_total"] = len(prompt_eval["cases"])
     prompt_eval["cases_passed"] = len(prompt_eval["cases"])
     prompt_eval["cases_failed"] = 0
@@ -650,6 +702,7 @@ def live_prompt_eval_payload(**overrides):
     summary["stone_bridge_checked"] = True
     summary["small_cabin_checked"] = True
     summary["path_to_hill_checked"] = True
+    summary["natural_pending_edit_checked"] = True
     summary["model_adapter_requests"] = prompt_eval["cases_total"]
     summary["model_adapter_successes"] = prompt_eval["cases_passed"]
     summary["golden_prompt_case_ids"]["stone_bridge"] = True
@@ -717,8 +770,8 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
-        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 11)
-        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 11)
+        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 12)
+        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 12)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_backlog_total"], 11)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 9)
@@ -734,6 +787,9 @@ class AgentQualityGateTests(unittest.TestCase):
         )
         self.assertTrue(
             report["summary"]["live_prompt_eval_natural_chat_followup_checked"]
+        )
+        self.assertTrue(
+            report["summary"]["live_prompt_eval_natural_pending_edit_checked"]
         )
 
     def test_required_live_prompt_eval_missing_fails_gate(self):

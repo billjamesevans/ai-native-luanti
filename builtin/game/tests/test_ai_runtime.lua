@@ -7717,7 +7717,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_report.ok == true, core.write_json(eval_report))
 	assert(eval_report.status == "pass")
 	assert(eval_report.owner == "EvalTester")
-	assert(#eval_report.cases == 11)
+	assert(#eval_report.cases == 12)
 	local eval_cases = {}
 	for _, case_report in ipairs(eval_report.cases) do
 		eval_cases[case_report.case_id] = case_report
@@ -7889,6 +7889,53 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.natural_chat_followup.followup_loop_has_followup_turn == true)
 	assert(eval_cases.natural_chat_followup.cleanup.action == "discard_approval")
 	assert(eval_cases.natural_chat_followup.cleanup.status == "success")
+	assert(eval_cases.natural_pending_edit ~= nil)
+	assert(eval_cases.natural_pending_edit.prompt == "Nova, make it wider")
+	assert(eval_cases.natural_pending_edit.material_prompt == "Nova, use tnt instead")
+	assert(eval_cases.natural_pending_edit.seed_reply.status == "pending_approval")
+	assert(eval_cases.natural_pending_edit.seed_reply.action == "build")
+	assert(eval_cases.natural_pending_edit.seed_reply.build_kind == "platform")
+	assert(eval_cases.natural_pending_edit.seed_reply.build_width == 2)
+	assert(eval_cases.natural_pending_edit.seed_reply.build_depth == 1)
+	assert(eval_cases.natural_pending_edit.seed_reply.planned_node_writes == 2)
+	assert(eval_cases.natural_pending_edit.width_edit_handled == true)
+	assert(eval_cases.natural_pending_edit.width_edit_reply.status == "success")
+	assert(eval_cases.natural_pending_edit.width_edit_reply.action == "edit_plan")
+	assert(eval_cases.natural_pending_edit.width_edit_reply.approval_id
+		== eval_cases.natural_pending_edit.seed_reply.approval_id)
+	assert(eval_cases.natural_pending_edit.width_edit_reply.no_world_mutation == true)
+	assert(eval_cases.natural_pending_edit.width_edit_reply.build_width == 3)
+	assert(eval_cases.natural_pending_edit.width_edit_reply.build_depth == 1)
+	assert(eval_cases.natural_pending_edit.width_edit_reply.planned_node_writes == 3)
+	assert(eval_cases.natural_pending_edit.width_edit_trace.route
+		== "natural_chat_review")
+	assert(eval_cases.natural_pending_edit.width_edit_trace.action == "edit_plan")
+	assert(eval_cases.natural_pending_edit.width_edit_trace.public_prompt
+		== "make it wider")
+	assert(eval_cases.natural_pending_edit.width_edit_trace.response.status
+		== "success")
+	assert(eval_cases.natural_pending_edit.material_edit_handled == true)
+	assert(eval_cases.natural_pending_edit.material_edit_reply.status == "success")
+	assert(eval_cases.natural_pending_edit.material_edit_reply.action == "edit_plan")
+	assert(eval_cases.natural_pending_edit.material_edit_reply.approval_id
+		== eval_cases.natural_pending_edit.seed_reply.approval_id)
+	assert(eval_cases.natural_pending_edit.material_edit_reply.no_world_mutation == true)
+	assert(eval_cases.natural_pending_edit.material_edit_reply.build_width == 3)
+	assert(eval_cases.natural_pending_edit.material_edit_reply.build_depth == 1)
+	assert(eval_cases.natural_pending_edit.material_edit_reply.build_material_name
+		== "tnt")
+	assert(eval_cases.natural_pending_edit.material_edit_reply.build_material_node
+		== "ai_runtime_test:tnt")
+	assert(eval_cases.natural_pending_edit.material_edit_reply.planned_node_writes == 3)
+	assert(eval_cases.natural_pending_edit.material_edit_trace.route
+		== "natural_chat_review")
+	assert(eval_cases.natural_pending_edit.material_edit_trace.action == "edit_plan")
+	assert(eval_cases.natural_pending_edit.material_edit_trace.public_prompt
+		== "use tnt instead")
+	assert(eval_cases.natural_pending_edit.material_edit_trace.response.status
+		== "success")
+	assert(eval_cases.natural_pending_edit.cleanup.action == "discard_approval")
+	assert(eval_cases.natural_pending_edit.cleanup.status == "success")
 	assert(eval_cases.model.queued_status == "queued")
 	assert(eval_cases.model.initial_trace.route == "model_adapter_async")
 	assert(eval_cases.model.final_status == "success")
