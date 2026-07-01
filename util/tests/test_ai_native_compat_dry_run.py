@@ -177,6 +177,12 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(adapter["mapblock_churn"], 3)
         self.assertEqual(adapter["recommended_chunk_size"], 2)
         self.assertEqual(adapter["recommended_chunk_count"], 3)
+        translation = adapter["node_translation"]
+        self.assertEqual(translation["translation_kind"], "palette_alias_to_luanti_node")
+        self.assertEqual(translation["source_palette_count"], 2)
+        self.assertEqual(translation["translated_node_count"], 2)
+        self.assertEqual(translation["placement_count"], 5)
+        self.assertEqual(translation["unmapped_node_count"], 0)
         self.assertEqual(len(adapter["placements"]), 5)
         self.assertEqual(adapter["placements"][1]["param1"], 3)
         self.assertEqual(adapter["placements"][1]["param2"], 7)
@@ -226,6 +232,21 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertEqual(adapter["placement_count"], 5)
         self.assertEqual(adapter["mapblock_churn"], 3)
         self.assertEqual(adapter["recommended_chunk_count"], 3)
+        translation = adapter["node_translation"]
+        rows_by_source = {
+            row["source_node"]: row for row in translation["rows"]
+        }
+        self.assertEqual(translation["translation_kind"], "palette_alias_to_luanti_node")
+        self.assertEqual(translation["source_palette_count"], 2)
+        self.assertEqual(translation["translated_node_count"], 2)
+        self.assertEqual(translation["placement_count"], 5)
+        self.assertEqual(translation["unmapped_node_count"], 0)
+        self.assertEqual(rows_by_source["stone"]["target_node"], "ai_runtime_test:stone")
+        self.assertEqual(rows_by_source["stone"]["placement_count"], 4)
+        self.assertEqual(rows_by_source["stone"]["status"], "mapped")
+        self.assertEqual(rows_by_source["marker"]["target_node"], "ai_runtime_test:stone")
+        self.assertEqual(rows_by_source["marker"]["placement_count"], 1)
+        self.assertEqual(rows_by_source["marker"]["status"], "mapped")
         self.assertEqual(adapter["placements"][1]["param1"], 3)
         self.assertEqual(adapter["placements"][1]["param2"], 7)
         self.assertNotIn(str(self.fixture_root), json.dumps(report))
@@ -317,6 +338,9 @@ class CompatibilityDryRunTests(unittest.TestCase):
             if branch["properties"]["adapter_kind"]["const"] == "public_safe_structure_v1"
         )
         public_props = public_branch["properties"]
+        self.assertIn("node_translation", public_branch["required"])
+        self.assertIn("node_translation", public_props)
+        self.assertIn("node_translation", schema["$defs"])
         for report in (public_structure, public_schematic, private_reference):
             adapter = next(
                 action["structure_adapter"]
@@ -373,6 +397,25 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertTrue(adapter["estimated_from_preflight"])
         self.assertEqual(adapter["placement_count"], 5)
         self.assertEqual(adapter["recommended_chunk_count"], 3)
+        translation = adapter["node_translation"]
+        rows_by_source = {
+            row["source_node"]: row for row in translation["rows"]
+        }
+        self.assertEqual(translation["translation_kind"], "palette_alias_to_luanti_node")
+        self.assertEqual(translation["source_palette_count"], 3)
+        self.assertEqual(translation["translated_node_count"], 3)
+        self.assertEqual(translation["placement_count"], 5)
+        self.assertEqual(translation["air_placement_count"], 1)
+        self.assertEqual(translation["unmapped_node_count"], 0)
+        self.assertEqual(rows_by_source["floor"]["target_node"], "default:stone")
+        self.assertEqual(rows_by_source["floor"]["placement_count"], 2)
+        self.assertEqual(rows_by_source["floor"]["status"], "mapped")
+        self.assertEqual(rows_by_source["marker"]["target_node"], "default:glass")
+        self.assertEqual(rows_by_source["marker"]["placement_count"], 2)
+        self.assertEqual(rows_by_source["marker"]["status"], "mapped")
+        self.assertEqual(rows_by_source["air"]["target_node"], "air")
+        self.assertEqual(rows_by_source["air"]["placement_count"], 1)
+        self.assertEqual(rows_by_source["air"]["status"], "air_passthrough")
         self.assertEqual(adapter["placements"][1]["param1"], 1)
         self.assertEqual(adapter["placements"][1]["param2"], 2)
         serialized = json.dumps(report)
@@ -380,6 +423,22 @@ class CompatibilityDryRunTests(unittest.TestCase):
         self.assertNotIn("raw_schematic_payload", serialized.lower())
         self.assertNotIn("asset_payload", serialized.lower())
         self.assertEqual(validate_report(report), [])
+
+    def test_structure_adapter_report_requires_node_translation_evidence(self):
+        report = build_report(
+            self.fixture_root / "public_structure" / "open_platform.ai-structure.json"
+        )
+        adapter = next(
+            action["structure_adapter"]
+            for action in report["planned_actions"]
+            if action["action"] == "import_structure"
+        )
+        del adapter["node_translation"]
+
+        self.assertIn(
+            "planned_actions[0].structure_adapter.node_translation is required",
+            validate_report(report),
+        )
 
     def test_public_safe_schematic_preflight_flows_through_promotion_package(self):
         source = self.fixture_root / "public_schematic" / "open_platform.ai-schematic-preflight.json"

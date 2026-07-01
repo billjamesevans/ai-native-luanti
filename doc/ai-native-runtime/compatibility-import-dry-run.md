@@ -187,9 +187,10 @@ private source paths, family-world coordinates, and copied protected content.
 
 The adapter output remains a dry-run report. It adds an `import_structure`
 planned action with a `structure_adapter` payload containing reviewed
-placements, placement count, mapblock-churn estimate, and chunking guidance. It
-does not queue tasks, copy assets, parse proprietary structure payloads, execute
-behavior, or mutate a world.
+placements, placement count, mapblock-churn estimate, chunking guidance, and a
+`node_translation` table showing each source palette alias or direct node and
+the Luanti node it resolves to. It does not queue tasks, copy assets, parse
+proprietary structure payloads, execute behavior, or mutate a world.
 
 Unsupported fixture fields become explicit `unsupported_features` rows, so the operator can review what was skipped before any apply request exists.
 

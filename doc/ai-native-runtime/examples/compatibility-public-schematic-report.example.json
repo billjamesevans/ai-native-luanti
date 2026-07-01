@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-29T07:53:45Z",
+  "generated_at": "2026-07-01T10:56:25Z",
   "mode": "dry_run",
   "planned_actions": [
     {
@@ -26,6 +26,36 @@
         "estimated_from_preflight": true,
         "fixture_name": "open_platform_schematic_preflight",
         "mapblock_churn": 3,
+        "node_translation": {
+          "air_placement_count": 1,
+          "direct_node_count": 0,
+          "mapped_node_count": 2,
+          "placement_count": 5,
+          "rows": [
+            {
+              "placement_count": 2,
+              "source_node": "floor",
+              "status": "mapped",
+              "target_node": "default:stone"
+            },
+            {
+              "placement_count": 2,
+              "source_node": "marker",
+              "status": "mapped",
+              "target_node": "default:glass"
+            },
+            {
+              "placement_count": 1,
+              "source_node": "air",
+              "status": "air_passthrough",
+              "target_node": "air"
+            }
+          ],
+          "source_palette_count": 3,
+          "translated_node_count": 3,
+          "translation_kind": "palette_alias_to_luanti_node",
+          "unmapped_node_count": 0
+        },
         "payload_policy": "metadata_only",
         "placement_count": 5,
         "placements": [

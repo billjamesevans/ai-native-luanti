@@ -507,7 +507,8 @@
             "mapblock_churn",
             "recommended_chunk_size",
             "recommended_chunk_count",
-            "placements"
+            "placements",
+            "node_translation"
           ],
           "properties": {
             "adapter_kind": {
@@ -553,6 +554,9 @@
               "items": {
                 "$ref": "#/$defs/structure_placement"
               }
+            },
+            "node_translation": {
+              "$ref": "#/$defs/node_translation"
             }
           }
         },
@@ -570,7 +574,8 @@
             "mapblock_churn",
             "recommended_chunk_size",
             "recommended_chunk_count",
-            "placements"
+            "placements",
+            "node_translation"
           ],
           "properties": {
             "adapter_kind": {
@@ -637,10 +642,97 @@
               "items": {
                 "$ref": "#/$defs/structure_placement"
               }
+            },
+            "node_translation": {
+              "$ref": "#/$defs/node_translation"
             }
           }
         }
       ]
+    },
+    "node_translation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "translation_kind",
+        "source_palette_count",
+        "translated_node_count",
+        "placement_count",
+        "mapped_node_count",
+        "direct_node_count",
+        "air_placement_count",
+        "unmapped_node_count",
+        "rows"
+      ],
+      "properties": {
+        "translation_kind": {
+          "const": "palette_alias_to_luanti_node"
+        },
+        "source_palette_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "translated_node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "placement_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "mapped_node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "direct_node_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "air_placement_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "unmapped_node_count": {
+          "const": 0
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/node_translation_row"
+          }
+        }
+      }
+    },
+    "node_translation_row": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source_node",
+        "target_node",
+        "placement_count",
+        "status"
+      ],
+      "properties": {
+        "source_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_node": {
+          "type": "string",
+          "minLength": 1
+        },
+        "placement_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "status": {
+          "enum": [
+            "mapped",
+            "direct",
+            "air_passthrough"
+          ]
+        }
+      }
     },
     "structure_placement": {
       "type": "object",

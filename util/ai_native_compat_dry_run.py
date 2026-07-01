@@ -73,6 +73,24 @@ UNSUPPORTED_FEATURE_REQUIRED = (
     "recommendation",
 )
 PLANNED_ACTION_REQUIRED = ("action", "status", "description", "mutation_cost")
+NODE_TRANSLATION_REQUIRED = (
+    "translation_kind",
+    "source_palette_count",
+    "translated_node_count",
+    "placement_count",
+    "mapped_node_count",
+    "direct_node_count",
+    "air_placement_count",
+    "unmapped_node_count",
+    "rows",
+)
+NODE_TRANSLATION_ROW_REQUIRED = (
+    "source_node",
+    "target_node",
+    "placement_count",
+    "status",
+)
+NODE_TRANSLATION_ROW_STATUSES = ("mapped", "direct", "air_passthrough")
 INVENTORY_ENTRY_REQUIRED = (
     "entry_id",
     "source_path",
@@ -419,6 +437,50 @@ def _normalize_structure_placements(raw, normalized_palette, dimensions=None):
     return normalized_placements
 
 
+def _structure_node_translation(raw, normalized_palette, normalized_placements):
+    placements = raw.get("placements")
+    if not isinstance(placements, list) or len(placements) != len(normalized_placements):
+        raise ValueError("placements must match normalized placement count")
+
+    rows_by_source = {}
+    for index, placement in enumerate(placements):
+        node_ref = placement.get("node") or placement.get("node_name")
+        source_node = str(node_ref)
+        target_node = normalized_placements[index]["node_name"]
+        if target_node == "air":
+            status = "air_passthrough"
+        elif source_node in normalized_palette:
+            status = "mapped"
+        else:
+            status = "direct"
+
+        row = rows_by_source.setdefault(source_node, {
+            "source_node": source_node,
+            "target_node": target_node,
+            "placement_count": 0,
+            "status": status,
+        })
+        if row["target_node"] != target_node or row["status"] != status:
+            raise ValueError(f"placements[{index}].node has inconsistent translation")
+        row["placement_count"] += 1
+
+    rows = list(rows_by_source.values())
+    return {
+        "translation_kind": "palette_alias_to_luanti_node",
+        "source_palette_count": len(normalized_palette),
+        "translated_node_count": len(rows),
+        "placement_count": len(normalized_placements),
+        "mapped_node_count": sum(1 for row in rows if row["status"] == "mapped"),
+        "direct_node_count": sum(1 for row in rows if row["status"] == "direct"),
+        "air_placement_count": sum(
+            row["placement_count"] for row in rows
+            if row["status"] == "air_passthrough"
+        ),
+        "unmapped_node_count": 0,
+        "rows": rows,
+    }
+
+
 def _normalize_structure_unsupported_fields(raw):
     unsupported_fields = raw.get("unsupported_fields", [])
     if not isinstance(unsupported_fields, list):
@@ -483,6 +545,11 @@ def _normalize_synthetic_structure_fixture(raw, source):
         raise ValueError("fixture_version must be 1")
     normalized_palette = _normalize_structure_palette(raw)
     normalized_placements = _normalize_structure_placements(raw, normalized_palette)
+    node_translation = _structure_node_translation(
+        raw,
+        normalized_palette,
+        normalized_placements,
+    )
     normalized_unsupported = _normalize_structure_unsupported_fields(raw)
     chunk_size = _normalize_recommended_chunk_size(raw)
 
@@ -496,6 +563,7 @@ def _normalize_synthetic_structure_fixture(raw, source):
         "license_status": "synthetic",
         "palette": normalized_palette,
         "placements": normalized_placements,
+        "node_translation": node_translation,
         "recommended_chunk_size": chunk_size,
         "unsupported_fields": normalized_unsupported,
         "private_references": [],
@@ -518,6 +586,11 @@ def _normalize_public_safe_structure_fixture(raw, source):
         raw,
         normalized_palette,
         dimensions=dimensions,
+    )
+    node_translation = _structure_node_translation(
+        raw,
+        normalized_palette,
+        normalized_placements,
     )
     normalized_unsupported = _normalize_structure_unsupported_fields(raw)
     chunk_size = _normalize_recommended_chunk_size(raw)
@@ -552,6 +625,7 @@ def _normalize_public_safe_structure_fixture(raw, source):
         "dimensions": dimensions,
         "palette": normalized_palette,
         "placements": normalized_placements,
+        "node_translation": node_translation,
         "recommended_chunk_size": chunk_size,
         "unsupported_fields": normalized_unsupported,
         "private_references": normalized_private_refs,
@@ -590,6 +664,11 @@ def _normalize_public_safe_schematic_preflight(raw, source):
         normalized_palette,
         dimensions=dimensions,
     )
+    node_translation = _structure_node_translation(
+        placement_source,
+        normalized_palette,
+        normalized_placements,
+    )
     normalized_unsupported = _normalize_structure_unsupported_fields(raw)
     chunk_size = _normalize_recommended_chunk_size(raw)
 
@@ -609,6 +688,7 @@ def _normalize_public_safe_schematic_preflight(raw, source):
         "dimensions": dimensions,
         "palette": normalized_palette,
         "placements": normalized_placements,
+        "node_translation": node_translation,
         "recommended_chunk_size": chunk_size,
         "unsupported_fields": normalized_unsupported,
         "private_references": [],
@@ -1100,6 +1180,7 @@ def _structure_adapter_payload(synthetic_structure, structure_cost):
         "recommended_chunk_size": chunk_size,
         "recommended_chunk_count": math.ceil(placement_count / chunk_size),
         "placements": synthetic_structure["placements"],
+        "node_translation": synthetic_structure["node_translation"],
         "unsupported_field_count": len(synthetic_structure["unsupported_fields"]),
         "private_reference_count": len(synthetic_structure.get("private_references", [])),
     }
@@ -2164,6 +2245,70 @@ def _validate_mutation_cost(errors, value, path):
     _require_keys(errors, value, path, MUTATION_COST_REQUIRED)
 
 
+def _validate_non_negative_int(errors, value, path):
+    if not isinstance(value, int) or value < 0:
+        errors.append(f"{path} must be a non-negative integer")
+
+
+def _validate_node_translation(errors, value, path, placement_count):
+    _require_keys(errors, value, path, NODE_TRANSLATION_REQUIRED)
+    if not isinstance(value, dict):
+        return
+    if value.get("translation_kind") != "palette_alias_to_luanti_node":
+        errors.append(f"{path}.translation_kind must be palette_alias_to_luanti_node")
+    for key in NODE_TRANSLATION_REQUIRED:
+        if key != "translation_kind" and key != "rows" and key in value:
+            _validate_non_negative_int(errors, value.get(key), f"{path}.{key}")
+
+    rows = value.get("rows")
+    row_placement_count = 0
+    mapped_node_count = 0
+    direct_node_count = 0
+    air_placement_count = 0
+    if _require_sequence(errors, rows, f"{path}.rows"):
+        if len(rows) != value.get("translated_node_count"):
+            errors.append(f"{path}.translated_node_count must match rows length")
+        for index, row in enumerate(rows):
+            row_path = f"{path}.rows[{index}]"
+            _require_keys(errors, row, row_path, NODE_TRANSLATION_ROW_REQUIRED)
+            if not isinstance(row, dict):
+                continue
+            source_node = row.get("source_node")
+            target_node = row.get("target_node")
+            status = row.get("status")
+            if not isinstance(source_node, str) or not source_node:
+                errors.append(f"{row_path}.source_node must be a non-empty string")
+            if not isinstance(target_node, str) or not target_node:
+                errors.append(f"{row_path}.target_node must be a non-empty string")
+            elif ":" not in target_node and target_node != "air":
+                errors.append(f"{row_path}.target_node must be a namespaced node or air")
+            if status not in NODE_TRANSLATION_ROW_STATUSES:
+                errors.append(f"{row_path}.status must be a known translation status")
+            placement_total = row.get("placement_count")
+            _validate_non_negative_int(errors, placement_total, f"{row_path}.placement_count")
+            if isinstance(placement_total, int) and placement_total >= 0:
+                row_placement_count += placement_total
+                if status == "air_passthrough":
+                    air_placement_count += placement_total
+            if status == "mapped":
+                mapped_node_count += 1
+            elif status == "direct":
+                direct_node_count += 1
+
+    if value.get("placement_count") != row_placement_count:
+        errors.append(f"{path}.placement_count must match row placement counts")
+    if placement_count is not None and value.get("placement_count") != placement_count:
+        errors.append(f"{path}.placement_count must match adapter placement_count")
+    if value.get("mapped_node_count") != mapped_node_count:
+        errors.append(f"{path}.mapped_node_count must match mapped rows")
+    if value.get("direct_node_count") != direct_node_count:
+        errors.append(f"{path}.direct_node_count must match direct rows")
+    if value.get("air_placement_count") != air_placement_count:
+        errors.append(f"{path}.air_placement_count must match air rows")
+    if value.get("unmapped_node_count") != 0:
+        errors.append(f"{path}.unmapped_node_count must be 0")
+
+
 def _validate_structure_adapter(errors, value, path):
     required = (
         "adapter_kind",
@@ -2174,6 +2319,7 @@ def _validate_structure_adapter(errors, value, path):
         "recommended_chunk_size",
         "recommended_chunk_count",
         "placements",
+        "node_translation",
     )
     _require_keys(errors, value, path, required)
     if not isinstance(value, dict):
@@ -2198,6 +2344,12 @@ def _validate_structure_adapter(errors, value, path):
             _require_keys(errors, placement, f"{path}.placements[{index}]", ("pos", "node_name"))
             if isinstance(placement, dict):
                 _require_keys(errors, placement.get("pos"), f"{path}.placements[{index}].pos", ("x", "y", "z"))
+    _validate_node_translation(
+        errors,
+        value.get("node_translation"),
+        f"{path}.node_translation",
+        value.get("placement_count"),
+    )
 
 
 def validate_report(report, expected_unsupported_features=None):
