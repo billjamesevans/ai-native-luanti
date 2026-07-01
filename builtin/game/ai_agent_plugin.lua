@@ -65,7 +65,7 @@ local PRODUCT_SURFACES = {
 		display_name = "Builder Agent",
 		default_clean_profile_grant = "granted",
 		required_capabilities = { "world.read", "world.place" },
-		optional_capabilities = { "task.cancel" },
+		optional_capabilities = { "task.cancel", "import.assets", "world.batch" },
 		commands = {
 			"build plan",
 			"build marker",
@@ -81,6 +81,7 @@ local PRODUCT_SURFACES = {
 		runtime_entrypoints = {
 			"core.build_agent.plan",
 			"core.build_agent.define_task",
+			"core.ai_import_ops.define_structure_apply_task",
 		},
 		mutation_policy = "preview_then_approval_rollback_backed",
 	},
@@ -2121,6 +2122,12 @@ local function approval_context(context)
 		build_count = context.build_count,
 		build_material_name = context.build_material_name,
 		build_material_node = context.build_material_node,
+		openrealm_plan_id = context.openrealm_plan_id,
+		openrealm_plan = table.copy(context.openrealm_plan or {}),
+		openrealm_structure_placements =
+			plugin._copy_openrealm_structure_placements
+			and plugin._copy_openrealm_structure_placements(
+				context.openrealm_structure_placements),
 		repair_radius = context.repair_radius,
 		sample_limit = context.sample_limit,
 		max_node_writes_per_step = context.max_node_writes_per_step,
@@ -2145,6 +2152,7 @@ local function compact_pending_approval(pending)
 		build_height = pending.build_height,
 		build_material_name = pending.build_material_name,
 		build_material_node = pending.build_material_node,
+		openrealm_plan_id = pending.openrealm_plan_id,
 		planner_mode = pending.planner_mode,
 		selected_candidate_id = pending.selected_candidate_id,
 		adapter_selected_candidate_id = pending.adapter_selected_candidate_id,
@@ -2211,6 +2219,7 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		build_height = extra.build_height,
 		build_material_name = extra.build_material_name,
 		build_material_node = extra.build_material_node,
+		openrealm_plan_id = extra.openrealm_plan_id,
 		planner_mode = extra.planner_mode,
 		selected_candidate_id = extra.selected_candidate_id,
 		adapter_selected_candidate_id = extra.adapter_selected_candidate_id,
@@ -4023,8 +4032,287 @@ local function prompt_has_build_surface(prompt)
 		or prompt:find("tnt", 1, true)
 end
 
+function plugin._copy_openrealm_structure_placements(placements)
+	if type(placements) ~= "table" then
+		return nil
+	end
+	local copied = {}
+	for _, placement in ipairs(placements) do
+		if type(placement) == "table" and type(placement.pos) == "table" then
+			copied[#copied + 1] = {
+				pos = copy_pos(placement.pos),
+				node_name = placement.node_name,
+			}
+		end
+	end
+	return copied
+end
+
+function plugin._openrealm_int(value)
+	if type(value) ~= "number" or math.floor(value) ~= value then
+		return nil
+	end
+	return value
+end
+
+function plugin._openrealm_placement_node_name(placement)
+	if type(placement) ~= "table" then
+		return nil
+	end
+	local node_name = placement.node_name or placement.node
+	if type(node_name) == "table" then
+		node_name = node_name.name
+	end
+	if not node_is_registered(node_name) then
+		return nil
+	end
+	return node_name
+end
+
+function plugin._openrealm_structure_plan_from_option(option, origin)
+	if type(option) ~= "table" or type(option.openrealm_plan) ~= "table" then
+		return nil, nil, "openrealm_plan_missing"
+	end
+	local plan = option.openrealm_plan
+	if option.private_payload ~= nil
+			or option.asset_payload ~= nil
+			or option.payload ~= nil
+			or plan.private_payload ~= nil
+			or plan.asset_payload ~= nil
+			or plan.payload ~= nil
+			or plan.raw_asset_payload ~= nil then
+		return nil, nil, "openrealm_plan_payload_rejected"
+	end
+	if plan.schema_version ~= "openrealm.plan.v1" then
+		return nil, nil, "openrealm_plan_schema_unsupported"
+	end
+	local structures = plan.structures
+	if type(structures) ~= "table" then
+		return nil, nil, "openrealm_structure_missing"
+	end
+	local budget = type(plan.safety_budget) == "table" and plan.safety_budget or {}
+	if budget.ai_direct_world_mutation_allowed == true then
+		return nil, nil, "openrealm_plan_direct_mutation_rejected"
+	end
+	local budget_nodes = tonumber(budget.max_structure_nodes) or settings.max_lights
+	local max_nodes = math.max(1, math.min(settings.max_lights, math.floor(budget_nodes)))
+	local placements = {}
+	local public_structures = {}
+	for structure_index, structure in ipairs(structures) do
+		if type(structure) ~= "table" or type(structure.placements) ~= "table" then
+			return nil, nil, "openrealm_structure_placements_missing"
+		end
+		local max_radius = tonumber(structure.max_radius) or 32
+		max_radius = math.max(1, math.min(32, math.floor(max_radius)))
+		local public_structure = {
+			name = bounded_trace_text(structure.name
+				or ("structure_" .. tostring(structure_index)), 80),
+			description = bounded_trace_text(structure.description or option.reason, 240),
+			max_radius = max_radius,
+			placement_count = 0,
+			placements = {},
+		}
+		for _, placement in ipairs(structure.placements) do
+			local x = plugin._openrealm_int(placement.x)
+			local y = plugin._openrealm_int(placement.y)
+			local z = plugin._openrealm_int(placement.z)
+			local node_name = plugin._openrealm_placement_node_name(placement)
+			if not x or not y or not z or not node_name then
+				return nil, nil, "openrealm_structure_placement_invalid"
+			end
+			if math.abs(x) > max_radius
+					or math.abs(y) > max_radius
+					or math.abs(z) > max_radius then
+				return nil, nil, "openrealm_structure_radius_exceeded"
+			end
+			if #placements >= max_nodes then
+				return nil, nil, "openrealm_structure_budget_exceeded"
+			end
+			local absolute_pos = vector.add(origin, { x = x, y = y, z = z })
+			placements[#placements + 1] = {
+				pos = absolute_pos,
+				node_name = node_name,
+			}
+			public_structure.placements[#public_structure.placements + 1] = {
+				x = x,
+				y = y,
+				z = z,
+				node = node_name,
+			}
+			public_structure.placement_count = public_structure.placement_count + 1
+		end
+		public_structures[#public_structures + 1] = public_structure
+	end
+	if #placements == 0 then
+		return nil, nil, "openrealm_structure_placements_missing"
+	end
+	local plan_id = bounded_trace_text(plan.plan_id
+		or ("orplan_runtime_" .. tostring(#placements)), 80)
+	local public_plan = {
+		schema_version = "openrealm.plan.v1",
+		product = "OpenRealm",
+		assistant = "Nova",
+		plan_id = plan_id,
+		plan_kind = "structure",
+		title = bounded_trace_text(plan.title or option.label
+			or "OpenRealm structure", 120),
+		source_prompt = bounded_trace_text(plan.source_prompt
+			or option.source_prompt or "OpenRealm generated structure", 2000),
+		mod_name = bounded_trace_text(plan.mod_name
+			or plugin._openrealm_mod_name(plan_id), 80),
+		summary = bounded_trace_text(plan.summary or option.reason
+			or "Validated OpenRealm placement plan.", 1000),
+		tags = { "structure", "preview", "rollback", "agent-generated", "nova" },
+		safety_budget = {
+			max_node_definitions = 0,
+			max_structure_nodes = #placements,
+			requires_preview = true,
+			requires_approval = true,
+			rollback_required = true,
+			ai_direct_world_mutation_allowed = false,
+		},
+		structures = public_structures,
+		approval_steps = {
+			"Review generated OpenRealm placement plan.",
+			"Approve in-world before mutation.",
+			"Use rollback if the result is not wanted.",
+		},
+		ai_disclosure = {
+			ai_assisted = true,
+			assistant_name = "Nova",
+			human_approval_required = true,
+			direct_world_mutation_by_ai = false,
+			generated_code_is_template_based = false,
+		},
+		provenance = {
+			generator = bounded_trace_text(
+				type(plan.provenance) == "table" and plan.provenance.generator
+					or "openrealm_creator_kernel", 120),
+			generator_version = bounded_trace_text(
+				type(plan.provenance) == "table" and plan.provenance.generator_version
+					or "runtime-contract-v1", 80),
+			source = "agentic_openrealm_structure_plan",
+		},
+	}
+	return placements, public_plan, "validated"
+end
+
+function plugin._openrealm_structure_plan_for(name, context)
+	context = context or {}
+	local placements = plugin._copy_openrealm_structure_placements(
+		context.openrealm_structure_placements)
+	if not placements or #placements == 0 then
+		return {
+			ok = false,
+			status = "blocked",
+			reason = "openrealm_structure_placements_missing",
+			operation = "openrealm.structure.plan",
+			changed = 0,
+			examined = 0,
+			skipped = 0,
+			samples = {},
+			metrics = {},
+			plan = {
+				status = "blocked",
+				will_mutate = false,
+				metrics = {},
+				samples = {},
+			},
+		}, nil
+	end
+	local samples = {}
+	for index, placement in ipairs(placements) do
+		if index > (context.sample_limit or settings.max_lights) then
+			break
+		end
+		samples[#samples + 1] = {
+			pos = copy_pos(placement.pos),
+			node_name = placement.node_name,
+		}
+	end
+	local metrics = {
+		planned_node_writes = #placements,
+	}
+	local plan = {
+		status = "success",
+		reason = "openrealm_structure_plan_ready",
+		operation = "openrealm.structure.plan",
+		will_mutate = false,
+		build_kind = "openrealm_structure",
+		build_count = #placements,
+		openrealm_plan_id = context.openrealm_plan_id,
+		samples = samples,
+		metrics = metrics,
+	}
+	return {
+		ok = true,
+		status = "success",
+		reason = "openrealm_structure_plan_ready",
+		message = "OpenRealm structure plan returned without mutation.",
+		operation = "openrealm.structure.plan",
+		changed = 0,
+		examined = #placements,
+		skipped = 0,
+		samples = samples,
+		metrics = metrics,
+		plan = plan,
+	}, plan
+end
+
+function plugin._queue_openrealm_structure_task(name, context)
+	context = context or {}
+	configure_product_surfaces()
+	local placements = plugin._copy_openrealm_structure_placements(
+		context.openrealm_structure_placements)
+	if not placements or #placements == 0 then
+		return public_reply(name, "build", "blocked",
+			"OpenRealm structure plan has no validated placements.", {
+				surface_id = "builder",
+				reason = "openrealm_structure_placements_missing",
+			})
+	end
+	local task_id = next_task_id(name, "openrealm-structure")
+	local agent_id = surface_agent_id_for(name, "builder")
+	plugin.ensure_surface_agent(name, "builder")
+	local plan = type(context.openrealm_plan) == "table" and context.openrealm_plan or {}
+	return queue_defined_task(name, "build", "openrealm structure",
+		core.ai_import_ops.define_structure_apply_task({
+			task_id = task_id,
+			agent_id = agent_id,
+			owner = name,
+			label = "openrealm.structure.apply",
+			report_id = context.openrealm_plan_id,
+			action_index = 0,
+			world_id = context.world_id or "ai_agent_plugin",
+			staging = true,
+			explicit_approval = true,
+			allow_mutation = true,
+			rollback_policy = context.rollback_policy or "snapshot",
+			placements = placements,
+			get_node = context.get_node,
+			set_node = context.set_node,
+			persist_record = context.persist_record or context.persist_rollback_record,
+			max_node_writes_per_step =
+				context.max_node_writes_per_step or #placements,
+			max_mapblock_churn_total =
+				context.max_mapblock_churn_total or settings.max_lights,
+			max_wall_time_ms = context.max_wall_time_ms or 0,
+			sample_limit = context.sample_limit or #placements,
+			operation_label = "openrealm.structure.apply",
+			source_reference = {
+				reference_type = "openrealm_plan",
+				redacted_id = context.openrealm_plan_id or "openrealm_plan",
+				schema_version = plan.schema_version,
+				plan_kind = plan.plan_kind,
+			},
+		}), "builder")
+end
+
 local function queue_build_task(name, context)
 	context = context or {}
+	if context.openrealm_structure_placements then
+		return plugin._queue_openrealm_structure_task(name, context)
+	end
 	configure_product_surfaces()
 	local task_id = next_task_id(name, "build")
 	plugin.ensure_surface_agent(name, "builder")
@@ -4035,6 +4323,9 @@ end
 
 local function build_plan_for(name, context)
 	context = context or {}
+	if context.openrealm_structure_placements then
+		return plugin._openrealm_structure_plan_for(name, context)
+	end
 	configure_product_surfaces()
 	local agent_id = surface_agent_id_for(name, "builder")
 	plugin.ensure_surface_agent(name, "builder")
@@ -4094,6 +4385,7 @@ function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
 	queued.build_height = pending.build_height
 	queued.build_material_name = pending.build_material_name
 	queued.build_material_node = pending.build_material_node
+	queued.openrealm_plan_id = pending.openrealm_plan_id
 	queued.planner_mode = pending.planner_mode
 	queued.selected_candidate_id = pending.selected_candidate_id
 	queued.adapter_selected_candidate_id = pending.adapter_selected_candidate_id
@@ -4154,6 +4446,7 @@ local function create_build_pending_reply(name, context, message, extra)
 		build_height = plan.build_height,
 		build_material_name = plan.build_material_name,
 		build_material_node = plan.build_material_node,
+		openrealm_plan_id = plan.openrealm_plan_id,
 		planner_mode = extra.planner_mode,
 		selected_candidate_id = extra.selected_candidate_id,
 		adapter_selected_candidate_id = extra.adapter_selected_candidate_id,
@@ -4214,6 +4507,7 @@ local function create_build_pending_reply(name, context, message, extra)
 			build_height = plan.build_height,
 			build_material_name = plan.build_material_name,
 			build_material_node = plan.build_material_node,
+			openrealm_plan_id = plan.openrealm_plan_id,
 			plan_status = result.status,
 			planner_mode = extra.planner_mode,
 			selected_candidate_id = extra.selected_candidate_id,
@@ -4343,6 +4637,14 @@ function plugin._openrealm_plan_for_candidate(candidate)
 		return nil
 	end
 	local context = candidate.context
+	if type(candidate.openrealm_plan) == "table"
+			and candidate.openrealm_plan.schema_version == "openrealm.plan.v1" then
+		return table.copy(candidate.openrealm_plan)
+	end
+	if type(context.openrealm_plan) == "table"
+			and context.openrealm_plan.schema_version == "openrealm.plan.v1" then
+		return table.copy(context.openrealm_plan)
+	end
 	local option_id = tostring(candidate.option_id or "generated_agent_option")
 	local source_prompt = bounded_trace_text(
 		context.openrealm_source_prompt
@@ -4659,6 +4961,37 @@ local function append_generated_agentic_build_candidate(candidates, name,
 		base_context, option)
 	if type(option) ~= "table" then
 		return nil, "generated_build_option_missing"
+	end
+	if type(option.openrealm_plan) == "table" then
+		local placements, public_plan, plan_reason =
+			plugin._openrealm_structure_plan_from_option(option,
+				default_pos(base_context))
+		if not placements then
+			return nil, plan_reason
+		end
+		local option_id = safe_generated_option_id(option.option_id)
+		local context = agentic_build_context(base_context, {
+			build_kind = "openrealm_structure",
+			build_count = #placements,
+			openrealm_plan_id = public_plan.plan_id,
+			openrealm_plan = public_plan,
+			openrealm_structure_placements = placements,
+			max_node_writes_per_step = #placements,
+			sample_limit = #placements,
+		})
+		local candidate = {
+			option_id = option_id,
+			label = bounded_trace_text(option.label
+				or public_plan.title or "OpenRealm structure", 120),
+			reason = bounded_trace_text(option.reason
+				or public_plan.summary
+				or "agent-proposed OpenRealm placement plan", 240),
+			context = context,
+			planned_node_writes = #placements,
+			openrealm_plan = public_plan,
+		}
+		candidates[#candidates + 1] = candidate
+		return candidate, plan_reason or "validated"
 	end
 	local kind = option.build_kind or option.kind
 	if type(kind) ~= "string" then
@@ -6152,6 +6485,7 @@ local function handle_pending_plan(name)
 		build_height = pending.build_height,
 		build_material_name = pending.build_material_name,
 		build_material_node = pending.build_material_node,
+		openrealm_plan_id = pending.openrealm_plan_id,
 		planner_mode = pending.planner_mode,
 		selected_candidate_id = pending.selected_candidate_id,
 		adapter_selected_candidate_id = pending.adapter_selected_candidate_id,
@@ -6241,6 +6575,7 @@ function plugin.handle_build_options(name)
 			build_height = pending.build_height,
 			build_material_name = pending.build_material_name,
 			build_material_node = pending.build_material_node,
+			openrealm_plan_id = pending.openrealm_plan_id,
 		})
 end
 

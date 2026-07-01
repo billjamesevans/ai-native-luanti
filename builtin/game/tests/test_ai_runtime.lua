@@ -5296,6 +5296,8 @@ core.ai_agent_plugin.configure({
 		["entity.control"] = true,
 		["task.cancel"] = true,
 		["http.llm"] = true,
+		["import.assets"] = true,
+		["world.batch"] = true,
 	},
 })
 
@@ -5480,6 +5482,166 @@ end
 local completed_agentic = core.get_ai_task(approved_agentic.task_id)
 assert(completed_agentic.status == "completed")
 assert(completed_agentic.last_result.metrics.node_writes == 4)
+
+local openrealm_pos = test_pos(4271)
+for x = 0, 2 do
+	set_test_node(vector.add(openrealm_pos, { x = x, y = 0, z = 0 }), {
+		name = "air",
+	})
+end
+local openrealm_rollbacks = {}
+local openrealm_planner_done
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	assert(request.context.intent == "build_planning")
+	openrealm_planner_done = done
+	return true, "queued"
+end)
+local queued_openrealm = core.ai_agent_plugin.handle_command(
+	"OpenRealmPlanner", "build an OpenRealm tiny bridge", {
+		pos = openrealm_pos,
+		world_id = "openrealm-structure-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		persist_record = function(record)
+			openrealm_rollbacks[#openrealm_rollbacks + 1] = record
+			return {
+				ok = true,
+				storage_ref = "rollback://openrealm/" .. record.record_id,
+			}
+		end,
+	})
+assert(queued_openrealm.ok == true)
+assert(queued_openrealm.status == "queued")
+openrealm_planner_done({
+	ok = true,
+	message = "Generated a bounded OpenRealm placement plan for preview.",
+	adapter_name = "mock-agentic-build-planner",
+	elapsed_us = 91000,
+	response = {
+		agentic_execution = true,
+		selected_option_id = "generated_openrealm_bridge",
+		tool_decision_source = "agents_sdk_function_tool",
+		required_tool_calls = {
+			"inspect_build_site_context",
+			"recall_build_prompt_memory",
+			"propose_build_option",
+			"select_build_option",
+			"plan_build_actions",
+		},
+		missing_required_tool_calls = {},
+		required_tool_calls_satisfied = true,
+		tool_trace = {
+			{ tool_name = "inspect_build_site_context" },
+			{ tool_name = "recall_build_prompt_memory" },
+			{ tool_name = "propose_build_option" },
+			{ tool_name = "select_build_option" },
+			{ tool_name = "plan_build_actions" },
+		},
+		generated_build_option = {
+			option_id = "generated_openrealm_bridge",
+			label = "OpenRealm bridge",
+			reason = "bounded placement plan from the OpenRealm creator kernel",
+			openrealm_plan = {
+				schema_version = "openrealm.plan.v1",
+				product = "OpenRealm",
+				assistant = "Nova",
+				plan_id = "orplan_test_bridge",
+				plan_kind = "structure",
+				title = "Tiny Bridge",
+				source_prompt = "build an OpenRealm tiny bridge",
+				safety_budget = {
+					max_structure_nodes = 3,
+					requires_preview = true,
+					requires_approval = true,
+					rollback_required = true,
+					ai_direct_world_mutation_allowed = false,
+				},
+				structures = {
+					{
+						name = "tiny_bridge",
+						placements = {
+							{ x = 0, y = 0, z = 0, node = "ai_runtime_test:stone" },
+							{ x = 1, y = 0, z = 0, node = "ai_runtime_test:stone" },
+							{ x = 2, y = 0, z = 0, node = "ai_runtime_test:stone" },
+						},
+					},
+				},
+				ai_disclosure = {
+					direct_world_mutation_by_ai = false,
+				},
+				provenance = {
+					generator = "openrealm_creator_kernel",
+				},
+			},
+		},
+		tool_decisions = {
+			build_option = {
+				selected_option_id = "generated_openrealm_bridge",
+				decision_source = "agents_sdk_function_tool",
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "generated_openrealm_bridge",
+				step_count = 3,
+				world_mutation_authority = "luanti",
+			},
+		},
+		build_action_plan = {
+			status = "ready",
+			selected_option_id = "generated_openrealm_bridge",
+			step_count = 3,
+			world_mutation_authority = "luanti",
+		},
+	},
+})
+local pending_openrealm = core.ai_agent_plugin.handle_command(
+	"OpenRealmPlanner", "pending plan", {})
+assert(pending_openrealm.ok == true)
+assert(pending_openrealm.pending_action == "build")
+assert(pending_openrealm.selected_candidate_id == "generated_openrealm_bridge")
+assert(pending_openrealm.generated_build_option_status == "validated")
+assert(pending_openrealm.generated_candidate_id == "generated_openrealm_bridge")
+assert(pending_openrealm.build_kind == "openrealm_structure")
+assert(pending_openrealm.openrealm_plan_id == "orplan_test_bridge")
+assert(pending_openrealm.planned_node_writes == 3)
+for x = 0, 2 do
+	assert(get_test_node(vector.add(openrealm_pos, { x = x, y = 0, z = 0 })).name
+		== "air")
+end
+local openrealm_options = core.ai_agent_plugin.handle_command(
+	"OpenRealmPlanner", "options", {})
+assert(openrealm_options.ok == true)
+local openrealm_option
+for _, option in ipairs(openrealm_options.candidate_options) do
+	if option.option_id == "generated_openrealm_bridge" then
+		openrealm_option = option
+	end
+end
+assert(openrealm_option ~= nil)
+assert(openrealm_option.openrealm_plan.plan_id == "orplan_test_bridge")
+assert(openrealm_option.openrealm_plan.structures[1].placement_count == 3)
+assert(openrealm_option.openrealm_plan.structures[1].placements[1].node
+	== "ai_runtime_test:stone")
+assert(openrealm_option.openrealm_plan.structures[1].placements[3].x == 2)
+local approved_openrealm = core.ai_agent_plugin.handle_command(
+	"OpenRealmPlanner", "approve build", {})
+assert(approved_openrealm.ok == true)
+assert(approved_openrealm.action == "approve")
+assert(approved_openrealm.approved_action == "build")
+core.step_ai_tasks()
+for x = 0, 2 do
+	assert(get_test_node(vector.add(openrealm_pos, { x = x, y = 0, z = 0 })).name
+		== "ai_runtime_test:stone")
+end
+local completed_openrealm = core.get_ai_task(approved_openrealm.task_id)
+assert(completed_openrealm.status == "completed")
+assert(completed_openrealm.last_result.operation == "ai_world.batch_place")
+assert(completed_openrealm.last_result.changed == 3)
+assert(completed_openrealm.last_result.rollback_record_id ~= nil)
+assert(completed_openrealm.last_result.rollback_storage_ref ~= nil)
+assert(#openrealm_rollbacks == 1)
+assert(openrealm_rollbacks[1].operation_label == "openrealm.structure.apply")
+assert(openrealm_rollbacks[1].mutation_class == "compat_import")
 
 local followup_pos = test_pos(4254)
 set_test_node(followup_pos, { name = "air" })
@@ -6259,8 +6421,19 @@ local discarded_fallback = core.ai_agent_plugin.handle_command("FallbackPlanner"
 assert(discarded_fallback.ok == true)
 assert(discarded_fallback.action == "discard_approval")
 assert(get_test_node(fallback_pos).name == "air")
-core.ai_agent_plugin.configure({ agentic_build_planner_first = false })
-end)
+	core.ai_agent_plugin.configure({
+		agentic_build_planner_first = false,
+		capabilities = {
+			["world.read"] = true,
+			["world.place"] = true,
+			["world.remove"] = true,
+			["entity.spawn"] = true,
+			["entity.control"] = true,
+			["task.cancel"] = true,
+			["http.llm"] = true,
+		},
+	})
+	end)
 
 _G.test_ai_agent_plugin_agentic_build_planner()
 rawset(_G, "test_ai_agent_plugin_agentic_build_planner", nil)
