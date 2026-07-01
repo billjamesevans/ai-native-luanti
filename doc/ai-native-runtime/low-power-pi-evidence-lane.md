@@ -5,22 +5,22 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `3a3ed842a`
-- Backup artifact label: `raspberrypi_luanti_20260701-175501.tgz`
+- Fork commit: `907b393b5`
+- Backup artifact label: `raspberrypi_luanti_20260701-182811.tgz`
 - Backup SHA-256:
-  `c4545731a80b74b89c6353df571c5ba24fda14b9321ae349c5a1324520c40706`
+  `9a0f27c2a7652dc668a7582775c61082614f7d36993b742dbaa3294359f7a39d`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: `ai-native-luanti-agents-sdk-adapter.service` active on
   loopback TCP `8766`.
 - Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
   pilot `pass`; agentic tool cases `10/10`; attention items `0`; violations
-  `0`; retained artifact generated at `2026-07-01T23:01:04Z`.
-- Request/response log gate: `pass`; `1945` request log entries and `74` Nova
+  `0`; retained artifact generated at `2026-07-01T23:34:03Z`.
+- Request/response log gate: `pass`; `1978` request log entries and `74` Nova
   agent log entries read; `7/7` checked cases passed; violations `0`.
 - Live prompt eval: `12/12` cases passed; the OpenRealm golden subset passed
   `9/9`; model adapter requests `11`, successes `11`, failures `0`, timeouts
-  `0`; retained artifact generated at `2026-07-01T22:59:27Z`.
+  `0`; retained artifact generated at `2026-07-01T23:32:41Z`.
 - Stone bridge generation proof: the live Pi sidecar call for
   "Build a stone bridge" returned `generated_bridge_platform` through
   `agents_sdk_generated_tool_completion`, produced a `stone` `platform`
@@ -65,6 +65,26 @@ Latest post-deploy gate:
   `inspect_build_site_context`, `recall_build_prompt_memory`,
   `propose_build_option`, `select_build_option`, and `plan_build_actions` in
   the Agents SDK tool trace.
+
+Latest retained quick soak manifest:
+
+- Date: 2026-07-01
+- Fork commit: `907b393b5`
+- Path:
+  `local/benchmarks/low-power-server/2026-07-01/907b393b5/pi-low-power-evidence.json`
+- Target: `quick`; elapsed `59.56` seconds; duration met.
+- Iterations: `1/1` passed, `0` failed.
+- Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
+- Runtime verification: product profile `pass`, clean profile `pass`, headless
+  client load `pass` with 2 attempted/connected/completed synthetic players,
+  scale gate `pass`, server-step workload `pass` with 29 completed samples, and
+  compatibility import staging pilot `pass`.
+- Resource maxima: average CPU `57.134%`, interval CPU `113.396%`, RSS
+  `70.641 MB`, actionable warnings `0`, server log errors `0`, failure count
+  `0`.
+- Backup artifact:
+  `raspberrypi_luanti_20260701-182811.tgz`
+  (`9a0f27c2a7652dc668a7582775c61082614f7d36993b742dbaa3294359f7a39d`).
 
 Latest retained one-hour soak manifest:
 

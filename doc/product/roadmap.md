@@ -39,9 +39,9 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
-  `3a3ed842a`.
-- Backup: `raspberrypi_luanti_20260701-175501.tgz`
-  (`c4545731a80b74b89c6353df571c5ba24fda14b9321ae349c5a1324520c40706`).
+  `907b393b5`.
+- Backup: `raspberrypi_luanti_20260701-182811.tgz`
+  (`9a0f27c2a7652dc668a7582775c61082614f7d36993b742dbaa3294359f7a39d`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
@@ -50,15 +50,22 @@ Current Pi gate evidence:
 - memory refresh quality gate passed with live prompt eval `pass`,
   compatibility import staging pilot `pass`, `10/10` required agentic tool cases,
   `0` attention items, and `0` violations. The retained quality gate artifact
-  was generated at `2026-07-01T23:01:04Z`.
-- request/response log gate passed with `1945` request log entries and `74`
+  was generated at `2026-07-01T23:34:03Z`.
+- request/response log gate passed with `1978` request log entries and `74`
   Nova agent log entries read, `7/7` checked cases passed, and `0`
   violations. The retained request/response artifact was generated at
-  `2026-07-01T23:00:37Z`.
+  `2026-07-01T23:33:36Z`.
 - live prompt eval passed `12/12` cases; the OpenRealm golden subset passed
   `9/9`, with `11` model-adapter requests, `11` successes, `0` failures, and
   `0` timeouts. The current live-probe prompt-eval artifact was generated at
-  `2026-07-01T22:59:27Z`.
+  `2026-07-01T23:32:41Z`.
+- quick low-power Pi evidence passed for `907b393b5` at
+  `local/benchmarks/low-power-server/2026-07-01/907b393b5/pi-low-power-evidence.json`;
+  target `quick`, elapsed `59.56` seconds, `1/1` iterations passed, service
+  split intact, 2/2 headless synthetic players connected/completed, compatibility
+  import staging pilot `pass`, average CPU `57.134%`, max interval CPU
+  `113.396%`, max RSS `70.641 MB`, actionable warnings `0`, server log errors
+  `0`, and failure count `0`.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,
