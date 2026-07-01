@@ -38,24 +38,28 @@ Exit gate:
 
 Current Pi gate evidence:
 
-- 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
-  `3f29215b7`.
+- 2026-07-01 follow-up side-by-side fork deploy advanced the Pi test lane to
+  `fa3cd9548`.
 - Backup:
-  `raspberrypi_luanti_20260701-025213.tgz`
-  (`ae15698c773e5e983ca98b513d025b3dcffcac6fc0c4a22163f67341e611bc2a`).
+  `raspberrypi_luanti_20260701-033122.tgz`
+  (`97e83cfced8aad8744ae1d3c6c7c576212d9710e784f5f4f7d4f4689a138bc14`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
 - Agents SDK sidecar stayed active on loopback TCP `8766`.
 - memory refresh quality gate passed with live prompt eval `pass`,
-  compatibility import staging pilot `pass`, `5/5` required agentic tool cases,
+  compatibility import staging pilot `pass`, `6/6` required agentic tool cases,
   `0` attention items, and `0` violations.
-- request/response log gate passed with `824` Agents SDK sidecar log entries
+- request/response log gate passed with `836` Agents SDK sidecar log entries
   read, `5/5` checked cases passed, and `0` violations.
-- live prompt eval passed `6/6` cases; the OpenRealm golden subset passed
-  `5/5`, with `6` model-adapter requests, `6` successes, `0` failures, and
+- live prompt eval passed `7/7` cases; the OpenRealm golden subset passed
+  `6/6`, with `7` model-adapter requests, `7` successes, `0` failures, and
   `0` timeouts. The retained live prompt-eval artifact was generated at
-  `2026-07-01T07:56:23Z`.
+  `2026-07-01T08:35:25Z`.
+- the live Pi prompt gate now checks `player_agent_loop`, starting from natural
+  chat (`Nova, Build a cozy lakeside village with floating lanterns`), then
+  verifying `Nova, options`, `Nova, pending plan`, `Nova, no`, and the
+  after-discard `no_pending_approval` block without world mutation.
 - Agents SDK adapter health reports OpenAI key present, hosted web search
   available, and `world_mutation_authority = luanti`.
 - `Nova, options` remains the player-loop review path for pending build choices
@@ -76,12 +80,6 @@ Current Pi gate evidence:
   `inspect_build_site_context`, `recall_build_prompt_memory`,
   `propose_build_option`, `select_build_option`, and `plan_build_actions` in
   the Agents SDK tool trace.
-- New local fork gate, pending Pi redeploy: default prompt eval now passes
-  `7/7` local cases with `6/6` enforced OpenRealm golden prompts. The added
-  `player_agent_loop` case starts from natural chat (`Nova, Build a cozy
-  lakeside village with floating lanterns`), verifies `Nova, options`, `Nova,
-  pending plan`, `Nova, no`, and the after-discard `no_pending_approval` block,
-  and retains public-safe evidence with no world mutation.
 
 ## Phase 2: Luminara Creator Playground
 
