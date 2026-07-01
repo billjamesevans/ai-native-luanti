@@ -1798,6 +1798,25 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(ordered[0]["observed"]["selected_option_id"], "reviewed_prompt_memory")
         self.assertEqual(ordered[0]["observed"]["build_options"][0]["option_id"], "reviewed_prompt_memory")
 
+    def test_nova_agent_sidecar_candidates_rank_ahead_of_request_response_gate_summaries(self):
+        module = load_queue_module()
+        gate_payload = request_response_log_gate_payload()
+        gate_candidate = module.candidate_from_request_response_log_gate_case(
+            gate_payload,
+            gate_payload["cases"][0],
+        )
+        sidecar_candidate = module.candidate_from_nova_agent_log_entry(
+            nova_agent_gold_house_option_log_entry()
+        )
+
+        self.assertIsNotNone(gate_candidate)
+        self.assertIsNotNone(sidecar_candidate)
+        ordered = sorted([gate_candidate, sidecar_candidate], key=module._candidate_sort_key)
+
+        self.assertEqual(ordered[0]["source_kind"], "nova_agent_sidecar_request_response")
+        self.assertEqual(ordered[0]["case_hint"], "prompt_shaped_house")
+        self.assertEqual(ordered[1]["source_kind"], "agents_sdk_request_response_log_gate")
+
     def test_cli_writes_candidate_queue(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             root = pathlib.Path(tmpdir)

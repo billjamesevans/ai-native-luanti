@@ -1891,11 +1891,11 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
 def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
     if candidate.get("ready_for_adapter_contract_eval") is True:
         return 0
-    if candidate.get("source_kind") == REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND:
-        return 1
-    if isinstance(candidate.get("adapter_contract_resolution"), dict):
-        return 2
     if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
+        return 1
+    if candidate.get("source_kind") == REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND:
+        return 2
+    if isinstance(candidate.get("adapter_contract_resolution"), dict):
         return 3
     expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
     selected = expected.get("selected_candidate_id")
