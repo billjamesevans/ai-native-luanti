@@ -2441,7 +2441,7 @@ local function build_count_for(context)
 	return context.build_count or 1
 end
 
-local function bounded_shell_writes(width, depth, height, limit)
+function plugin._bounded_shell_writes(width, depth, height, limit)
 	width = math.max(1, math.floor(width or 1))
 	depth = math.max(1, math.floor(depth or 1))
 	height = math.max(1, math.floor(height or 1))
@@ -2460,7 +2460,7 @@ local function bounded_shell_writes(width, depth, height, limit)
 		limit - floor_writes)
 end
 
-local function bounded_landmark_writes(width, depth, height, limit)
+function plugin._bounded_landmark_writes(width, depth, height, limit)
 	width = math.max(1, math.floor(width or 1))
 	depth = math.max(1, math.floor(depth or 1))
 	height = math.max(1, math.floor(height or 1))
@@ -2620,7 +2620,7 @@ local function build_options_for(name, context, task_id)
 		end
 		options.max_node_writes_per_step = options.max_node_writes_per_step
 			or math.min(
-				bounded_shell_writes(options.width, options.depth, options.height,
+				plugin._bounded_shell_writes(options.width, options.depth, options.height,
 					settings.max_lights),
 				settings.max_lights)
 	elseif kind == "landmark" then
@@ -2630,7 +2630,7 @@ local function build_options_for(name, context, task_id)
 		options.material_node = options.material_node or settings.landmark_node
 		options.max_node_writes_per_step = options.max_node_writes_per_step
 			or math.min(
-				bounded_landmark_writes(options.width, options.depth, options.height,
+				plugin._bounded_landmark_writes(options.width, options.depth, options.height,
 					settings.max_lights),
 				settings.max_lights)
 	else
@@ -2686,8 +2686,8 @@ local function parse_build_options(raw_prompt, context)
 			return nil, "invalid_build_dimensions"
 		end
 		local planned_writes = kind == "landmark"
-			and bounded_landmark_writes(width, depth, height, settings.max_lights)
-			or bounded_shell_writes(width, depth, height, settings.max_lights)
+			and plugin._bounded_landmark_writes(width, depth, height, settings.max_lights)
+			or plugin._bounded_shell_writes(width, depth, height, settings.max_lights)
 		if planned_writes > settings.max_lights then
 			return nil, "build_shape_out_of_bounds"
 		end
@@ -3008,11 +3008,11 @@ function plugin._planned_feedback_writes_for(context)
 		return build_count_for(context)
 	end
 	if kind == "house" or kind == "cabin" then
-		return bounded_shell_writes(build_width_for(context), build_depth_for(context),
+		return plugin._bounded_shell_writes(build_width_for(context), build_depth_for(context),
 			build_height_for(context), settings.max_lights)
 	end
 	if kind == "landmark" then
-		return bounded_landmark_writes(build_width_for(context), build_depth_for(context),
+		return plugin._bounded_landmark_writes(build_width_for(context), build_depth_for(context),
 			build_height_for(context), settings.max_lights)
 	end
 	return 1
@@ -3839,7 +3839,7 @@ local function append_generated_agentic_build_candidate(candidates, name,
 		if not width or not depth or not height then
 			return nil, "generated_build_dimensions_missing"
 		end
-		if bounded_shell_writes(width, depth, height, settings.max_lights)
+		if plugin._bounded_shell_writes(width, depth, height, settings.max_lights)
 				> settings.max_lights then
 			return nil, "generated_build_shape_out_of_bounds"
 		end
@@ -3853,7 +3853,7 @@ local function append_generated_agentic_build_candidate(candidates, name,
 		if not width or not depth or not height then
 			return nil, "generated_build_dimensions_missing"
 		end
-		if bounded_landmark_writes(width, depth, height, settings.max_lights)
+		if plugin._bounded_landmark_writes(width, depth, height, settings.max_lights)
 				> settings.max_lights then
 			return nil, "generated_build_shape_out_of_bounds"
 		end
