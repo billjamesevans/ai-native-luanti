@@ -3656,25 +3656,47 @@ local function parse_build_options(raw_prompt, context)
 	return parsed, nil
 end
 
+function plugin._build_edit_prompt_has_kind(lower_prompt)
+	return lower_prompt:find("marker", 1, true) ~= nil
+		or lower_prompt:find("platform", 1, true) ~= nil
+		or lower_prompt:find("wall", 1, true) ~= nil
+		or lower_prompt:find("fire", 1, true) ~= nil
+		or lower_prompt:find("house", 1, true) ~= nil
+		or lower_prompt:find("home", 1, true) ~= nil
+		or lower_prompt:find("cabin", 1, true) ~= nil
+		or lower_prompt:find("hut", 1, true) ~= nil
+		or lower_prompt:find("landmark", 1, true) ~= nil
+		or lower_prompt:find("monument", 1, true) ~= nil
+		or lower_prompt:find("statue", 1, true) ~= nil
+		or lower_prompt:find("path", 1, true) ~= nil
+		or lower_prompt:find("trail", 1, true) ~= nil
+		or lower_prompt:find("road", 1, true) ~= nil
+end
+
+function plugin._build_edit_dimension_fallback_kind(context)
+	local kind = context and context.build_kind
+	if kind == "platform" or kind == "wall" or kind == "house"
+			or kind == "cabin" or kind == "landmark" or kind == "path" then
+		return kind
+	end
+	return "platform"
+end
+
 local function parse_build_edit_options(raw_prompt, context)
 	local lower = raw_prompt:lower()
 	local has_shape = raw_prompt:match("[Ww][Ii][Dd][Tt][Hh]%s+([%-%d]+)")
 		or raw_prompt:match("[Dd][Ee][Pp][Tt][Hh]%s+([%-%d]+)")
 		or raw_prompt:match("[Hh][Ee][Ii][Gg][Hh][Tt]%s+([%-%d]+)")
+		or raw_prompt:match("[Ll][Ee][Nn][Gg][Tt][Hh]%s+([%-%d]+)")
 		or raw_prompt:match("%d+%s*[Xx]%s*%d+")
-	if not lower:find("marker", 1, true)
-			and not lower:find("platform", 1, true)
-			and not lower:find("wall", 1, true)
-			and not lower:find("fire", 1, true)
-			and not lower:find("tnt", 1, true)
-			and not has_shape then
+	local has_build_kind = plugin._build_edit_prompt_has_kind(lower)
+	if not has_build_kind and not has_shape then
 		return nil, "no_plan_edit_parameters"
 	end
 	local prompt = raw_prompt
-	if has_shape and not lower:find("platform", 1, true)
-			and not lower:find("wall", 1, true)
-			and not lower:find("marker", 1, true) then
-		prompt = raw_prompt .. " platform"
+	if has_shape and not has_build_kind then
+		prompt = raw_prompt .. " "
+			.. plugin._build_edit_dimension_fallback_kind(context)
 	end
 	return parse_build_options(prompt, context)
 end
@@ -7055,6 +7077,7 @@ local function update_build_pending_plan(name, pending, raw_prompt)
 	return public_reply(name, "edit_plan", "success",
 		"Pending build plan updated without mutation.", {
 			surface_id = "builder",
+			no_world_mutation = true,
 			approval_id = pending.approval_id,
 			pending_action = pending.action,
 			pending_approval = compact_pending_approval(pending),
@@ -7114,6 +7137,7 @@ local function update_repair_pending_plan(name, pending, raw_prompt)
 	return public_reply(name, "edit_plan", "success",
 		"Pending repair plan updated without mutation.", {
 			surface_id = "repair",
+			no_world_mutation = true,
 			approval_id = pending.approval_id,
 			pending_action = pending.action,
 			pending_approval = compact_pending_approval(pending),
@@ -7146,6 +7170,282 @@ local function handle_edit_pending_plan(name, raw_prompt)
 			approval_id = pending.approval_id,
 			pending_action = pending.action,
 		})
+end
+
+function plugin._player_loop.natural_edit_has_trigger(prompt)
+	return prompt:find("make it", 1, true) ~= nil
+		or prompt:find("make this", 1, true) ~= nil
+		or prompt:find("change it", 1, true) ~= nil
+		or prompt:find("change this", 1, true) ~= nil
+		or prompt:find("use ", 1, true) ~= nil
+		or prompt:find("instead", 1, true) ~= nil
+		or prompt:find("wider", 1, true) ~= nil
+		or prompt:find("narrower", 1, true) ~= nil
+		or prompt:find("deeper", 1, true) ~= nil
+		or prompt:find("longer", 1, true) ~= nil
+		or prompt:find("shorter", 1, true) ~= nil
+		or prompt:find("taller", 1, true) ~= nil
+		or prompt:find("higher", 1, true) ~= nil
+		or prompt:find("bigger", 1, true) ~= nil
+		or prompt:find("larger", 1, true) ~= nil
+		or prompt:find("smaller", 1, true) ~= nil
+end
+
+function plugin._player_loop.natural_edit_is_new_build_request(prompt)
+	return prompt == "build"
+		or prompt:match("^build%s+.+$") ~= nil
+		or prompt:match("^plan%s+.+$") ~= nil
+		or prompt:match("^preview%s+.+$") ~= nil
+		or prompt:match("^repair%s+.+$") ~= nil
+		or prompt:match("^fix%s+.+$") ~= nil
+		or prompt:match("^import%s+.+$") ~= nil
+		or prompt:match("^follow%s*.*$") ~= nil
+		or prompt:match("^light%s+.+$") ~= nil
+end
+
+function plugin._player_loop.clamp_build_dimension(value)
+	value = math.floor(tonumber(value) or 1)
+	if value < 1 then
+		return 1
+	end
+	return value
+end
+
+function plugin._player_loop.adjusted_build_dimension(value, delta)
+	return plugin._player_loop.clamp_build_dimension((tonumber(value) or 1) + delta)
+end
+
+function plugin._player_loop.natural_edit_explicit_width(prompt)
+	return parse_named_build_int(prompt, "width")
+		or parse_build_positive_int(prompt:match("([%-%d]+)%s+wide"))
+		or parse_named_build_int(prompt, "wide")
+end
+
+function plugin._player_loop.natural_edit_explicit_depth(prompt)
+	return parse_named_build_int(prompt, "depth")
+		or parse_named_build_int(prompt, "deep")
+		or parse_build_positive_int(prompt:match("([%-%d]+)%s+deep"))
+end
+
+function plugin._player_loop.natural_edit_explicit_height(prompt)
+	return parse_named_build_int(prompt, "height")
+		or parse_build_positive_int(prompt:match("([%-%d]+)%s+high"))
+		or parse_named_build_int(prompt, "high")
+		or parse_build_positive_int(prompt:match("([%-%d]+)%s+tall"))
+		or parse_named_build_int(prompt, "tall")
+end
+
+function plugin._player_loop.natural_edit_explicit_length(prompt)
+	return parse_named_build_int(prompt, "length")
+		or parse_build_positive_int(prompt:match("([%-%d]+)%s+long"))
+		or parse_named_build_int(prompt, "long")
+end
+
+function plugin._player_loop.natural_pending_build_edit_prompt(name, raw_prompt, prompt)
+	local pending = player_pending_approvals[name]
+	if type(pending) ~= "table" or pending.action ~= "build" then
+		return nil
+	end
+	prompt = (prompt or raw_prompt or ""):lower():trim()
+	if prompt == "" or plugin._player_loop.natural_edit_is_new_build_request(prompt)
+			or not plugin._player_loop.natural_edit_has_trigger(prompt) then
+		return nil
+	end
+
+	local kind = pending.build_kind
+		or (pending.context and pending.context.build_kind)
+		or "marker"
+	local width = pending.build_width or (pending.context and pending.context.build_width)
+	local depth = pending.build_depth or (pending.context and pending.context.build_depth)
+	local height = pending.build_height or (pending.context and pending.context.build_height)
+	local count = pending.build_count or (pending.context and pending.context.build_count)
+	local length = pending.build_length or (pending.context and pending.context.build_length)
+		or count
+	local material_name = parse_build_material_name(prompt)
+	local changed = false
+
+	local x_first, x_second = prompt:match("(%d+)%s*x%s*(%d+)")
+	if x_first and x_second then
+		if kind == "wall" then
+			width = parse_build_positive_int(x_first)
+			height = parse_build_positive_int(x_second)
+		elseif kind == "platform" or kind == "house" or kind == "cabin"
+				or kind == "landmark" then
+			width = parse_build_positive_int(x_first)
+			depth = parse_build_positive_int(x_second)
+		end
+		changed = true
+	end
+
+	local explicit_width = plugin._player_loop.natural_edit_explicit_width(prompt)
+	if explicit_width then
+		width = explicit_width
+		changed = true
+	end
+	local explicit_depth = plugin._player_loop.natural_edit_explicit_depth(prompt)
+	if explicit_depth then
+		depth = explicit_depth
+		changed = true
+	end
+	local explicit_height = plugin._player_loop.natural_edit_explicit_height(prompt)
+	if explicit_height then
+		height = explicit_height
+		changed = true
+	end
+	local explicit_length = plugin._player_loop.natural_edit_explicit_length(prompt)
+	if explicit_length then
+		length = explicit_length
+		count = explicit_length
+		changed = true
+	end
+
+	if prompt:find("wider", 1, true) then
+		width = plugin._player_loop.adjusted_build_dimension(
+			width or build_width_for(pending.context), 1)
+		changed = true
+	end
+	if prompt:find("narrower", 1, true) then
+		width = plugin._player_loop.adjusted_build_dimension(
+			width or build_width_for(pending.context), -1)
+		changed = true
+	end
+	if prompt:find("deeper", 1, true) then
+		if kind == "path" then
+			length = plugin._player_loop.adjusted_build_dimension(
+				length or plugin._build_length_for(pending.context), 1)
+			count = length
+		else
+			depth = plugin._player_loop.adjusted_build_dimension(
+				depth or build_depth_for(pending.context), 1)
+		end
+		changed = true
+	end
+	if prompt:find("longer", 1, true) then
+		if kind == "path" then
+			length = plugin._player_loop.adjusted_build_dimension(
+				length or plugin._build_length_for(pending.context), 1)
+			count = length
+		elseif kind == "wall" then
+			width = plugin._player_loop.adjusted_build_dimension(
+				width or build_width_for(pending.context), 1)
+		else
+			depth = plugin._player_loop.adjusted_build_dimension(
+				depth or build_depth_for(pending.context), 1)
+		end
+		changed = true
+	end
+	if prompt:find("taller", 1, true) or prompt:find("higher", 1, true) then
+		height = plugin._player_loop.adjusted_build_dimension(
+			height or build_height_for(pending.context), 1)
+		changed = true
+	end
+	if prompt:find("shorter", 1, true) then
+		if kind == "path" then
+			length = plugin._player_loop.adjusted_build_dimension(
+				length or plugin._build_length_for(pending.context), -1)
+			count = length
+		else
+			height = plugin._player_loop.adjusted_build_dimension(
+				height or build_height_for(pending.context), -1)
+		end
+		changed = true
+	end
+	if prompt:find("bigger", 1, true) or prompt:find("larger", 1, true) then
+		if kind == "fire" then
+			count = plugin._player_loop.adjusted_build_dimension(
+				count or build_count_for(pending.context), 1)
+		elseif kind == "path" then
+			length = plugin._player_loop.adjusted_build_dimension(
+				length or plugin._build_length_for(pending.context), 1)
+			count = length
+		elseif kind == "wall" then
+			width = plugin._player_loop.adjusted_build_dimension(
+				width or build_width_for(pending.context), 1)
+			height = plugin._player_loop.adjusted_build_dimension(
+				height or build_height_for(pending.context), 1)
+		elseif kind == "platform" then
+			width = plugin._player_loop.adjusted_build_dimension(
+				width or build_width_for(pending.context), 1)
+			depth = plugin._player_loop.adjusted_build_dimension(
+				depth or build_depth_for(pending.context), 1)
+		elseif kind == "house" or kind == "cabin" or kind == "landmark" then
+			width = plugin._player_loop.adjusted_build_dimension(
+				width or build_width_for(pending.context), 1)
+			depth = plugin._player_loop.adjusted_build_dimension(
+				depth or build_depth_for(pending.context), 1)
+			height = plugin._player_loop.adjusted_build_dimension(
+				height or build_height_for(pending.context), 1)
+		end
+		changed = true
+	end
+	if prompt:find("smaller", 1, true) then
+		if kind == "fire" then
+			count = plugin._player_loop.adjusted_build_dimension(
+				count or build_count_for(pending.context), -1)
+		elseif kind == "path" then
+			length = plugin._player_loop.adjusted_build_dimension(
+				length or plugin._build_length_for(pending.context), -1)
+			count = length
+		elseif kind == "wall" then
+			width = plugin._player_loop.adjusted_build_dimension(
+				width or build_width_for(pending.context), -1)
+			height = plugin._player_loop.adjusted_build_dimension(
+				height or build_height_for(pending.context), -1)
+		elseif kind == "platform" then
+			width = plugin._player_loop.adjusted_build_dimension(
+				width or build_width_for(pending.context), -1)
+			depth = plugin._player_loop.adjusted_build_dimension(
+				depth or build_depth_for(pending.context), -1)
+		elseif kind == "house" or kind == "cabin" or kind == "landmark" then
+			width = plugin._player_loop.adjusted_build_dimension(
+				width or build_width_for(pending.context), -1)
+			depth = plugin._player_loop.adjusted_build_dimension(
+				depth or build_depth_for(pending.context), -1)
+			height = plugin._player_loop.adjusted_build_dimension(
+				height or build_height_for(pending.context), -1)
+		end
+		changed = true
+	end
+
+	if material_name then
+		changed = true
+	end
+	if not changed then
+		return nil
+	end
+
+	local parts = { kind }
+	if material_name then
+		append(parts, material_name)
+	end
+	if kind == "platform" then
+		append(parts, "width "
+			.. tostring(plugin._player_loop.clamp_build_dimension(width or 2)))
+		append(parts, "depth "
+			.. tostring(plugin._player_loop.clamp_build_dimension(depth or 2)))
+	elseif kind == "wall" then
+		append(parts, "width "
+			.. tostring(plugin._player_loop.clamp_build_dimension(width or 4)))
+		append(parts, "height "
+			.. tostring(plugin._player_loop.clamp_build_dimension(height or 3)))
+	elseif kind == "house" or kind == "cabin" or kind == "landmark" then
+		append(parts, "width "
+			.. tostring(plugin._player_loop.clamp_build_dimension(width or 3)))
+		append(parts, "depth "
+			.. tostring(plugin._player_loop.clamp_build_dimension(depth or 2)))
+		append(parts, "height "
+			.. tostring(plugin._player_loop.clamp_build_dimension(height or 3)))
+	elseif kind == "path" then
+		append(parts, "length "
+			.. tostring(plugin._player_loop.clamp_build_dimension(
+				length or count or 8)))
+	elseif kind == "fire" then
+		append(parts, tostring(plugin._player_loop.clamp_build_dimension(count or 1))
+			.. " fire")
+	elseif kind == "marker" then
+		append(parts, "marker")
+	end
+	return table.concat(parts, " ")
 end
 
 local function handle_discard_approval(name, raw_prompt)
@@ -7519,6 +7819,12 @@ function plugin.handle_command(name, param, context)
 			or prompt:match("^edit%s+build%s+plan%s+.+$")
 			or prompt:match("^edit%s+repair%s+plan%s+.+$") then
 		return handle_edit_pending_plan(name, raw_prompt)
+	end
+	local natural_edit_prompt =
+		plugin._player_loop.natural_pending_build_edit_prompt(
+			name, raw_prompt, prompt)
+	if natural_edit_prompt then
+		return handle_edit_pending_plan(name, natural_edit_prompt)
 	end
 	local requested_task_id = raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+[Ss][Tt][Aa][Tt][Uu][Ss]%s+(.+)$")
 		or raw_prompt:match("^[Tt][Aa][Ss][Kk]%s+(.+)$")

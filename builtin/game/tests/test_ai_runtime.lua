@@ -4289,6 +4289,85 @@ assert(natural_review_state.loop.recent_turns[3].source == "natural_chat")
 assert(natural_review_state.loop.recent_turns[4].role == "assistant")
 assert(natural_review_state.loop.recent_turns[4].source == "natural_chat")
 
+local natural_edit_pos = test_pos(4120)
+set_test_node(natural_edit_pos, { name = "air" })
+local edit_seed_handled, natural_edit_seed =
+	core.ai_agent_plugin.handle_natural_chat_message(
+		"NaturalEdit", "Nova, build platform width 2 depth 1", {
+			pos = natural_edit_pos,
+			world_id = "natural-edit-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+			suppress_chat_send = true,
+		})
+assert(edit_seed_handled == true)
+assert(natural_edit_seed.ok == true)
+assert(natural_edit_seed.action == "build")
+assert(natural_edit_seed.status == "pending_approval")
+assert(natural_edit_seed.build_kind == "platform")
+assert(natural_edit_seed.build_width == 2)
+assert(natural_edit_seed.build_depth == 1)
+assert(natural_edit_seed.planned_node_writes == 2)
+local natural_edit_approval_id = natural_edit_seed.approval_id
+assert(natural_edit_approval_id ~= nil)
+assert(get_test_node(natural_edit_pos).name == "air")
+
+local wider_handled, natural_wider = core.ai_agent_plugin.handle_natural_chat_message(
+	"NaturalEdit", "Nova, make it wider", {
+		suppress_chat_send = true,
+	})
+assert(wider_handled == true)
+assert(natural_wider.ok == true)
+assert(natural_wider.action == "edit_plan")
+assert(natural_wider.status == "success")
+assert(natural_wider.no_world_mutation == true)
+assert(natural_wider.approval_id == natural_edit_approval_id)
+assert(natural_wider.build_kind == "platform")
+assert(natural_wider.build_width == 3)
+assert(natural_wider.build_depth == 1)
+assert(natural_wider.planned_node_writes == 3)
+assert(get_test_node(natural_edit_pos).name == "air")
+local natural_wider_trace =
+	core.ai_agent_plugin.latest_player_request_trace("NaturalEdit")
+assert(natural_wider_trace.public_prompt == "make it wider")
+assert(natural_wider_trace.action == "edit_plan")
+assert(natural_wider_trace.route == "natural_chat_review")
+assert(natural_wider_trace.response.status == "success")
+assert(natural_wider_trace.response.action == "edit_plan")
+assert(natural_wider_trace.response.no_world_mutation == true)
+assert(natural_wider_trace.response.approval_id == natural_edit_approval_id)
+assert(natural_wider_trace.response.build_width == 3)
+assert(natural_wider_trace.response.build_depth == 1)
+
+local material_handled, natural_material =
+	core.ai_agent_plugin.handle_natural_chat_message(
+		"NaturalEdit", "Nova, use tnt instead", {
+			suppress_chat_send = true,
+		})
+assert(material_handled == true)
+assert(natural_material.ok == true)
+assert(natural_material.action == "edit_plan")
+assert(natural_material.status == "success")
+assert(natural_material.no_world_mutation == true)
+assert(natural_material.approval_id == natural_edit_approval_id)
+assert(natural_material.build_kind == "platform")
+assert(natural_material.build_width == 3)
+assert(natural_material.build_depth == 1)
+assert(natural_material.build_material_name == "tnt")
+assert(natural_material.build_material_node == "ai_runtime_test:tnt")
+assert(natural_material.planned_node_writes == 3)
+assert(get_test_node(natural_edit_pos).name == "air")
+local natural_material_trace =
+	core.ai_agent_plugin.latest_player_request_trace("NaturalEdit")
+assert(natural_material_trace.public_prompt == "use tnt instead")
+assert(natural_material_trace.action == "edit_plan")
+assert(natural_material_trace.route == "natural_chat_review")
+assert(natural_material_trace.response.status == "success")
+assert(natural_material_trace.response.action == "edit_plan")
+assert(natural_material_trace.response.no_world_mutation == true)
+assert(natural_material_trace.response.build_material_name == "tnt")
+assert(natural_material_trace.response.build_material_node == "ai_runtime_test:tnt")
+
 local ignored = core.ai_agent_plugin.handle_natural_chat_message(
 	"NaturalChat", "I saw a nova star", {
 		suppress_chat_send = true,
