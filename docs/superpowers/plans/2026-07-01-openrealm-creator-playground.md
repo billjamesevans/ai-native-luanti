@@ -17,6 +17,7 @@
 - The OpenRealm Advantage Kit is now the product/architecture library for the transformation: brand boards, Nova architecture diagrams, Creator Studio mockups, deterministic prompt-to-plan tooling, schemas, generated examples, and a Luanti creator prototype live under `openrealm_advantage_kit/`.
 - The Advantage Kit is now verification-gated: `util/openrealm_advantage_kit_verify.py` checks the canonical brand assets, safety manifest, schema, docs, private-content boundary, optional kit tests, optional Studio JS syntax, and is included in the alpha release gate and PR checklist.
 - Task 2 is complete in current runtime tests: `TestAIRuntime` enforces strict fire-only intent, TNT wall material preservation, approval-gated build plans, request/response diagnostics, and rollback-backed execution.
+- Task 4 is complete: `games/openrealm_demo` now provides the public-safe Luminara profile skeleton, tutorial prompt mod, and verified local server startup on UDP `30002`.
 - The next behavior-expansion track is to move additional backlog prompts from documented expectations into enforced runtime cases, starting with player-like multi-turn creator interaction instead of one-shot slash-command planning.
 
 ## File Structure
@@ -239,7 +240,7 @@ git commit -m "Add OpenRealm golden prompt quality gate"
 - Create: `games/openrealm_demo/mods/openrealm_tutorial/init.lua`
 - Modify: `.gitignore`
 
-- [ ] **Step 1: Create the profile skeleton**
+- [x] **Step 1: Create the profile skeleton**
 
 Create `games/openrealm_demo/game.conf`:
 
@@ -249,7 +250,7 @@ description = Luminara creator playground for Nova prompt-preview-approval-rollb
 author = OpenRealm contributors
 ```
 
-- [ ] **Step 2: Add profile rules**
+- [x] **Step 2: Add profile rules**
 
 Create `games/openrealm_demo/README.md` with these rules:
 
@@ -261,7 +262,7 @@ family-server worlds, proprietary assets, copied Minecraft assets, or local
 credentials.
 ```
 
-- [ ] **Step 3: Add a tiny tutorial mod**
+- [x] **Step 3: Add a tiny tutorial mod**
 
 Create `games/openrealm_demo/mods/openrealm_tutorial/init.lua`:
 
@@ -273,15 +274,19 @@ core.register_on_joinplayer(function(player)
 end)
 ```
 
-- [ ] **Step 4: Verify profile discovery**
+- [x] **Step 4: Verify profile discovery**
 
 Run:
 
 ```bash
-bin/luantiserver --gameid openrealm_demo --worldname openrealm_smoke --terminal --go
+mkdir -p worlds/openrealm_smoke
+printf 'gameid = openrealm_demo\nbackend = sqlite3\nplayer_backend = sqlite3\nauth_backend = sqlite3\n' > worlds/openrealm_smoke/world.mt
+bin/luantiserver --gameid openrealm_demo --worldname openrealm_smoke --terminal --port 30002
 ```
 
-Expected: the server starts with gameid `openrealm_demo`. Stop it after startup.
+Expected: the server starts with gameid `openrealm_demo` and binds UDP `30002`.
+Stop it after startup. The `worlds/openrealm_smoke` directory is ignored local
+smoke-test state.
 
 - [ ] **Step 5: Commit**
 
