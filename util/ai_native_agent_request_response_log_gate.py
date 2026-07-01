@@ -20,11 +20,18 @@ ACCEPTED_TOOL_DECISION_SOURCES = {
     "agents_sdk_generated_tool_completion",
     "local_agent_tool_contract_fast_path",
 }
+NOVA_AGENT_ACCEPTED_TOOL_DECISION_SOURCES = {
+    "agents_sdk_submit_nova_plan_tool",
+}
 BASE_REQUIRED_TOOLS = {
     "inspect_build_site_context",
     "recall_build_prompt_memory",
     "select_build_option",
     "plan_build_actions",
+}
+NOVA_AGENT_REQUIRED_TOOLS = {
+    "resolve_build_plan",
+    "submit_nova_plan",
 }
 FORBIDDEN_RESPONSE_KEYS = {
     "api_key",
@@ -89,6 +96,30 @@ CASE_DEFS = (
         "required_tools": sorted(BASE_REQUIRED_TOOLS | {"propose_build_option"}),
     },
 )
+NOVA_AGENT_CASE_DEFS = (
+    {
+        "case_id": "nova_agent_fire_only_strict",
+        "prompt": "build me a fire and only a fire",
+        "expected_contract_kind": "single_fire",
+        "expected_action_type": "place_node",
+        "expected_material": "fire",
+        "expected_action_count": 1,
+        "expected_planned_node_writes": 1,
+        "forbidden_extra_structure": True,
+        "required_tools": sorted(NOVA_AGENT_REQUIRED_TOOLS),
+    },
+    {
+        "case_id": "nova_agent_tnt_wall",
+        "prompt": "build a wall of tnt",
+        "expected_contract_kind": "tnt_wall",
+        "expected_action_type": "fill_box",
+        "expected_material": "tnt",
+        "expected_action_count": 1,
+        "minimum_planned_node_writes": 1,
+        "danger_refusal_allowed": False,
+        "required_tools": sorted(NOVA_AGENT_REQUIRED_TOOLS),
+    },
+)
 
 
 def utc_now() -> str:
@@ -129,6 +160,18 @@ def has_forbidden_key(value: Any) -> bool:
 def has_private_content(value: Any) -> bool:
     raw = json.dumps(value, sort_keys=True) if not isinstance(value, str) else value
     return any(pattern.search(raw) for pattern in PRIVATE_PATTERNS)
+
+
+def has_direct_world_mutation_power(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if key == "direct_world_mutation" and child is True:
+                return True
+            if has_direct_world_mutation_power(child):
+                return True
+    if isinstance(value, list):
+        return any(has_direct_world_mutation_power(child) for child in value)
+    return False
 
 
 def _safe_context(value: Any) -> dict[str, Any]:
@@ -236,6 +279,79 @@ def missing_required_tool_calls(body: dict[str, Any]) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str)]
+
+
+def action_summaries(value: Any) -> list[dict[str, Any]]:
+    if not isinstance(value, list):
+        return []
+    actions: list[dict[str, Any]] = []
+    for action in value:
+        if not isinstance(action, dict):
+            continue
+        summary = {
+            "type": bounded_text(action.get("type"), 80),
+            "material": bounded_text(action.get("material"), 80),
+            "size": action.get("size") if isinstance(action.get("size"), dict) else None,
+            "radius": action.get("radius"),
+            "count": action.get("count"),
+        }
+        actions.append({
+            key: item
+            for key, item in summary.items()
+            if item not in ("", None)
+        })
+        if len(actions) >= 8:
+            break
+    return actions
+
+
+def planned_node_writes_from_actions(value: Any) -> int | None:
+    if not isinstance(value, list):
+        return None
+    total = 0
+    counted = False
+    for action in value:
+        if not isinstance(action, dict):
+            continue
+        action_type = str(action.get("type") or "")
+        if action_type == "place_node":
+            try:
+                total += max(1, int(action.get("count") or 1))
+            except (TypeError, ValueError):
+                total += 1
+            counted = True
+            continue
+        if action_type in {"fill_box", "hollow_box", "clear_box"}:
+            size = action.get("size") if isinstance(action.get("size"), dict) else {}
+            try:
+                total += (
+                    max(1, int(size.get("x") or 1))
+                    * max(1, int(size.get("y") or 1))
+                    * max(1, int(size.get("z") or 1))
+                )
+            except (TypeError, ValueError):
+                total += 1
+            counted = True
+            continue
+        if action_type in {"sphere", "ring"}:
+            try:
+                radius = max(1, int(action.get("radius") or 1))
+            except (TypeError, ValueError):
+                radius = 1
+            total += radius * radius * 4
+            counted = True
+            continue
+        if action_type == "lights":
+            try:
+                total += max(1, int(action.get("count") or 1))
+            except (TypeError, ValueError):
+                total += 1
+            counted = True
+            continue
+        if action_type == "line":
+            total += 1
+            counted = True
+    return total if counted else None
 
 
 def build_action_plan(body: dict[str, Any]) -> dict[str, Any]:
@@ -366,6 +482,51 @@ def read_entries(paths: list[Path]) -> tuple[list[dict[str, Any]], list[dict[str
     return entries, violations, summary
 
 
+def read_nova_agent_entries(paths: list[Path]) -> tuple[list[dict[str, Any]], list[dict[str, str]], dict[str, int]]:
+    entries: list[dict[str, Any]] = []
+    violations: list[dict[str, str]] = []
+    summary = {"files_read": 0, "lines_read": 0, "entries_read": 0}
+    for path in paths:
+        try:
+            lines = path.read_text(encoding="utf-8").splitlines()
+        except OSError as exc:
+            violations.append({
+                "kind": "nova_agent_log_file_unreadable",
+                "details": f"{path.name}:{exc.__class__.__name__}",
+            })
+            continue
+        summary["files_read"] += 1
+        summary["lines_read"] += len(lines)
+        for line_number, raw in enumerate(lines, start=1):
+            if not raw.strip():
+                continue
+            try:
+                entry = json.loads(raw)
+            except json.JSONDecodeError:
+                violations.append({
+                    "kind": "invalid_nova_agent_jsonl",
+                    "details": f"{path.name}:{line_number}",
+                })
+                continue
+            if not isinstance(entry, dict):
+                violations.append({
+                    "kind": "invalid_nova_agent_log_entry",
+                    "details": f"{path.name}:{line_number}",
+                })
+                continue
+            if not isinstance(entry.get("prompt"), str):
+                continue
+            if has_private_content(entry) or has_forbidden_key(entry):
+                violations.append({
+                    "kind": "nova_agent_log_entry_not_public_safe",
+                    "details": f"{path.name}:{line_number}",
+                })
+                continue
+            entries.append(entry)
+    summary["entries_read"] = len(entries)
+    return entries, violations, summary
+
+
 def matching_entries(entries: list[dict[str, Any]], prompt: str) -> list[dict[str, Any]]:
     needle = normalized_prompt(prompt)
     return [
@@ -373,6 +534,23 @@ def matching_entries(entries: list[dict[str, Any]], prompt: str) -> list[dict[st
         for entry in entries
         if normalized_prompt(entry_prompt(entry)) == needle
     ]
+
+
+def matching_nova_agent_entries(entries: list[dict[str, Any]], prompt: str) -> list[dict[str, Any]]:
+    needle = normalized_prompt(prompt)
+    return [
+        entry
+        for entry in entries
+        if normalized_prompt(entry.get("prompt")) == needle
+    ]
+
+
+def tool_trace_has_ordered_subset(trace_names: list[str], required: list[str]) -> bool:
+    cursor = 0
+    for name in trace_names:
+        if cursor < len(required) and name == required[cursor]:
+            cursor += 1
+    return cursor == len(required)
 
 
 def validate_case(case_def: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -438,15 +616,157 @@ def validate_case(case_def: dict[str, Any], entries: list[dict[str, Any]]) -> di
     return case
 
 
+def safe_nova_agent_entry_summary(entry: dict[str, Any]) -> dict[str, Any]:
+    prompt_contract = entry.get("prompt_contract") if isinstance(entry.get("prompt_contract"), dict) else {}
+    trace_names = tool_trace_names(entry)
+    actions = action_summaries(entry.get("actions"))
+    return {
+        "ts": bounded_text(entry.get("ts"), 120),
+        "player": bounded_text(entry.get("player"), 80),
+        "prompt": bounded_text(entry.get("prompt"), 1200),
+        "response": {
+            "ok": entry.get("ok") is True,
+            "source": bounded_text(entry.get("source"), 120),
+            "agent_runtime": bounded_text(entry.get("agent_runtime"), 120),
+            "agent_model_called": entry.get("agent_model_called"),
+            "agent_model_status": bounded_text(entry.get("agent_model_status"), 120),
+            "fallback_reason": bounded_text(entry.get("fallback_reason"), 120),
+            "tool_decision_source": bounded_text(entry.get("tool_decision_source"), 120),
+            "required_tool_calls": required_tool_calls(entry),
+            "missing_required_tool_calls": missing_required_tool_calls(entry),
+            "required_tool_calls_satisfied": entry.get("required_tool_calls_satisfied"),
+            "tool_trace_names": trace_names,
+            "label": bounded_text(entry.get("label"), 160),
+            "selected_option_id": bounded_text(entry.get("selected_option_id"), 160),
+            "build_kind": bounded_text(entry.get("build_kind"), 120),
+            "build_material_name": bounded_text(entry.get("build_material_name"), 120),
+            "planned_node_writes": entry.get("planned_node_writes"),
+            "computed_node_writes": planned_node_writes_from_actions(entry.get("actions")),
+            "contract_kind": bounded_text(prompt_contract.get("contract_kind"), 120),
+            "contract_satisfied": entry.get("contract_satisfied"),
+            "action_count": len(entry.get("actions")) if isinstance(entry.get("actions"), list) else 0,
+            "actions": actions,
+        },
+    }
+
+
+def validate_nova_agent_case(case_def: dict[str, Any], entries: list[dict[str, Any]]) -> dict[str, Any]:
+    prompt = str(case_def["prompt"])
+    matches = matching_nova_agent_entries(entries, prompt)
+    case: dict[str, Any] = {
+        "case_id": case_def["case_id"],
+        "prompt": prompt,
+        "status": "fail",
+        "matches": len(matches),
+        "observed": {},
+        "failures": [],
+    }
+    if not matches:
+        case["failures"].append("matching_nova_agent_log_missing")
+        return case
+
+    entry = matches[-1]
+    case["observed"] = safe_nova_agent_entry_summary(entry)
+    required = set(required_tool_calls(entry))
+    missing = missing_required_tool_calls(entry)
+    trace_names = tool_trace_names(entry)
+    trace = set(trace_names)
+    actions = entry.get("actions") if isinstance(entry.get("actions"), list) else []
+    first_action = actions[0] if actions and isinstance(actions[0], dict) else {}
+    prompt_contract = entry.get("prompt_contract") if isinstance(entry.get("prompt_contract"), dict) else {}
+    planned_writes = entry.get("planned_node_writes")
+    computed_writes = planned_node_writes_from_actions(actions)
+    text = " ".join(
+        bounded_text(value, 1000)
+        for value in (
+            entry.get("message"),
+            entry.get("decision_reason"),
+            entry.get("fallback_reason"),
+        )
+        if value
+    )
+
+    if entry.get("ok") is not True:
+        case["failures"].append("nova_agent_response_not_ok")
+    if entry.get("agent_runtime") != "openai-agents-sdk":
+        case["failures"].append("agent_runtime_not_agents_sdk")
+    if entry.get("agent_model_called") is not True:
+        case["failures"].append("agent_model_not_called")
+    if entry.get("source") != "agents_sdk_tool_plan":
+        case["failures"].append("nova_agent_source_not_live_tool_plan")
+    if entry.get("tool_decision_source") not in NOVA_AGENT_ACCEPTED_TOOL_DECISION_SOURCES:
+        case["failures"].append("tool_decision_source_not_accepted")
+    if entry.get("required_tool_calls_satisfied") is not True:
+        case["failures"].append("required_tool_calls_not_satisfied")
+    if missing:
+        case["failures"].append("missing_required_tool_calls_present")
+    expected_tools = set(case_def.get("required_tools") or [])
+    if not expected_tools.issubset(required):
+        case["failures"].append("required_tool_metadata_incomplete")
+    if not expected_tools.issubset(trace):
+        case["failures"].append("tool_trace_incomplete")
+    if not tool_trace_has_ordered_subset(trace_names, ["resolve_build_plan", "submit_nova_plan"]):
+        case["failures"].append("tool_trace_order_invalid")
+    expected_contract = case_def.get("expected_contract_kind")
+    if isinstance(expected_contract, str) and prompt_contract.get("contract_kind") != expected_contract:
+        case["failures"].append("prompt_contract_kind_mismatch")
+    if entry.get("contract_satisfied") is not True:
+        case["failures"].append("prompt_contract_not_satisfied")
+    expected_count = case_def.get("expected_action_count")
+    if isinstance(expected_count, int) and len(actions) != expected_count:
+        case["failures"].append("action_count_mismatch")
+    if case_def.get("forbidden_extra_structure") and len(actions) != 1:
+        case["failures"].append("extra_structure_detected")
+    expected_type = case_def.get("expected_action_type")
+    if isinstance(expected_type, str) and first_action.get("type") != expected_type:
+        case["failures"].append("action_type_mismatch")
+    expected_material = case_def.get("expected_material")
+    if isinstance(expected_material, str) and first_action.get("material") != expected_material:
+        case["failures"].append("action_material_mismatch")
+    expected_writes = case_def.get("expected_planned_node_writes")
+    if isinstance(expected_writes, int) and planned_writes != expected_writes:
+        case["failures"].append("planned_node_writes_mismatch")
+    minimum_writes = case_def.get("minimum_planned_node_writes")
+    if isinstance(minimum_writes, int):
+        try:
+            if int(planned_writes) < minimum_writes:
+                case["failures"].append("planned_node_writes_too_low")
+        except (TypeError, ValueError):
+            case["failures"].append("planned_node_writes_missing")
+    if planned_writes is not None and computed_writes is not None:
+        try:
+            if int(planned_writes) != int(computed_writes):
+                case["failures"].append("planned_node_writes_do_not_match_actions")
+        except (TypeError, ValueError):
+            case["failures"].append("planned_node_writes_invalid")
+    if case_def.get("danger_refusal_allowed") is False and REFUSAL_PATTERN.search(text):
+        case["failures"].append("danger_refusal_detected")
+    if has_direct_world_mutation_power(entry):
+        case["failures"].append("direct_world_mutation_power_detected")
+
+    case["status"] = "fail" if case["failures"] else "pass"
+    return case
+
+
 def build_report(
     *,
-    log_paths: list[Path],
+    log_paths: list[Path] | None = None,
+    nova_agent_log_paths: list[Path] | None = None,
     generated_at: str | None = None,
     max_bytes: int = DEFAULT_MAX_BYTES,
 ) -> dict[str, Any]:
     generated_at = generated_at or utc_now()
+    log_paths = log_paths or []
+    nova_agent_log_paths = nova_agent_log_paths or []
     entries, violations, source_summary = read_entries(log_paths)
-    cases = [validate_case(case_def, entries) for case_def in CASE_DEFS]
+    nova_entries, nova_violations, nova_summary = read_nova_agent_entries(nova_agent_log_paths)
+    violations.extend(nova_violations)
+    cases = [validate_case(case_def, entries) for case_def in CASE_DEFS] if log_paths else []
+    if nova_agent_log_paths:
+        cases.extend(
+            validate_nova_agent_case(case_def, nova_entries)
+            for case_def in NOVA_AGENT_CASE_DEFS
+        )
     failures = [
         {"case_id": case["case_id"], "failures": case["failures"]}
         for case in cases
@@ -459,6 +779,9 @@ def build_report(
         "status": "pass",
         "source_summary": {
             **source_summary,
+            "nova_agent_log_files_read": nova_summary["files_read"],
+            "nova_agent_log_lines_read": nova_summary["lines_read"],
+            "nova_agent_log_entries_read": nova_summary["entries_read"],
             "case_count": len(cases),
             "cases_passed": sum(1 for case in cases if case["status"] == "pass"),
             "cases_failed": sum(1 for case in cases if case["status"] != "pass"),
@@ -504,20 +827,26 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", default=".", help="Repository root for relative log paths.")
-    parser.add_argument("--agents-sdk-log", action="append", required=True, help="Agents SDK adapter JSONL log path.")
+    parser.add_argument("--agents-sdk-log", action="append", default=[], help="Agents SDK adapter JSONL log path.")
+    parser.add_argument("--nova-agent-log", action="append", default=[], help="Nova family/proving-ground sidecar JSONL log path.")
     parser.add_argument("--output", required=True, help="Output JSON report path.")
     parser.add_argument("--generated-at", default=None)
     parser.add_argument("--max-bytes", type=int, default=DEFAULT_MAX_BYTES)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.agents_sdk_log and not args.nova_agent_log:
+        parser.error("at least one --agents-sdk-log or --nova-agent-log is required")
+    return args
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv or sys.argv[1:])
     root = resolve_path(Path.cwd(), args.root).resolve()
     log_paths = [resolve_path(root, value) for value in args.agents_sdk_log]
+    nova_agent_log_paths = [resolve_path(root, value) for value in args.nova_agent_log]
     output = resolve_path(root, args.output)
     report = build_report(
         log_paths=log_paths,
+        nova_agent_log_paths=nova_agent_log_paths,
         generated_at=args.generated_at,
         max_bytes=args.max_bytes,
     )
@@ -528,6 +857,7 @@ def main(argv: list[str] | None = None) -> int:
         "cases_passed": report["source_summary"]["cases_passed"],
         "cases_failed": report["source_summary"]["cases_failed"],
         "entries_read": report["source_summary"]["entries_read"],
+        "nova_agent_log_entries_read": report["source_summary"]["nova_agent_log_entries_read"],
     }, sort_keys=True))
     return 0 if report["status"] == "pass" else 1
 

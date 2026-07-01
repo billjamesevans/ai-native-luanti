@@ -127,6 +127,120 @@ def passing_entries() -> list[dict]:
     ]
 
 
+def nova_agent_log_entry(
+    *,
+    prompt: str,
+    label: str,
+    contract_kind: str,
+    actions: list[dict],
+    build_kind: str,
+    build_material_name: str,
+    planned_node_writes: int,
+    message: str = "Submitted through Nova tools.",
+    agent_model_called: bool = True,
+    source: str = "agents_sdk_tool_plan",
+    tool_decision_source: str = "agents_sdk_submit_nova_plan_tool",
+    required_tool_calls_satisfied: bool = True,
+    missing_required_tool_calls=None,
+) -> dict:
+    missing = list(missing_required_tool_calls or [])
+    trace_names = [
+        name
+        for name in ("resolve_build_plan", "submit_nova_plan")
+        if name not in set(missing)
+    ]
+    return {
+        "ts": "2026-07-01T11:55:12Z",
+        "player": "Eval",
+        "prompt": prompt,
+        "model": "gpt-4o-mini",
+        "agent_runtime": "openai-agents-sdk",
+        "agent_model_called": agent_model_called,
+        "agent_model_status": "success_early_submit" if agent_model_called else "skipped",
+        "fallback_reason": None,
+        "source": source,
+        "tool_decision_source": tool_decision_source,
+        "required_tool_calls": ["resolve_build_plan", "submit_nova_plan"],
+        "missing_required_tool_calls": missing,
+        "required_tool_calls_satisfied": required_tool_calls_satisfied,
+        "ok": True,
+        "label": label,
+        "message": message,
+        "selected_option_id": "reviewed_prompt_memory",
+        "build_kind": build_kind,
+        "build_material_name": build_material_name,
+        "planned_node_writes": planned_node_writes,
+        "decision_reason": "Selected reviewed prompt memory because it satisfies the prompt contract.",
+        "correction_source": "",
+        "contract_satisfied": True,
+        "prompt_contract": {
+            "intent": "build",
+            "material": build_material_name,
+            "contract_kind": contract_kind,
+            "contract_required": True,
+            "policy": "game_materials_are_allowed_when_executor_bounds_apply",
+        },
+        "reviewed_prompt_memory": {
+            "memory_available": True,
+            "case_count": 11,
+            "matched_case_id": f"promoted_{contract_kind}_abc123",
+            "match_quality": "exact",
+            "direct_world_mutation": False,
+        },
+        "build_options": [
+            {
+                "option_id": "reviewed_prompt_memory",
+                "source": "reviewed_prompt_memory",
+                "label": label,
+                "build_kind": build_kind,
+                "build_material_name": build_material_name,
+                "planned_node_writes": planned_node_writes,
+                "contract_satisfied": True,
+                "action_count": len(actions),
+            }
+        ],
+        "actions": actions,
+        "tool_trace": [{"tool_name": name} for name in trace_names],
+    }
+
+
+def passing_nova_agent_entries() -> list[dict]:
+    return [
+        nova_agent_log_entry(
+            prompt="build me a fire and only a fire",
+            label="single fire",
+            contract_kind="single_fire",
+            build_kind="place_node",
+            build_material_name="fire",
+            planned_node_writes=1,
+            actions=[
+                {
+                    "type": "place_node",
+                    "material": "fire",
+                    "offset": {"x": 0, "y": 1, "z": 0},
+                    "count": 1,
+                }
+            ],
+        ),
+        nova_agent_log_entry(
+            prompt="build a wall of tnt",
+            label="tnt wall",
+            contract_kind="tnt_wall",
+            build_kind="wall",
+            build_material_name="tnt",
+            planned_node_writes=75,
+            actions=[
+                {
+                    "type": "fill_box",
+                    "material": "tnt",
+                    "offset": {"x": 0, "y": 1, "z": 0},
+                    "size": {"x": 15, "y": 5, "z": 1},
+                }
+            ],
+        ),
+    ]
+
+
 def write_jsonl(path: pathlib.Path, entries: list[dict]) -> None:
     path.write_text(
         "".join(json.dumps(entry, sort_keys=True) + "\n" for entry in entries),
@@ -149,6 +263,7 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass", report)
         self.assertEqual(report["source_summary"]["cases_passed"], 5)
         self.assertEqual(report["source_summary"]["entries_read"], 5)
+        self.assertEqual(report["source_summary"]["nova_agent_log_entries_read"], 0)
         by_id = {case["case_id"]: case for case in report["cases"]}
         self.assertEqual(
             by_id["fire_only_strict"]["observed"]["response"]["selected_option_id"],
@@ -166,6 +281,75 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
             by_id["generated_dimensioned_wall"]["observed"]["response"]["selected_option_id"],
             "generated_dimensioned_wall",
         )
+
+    def test_accepts_nova_agent_log_as_live_proving_ground_contracts(self):
+        module = load_gate_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = pathlib.Path(tmpdir) / "nova-agent-requests.jsonl"
+            write_jsonl(log_path, passing_nova_agent_entries())
+
+            report = module.build_report(
+                nova_agent_log_paths=[log_path],
+                generated_at="2026-07-01T12:00:00Z",
+            )
+
+        self.assertEqual(report["status"], "pass", report)
+        self.assertEqual(report["source_summary"]["case_count"], 2)
+        self.assertEqual(report["source_summary"]["cases_passed"], 2)
+        self.assertEqual(report["source_summary"]["entries_read"], 0)
+        self.assertEqual(report["source_summary"]["nova_agent_log_entries_read"], 2)
+        by_id = {case["case_id"]: case for case in report["cases"]}
+        fire = by_id["nova_agent_fire_only_strict"]["observed"]["response"]
+        self.assertTrue(fire["agent_model_called"])
+        self.assertEqual(fire["tool_trace_names"], ["resolve_build_plan", "submit_nova_plan"])
+        self.assertEqual(fire["actions"][0]["type"], "place_node")
+        self.assertEqual(fire["actions"][0]["material"], "fire")
+        tnt = by_id["nova_agent_tnt_wall"]["observed"]["response"]
+        self.assertEqual(tnt["actions"][0]["type"], "fill_box")
+        self.assertEqual(tnt["actions"][0]["material"], "tnt")
+        self.assertEqual(tnt["computed_node_writes"], 75)
+
+    def test_fails_nova_agent_fire_when_model_not_called_or_extra_structure_added(self):
+        module = load_gate_module()
+        entries = passing_nova_agent_entries()
+        entries[0] = nova_agent_log_entry(
+            prompt="build me a fire and only a fire",
+            label="generic fire structure",
+            contract_kind="single_fire",
+            build_kind="house",
+            build_material_name="fire",
+            planned_node_writes=26,
+            agent_model_called=False,
+            actions=[
+                {"type": "place_node", "material": "fire", "count": 1},
+                {"type": "hollow_box", "material": "stone", "size": {"x": 5, "y": 4, "z": 5}},
+            ],
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = pathlib.Path(tmpdir) / "nova-agent-requests.jsonl"
+            write_jsonl(log_path, entries)
+
+            report = module.build_report(nova_agent_log_paths=[log_path])
+
+        self.assertEqual(report["status"], "fail")
+        fire = next(case for case in report["cases"] if case["case_id"] == "nova_agent_fire_only_strict")
+        self.assertIn("agent_model_not_called", fire["failures"])
+        self.assertIn("action_count_mismatch", fire["failures"])
+        self.assertIn("extra_structure_detected", fire["failures"])
+
+    def test_fails_nova_agent_tnt_wall_when_refused_as_real_world_danger(self):
+        module = load_gate_module()
+        entries = passing_nova_agent_entries()
+        entries[1]["message"] = "I cannot build that because TNT is dangerous in the real world."
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = pathlib.Path(tmpdir) / "nova-agent-requests.jsonl"
+            write_jsonl(log_path, entries)
+
+            report = module.build_report(nova_agent_log_paths=[log_path])
+
+        self.assertEqual(report["status"], "fail")
+        tnt = next(case for case in report["cases"] if case["case_id"] == "nova_agent_tnt_wall")
+        self.assertIn("danger_refusal_detected", tnt["failures"])
 
     def test_accepts_generated_tool_completion_source(self):
         module = load_gate_module()
@@ -324,6 +508,40 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
 
         self.assertEqual(report["artifact_kind"], "ai_native_agent_request_response_log_gate")
         self.assertEqual(summary["cases_passed"], 5)
+
+    def test_cli_accepts_nova_agent_log_only(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            log_path = root / "nova-agent-requests.jsonl"
+            output = root / "nova-log-gate.json"
+            write_jsonl(log_path, passing_nova_agent_entries())
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(GATE),
+                    "--root",
+                    str(root),
+                    "--nova-agent-log",
+                    str(log_path),
+                    "--output",
+                    str(output),
+                    "--generated-at",
+                    "2026-07-01T12:00:00Z",
+                ],
+                cwd=ROOT,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            report = json.loads(output.read_text(encoding="utf-8"))
+            summary = json.loads(completed.stdout)
+
+        self.assertEqual(report["artifact_kind"], "ai_native_agent_request_response_log_gate")
+        self.assertEqual(summary["cases_passed"], 2)
+        self.assertEqual(summary["nova_agent_log_entries_read"], 2)
 
 
 if __name__ == "__main__":
