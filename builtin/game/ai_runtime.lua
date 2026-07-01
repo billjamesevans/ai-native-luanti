@@ -687,12 +687,14 @@ local function build_model_adapter_request(prompt, options, owner)
 	}
 end
 
+local MODEL_ADAPTER_MAX_RESPONSE_SCAN_DEPTH = 12
+
 local function model_adapter_result_has_forbidden_payload(value, depth)
 	if type(value) ~= "table" then
 		return false
 	end
 	depth = depth or 0
-	if depth > 6 then
+	if depth > MODEL_ADAPTER_MAX_RESPONSE_SCAN_DEPTH then
 		return true
 	end
 	for key, child in pairs(value) do

@@ -2103,6 +2103,72 @@ local function run_model_import_gate_tests()
 		== before_gate_model_metrics.model_adapter_requests + 1)
 
 	core.queue_ai_task({
+		task_id = "runtime-gate:model-agentic-nested-context",
+		agent_id = "runtime_gate:http",
+		owner = "runtime-owner",
+		label = "allowed nested agent tool trace",
+		steps = {
+			function(ctx)
+				return core.ai_model_ops.request("agentic nested model request", {
+					agent_id = ctx.agent_id,
+					owner = ctx.owner,
+					task_id = ctx.task_id,
+					adapter = function()
+						return {
+							ok = true,
+							message = "nested agentic response",
+							adapter_name = "runtime-gate-agentic-nested",
+							elapsed_us = 26000,
+							response = {
+								agentic_execution = true,
+								tool_trace = {
+									{
+										tool_name = "inspect_build_site_context",
+										result = {
+											player_agent_loop = {
+												status = "running",
+												phase = "observing",
+												recent_turns = {
+													{
+														role = "user",
+														text = "build a fire",
+														surface_id = "builder",
+														source = "agentic_build_planner",
+													},
+												},
+											},
+										},
+									},
+								},
+								tool_decisions = {
+									build_site_context = {
+										player_agent_loop = {
+											recent_turns = {
+												{
+													role = "user",
+													text = "build a fire",
+												},
+											},
+										},
+									},
+								},
+							},
+						}
+					end,
+				})
+			end,
+		},
+	})
+	core.step_ai_tasks()
+	local nested_model_task =
+		core.get_ai_task("runtime-gate:model-agentic-nested-context")
+	assert(nested_model_task.status == "completed")
+	assert(nested_model_task.last_result.operation == "ai_model.request")
+	assert(nested_model_task.last_result.status == "success")
+	assert(nested_model_task.last_result.response.tool_trace[1]
+		.result.player_agent_loop.recent_turns[1].text == "build a fire")
+
+	core.queue_ai_task({
 		task_id = "runtime-gate:model-unsafe-payload",
 		agent_id = "runtime_gate:http",
 		owner = "runtime-owner",
