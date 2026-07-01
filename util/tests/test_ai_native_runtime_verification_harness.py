@@ -748,6 +748,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "build_count": 8,
             "build_material_name": "stone",
             "selected_candidate_id": "parsed_request",
+            "adapter_selected_candidate_id": "generated_path_platform",
+            "model_selected_candidate_id": "generated_path_platform",
+            "generated_build_option_status": "validated",
+            "generated_candidate_id": "generated_path_platform",
+            "intent_constraint_option_id": "parsed_request",
+            "intent_constraint_reason": "player_request_requires_path",
             "candidate_count": 5,
             "planned_node_writes": 8,
             "cleanup_status": "success",
@@ -789,7 +795,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "tnt_wall": ("tnt_wall", 5, 4),
             "stone_bridge": ("generated_bridge_platform", 5, 12),
             "small_cabin": ("generated_prompt_shaped_cabin", 5, 10),
-            "path_to_hill": ("parsed_request", 5, 8),
+            "path_to_hill": ("generated_path_platform", 5, 4),
             "agentic_build_planner": ("wall", 4, 4),
             "openrealm_village": (
                 "generated_openrealm_lakeside_village",
@@ -809,8 +815,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             selected_candidate, candidate_count, step_count = agentic_case_metadata[case_id]
             case["route"] = "agentic_build_planner"
             case.setdefault("selected_candidate_id", selected_candidate)
-            case["adapter_selected_candidate_id"] = case["selected_candidate_id"]
-            case["model_selected_candidate_id"] = case["selected_candidate_id"]
+            case.setdefault("adapter_selected_candidate_id", case["selected_candidate_id"])
+            case.setdefault("model_selected_candidate_id", case["adapter_selected_candidate_id"])
             case["candidate_count"] = candidate_count
             generated_openrealm = case_id in {
                 "stone_bridge",
@@ -818,23 +824,26 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "openrealm_village",
                 "player_agent_loop",
             }
-            case["adapter_tool_decision_source"] = (
+            case.setdefault(
+                "adapter_tool_decision_source",
                 "agents_sdk_generated_tool_completion"
-                if generated_openrealm else "agents_sdk_function_tool"
+                if generated_openrealm else "agents_sdk_function_tool",
             )
-            required_tools = [
-                "recall_build_prompt_memory",
-            ]
-            if generated_openrealm:
-                required_tools.append("propose_build_option")
-            required_tools.extend([
-                "select_build_option",
-                "plan_build_actions",
-            ])
-            case["adapter_required_tool_calls"] = required_tools
+            required_tools = case.get("adapter_required_tool_calls")
+            if not required_tools:
+                required_tools = [
+                    "recall_build_prompt_memory",
+                ]
+                if generated_openrealm:
+                    required_tools.append("propose_build_option")
+                required_tools.extend([
+                    "select_build_option",
+                    "plan_build_actions",
+                ])
+                case["adapter_required_tool_calls"] = required_tools
             case["adapter_missing_required_tool_calls"] = []
             case["adapter_required_tool_calls_satisfied"] = True
-            case["adapter_tool_trace_names"] = required_tools
+            case.setdefault("adapter_tool_trace_names", required_tools)
             case["adapter_build_action_plan_status"] = "ready"
             case["adapter_build_action_plan_step_count"] = step_count
             case["adapter_build_action_plan_world_mutation_authority"] = "luanti"

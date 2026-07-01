@@ -165,6 +165,8 @@ def write_probe_world(
             "    planner_mode = effective_reply.planner_mode,",
             "    selected_candidate_id = effective_reply.selected_candidate_id,",
             "    candidate_count = effective_reply.candidate_count,",
+            "    intent_constraint_option_id = effective_reply.intent_constraint_option_id,",
+            "    intent_constraint_reason = effective_reply.intent_constraint_reason,",
             "    adapter_tool_decision_source = effective_reply.adapter_tool_decision_source,",
             "    adapter_required_tool_calls = effective_reply.adapter_required_tool_calls,",
             "    adapter_missing_required_tool_calls = effective_reply.adapter_missing_required_tool_calls,",
@@ -175,6 +177,7 @@ def write_probe_world(
             "    adapter_build_action_plan_world_mutation_authority = effective_reply.adapter_build_action_plan_world_mutation_authority,",
             "    adapter_selected_candidate_id = effective_reply.adapter_selected_candidate_id,",
             "    model_selected_candidate_id = effective_reply.model_selected_candidate_id,",
+            "    adapter_rejected_model_selected_candidate_id = effective_reply.adapter_rejected_model_selected_candidate_id,",
             "    build_option_decision_source = effective_reply.build_option_decision_source,",
             "    generated_build_option_status = effective_reply.generated_build_option_status,",
             "    generated_candidate_id = effective_reply.generated_candidate_id,",
@@ -671,7 +674,8 @@ def _require_agentic_tool_case(
         raise ValueError(f"agent prompt eval {case_id} build-action plan step count is invalid")
     if not isinstance(case.get("selected_candidate_id"), str) or not case["selected_candidate_id"]:
         raise ValueError(f"agent prompt eval {case_id} selected candidate missing")
-    if case.get("adapter_selected_candidate_id") != case.get("selected_candidate_id"):
+    if case.get("adapter_selected_candidate_id") != case.get("selected_candidate_id") \
+            and case.get("intent_constraint_option_id") != case.get("selected_candidate_id"):
         raise ValueError(f"agent prompt eval {case_id} adapter-selected candidate mismatch")
     if not isinstance(case.get("model_selected_candidate_id"), str) or not case["model_selected_candidate_id"]:
         raise ValueError(f"agent prompt eval {case_id} model-selected candidate missing")
@@ -884,8 +888,13 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval path-to-hill must plan exactly eight node writes")
         if path_to_hill.get("selected_candidate_id") != "parsed_request":
             raise ValueError("agent prompt eval path-to-hill selected candidate is invalid")
-        if path_to_hill.get("generated_candidate_id") is not None:
-            raise ValueError("agent prompt eval path-to-hill must use parsed request, not generated content")
+        adapter_path_selection = path_to_hill.get("adapter_selected_candidate_id")
+        model_path_selection = path_to_hill.get("model_selected_candidate_id")
+        if (
+            (adapter_path_selection and adapter_path_selection != "parsed_request")
+            or (model_path_selection and model_path_selection != "parsed_request")
+        ) and path_to_hill.get("intent_constraint_option_id") != "parsed_request":
+            raise ValueError("agent prompt eval path-to-hill intent constraint is invalid")
         if planner.get("status") != "pass":
             raise ValueError("agent prompt eval build planner case is invalid")
         if planner.get("route") != "agentic_build_planner" and planner.get("final_route") != "agentic_build_planner":
