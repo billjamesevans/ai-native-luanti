@@ -10,8 +10,9 @@ The plugin is deliberately small. It is a runtime client, not a replacement for 
 
 ## Product Surfaces
 
-The plugin keeps the `/nova` chat entrypoint stable, but product behavior is
-split into five first-party role agents:
+The plugin keeps the `/nova` chat entrypoint stable, and also supports addressed
+in-world chat such as `Nova, build a fire`. Product behavior is split into five
+first-party role agents:
 
 | Surface | Agent id shape | Clean profile boundary | Runtime path |
 | --- | --- | --- | --- |
@@ -61,6 +62,14 @@ The plugin registers three aliases:
 - `/bot <message>`
 - `/nova <message>`
 - `/aibot <message>`
+
+It also registers a natural addressed-chat surface. A player can type
+`Nova, <message>`, `hey Nova <message>`, `bot, <message>`, or `aibot, <message>`
+in normal chat. Only explicitly addressed non-slash messages are consumed; normal
+player chat and all slash commands continue through Luanti's standard chat path.
+Natural-chat turns are recorded in the player-agent loop as `natural_chat`, so a
+follow-up like `Nova, only the fire, nothing else` can refine the prior Builder
+Agent goal instead of starting from a command-only blank slate.
 
 The plugin also registers `/ai_agent_eval` for operators with `server`
 privilege. It runs a bounded public-safe prompt evaluation covering `build a

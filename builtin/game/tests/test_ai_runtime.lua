@@ -4168,6 +4168,87 @@ end
 test_ai_agent_plugin_registered_chat_command_player_output()
 test_ai_agent_plugin_registered_chat_command_player_output = nil
 
+function test_ai_agent_plugin_natural_chat_player_agent_surface()
+core.ai_agent_plugin.configure({
+	capability_profile = "clean",
+	light_node = "ai_runtime_test:stone",
+	marker_node = "ai_runtime_test:stone",
+	platform_node = "ai_runtime_test:stone",
+	path_node = "ai_runtime_test:stone",
+	fire_node = "ai_runtime_test:fire",
+	wall_node = "ai_runtime_test:stone",
+	tnt_node = "ai_runtime_test:tnt",
+	build_material_nodes = {
+		fire = "ai_runtime_test:fire",
+		tnt = "ai_runtime_test:tnt",
+	},
+	max_lights = 3,
+	max_player_loop_turns = 4,
+	agentic_build_planner_first = false,
+	natural_chat_enabled = true,
+	natural_chat_aliases = { "nova", "bot", "aibot" },
+	capabilities = {
+		["world.read"] = true,
+		["world.place"] = true,
+		["world.remove"] = true,
+		["entity.spawn"] = true,
+		["entity.control"] = true,
+		["task.cancel"] = true,
+		["http.llm"] = true,
+	},
+})
+
+local extracted_prompt, extracted_alias =
+	core.ai_agent_plugin._natural_chat.extract_prompt("Nova, build a fire")
+assert(extracted_prompt == "build a fire")
+assert(extracted_alias == "nova")
+local hey_prompt, hey_alias =
+	core.ai_agent_plugin._natural_chat.extract_prompt("hey Nova build a wall of tnt")
+assert(hey_prompt == "build a wall of tnt")
+assert(hey_alias == "nova")
+assert(core.ai_agent_plugin._natural_chat.extract_prompt("/nova build a fire") == nil)
+assert(core.ai_agent_plugin._natural_chat.extract_prompt("I saw a nova star") == nil)
+
+local natural_fire_pos = test_pos(4112)
+set_test_node(natural_fire_pos, { name = "air" })
+local handled, natural_fire = core.ai_agent_plugin.handle_natural_chat_message(
+	"NaturalChat", "Nova, build a fire", {
+		pos = natural_fire_pos,
+		world_id = "natural-chat-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+		suppress_chat_send = true,
+	})
+assert(handled == true)
+assert(natural_fire.ok == true)
+assert(natural_fire.action == "build")
+assert(natural_fire.status == "pending_approval")
+assert(natural_fire.build_kind == "fire")
+assert(natural_fire.planned_node_writes == 1)
+local natural_fire_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
+assert(natural_fire_trace.public_prompt == "build a fire")
+assert(natural_fire_trace.context.input_surface == "natural_chat")
+assert(natural_fire_trace.context.natural_chat_alias == "nova")
+assert(natural_fire_trace.context.player_turn_source == "natural_chat")
+local natural_fire_state = core.ai_agent_plugin.get_player_state("NaturalChat")
+assert(natural_fire_state.loop.recent_turns[1].text == "build a fire")
+assert(natural_fire_state.loop.recent_turns[1].source == "natural_chat")
+
+local ignored = core.ai_agent_plugin.handle_natural_chat_message(
+	"NaturalChat", "I saw a nova star", {
+		suppress_chat_send = true,
+	})
+assert(ignored == false)
+local slash_ignored = core.ai_agent_plugin.handle_natural_chat_message(
+	"NaturalChat", "/nova build a fire", {
+		suppress_chat_send = true,
+	})
+assert(slash_ignored == false)
+end
+
+test_ai_agent_plugin_natural_chat_player_agent_surface()
+test_ai_agent_plugin_natural_chat_player_agent_surface = nil
+
 product_loop_records = {}
 core.ai_rollback_storage.configure({
 	enabled = true,
@@ -5379,6 +5460,55 @@ assert(followup_loop.recent_turns[1].text == "build a fire")
 assert(followup_loop.recent_turns[2].text == "only the fire, nothing else")
 assert(followup_loop.recent_turns[2].source == "nova_builder_followup")
 assert(followup_loop.recent_turns[2].surface_id == "builder")
+
+local natural_followup_pos = test_pos(4256)
+set_test_node(natural_followup_pos, { name = "air" })
+local natural_followup_planner_calls = {}
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	natural_followup_planner_calls[#natural_followup_planner_calls + 1] = request
+	return true, "queued"
+end)
+local natural_seed_handled, natural_seed_reply =
+	core.ai_agent_plugin.handle_natural_chat_message(
+		"NaturalPlanner", "Hey Nova, build a fire", {
+			pos = natural_followup_pos,
+			world_id = "agentic-natural-followup-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+			suppress_chat_send = true,
+		})
+assert(natural_seed_handled == true)
+assert(natural_seed_reply.ok == true)
+assert(natural_seed_reply.status == "queued")
+local natural_refine_handled, natural_refine_reply =
+	core.ai_agent_plugin.handle_natural_chat_message(
+		"NaturalPlanner", "Nova, only the fire, nothing else", {
+			pos = natural_followup_pos,
+			world_id = "agentic-natural-followup-world",
+			get_node = get_test_node,
+			set_node = set_test_node,
+			suppress_chat_send = true,
+		})
+assert(natural_refine_handled == true)
+assert(natural_refine_reply.ok == true)
+assert(natural_refine_reply.status == "queued")
+assert(#natural_followup_planner_calls == 2)
+local natural_followup_request = natural_followup_planner_calls[2]
+assert(natural_followup_request.context.intent == "build_planning")
+assert(natural_followup_request.context.planner_reason
+	== "player_agent_followup_refinement")
+assert(natural_followup_request.context.input_surface == "natural_chat")
+assert(natural_followup_request.context.natural_chat_alias == "nova")
+assert(natural_followup_request.context.player_turn_source == "natural_chat")
+local natural_followup_loop =
+	core.parse_json(natural_followup_request.context.player_agent_loop)
+assert(natural_followup_loop.active_surface == "builder")
+assert(natural_followup_loop.recent_turn_count == 2)
+assert(#natural_followup_loop.recent_turns == 2)
+assert(natural_followup_loop.recent_turns[1].text == "build a fire")
+assert(natural_followup_loop.recent_turns[1].source == "natural_chat")
+assert(natural_followup_loop.recent_turns[2].text == "only the fire, nothing else")
+assert(natural_followup_loop.recent_turns[2].source == "natural_chat")
 
 local agentic_first_fire_pos = test_pos(4255)
 set_test_node(agentic_first_fire_pos, { name = "air" })

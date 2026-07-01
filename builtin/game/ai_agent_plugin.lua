@@ -44,6 +44,8 @@ local settings = {
 	agentic_build_planner_first = false,
 	auto_apply_build_approvals = false,
 	max_player_loop_turns = 4,
+	natural_chat_enabled = true,
+	natural_chat_aliases = { "nova", "bot", "aibot" },
 	capabilities = table.copy(default_capabilities),
 }
 
@@ -312,6 +314,9 @@ local function compact_trace_context(context)
 		build_material_node = context.build_material_node,
 		adapter_name = context.adapter_name,
 		planner_mode = context.planner_mode,
+		input_surface = context.input_surface,
+		natural_chat_alias = context.natural_chat_alias,
+		player_turn_source = context.player_turn_source,
 		player_agent_loop = context.player_agent_loop,
 		selected_candidate_id = context.selected_candidate_id,
 		candidate_count = context.candidate_count,
@@ -646,9 +651,17 @@ local function start_request_trace(name, action, route, prompt, context, extra)
 	extra = extra or {}
 	local surface_id = extra.surface_id or (context and context.surface_id)
 	if extra.record_player_turn ~= false then
+		local player_turn_text = extra.player_turn_text
+		if player_turn_text == nil and context then
+			player_turn_text = context.player_turn_text
+		end
+		local player_turn_source = extra.player_turn_source
+		if player_turn_source == nil and context then
+			player_turn_source = context.player_turn_source
+		end
 		plugin._player_loop.append_turn(name, "user",
-			extra.player_turn_text or prompt, surface_id,
-			extra.player_turn_source or route)
+			player_turn_text or prompt, surface_id,
+			player_turn_source or route)
 	end
 	local trace = remember_request_trace({
 		owner = name,
@@ -1496,6 +1509,20 @@ function plugin.configure(options)
 	if options.auto_apply_build_approvals ~= nil then
 		settings.auto_apply_build_approvals =
 			options.auto_apply_build_approvals == true
+	end
+	if options.max_player_loop_turns ~= nil then
+		assert(type(options.max_player_loop_turns) == "number"
+			and options.max_player_loop_turns >= 1,
+			"Max player loop turns must be a positive number")
+		settings.max_player_loop_turns = math.floor(options.max_player_loop_turns)
+	end
+	if options.natural_chat_enabled ~= nil then
+		settings.natural_chat_enabled = options.natural_chat_enabled == true
+	end
+	if options.natural_chat_aliases then
+		assert(type(options.natural_chat_aliases) == "table",
+			"Natural chat aliases must be a table")
+		settings.natural_chat_aliases = table.copy(options.natural_chat_aliases)
 	end
 	if options.capabilities then
 		assert(type(options.capabilities) == "table", "Capabilities must be a table")
@@ -4450,6 +4477,9 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 		surface_id = "builder",
 		intent = "build_planning",
 		planner_reason = reason or "ambiguous_build_intent",
+		input_surface = context.input_surface,
+		natural_chat_alias = context.natural_chat_alias,
+		player_turn_source = context.player_turn_source,
 		capabilities = capability_csv(),
 		candidate_count = #public_candidates,
 		selected_candidate_id = selected.option_id,
@@ -5908,6 +5938,61 @@ function plugin._player_loop.builder_followup_prompt(name, raw_prompt, prompt)
 		.. bounded_trace_text(raw_prompt, 240)
 end
 
+plugin._natural_chat = {}
+
+function plugin._natural_chat.normalized_aliases()
+	local aliases = {}
+	for _, alias in ipairs(settings.natural_chat_aliases or {}) do
+		if type(alias) == "string" then
+			local normalized = alias:trim():lower()
+			if normalized ~= "" then
+				aliases[#aliases + 1] = normalized
+			end
+		end
+	end
+	if #aliases == 0 then
+		return { "nova", "bot", "aibot" }
+	end
+	return aliases
+end
+
+function plugin._natural_chat.prompt_after_addressed_alias(message, alias, leading_phrase)
+	leading_phrase = leading_phrase or ""
+	local lower = message:lower()
+	if leading_phrase ~= "" and lower:sub(1, #leading_phrase) ~= leading_phrase then
+		return nil
+	end
+	local alias_start = #leading_phrase + 1
+	local alias_end = alias_start + #alias - 1
+	if lower:sub(alias_start, alias_end) ~= alias then
+		return nil
+	end
+	local next_char = lower:sub(alias_end + 1, alias_end + 1)
+	if next_char ~= "" and not next_char:match("[%s,:%-]") then
+		return nil
+	end
+	local prompt = message:sub(alias_end + 1):gsub("^[%s,:%-]+", ""):trim()
+	return prompt ~= "" and prompt or "status"
+end
+
+function plugin._natural_chat.extract_prompt(message)
+	local trimmed = tostring(message or ""):trim()
+	if trimmed == "" or trimmed:sub(1, 1) == "/" then
+		return nil
+	end
+	local leading_phrases = { "", "hey ", "ok ", "okay " }
+	for _, alias in ipairs(plugin._natural_chat.normalized_aliases()) do
+		for _, leading_phrase in ipairs(leading_phrases) do
+			local prompt = plugin._natural_chat.prompt_after_addressed_alias(
+				trimmed, alias, leading_phrase)
+			if prompt then
+				return prompt, alias
+			end
+		end
+	end
+	return nil
+end
+
 local function handle_model(name, prompt, context)
 	context = context or {}
 	local adapter_name = context.adapter_name or "ai_agent_plugin"
@@ -6187,7 +6272,8 @@ function plugin.handle_command(name, param, context)
 	if followup_prompt then
 		local followup_context = table.copy(context)
 		followup_context.player_turn_text = raw_prompt
-		followup_context.player_turn_source = "nova_builder_followup"
+		followup_context.player_turn_source =
+			context.player_turn_source or "nova_builder_followup"
 		return handle_agentic_build_planner(name, followup_prompt,
 			followup_context, "player_agent_followup_refinement")
 	end
@@ -6222,6 +6308,27 @@ function plugin.handle_command(name, param, context)
 		})
 	end
 	return handle_model(name, prompt, context)
+end
+
+function plugin.handle_natural_chat_message(name, message, context)
+	if settings.natural_chat_enabled ~= true then
+		return false
+	end
+	local prompt, alias = plugin._natural_chat.extract_prompt(message)
+	if not prompt then
+		return false
+	end
+	local chat_context = table.copy(context or {})
+	chat_context.input_surface = "natural_chat"
+	chat_context.natural_chat = true
+	chat_context.natural_chat_alias = alias
+	chat_context.player_turn_text = prompt
+	chat_context.player_turn_source = "natural_chat"
+	local result = plugin.handle_command(name, prompt, chat_context)
+	if core.chat_send_player and chat_context.suppress_chat_send ~= true then
+		core.chat_send_player(name, plugin.format_reply(result))
+	end
+	return true, result
 end
 
 local EVAL_DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
@@ -7097,3 +7204,9 @@ end
 register_command("bot")
 register_command("nova")
 register_command("aibot")
+
+if core.register_on_chat_message then
+	core.register_on_chat_message(function(name, message)
+		return plugin.handle_natural_chat_message(name, message)
+	end)
+end
