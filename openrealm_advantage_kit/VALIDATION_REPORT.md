@@ -7,15 +7,15 @@ Commands run from the package root:
 ```bash
 python3 -m unittest discover tests
 python3 -m openrealm_creator_kernel.cli demo --out examples/generated --clean
-python3 -m openrealm_creator_kernel.cli generate "Add a new ore called moonstone that spawns below level -200 and crafts a glowing sword" --out out/moonstone_check
+python3 -m openrealm_creator_kernel.cli generate "Add a new ore called moonstone that spawns below level -200 and crafts a glowing sword" --out out/moonstone_check --no-package
 node --check studio/app.js
 ```
 
 Results:
 
-- Unit tests passed: 4 tests.
+- Unit tests passed: 5 tests.
 - Demo artifacts were generated under `examples/generated`.
-- A moonstone Luanti mod package was generated under `out/moonstone_check`.
+- A moonstone Luanti mod was generated under `out/moonstone_check`.
 - `studio/app.js` passed JavaScript syntax check.
 
 Notes:

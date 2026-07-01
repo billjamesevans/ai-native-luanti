@@ -34,6 +34,9 @@ class OpenRealmAdvantageKitVerifierTests(unittest.TestCase):
         self.assertTrue(report["safety"]["private_boundary_clean"])
         self.assertTrue(report["safety"]["required_docs_complete"])
         self.assertTrue(report["safety"]["schema_present"])
+        self.assertTrue(report["safety"]["generated_mods_use_runtime_queue"])
+        self.assertEqual(len(report["generated_runtime"]), 5)
+        self.assertTrue(all(item["status"] == "pass" for item in report["generated_runtime"]))
 
         assets = {asset["role"]: asset for asset in report["assets"]}
         self.assertEqual(

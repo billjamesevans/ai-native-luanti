@@ -108,9 +108,10 @@ REQUIRED_DOC_PHRASES = {
         "Route generated plans into the existing AI runtime task queue.",
     ],
     "docs/LUANTI_INTEGRATION.md": [
-        "Copy the generated mod folder into a disposable Luanti world first.",
+        "Copy the generated mod folder into a disposable OpenRealm `ai_runtime` world",
         "/or_preview",
         "/or_rollback_last",
+        "`/or_build` does not mutate directly.",
     ],
     "docs/NEXT_ISSUES.md": [
         "Add OpenRealm Plan schema as product contract",
@@ -118,6 +119,25 @@ REQUIRED_DOC_PHRASES = {
         "Add golden prompt evaluation suite",
     ],
 }
+
+GENERATED_RUNTIME_LUA_FILES = [
+    "luanti_mod/openrealm_creator/init.lua",
+    "examples/generated/demo_1/generated_luanti_mod/openrealm_moonstone/init.lua",
+    "examples/generated/demo_2/generated_luanti_mod/openrealm_lakeside_village/init.lua",
+    "examples/generated/demo_3/generated_luanti_mod/openrealm_glacier_biome/init.lua",
+    "out/moonstone_check/generated_luanti_mod/openrealm_moonstone/init.lua",
+]
+
+GENERATED_RUNTIME_REQUIRED_PHRASES = (
+    "queue_chunked_structure_apply_task",
+    "OpenRealm AI runtime import queue is not available",
+    'mutation_class = "compat_import"',
+)
+
+GENERATED_RUNTIME_FORBIDDEN_PHRASES = (
+    "minetest.set_node",
+    "minetest.get_node_or_nil",
+)
 
 REQUIRED_MANIFEST = {
     "schema_version": 1,
@@ -335,6 +355,31 @@ def build_report(
                 "phrases": missing,
             })
 
+    generated_runtime_reports = []
+    for rel in GENERATED_RUNTIME_LUA_FILES:
+        path = kit / rel
+        missing = list(GENERATED_RUNTIME_REQUIRED_PHRASES)
+        forbidden = []
+        status = "missing"
+        if path.is_file():
+            body = path.read_text(encoding="utf-8")
+            missing = [phrase for phrase in GENERATED_RUNTIME_REQUIRED_PHRASES if phrase not in body]
+            forbidden = [phrase for phrase in GENERATED_RUNTIME_FORBIDDEN_PHRASES if phrase in body]
+            status = "pass" if not missing and not forbidden else "fail"
+        generated_runtime_reports.append({
+            "path": f"{KIT_DIR.as_posix()}/{rel}",
+            "status": status,
+            "missing_phrases": missing,
+            "forbidden_phrases": forbidden,
+        })
+        if status != "pass":
+            violations.append({
+                "kind": "generated_runtime_queue_contract_failed",
+                "path": f"{KIT_DIR.as_posix()}/{rel}",
+                "missing_phrases": missing,
+                "forbidden_phrases": forbidden,
+            })
+
     private_matches = []
     for path in text_files(root):
         body = path.read_text(encoding="utf-8", errors="ignore")
@@ -380,6 +425,9 @@ def build_report(
         "schema_present": bool(schema),
         "private_boundary_clean": not private_matches,
         "required_docs_complete": all(doc["status"] == "pass" for doc in doc_reports),
+        "generated_mods_use_runtime_queue": all(
+            item["status"] == "pass" for item in generated_runtime_reports
+        ),
     }
     for key, value in safety.items():
         if value is not True:
@@ -397,6 +445,7 @@ def build_report(
         },
         "assets": asset_reports,
         "docs": doc_reports,
+        "generated_runtime": generated_runtime_reports,
         "test_result": test_result,
         "js_check_result": js_result,
         "safety": safety,

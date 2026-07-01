@@ -361,8 +361,80 @@ function exportBlob(name, content, type="application/json") {
 }
 
 function luaForPlan(plan) {
-  const placements = plan.actions.filter(a => a.node !== "air").map(a => `  {x=${a.pos.x}, y=${a.pos.y}, z=${a.pos.z}, name=${JSON.stringify(a.node)}}`).join(",\n");
-  return `local placements = {\n${placements}\n}\n\nminetest.register_chatcommand("openrealm_generated_build", {\n  description = "Apply generated OpenRealm plan",\n  privs = {server = true},\n  func = function(name)\n    for _, p in ipairs(placements) do\n      minetest.set_node({x=p.x, y=p.y, z=p.z}, {name=p.name})\n    end\n    return true, "OpenRealm generated plan applied: ${plan.actions.length} changes."\n  end,\n})\n`;
+  const placements = plan.actions
+    .filter(a => a.node !== "air")
+    .map(a => `  {pos={x=${a.pos.x}, y=${a.pos.y}, z=${a.pos.z}}, node_name=${JSON.stringify(a.node)}}`)
+    .join(",\n");
+  return `local PLAN_ID = ${JSON.stringify(plan.plan_id)}
+local placements = {
+${placements}
+}
+local task_counter = 0
+
+local function runtime_core()
+  local candidate = rawget(_G, "core") or minetest
+  if type(candidate) ~= "table" then return nil end
+  if type(candidate.ai_import_ops) ~= "table" then return nil end
+  if type(candidate.ai_import_ops.queue_chunked_structure_apply_task) ~= "function" then return nil end
+  if type(candidate.register_ai_agent) ~= "function" then return nil end
+  return candidate
+end
+
+minetest.register_chatcommand("openrealm_generated_build", {
+  description = "Queue generated OpenRealm plan through AI runtime",
+  privs = {server = true},
+  func = function(name)
+    local api = runtime_core()
+    if not api then
+      return false, "OpenRealm AI runtime import queue is not available."
+    end
+    local agent_id = "openrealm_studio:generated_builder"
+    if type(api.get_ai_agent) ~= "function" or not api.get_ai_agent(agent_id) then
+      api.register_ai_agent({
+        agent_id = agent_id,
+        display_name = "OpenRealm Studio Generated Builder",
+        owner = "openrealm",
+        plugin = "openrealm_studio_export",
+        capabilities = {
+          ["import.assets"] = true,
+          ["world.place"] = true,
+          ["world.batch"] = true,
+        },
+      })
+    end
+    task_counter = task_counter + 1
+    local task_id = "openrealm-studio:" .. PLAN_ID .. ":" .. tostring(task_counter)
+    local chunk_size = math.max(1, math.min(32, #placements))
+    local ok, err = pcall(api.ai_import_ops.queue_chunked_structure_apply_task, {
+      task_id = task_id,
+      agent_id = agent_id,
+      owner = name,
+      report_id = PLAN_ID,
+      world_id = "openrealm-disposable-world",
+      staging = true,
+      explicit_approval = true,
+      allow_mutation = true,
+      rollback_policy = "chunked",
+      mutation_class = "compat_import",
+      operation_label = "openrealm.studio.structure.apply",
+      placements = placements,
+      chunk_size = chunk_size,
+      max_node_writes_per_step = chunk_size,
+      max_node_writes_total = ${plan.actions.length},
+      max_mapblock_churn_total = ${plan.actions.length},
+      source_reference = {
+        reference_type = "openrealm_studio_plan",
+        redacted_id = PLAN_ID,
+        inventory_hash = PLAN_ID,
+      },
+    })
+    if not ok then
+      return false, "Failed to queue OpenRealm runtime task: " .. tostring(err)
+    end
+    return true, "OpenRealm generated plan queued as AI runtime task " .. task_id
+  end,
+})
+`;
 }
 
 el.preset.addEventListener("change", () => { el.prompt.value = el.preset.value; });

@@ -6,7 +6,7 @@
   "plan_kind": "biome_recipe",
   "title": "Glacier Alpine Biome",
   "source_prompt": "Make this biome feel like Glacier National Park",
-  "created_at": "2026-07-01T04:37:46Z",
+  "created_at": "2026-07-01T11:06:57Z",
   "mod_name": "openrealm_glacier_biome",
   "summary": "Creates a data-first alpine biome recipe with nodes, mood, terrain guidance, quest hooks, and starter assets.",
   "tags": [

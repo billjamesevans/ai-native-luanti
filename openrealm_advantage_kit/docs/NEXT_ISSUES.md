@@ -23,11 +23,16 @@ Acceptance:
 
 Replace direct generated `/or_build` mutation with queued runtime tasks.
 
+Status: initial generated-mod handoff is implemented. New CLI-generated
+structures queue chunked `compat_import` tasks through `core.ai_import_ops` and
+fail closed when the runtime queue is unavailable.
+
 Acceptance:
 
 - all placement operations use safe world operations;
 - every task has audit and rollback metadata;
-- cancellation works mid-task.
+- cancellation works mid-task;
+- remaining work: expose first-class in-game approval and task-control UI for generated OpenRealm tasks.
 
 ## Issue 4: Add golden prompt evaluation suite
 

@@ -19,4 +19,4 @@ Best first integration step:
 3. Run the demo generator.
 4. Open `studio/index.html`.
 5. Copy the generated Luanti mod from `examples/generated/demo_1/generated_luanti_mod/openrealm_moonstone` into a disposable Luanti test world.
-6. Use the generated `/or_preview`, `/or_build`, and `/or_rollback_last` commands.
+6. Use the generated `/or_preview`, `/or_build`, and `/or_rollback_last` commands inside an `ai_runtime` world so builds queue through the runtime task system.

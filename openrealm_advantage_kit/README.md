@@ -68,9 +68,12 @@ cp -R out/moonstone/generated_luanti_mod/openrealm_moonstone \
   ~/.minetest/mods/openrealm_moonstone
 ```
 
-Then enable the mod for a disposable world first.
+Then enable the mod for a disposable world using the OpenRealm `ai_runtime`
+profile first. The generated `/or_build` command fails closed if the AI runtime
+import task queue is not available.
 
-Inside Luanti, the generated mod registers a safe preview command and build command where applicable:
+Inside Luanti, the generated mod registers a safe preview command and queued
+build command where applicable:
 
 ```text
 /or_preview
@@ -95,7 +98,10 @@ This is not trying to be a full launcher. It is the strategic core:
 
 **A safe creator kernel that can later plug into a launcher, server host, ContentDB workflow, and Nova assistant.**
 
-The generated code is intentionally boring in the right places: deterministic templates, small APIs, explicit manifests, and validation gates. That is what lets the AI experience feel magical without making the engine unsafe.
+The generated code is intentionally boring in the right places: deterministic
+templates, small APIs, explicit manifests, runtime task-queue handoff, and
+validation gates. That is what lets the AI experience feel magical without
+making the engine unsafe.
 
 ## Added local API and brand package
 

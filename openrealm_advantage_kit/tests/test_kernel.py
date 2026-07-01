@@ -41,6 +41,21 @@ class CreatorKernelTests(unittest.TestCase):
             self.assertTrue((result["mod_dir"] / "mod.conf").exists())
             self.assertTrue(result["package"].exists())
 
+    def test_generated_luanti_mod_routes_builds_through_ai_runtime_queue(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / "generated"
+            result = build_artifacts(
+                "Build a cozy lakeside village with floating lanterns",
+                out,
+                package=False,
+            )
+            lua = (result["mod_dir"] / "init.lua").read_text(encoding="utf-8")
+
+            self.assertIn("queue_chunked_structure_apply_task", lua)
+            self.assertIn("OpenRealm AI runtime import queue is not available", lua)
+            self.assertIn("mutation_class = \"compat_import\"", lua)
+            self.assertNotIn("minetest.set_node", lua)
+
 
 if __name__ == "__main__":
     unittest.main()

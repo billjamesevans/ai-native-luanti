@@ -2,8 +2,6 @@
 
 local MOD = minetest.get_current_modname()
 
-local storage = minetest.get_mod_storage()
-
 local PLAN_ID = "orplan_de3e999337af"
 
 local PLAN_TITLE = "Moonstone Ore Pack"
@@ -103,7 +101,7 @@ minetest.register_chatcommand("or_preview", {
         chat(name, PLAN_TITLE .. " - " .. PLAN_SUMMARY)
         chat(name, "Plan id: " .. PLAN_ID)
         chat(name, "Structures: " .. structure_names())
-        chat(name, "Safety: preview required, approval required, rollback metadata enabled.")
+        chat(name, "Safety: preview required, approval required, AI runtime queue required, rollback metadata enabled.")
         return true
     end,
 })
@@ -121,24 +119,166 @@ local function node_count(structure)
     return #(structure.placements or {})
 end
 
-local function rollback_key(name)
-    return "rollback:" .. name
-end
+local OPENREALM_AGENT_ID = MOD .. ":generated_builder"
+local task_counter = 0
 
-local function store_rollback(name, records)
-    storage:set_string(rollback_key(name), minetest.write_json(records))
-end
-
-local function load_rollback(name)
-    local raw = storage:get_string(rollback_key(name))
-    if raw == nil or raw == "" then
+local function runtime_core()
+    local candidate = rawget(_G, "core") or minetest
+    if type(candidate) ~= "table" then
         return nil
     end
-    return minetest.parse_json(raw)
+    if type(candidate.ai_import_ops) ~= "table" then
+        return nil
+    end
+    if type(candidate.ai_import_ops.queue_chunked_structure_apply_task) ~= "function" then
+        return nil
+    end
+    if type(candidate.register_ai_agent) ~= "function" then
+        return nil
+    end
+    return candidate
 end
 
-local function clear_rollback(name)
-    storage:set_string(rollback_key(name), "")
+local function id_part(value)
+    return tostring(value):gsub("[^%w._:-]", "_")
+end
+
+local function next_task_nonce()
+    task_counter = task_counter + 1
+    if minetest.get_us_time then
+        return tostring(minetest.get_us_time()) .. ":" .. tostring(task_counter)
+    end
+    return tostring(task_counter)
+end
+
+local function runtime_world_id()
+    if minetest.settings and minetest.settings:get("openrealm.world_id") then
+        local configured = minetest.settings:get("openrealm.world_id")
+        if configured and configured ~= "" then
+            return configured
+        end
+    end
+    return "openrealm-disposable-world"
+end
+
+local function ensure_runtime_agent(api)
+    if type(api.get_ai_agent) == "function" and api.get_ai_agent(OPENREALM_AGENT_ID) then
+        return true
+    end
+    local ok, err = pcall(api.register_ai_agent, {
+        agent_id = OPENREALM_AGENT_ID,
+        display_name = "OpenRealm Generated Builder",
+        owner = "openrealm",
+        plugin = MOD,
+        capabilities = {
+            ["import.assets"] = true,
+            ["world.place"] = true,
+            ["world.batch"] = true,
+        },
+        limits = {
+            max_structure_nodes = 256,
+        },
+    })
+    if not ok then
+        return false, tostring(err)
+    end
+    return true
+end
+
+local function runtime_placements(name, base, structure)
+    local placements = {}
+    for _, p in ipairs(structure.placements) do
+        local pos = vector.add(base, { x = p.x, y = p.y, z = p.z })
+        if minetest.is_protected(pos, name) then
+            return nil, "Protected area blocked build at " .. minetest.pos_to_string(pos)
+        end
+        placements[#placements + 1] = {
+            pos = pos,
+            node_name = p.node,
+        }
+    end
+    return placements
+end
+
+local function chunk_size_for(count)
+    local size = math.min(32, count)
+    if size < 1 then
+        return 1
+    end
+    return size
+end
+
+local function queue_structure_build(name, structure_name, structure)
+    local api = runtime_core()
+    if not api then
+        return false, "OpenRealm AI runtime import queue is not available. Run this mod in the ai_runtime profile before building."
+    end
+    local agent_ok, agent_err = ensure_runtime_agent(api)
+    if not agent_ok then
+        return false, "OpenRealm runtime agent registration failed: " .. tostring(agent_err)
+    end
+    local base = player_base(name)
+    if not base then
+        return false, "Player is not available."
+    end
+    local placements, placement_err = runtime_placements(name, base, structure)
+    if not placements then
+        return false, placement_err
+    end
+
+    local world_id = runtime_world_id()
+    local task_id = "openrealm:" .. id_part(PLAN_ID) .. ":" .. id_part(structure_name)
+        .. ":" .. id_part(name) .. ":" .. id_part(next_task_nonce())
+    local step_size = chunk_size_for(#placements)
+    local ok, queued = pcall(api.ai_import_ops.queue_chunked_structure_apply_task, {
+        task_id = task_id,
+        agent_id = OPENREALM_AGENT_ID,
+        owner = name,
+        label = "openrealm.structure.place",
+        report_id = PLAN_ID,
+        action_index = 0,
+        world_id = world_id,
+        target_world = {
+            world_id = world_id,
+            staging = true,
+            disposable = true,
+        },
+        staging = true,
+        explicit_approval = true,
+        allow_mutation = true,
+        rollback_policy = "chunked",
+        mutation_class = "compat_import",
+        operation_label = "openrealm.structure.apply",
+        placements = placements,
+        chunk_size = step_size,
+        max_node_writes_per_step = step_size,
+        max_node_writes_total = 256,
+        max_mapblock_churn_total = 256,
+        source_reference = {
+            reference_type = "openrealm_plan",
+            redacted_id = PLAN_ID .. ":" .. structure_name,
+            inventory_hash = PLAN_ID,
+        },
+    })
+    if not ok then
+        return false, "Failed to queue AI runtime task: " .. tostring(queued)
+    end
+    if type(api.record_ai_runtime_audit) == "function" then
+        api.record_ai_runtime_audit({
+            event_type = "openrealm.structure_queued",
+            agent_id = OPENREALM_AGENT_ID,
+            task_id = task_id,
+            actor = name,
+            operation = "openrealm.structure.queue",
+            status = "queued",
+            reason = "runtime_task_queued",
+            message = "OpenRealm structure queued through AI runtime.",
+        })
+    end
+    minetest.log("action", "[OpenRealm] " .. name .. " queued " .. structure_name
+        .. " plan=" .. PLAN_ID .. " task=" .. task_id .. " nodes=" .. node_count(structure))
+    return true, "Queued " .. structure_name .. " as AI runtime task " .. task_id
+        .. " with " .. node_count(structure) .. " planned nodes. Track it with /ai_runtime_operator_status view=task task_id=" .. task_id
 end
 
 local function build_structure(name, structure_name)
@@ -149,31 +289,12 @@ local function build_structure(name, structure_name)
     if node_count(structure) > 256 then
         return false, "Structure exceeds OpenRealm node budget."
     end
-    local base = player_base(name)
-    if not base then
-        return false, "Player is not available."
-    end
-    local rollback = {}
-    for _, p in ipairs(structure.placements) do
-        local pos = vector.add(base, { x = p.x, y = p.y, z = p.z })
-        if minetest.is_protected(pos, name) then
-            return false, "Protected area blocked build at " .. minetest.pos_to_string(pos)
-        end
-        local old = minetest.get_node_or_nil(pos)
-        rollback[#rollback + 1] = { pos = pos, old = old or { name = "air" } }
-    end
-    store_rollback(name, rollback)
-    for _, p in ipairs(structure.placements) do
-        local pos = vector.add(base, { x = p.x, y = p.y, z = p.z })
-        minetest.set_node(pos, { name = p.node })
-    end
-    minetest.log("action", "[OpenRealm] " .. name .. " built " .. structure_name .. " plan=" .. PLAN_ID .. " nodes=" .. node_count(structure))
-    return true, "Built " .. structure_name .. " with " .. node_count(structure) .. " nodes. Rollback available with /or_rollback_last."
+    return queue_structure_build(name, structure_name, structure)
 end
 
 minetest.register_chatcommand("or_build", {
     params = "<structure_name>",
-    description = "Build a generated OpenRealm structure after previewing it.",
+    description = "Queue a generated OpenRealm structure through the AI runtime after previewing it.",
     privs = { interact = true },
     func = function(name, param)
         local structure_name = (param or ""):gsub("^%s+", ""):gsub("%s+$", "")
@@ -187,22 +308,10 @@ minetest.register_chatcommand("or_build", {
 
 minetest.register_chatcommand("or_rollback_last", {
     params = "",
-    description = "Rollback your last OpenRealm generated build from this mod.",
+    description = "Show how to inspect AI runtime rollback records for OpenRealm generated builds.",
     privs = { interact = true },
-    func = function(name)
-        local records = load_rollback(name)
-        if not records or #records == 0 then
-            return false, "[OpenRealm] No rollback record found."
-        end
-        for i = #records, 1, -1 do
-            local record = records[i]
-            if record.pos and record.old and not minetest.is_protected(record.pos, name) then
-                minetest.set_node(record.pos, record.old)
-            end
-        end
-        clear_rollback(name)
-        minetest.log("action", "[OpenRealm] " .. name .. " rolled back plan=" .. PLAN_ID .. " nodes=" .. #records)
-        return true, "[OpenRealm] Rolled back " .. #records .. " nodes."
+    func = function(_name)
+        return false, "[OpenRealm] Rollback is managed by AI runtime rollback records. Use /ai_runtime_operator_status view=rollback, then use the operator rollback flow."
     end,
 })
 

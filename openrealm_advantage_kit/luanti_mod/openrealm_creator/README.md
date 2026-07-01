@@ -11,6 +11,9 @@ Commands:
 /realm_status
 ```
 
+`/realm_approve` queues a chunked `compat_import` task through the AI runtime.
+It fails closed if the runtime import queue is not available.
+
 The mod demonstrates the OpenRealm principle:
 
 > Nova plans. The player approves. The runtime mutates. Rollback is captured.

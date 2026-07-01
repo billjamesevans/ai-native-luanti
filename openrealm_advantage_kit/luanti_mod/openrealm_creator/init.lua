@@ -1,8 +1,9 @@
 local S = minetest.get_translator and minetest.get_translator("openrealm_creator") or function(s) return s end
 
 local pending_by_player = {}
-local rollback_by_player = {}
 local audit_log = {}
+local task_counter = 0
+local AGENT_ID = "openrealm_creator:runtime_builder"
 
 local function now()
 	return os.date("!%Y-%m-%dT%H:%M:%SZ")
@@ -257,6 +258,134 @@ local function summarize_plan(plan)
 	return "OpenRealm plan " .. plan.plan_id .. ": " .. #plan.actions .. " writes. " .. table.concat(parts, "; ")
 end
 
+local function runtime_core()
+	local candidate = rawget(_G, "core") or minetest
+	if type(candidate) ~= "table" then return nil end
+	if type(candidate.ai_import_ops) ~= "table" then return nil end
+	if type(candidate.ai_import_ops.queue_chunked_structure_apply_task) ~= "function" then return nil end
+	if type(candidate.register_ai_agent) ~= "function" then return nil end
+	return candidate
+end
+
+local function id_part(value)
+	return tostring(value):gsub("[^%w._:-]", "_")
+end
+
+local function runtime_world_id()
+	if minetest.settings and minetest.settings:get("openrealm.world_id") then
+		local configured = minetest.settings:get("openrealm.world_id")
+		if configured and configured ~= "" then return configured end
+	end
+	return "openrealm-disposable-world"
+end
+
+local function ensure_runtime_agent(api)
+	if type(api.get_ai_agent) == "function" and api.get_ai_agent(AGENT_ID) then
+		return true
+	end
+	local ok, err = pcall(api.register_ai_agent, {
+		agent_id = AGENT_ID,
+		display_name = "OpenRealm Creator Runtime Builder",
+		owner = "openrealm",
+		plugin = "openrealm_creator",
+		capabilities = {
+			["import.assets"] = true,
+			["world.place"] = true,
+			["world.batch"] = true,
+		},
+		limits = {
+			max_structure_nodes = 512,
+		},
+	})
+	if not ok then return false, tostring(err) end
+	return true
+end
+
+local function plan_runtime_placements(plan)
+	local placements = {}
+	for _, action in ipairs(plan.actions) do
+		if action.action == "place_node" then
+			placements[#placements + 1] = {
+				pos = action.pos,
+				node_name = action.node,
+			}
+		end
+	end
+	return placements
+end
+
+local function chunk_size_for(count)
+	local size = math.min(32, count)
+	if size < 1 then return 1 end
+	return size
+end
+
+local function queue_runtime_plan(name, plan)
+	local api = runtime_core()
+	if not api then
+		return nil, "OpenRealm AI runtime import queue is not available. Use an ai_runtime world before approving."
+	end
+	local agent_ok, agent_err = ensure_runtime_agent(api)
+	if not agent_ok then
+		return nil, "OpenRealm runtime agent registration failed: " .. tostring(agent_err)
+	end
+	local placements = plan_runtime_placements(plan)
+	if #placements == 0 then
+		return nil, "Plan has no placeable runtime actions."
+	end
+	task_counter = task_counter + 1
+	local world_id = runtime_world_id()
+	local task_id = "openrealm-creator:" .. id_part(plan.plan_id) .. ":"
+		.. id_part(name) .. ":" .. tostring(task_counter)
+	local step_size = chunk_size_for(#placements)
+	local ok, queued = pcall(api.ai_import_ops.queue_chunked_structure_apply_task, {
+		task_id = task_id,
+		agent_id = AGENT_ID,
+		owner = name,
+		label = "openrealm.creator.structure.place",
+		report_id = plan.plan_id,
+		action_index = 0,
+		world_id = world_id,
+		target_world = {
+			world_id = world_id,
+			staging = true,
+			disposable = true,
+		},
+		staging = true,
+		explicit_approval = true,
+		allow_mutation = true,
+		rollback_policy = "chunked",
+		mutation_class = "compat_import",
+		operation_label = "openrealm.creator.structure.apply",
+		placements = placements,
+		chunk_size = step_size,
+		max_node_writes_per_step = step_size,
+		max_node_writes_total = 512,
+		max_mapblock_churn_total = 512,
+		source_reference = {
+			reference_type = "openrealm_creator_plan",
+			redacted_id = plan.plan_id,
+			inventory_hash = plan.plan_id,
+		},
+	})
+	if not ok then
+		return nil, "Failed to queue OpenRealm runtime task: " .. tostring(queued)
+	end
+	if type(api.record_ai_runtime_audit) == "function" then
+		api.record_ai_runtime_audit({
+			event_type = "openrealm.creator.plan_queued",
+			agent_id = AGENT_ID,
+			task_id = task_id,
+			actor = name,
+			operation = "openrealm.creator.queue",
+			status = "queued",
+			reason = "runtime_task_queued",
+			message = "OpenRealm creator plan queued through AI runtime.",
+		})
+	end
+	return task_id
+end
+
 local function audit(event_type, actor, plan_id, message)
 	audit_log[#audit_log + 1] = {
 		at = now(),
@@ -279,46 +408,29 @@ minetest.register_chatcommand("realm_plan", {
 		if not plan then return false, err end
 		pending_by_player[name] = plan
 		audit("plan.created", name, plan.plan_id, #plan.actions .. " planned writes")
-		return true, summarize_plan(plan) .. " Use /realm_approve to apply or /realm_status to inspect."
+		return true, summarize_plan(plan) .. " Use /realm_approve to queue or /realm_status to inspect."
 	end,
 })
 
 minetest.register_chatcommand("realm_approve", {
-	description = "Approve and apply your pending OpenRealm plan.",
+	description = "Approve and queue your pending OpenRealm plan through the AI runtime.",
 	privs = {interact = true},
 	func = function(name)
 		local plan = pending_by_player[name]
 		if not plan then return false, "No pending OpenRealm plan. Use /realm_plan first." end
-		local before = {}
-		for _, action in ipairs(plan.actions) do
-			before[pkey(action.pos)] = minetest.get_node(action.pos).name
-		end
-		for _, action in ipairs(plan.actions) do
-			minetest.set_node(action.pos, {name = action.node})
-		end
-		local rollback_id = "rollback:" .. plan.plan_id .. ":" .. os.time()
-		rollback_by_player[name] = {rollback_id = rollback_id, before = before}
+		local task_id, err = queue_runtime_plan(name, plan)
+		if not task_id then return false, err end
 		pending_by_player[name] = nil
-		audit("plan.applied", name, plan.plan_id, #plan.actions .. " applied writes; rollback=" .. rollback_id)
-		return true, "Applied " .. #plan.actions .. " changes. Undo with /realm_undo."
+		audit("plan.queued", name, plan.plan_id, #plan.actions .. " queued writes; task=" .. task_id)
+		return true, "Queued " .. #plan.actions .. " changes as AI runtime task " .. task_id .. ". Inspect with /ai_runtime_operator_status view=task task_id=" .. task_id
 	end,
 })
 
 minetest.register_chatcommand("realm_undo", {
-	description = "Undo your last OpenRealm approved build.",
+	description = "Show how to inspect AI runtime rollback records for OpenRealm builds.",
 	privs = {interact = true},
-	func = function(name)
-		local record = rollback_by_player[name]
-		if not record then return false, "No rollback record for this player." end
-		local changed = 0
-		for key, node_name in pairs(record.before) do
-			local x, y, z = key:match("([^,]+),([^,]+),([^,]+)")
-			minetest.set_node({x=tonumber(x), y=tonumber(y), z=tonumber(z)}, {name=node_name})
-			changed = changed + 1
-		end
-		rollback_by_player[name] = nil
-		audit("rollback.applied", name, record.rollback_id, changed .. " positions restored")
-		return true, "Rollback applied. Restored " .. changed .. " node positions."
+	func = function(_name)
+		return false, "Rollback is managed by AI runtime rollback records. Use /ai_runtime_operator_status view=rollback, then use the operator rollback flow."
 	end,
 })
 
@@ -328,7 +440,7 @@ minetest.register_chatcommand("realm_status", {
 	func = function(name)
 		local plan = pending_by_player[name]
 		local pending = plan and summarize_plan(plan) or "No pending plan."
-		local rollback = rollback_by_player[name] and rollback_by_player[name].rollback_id or "No rollback record."
+		local rollback = "Runtime rollback records: /ai_runtime_operator_status view=rollback"
 		return true, pending .. "\n" .. rollback .. "\nAudit events retained: " .. #audit_log
 	end,
 })

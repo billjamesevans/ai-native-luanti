@@ -6,7 +6,7 @@
   "plan_kind": "structure",
   "title": "Cozy Lakeside Village",
   "source_prompt": "Build a cozy lakeside village with floating lanterns",
-  "created_at": "2026-07-01T04:37:46Z",
+  "created_at": "2026-07-01T11:06:57Z",
   "mod_name": "openrealm_lakeside_village",
   "summary": "Creates a bounded starter cozy lakeside village with custom nodes, preview command, build command, and rollback metadata.",
   "tags": [
