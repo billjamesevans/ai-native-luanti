@@ -5,18 +5,21 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `5621f06d1`
-- Backup artifact label: `raspberrypi_luanti_20260701-020426.tgz`
+- Fork commit: `3f29215b7`
+- Backup artifact label: `raspberrypi_luanti_20260701-025213.tgz`
 - Backup SHA-256:
-  `d716fea4d918167c19fdefa3cb0d010698b28dfff15ef19880446775818bec92`
+  `ae15698c773e5e983ca98b513d025b3dcffcac6fc0c4a22163f67341e611bc2a`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: active on loopback TCP `8766`.
 - Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
-  pilot `pass`; attention items `0`; blocking attention items `0`.
-- Live prompt eval: `5/5` cases passed; the OpenRealm golden subset passed
-  `4/4`; model adapter requests `5`, successes `5`, failures `0`, timeouts
-  `0`; retained artifact generated at `2026-07-01T07:08:28Z`.
+  pilot `pass`; agentic tool cases `5/5`; attention items `0`; violations
+  `0`.
+- Request/response log gate: `pass`; `824` Agents SDK sidecar log entries
+  read; `5/5` checked cases passed; violations `0`.
+- Live prompt eval: `6/6` cases passed; the OpenRealm golden subset passed
+  `5/5`; model adapter requests `6`, successes `6`, failures `0`, timeouts
+  `0`; retained artifact generated at `2026-07-01T07:56:23Z`.
 - Player-loop check: `Nova, options` returns pending build choices and the
   selected candidate from runtime state without world mutation. Each executable
   option carries an `openrealm.plan.v1` safety/preview contract.
@@ -26,11 +29,11 @@ Latest post-deploy gate:
 - OpenRealm template generation proof: a live Pi sidecar call for "Build a cozy
   lakeside village with floating lanterns" returned
   `generated_openrealm_lakeside_village` through
-  `agents_sdk_generated_tool_completion`, satisfied all required tool calls,
-  and carried a `96`-placement `openrealm.plan.v1` plan. A Pi-side deterministic
-  adapter probe confirmed the runtime node mapping:
-  `ai_runtime_base:stone`, `ai_runtime_base:wood`, `ai_runtime_base:glass`, and
-  `ai_runtime_base:glow`.
+  `agents_sdk_generated_tool_completion`, produced an `openrealm_structure` /
+  `openrealm_template` preview with `96` planned node writes, and included
+  `inspect_build_site_context`, `recall_build_prompt_memory`,
+  `propose_build_option`, `select_build_option`, and `plan_build_actions` in
+  the Agents SDK tool trace.
 
 This is post-deploy proof, not a retained soak manifest. Use the commands below
 for quick, one-hour, or overnight low-power evidence manifests.

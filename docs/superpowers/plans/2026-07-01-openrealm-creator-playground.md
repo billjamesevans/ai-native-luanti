@@ -13,12 +13,12 @@
 ## Execution Status
 
 - Task 1 is complete in commit `3ea6f33e3`: the public README and product docs now define OpenRealm, Nova, Luminara, the creator loop, and the AI-native runtime safety model.
-- Task 3 is complete in commit `566585dbf`: the live prompt-eval artifact now emits the named `openrealm_creator_loop` golden-prompt suite, tracks the eleven-prompt backlog, enforces the four currently implemented runtime prompt cases, and makes `ai_native_agent_quality_gate` fail on golden prompt regressions.
+- Task 3 is complete and current through commit `3f29215b7`: the live prompt-eval artifact now emits the named `openrealm_creator_loop` golden-prompt suite, tracks the eleven-prompt backlog, enforces five currently implemented runtime prompt cases including the OpenRealm village prompt, and makes `ai_native_agent_quality_gate` fail on golden prompt regressions.
 - The OpenRealm Advantage Kit is now the product/architecture library for the transformation: brand boards, Nova architecture diagrams, Creator Studio mockups, deterministic prompt-to-plan tooling, schemas, generated examples, and a Luanti creator prototype live under `openrealm_advantage_kit/`.
 - The Advantage Kit is now verification-gated: `util/openrealm_advantage_kit_verify.py` checks the canonical brand assets, safety manifest, schema, docs, private-content boundary, optional kit tests, optional Studio JS syntax, and is included in the alpha release gate and PR checklist.
 - Task 2 is complete in current runtime tests: `TestAIRuntime` enforces strict fire-only intent, TNT wall material preservation, approval-gated build plans, request/response diagnostics, and rollback-backed execution.
 - Task 4 is complete: `games/openrealm_demo` now provides the public-safe Luminara profile skeleton, tutorial prompt mod, and verified local server startup on UDP `30002`.
-- Task 5 is current at commit `d375eeee7`: the Pi fork test lane is deployed side-by-side, family UDP `30000` remained active, fork UDP `30001` is active, the Agents SDK sidecar is active on loopback TCP `8766`, and the live quality gate passed.
+- Task 5 is current at commit `3f29215b7`: the Pi fork test lane is deployed side-by-side, family UDP `30000` remained active, fork UDP `30001` is active, the Agents SDK sidecar is active on loopback TCP `8766`, live prompt eval passed `6/6`, the OpenRealm golden subset passed `5/5`, and the live quality gate passed with zero attention items and zero violations.
 - Player-like Nova loop expansion is underway and deployed on the Pi: `Nova, options` now returns pending build choices, selected candidate, option reasoning, and `openrealm.plan.v1` safety contracts from runtime state without a provider call or world mutation.
 - The next behavior-expansion track is to move additional backlog prompts from documented expectations into enforced runtime cases, starting with player-like multi-turn creator interaction instead of one-shot slash-command planning.
 
