@@ -519,6 +519,9 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_failed"], 0)
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 6)
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 6)
+        self.assertTrue(
+            report["summary"]["live_prompt_eval_player_agent_loop_review_traces_checked"]
+        )
 
     def test_required_live_prompt_eval_missing_fails_gate(self):
         module = load_quality_gate_module()

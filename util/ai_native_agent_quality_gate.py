@@ -378,6 +378,11 @@ def build_quality_gate(
             "live_prompt_eval_agentic_tool_cases_required": _int(
                 live_prompt_evidence.get("agent_prompt_eval_agentic_tool_cases_required")
             ),
+            "live_prompt_eval_player_agent_loop_review_traces_checked":
+                live_prompt_evidence.get(
+                    "agent_prompt_eval_player_agent_loop_review_traces_checked"
+                ) is True
+                or live_prompt_summary.get("player_agent_loop_review_traces_checked") is True,
             "live_prompt_eval_required": require_live_prompt_eval,
             "candidates_total": _int(candidate_summary.get("candidates_total"), _list_len(candidate_queue.get("candidates"))),
             "ready_for_prompt_eval": _int(candidate_summary.get("ready_for_prompt_eval")),
