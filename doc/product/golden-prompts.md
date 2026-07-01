@@ -49,6 +49,6 @@ repeatable public-safe evidence.
   cozy lakeside village with floating lanterns" into a bounded
   `generated_openrealm_lakeside_village` option with a 96-placement
   `openrealm.plan.v1` structure plan using registered `ai_runtime_base:*`
-  placeholder nodes. This is contract-tested but is not yet part of the live
-  enforced golden subset.
+  placeholder nodes. This is contract-tested and live-probed on the Pi sidecar,
+  but is not yet part of the live enforced golden subset.
 - Blocking gate: `python3 util/ai_native_agent_quality_gate.py ... --require-live-prompt-eval`

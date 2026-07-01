@@ -5,10 +5,10 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `271a3696f`
-- Backup artifact label: `raspberrypi_luanti_20260701-012900.tgz`
+- Fork commit: `5621f06d1`
+- Backup artifact label: `raspberrypi_luanti_20260701-020426.tgz`
 - Backup SHA-256:
-  `bc558d41e58a22729b92f03110d4bc91d3d3c2b1463e7fae78d9acdc5e1be601`
+  `d716fea4d918167c19fdefa3cb0d010698b28dfff15ef19880446775818bec92`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: active on loopback TCP `8766`.
@@ -16,13 +16,21 @@ Latest post-deploy gate:
   pilot `pass`; attention items `0`; blocking attention items `0`.
 - Live prompt eval: `5/5` cases passed; the OpenRealm golden subset passed
   `4/4`; model adapter requests `5`, successes `5`, failures `0`, timeouts
-  `0`.
+  `0`; retained artifact generated at `2026-07-01T07:08:28Z`.
 - Player-loop check: `Nova, options` returns pending build choices and the
   selected candidate from runtime state without world mutation. Each executable
   option carries an `openrealm.plan.v1` safety/preview contract.
 - OpenRealm structure apply path: generated Agents SDK build options with an
   `openrealm.plan.v1` placement plan now become non-mutating previews first and
   rollback-backed `openrealm.structure.apply` tasks only after approval.
+- OpenRealm template generation proof: a live Pi sidecar call for "Build a cozy
+  lakeside village with floating lanterns" returned
+  `generated_openrealm_lakeside_village` through
+  `agents_sdk_generated_tool_completion`, satisfied all required tool calls,
+  and carried a `96`-placement `openrealm.plan.v1` plan. A Pi-side deterministic
+  adapter probe confirmed the runtime node mapping:
+  `ai_runtime_base:stone`, `ai_runtime_base:wood`, `ai_runtime_base:glass`, and
+  `ai_runtime_base:glow`.
 
 This is post-deploy proof, not a retained soak manifest. Use the commands below
 for quick, one-hour, or overnight low-power evidence manifests.

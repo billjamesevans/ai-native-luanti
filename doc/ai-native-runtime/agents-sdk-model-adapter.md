@@ -425,7 +425,7 @@ The Pi fork deploy script sets the live sidecar log to:
 /opt/ai-native-luanti/logs/agents-sdk-model-adapter.jsonl
 ```
 
-Live side-by-side Pi proof from 2026-06-30:
+Live side-by-side Pi proof from 2026-07-01:
 
 - Family server remained active on UDP `30000`.
 - Fork test server remained active on UDP `30001`.
@@ -442,6 +442,13 @@ Live side-by-side Pi proof from 2026-06-30:
   respectively, each with a ready `luanti_build_action_plan_v1`.
 - Observed adapter latency for those three live probes was about 5.2-7.5
   seconds on the Pi lane.
+- The live sidecar accepted the OpenRealm village prompt and returned
+  `generated_openrealm_lakeside_village` through
+  `agents_sdk_generated_tool_completion`, with all required generated-build
+  tools satisfied and a `96`-placement `openrealm.plan.v1` plan. A deterministic
+  Pi-side probe confirmed the OpenRealm template nodes map to registered clean
+  runtime placeholders: `ai_runtime_base:stone`, `ai_runtime_base:wood`,
+  `ai_runtime_base:glass`, and `ai_runtime_base:glow`.
 
 ## Luanti Adapter
 

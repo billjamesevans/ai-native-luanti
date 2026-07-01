@@ -39,10 +39,10 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
-  `271a3696f`.
+  `5621f06d1`.
 - Backup:
-  `raspberrypi_luanti_20260701-012900.tgz`
-  (`bc558d41e58a22729b92f03110d4bc91d3d3c2b1463e7fae78d9acdc5e1be601`).
+  `raspberrypi_luanti_20260701-020426.tgz`
+  (`d716fea4d918167c19fdefa3cb0d010698b28dfff15ef19880446775818bec92`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
@@ -52,7 +52,8 @@ Current Pi gate evidence:
   blocking attention items.
 - live prompt eval passed `5/5` cases; the OpenRealm golden subset passed
   `4/4`, with `5` model-adapter requests, `5` successes, `0` failures, and
-  `0` timeouts.
+  `0` timeouts. The retained live prompt-eval artifact was generated at
+  `2026-07-01T07:08:28Z`.
 - Agents SDK adapter health reports OpenAI key present, hosted web search
   available, and `world_mutation_authority = luanti`.
 - `Nova, options` remains the player-loop review path for pending build choices
@@ -66,6 +67,10 @@ Current Pi gate evidence:
   `generated_openrealm_lakeside_village` with `96` runtime-safe placements
   mapped to `ai_runtime_base:stone`, `ai_runtime_base:wood`,
   `ai_runtime_base:glass`, and `ai_runtime_base:glow`.
+- New live Pi sidecar evidence: the same OpenRealm village prompt returned
+  `generated_openrealm_lakeside_village` through
+  `agents_sdk_generated_tool_completion`, satisfied all required tool calls, and
+  exposed the `openrealm.plan.v1` plan to Luanti without direct world mutation.
 
 ## Phase 2: Luminara Creator Playground
 
