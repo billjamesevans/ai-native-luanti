@@ -36,6 +36,19 @@ Exit gate:
 
 - all golden prompts pass locally and on the Raspberry Pi fork test server.
 
+Current Pi gate evidence:
+
+- 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
+  `da1c3f62f`.
+- `TestAIRuntime` passed on the Pi before service restart.
+- family service stayed active on UDP `30000`.
+- fork test service restarted active on UDP `30001`.
+- Agents SDK sidecar stayed active on loopback TCP `8766`.
+- quality gate passed with live prompt eval `pass`, compatibility import staging
+  pilot `pass`, `0` violations, and `0` attention items.
+- `openrealm_demo` is discoverable in the Pi build alongside `ai_runtime` and
+  `devtest`.
+
 ## Phase 2: Luminara Creator Playground
 
 Goal: give normal users a complete first experience without building a full

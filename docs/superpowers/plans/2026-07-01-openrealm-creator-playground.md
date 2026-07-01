@@ -18,6 +18,7 @@
 - The Advantage Kit is now verification-gated: `util/openrealm_advantage_kit_verify.py` checks the canonical brand assets, safety manifest, schema, docs, private-content boundary, optional kit tests, optional Studio JS syntax, and is included in the alpha release gate and PR checklist.
 - Task 2 is complete in current runtime tests: `TestAIRuntime` enforces strict fire-only intent, TNT wall material preservation, approval-gated build plans, request/response diagnostics, and rollback-backed execution.
 - Task 4 is complete: `games/openrealm_demo` now provides the public-safe Luminara profile skeleton, tutorial prompt mod, and verified local server startup on UDP `30002`.
+- Task 5 is complete: the Pi fork test lane is deployed at `da1c3f62f`, family UDP `30000` remained active, fork UDP `30001` is active, the Agents SDK sidecar is active on loopback TCP `8766`, and the live quality gate passed.
 - The next behavior-expansion track is to move additional backlog prompts from documented expectations into enforced runtime cases, starting with player-like multi-turn creator interaction instead of one-shot slash-command planning.
 
 ## File Structure
@@ -303,7 +304,7 @@ git commit -m "Add OpenRealm demo profile skeleton"
 - Modify: `doc/product/roadmap.md`
 - Modify: `doc/ai-native-runtime/low-power-pi-evidence-lane.md`
 
-- [ ] **Step 1: Deploy backup-first to the Pi**
+- [x] **Step 1: Deploy backup-first to the Pi**
 
 Run from `/Users/billevans/Documents/2026/minecraft_server`:
 
@@ -321,7 +322,7 @@ luanti-family.service remains active
 UDP 30000 remains listening
 ```
 
-- [ ] **Step 2: Verify independently**
+- [x] **Step 2: Verify independently**
 
 Run:
 
@@ -336,7 +337,7 @@ ssh -o BatchMode=yes bill@minecraftpi.home '
 
 Expected: both services active, both UDP ports listening, and HEAD matches the pushed commit.
 
-- [ ] **Step 3: Commit evidence docs**
+- [x] **Step 3: Commit evidence docs**
 
 Run:
 

@@ -2,6 +2,23 @@
 
 Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 
+Latest post-deploy gate:
+
+- Date: 2026-07-01
+- Fork commit: `da1c3f62f`
+- Backup artifact label: `raspberrypi_luanti_20260701-001709.tgz`
+- Backup SHA-256:
+  `48a42b6dea749e0c65f4ed8884accd9d8d0f135d44a3160fa8f9df1b1744dbef`
+- Pi runtime test: `TestAIRuntime` passed.
+- Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
+- Agents SDK sidecar: active on loopback TCP `8766`.
+- Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
+  pilot `pass`; violations `0`; attention items `0`.
+- Game discovery: `ai_runtime`, `devtest`, and `openrealm_demo`.
+
+This is post-deploy proof, not a retained soak manifest. Use the commands below
+for quick, one-hour, or overnight low-power evidence manifests.
+
 After the local verifier passes and the fork has been deployed through the
 backup-first Pi workflow, collect low-power evidence with:
 
