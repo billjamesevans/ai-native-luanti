@@ -2399,6 +2399,121 @@ def _tool_decisions_from_trace(tool_trace: list[dict[str, Any]]) -> dict[str, An
     return decisions
 
 
+def _generated_options_from_tool_trace(tool_trace: Any) -> list[dict[str, Any]]:
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if not isinstance(tool_trace, list):
+        return options
+    for entry in tool_trace:
+        if not isinstance(entry, dict) or entry.get("tool_name") != "propose_build_option":
+            continue
+        result = entry.get("result")
+        if not isinstance(result, dict) or result.get("status") != "ready":
+            continue
+        option = result.get("generated_option")
+        if not isinstance(option, dict):
+            continue
+        option_id = str(option.get("option_id") or "")
+        if not option_id or option_id in seen:
+            continue
+        seen.add(option_id)
+        options.append(option)
+    return options
+
+
+def _complete_generated_build_tool_sequence_from_trace(
+    request: dict[str, Any],
+    tool_trace: Any,
+    *,
+    reason: str,
+) -> dict[str, Any] | None:
+    context = _safe_context(request.get("context"))
+    if context.get("intent") != "build_planning" or not context.get("candidate_summary"):
+        return None
+    if not isinstance(tool_trace, list) or _trace_generated_selects_before_propose(tool_trace):
+        return None
+    names = _tool_trace_names(tool_trace)
+    required_prefix = {
+        "inspect_build_site_context",
+        "recall_build_prompt_memory",
+        "propose_build_option",
+    }
+    if not required_prefix.issubset(set(names)):
+        return None
+    generated_options = _generated_options_from_tool_trace(tool_trace)
+    if not generated_options:
+        return None
+    candidate_summary = str(context.get("candidate_summary") or "")
+    player_request = str(context.get("player_request") or "").strip()
+    if not player_request:
+        player_request = _extract_player_request(str(request.get("public_prompt") or ""))
+    if not candidate_summary or not player_request:
+        return None
+
+    completed_trace = [dict(entry) for entry in tool_trace if isinstance(entry, dict)]
+    decisions = _tool_decisions_from_trace(completed_trace)
+    selected_option_id = _model_selected_option_id(decisions, completed_trace)
+    if not selected_option_id:
+        selected_option_id = str(generated_options[-1].get("option_id") or "")
+    if not selected_option_id.startswith("generated_"):
+        return None
+
+    selection = decisions.get("build_option") if isinstance(decisions, dict) else None
+    if not isinstance(selection, dict) or selection.get("selected_option_id") != selected_option_id:
+        selection = select_build_option_payload(
+            candidate_summary,
+            selected_option_id,
+            player_request,
+            f"adapter completed generated tool sequence after {reason}",
+            generated_options,
+        )
+        if selection.get("selection_status") != "accepted":
+            return None
+        completed_trace.append({
+            "tool_name": "select_build_option",
+            "args": {
+                "candidate_summary": candidate_summary,
+                "selected_option_id": selected_option_id,
+                "player_request": player_request,
+                "selection_reason": f"adapter completed generated tool sequence after {reason}",
+            },
+            "result": _safe_log_value(selection),
+        })
+
+    plan = decisions.get("build_action_plan") if isinstance(decisions, dict) else None
+    if not isinstance(plan, dict) or plan.get("selected_option_id") != selected_option_id:
+        plan = plan_build_actions_payload(
+            candidate_summary,
+            player_request,
+            selected_option_id,
+            generated_options,
+        )
+        if plan.get("status") != "ready":
+            return None
+        completed_trace.append({
+            "tool_name": "plan_build_actions",
+            "args": {
+                "candidate_summary": candidate_summary,
+                "player_request": player_request,
+                "selected_option_id": selected_option_id,
+            },
+            "result": _safe_log_value(plan),
+        })
+
+    completed_decisions = _tool_decisions_from_trace(completed_trace)
+    if _build_contract_failure_reason(request, completed_trace, completed_decisions):
+        return None
+    if _build_action_plan_failure_reason(request, completed_decisions):
+        return None
+    return {
+        "final_output": "Agents SDK generated option was validated and planned through Luanti tools.",
+        "tool_trace": _safe_log_value(completed_trace),
+        "tool_decisions": completed_decisions,
+        "tool_decision_source": "agents_sdk_generated_tool_completion",
+        "agent_tool_completion_reason": reason,
+    }
+
+
 def _build_action_plan_failure_reason(
     request: dict[str, Any],
     tool_decisions: dict[str, Any] | None,
@@ -2642,70 +2757,110 @@ def run_model_adapter_request(
     repair_reason = _build_contract_failure_reason(request, tool_trace, tool_decisions)
     if repair_reason:
         initial_missing_required_tools = list(missing_required_tools)
-        repair_request = _repair_request_for_contract_failure(
+        completion_result = _complete_generated_build_tool_sequence_from_trace(
             request,
+            tool_trace,
             reason=repair_reason,
-            required_tools=required_tools,
-            missing_tools=missing_required_tools,
-            model_selected_option_id=model_selected_option_id,
         )
-        repair_attempted = True
-        try:
-            repair_result = asyncio.run(_run_sdk_agent(repair_request, model=model))
-        except Exception:
-            repair_result = {}
-        repair_trace = repair_result.get("tool_trace") if isinstance(repair_result, dict) else []
-        repair_decisions = repair_result.get("tool_decisions") if isinstance(repair_result, dict) else {}
-        repair_failure_reason = _build_contract_failure_reason(
-            request,
-            repair_trace,
-            repair_decisions,
-        )
-        if repair_failure_reason is None:
-            agent_result = repair_result
-            tool_trace = repair_trace
-            tool_decisions = repair_decisions
-            model_tool_decisions = repair_decisions if isinstance(repair_decisions, dict) else {}
+        if completion_result is not None:
+            agent_result = completion_result
+            tool_trace = completion_result.get("tool_trace") if isinstance(completion_result, dict) else []
+            tool_decisions = completion_result.get("tool_decisions") if isinstance(completion_result, dict) else {}
+            model_tool_decisions = tool_decisions if isinstance(tool_decisions, dict) else {}
             model_selected_option_id = (
                 _model_selected_option_id(model_tool_decisions, tool_trace)
                 or initial_model_selected_option_id
             )
             required_tools = _required_tool_names_for_request(request, tool_decisions)
             missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
-            decision_source = "agents_sdk_repair_function_tool"
+            decision_source = "agents_sdk_generated_tool_completion"
+            repair_attempted = True
             repair_succeeded = True
         else:
-            repair_reason = repair_failure_reason
-            tool_trace = repair_trace if repair_trace else tool_trace
-            if isinstance(repair_decisions, dict) and repair_decisions:
-                model_tool_decisions = repair_decisions
+            repair_request = _repair_request_for_contract_failure(
+                request,
+                reason=repair_reason,
+                required_tools=required_tools,
+                missing_tools=missing_required_tools,
+                model_selected_option_id=model_selected_option_id,
+            )
+            repair_attempted = True
+            try:
+                repair_result = asyncio.run(_run_sdk_agent(repair_request, model=model))
+            except Exception:
+                repair_result = {}
+            repair_trace = repair_result.get("tool_trace") if isinstance(repair_result, dict) else []
+            repair_decisions = repair_result.get("tool_decisions") if isinstance(repair_result, dict) else {}
+            repair_failure_reason = _build_contract_failure_reason(
+                request,
+                repair_trace,
+                repair_decisions,
+            )
+            if repair_failure_reason is None:
+                agent_result = repair_result
+                tool_trace = repair_trace
+                tool_decisions = repair_decisions
+                model_tool_decisions = repair_decisions if isinstance(repair_decisions, dict) else {}
                 model_selected_option_id = (
                     _model_selected_option_id(model_tool_decisions, tool_trace)
-                    or model_selected_option_id
-                )
-            local_result = _local_build_tool_contract_result(
-                request,
-                f"agent_repair_failed:{repair_reason}",
-            )
-            if local_result is not None:
-                agent_result = local_result
-                tool_trace = local_result.get("tool_trace") if isinstance(local_result, dict) else []
-                tool_decisions = local_result.get("tool_decisions") if isinstance(local_result, dict) else {}
-                model_tool_decisions = tool_decisions if isinstance(tool_decisions, dict) else {}
-                model_selected_option_id = (
-                    model_selected_option_id
-                    or _model_selected_option_id(model_tool_decisions, tool_trace)
+                    or initial_model_selected_option_id
                 )
                 required_tools = _required_tool_names_for_request(request, tool_decisions)
                 missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
-                decision_source = LOCAL_AGENT_TOOL_CONTRACT_FAST_PATH
+                decision_source = "agents_sdk_repair_function_tool"
+                repair_succeeded = True
             else:
-                fallback_decisions = _tool_decisions_for_request(request)
-                if fallback_decisions:
-                    tool_decisions = fallback_decisions
-                required_tools = _required_tool_names_for_request(request, tool_decisions)
-                missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
-                decision_source = _adapter_fallback_decision_source(repair_reason)
+                repair_reason = repair_failure_reason
+                completion_result = _complete_generated_build_tool_sequence_from_trace(
+                    request,
+                    repair_trace if repair_trace else tool_trace,
+                    reason=f"agent_repair_failed:{repair_reason}",
+                )
+                if completion_result is not None:
+                    agent_result = completion_result
+                    tool_trace = completion_result.get("tool_trace") if isinstance(completion_result, dict) else []
+                    tool_decisions = completion_result.get("tool_decisions") if isinstance(completion_result, dict) else {}
+                    model_tool_decisions = tool_decisions if isinstance(tool_decisions, dict) else {}
+                    model_selected_option_id = (
+                        _model_selected_option_id(model_tool_decisions, tool_trace)
+                        or initial_model_selected_option_id
+                        or model_selected_option_id
+                    )
+                    required_tools = _required_tool_names_for_request(request, tool_decisions)
+                    missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
+                    decision_source = "agents_sdk_generated_tool_completion"
+                    repair_succeeded = True
+                else:
+                    tool_trace = repair_trace if repair_trace else tool_trace
+                    if isinstance(repair_decisions, dict) and repair_decisions:
+                        model_tool_decisions = repair_decisions
+                        model_selected_option_id = (
+                            _model_selected_option_id(model_tool_decisions, tool_trace)
+                            or model_selected_option_id
+                        )
+                    local_result = _local_build_tool_contract_result(
+                        request,
+                        f"agent_repair_failed:{repair_reason}",
+                    )
+                    if local_result is not None:
+                        agent_result = local_result
+                        tool_trace = local_result.get("tool_trace") if isinstance(local_result, dict) else []
+                        tool_decisions = local_result.get("tool_decisions") if isinstance(local_result, dict) else {}
+                        model_tool_decisions = tool_decisions if isinstance(tool_decisions, dict) else {}
+                        model_selected_option_id = (
+                            model_selected_option_id
+                            or _model_selected_option_id(model_tool_decisions, tool_trace)
+                        )
+                        required_tools = _required_tool_names_for_request(request, tool_decisions)
+                        missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
+                        decision_source = LOCAL_AGENT_TOOL_CONTRACT_FAST_PATH
+                    else:
+                        fallback_decisions = _tool_decisions_for_request(request)
+                        if fallback_decisions:
+                            tool_decisions = fallback_decisions
+                        required_tools = _required_tool_names_for_request(request, tool_decisions)
+                        missing_required_tools = _missing_required_tool_names(request, tool_trace, tool_decisions)
+                        decision_source = _adapter_fallback_decision_source(repair_reason)
 
     final_selected_option_id = _selected_option_id(tool_decisions)
     intent_constraint = _intent_constraint_for_request(request)
@@ -2747,6 +2902,8 @@ def run_model_adapter_request(
             "agent_repair_succeeded": repair_succeeded,
             "agent_repair_reason": repair_reason,
             "local_tool_contract_reason": agent_result.get("local_tool_contract_reason")
+                if isinstance(agent_result, dict) else None,
+            "agent_tool_completion_reason": agent_result.get("agent_tool_completion_reason")
                 if isinstance(agent_result, dict) else None,
             "agent_model_timeout": agent_result.get("agent_model_timeout") is True
                 if isinstance(agent_result, dict) else False,

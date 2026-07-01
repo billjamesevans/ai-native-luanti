@@ -1152,6 +1152,105 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
             GENERATED_TOOL_TRACE_NAMES,
         )
 
+    def test_generated_proposal_missing_select_and_plan_is_completed_as_agent_tool_repair(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build a house out of gold"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build a house out of gold",
+            "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+        calls = []
+
+        async def fake_run_sdk_agent(_request, model=None):
+            calls.append(_request)
+            generated = {
+                "option_id": "generated_prompt_shaped_house",
+                "build_kind": "house",
+                "build_width": 3,
+                "build_depth": 2,
+                "build_height": 3,
+                "build_material_name": "gold",
+                "planned_node_writes": 12,
+            }
+            return {
+                "final_output": "Use the generated gold house option.",
+                "tool_trace": [
+                    {
+                        "tool_name": "inspect_build_site_context",
+                        "result": {
+                            "status": "ready",
+                            "request_class": "generated_shape",
+                            "required_next_tool": "propose_build_option",
+                            "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                    {"tool_name": "recall_build_prompt_memory", "result": {}},
+                    {
+                        "tool_name": "propose_build_option",
+                        "result": {
+                            "status": "ready",
+                            "generated_option": generated,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                ],
+                "tool_decisions": {
+                    "build_site_context": {
+                        "status": "ready",
+                        "request_class": "generated_shape",
+                        "required_next_tool": "propose_build_option",
+                        "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                        "direct_world_mutation": False,
+                    },
+                },
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertEqual(len(calls), 1)
+        nested = response["response"]
+        self.assertEqual(nested["selected_option_id"], "generated_prompt_shaped_house")
+        self.assertEqual(
+            nested["tool_decision_source"],
+            "agents_sdk_generated_tool_completion",
+        )
+        self.assertTrue(nested["agent_repair_attempted"])
+        self.assertTrue(nested["agent_repair_succeeded"])
+        self.assertEqual(nested["agent_repair_reason"], "agent_missing_required_tool")
+        self.assertEqual(nested["agent_tool_completion_reason"], "agent_missing_required_tool")
+        self.assertEqual(nested["local_tool_contract_reason"], None)
+        self.assertEqual(nested["missing_required_tool_calls"], [])
+        self.assertEqual(
+            nested["build_action_plan"]["build_kind"],
+            "house",
+        )
+        self.assertEqual(
+            nested["build_action_plan"]["build_material_name"],
+            "gold",
+        )
+        self.assertEqual(
+            [entry["tool_name"] for entry in nested["tool_trace"]],
+            GENERATED_TOOL_TRACE_NAMES,
+        )
+
     def test_generated_select_before_propose_gets_agentic_repair(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)
