@@ -102,6 +102,21 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
                 "anchor_pos_available": True,
                 "anchor_pos": {"x": 10, "y": 20, "z": 30},
             },
+            "recent_turns": [
+                {
+                    "role": "user",
+                    "text": "build a fire",
+                    "surface_id": "builder",
+                    "source": "agentic_build_planner",
+                },
+                {
+                    "role": "user",
+                    "text": "only the fire, nothing else",
+                    "surface_id": "builder",
+                    "source": "nova_builder_followup",
+                    "anchor_pos": {"x": 10, "y": 20, "z": 30},
+                },
+            ],
         })
 
         result = module.inspect_build_site_context_payload(
@@ -121,6 +136,16 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
         self.assertEqual(player_loop["last_observation"]["action"], "build")
         self.assertEqual(player_loop["last_observation"]["anchor_node_name"], "air")
         self.assertNotIn("anchor_pos", player_loop["last_observation"])
+        self.assertEqual(player_loop["recent_turn_count"], 2)
+        self.assertEqual(
+            player_loop["recent_turns"][1]["text"],
+            "only the fire, nothing else",
+        )
+        self.assertEqual(
+            player_loop["recent_turns"][1]["source"],
+            "nova_builder_followup",
+        )
+        self.assertNotIn("anchor_pos", player_loop["recent_turns"][1])
         self.assertFalse(player_loop["privacy"]["family_world_coordinates"])
 
     def test_local_build_contract_passes_player_loop_to_context_tool(self):
@@ -176,6 +201,10 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
             "phase": "observing",
             "active_goal": "build something amazing",
             "next_action": "reason_with_tools",
+            "recent_turns": [
+                {"role": "user", "text": "build something amazing"},
+                {"role": "user", "text": "only use gold"},
+            ],
         }, separators=(",", ":"))
         request = {
             "agent_id": "nova_agent:Unit:builder",
@@ -195,7 +224,9 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
 
         self.assertIn("player_agent_loop:", agent_input)
         self.assertIn('"phase":"observing"', agent_input)
+        self.assertIn("only use gold", agent_input)
         self.assertIn("Use player_agent_loop", agent_input)
+        self.assertIn("recent_turns", agent_input)
 
     def test_propose_build_option_creates_prompt_shaped_gold_house(self):
         module = load_agent_module()

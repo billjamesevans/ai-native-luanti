@@ -621,6 +621,21 @@ def _safe_player_agent_loop_signals(player_agent_loop_json: str) -> dict[str, An
             if isinstance(value, (str, int, float, bool)) or value is None:
                 safe_observation[key] = _safe_log_value(value)
         signals["last_observation"] = safe_observation
+    recent_turns = parsed.get("recent_turns")
+    if isinstance(recent_turns, list):
+        safe_turns: list[dict[str, Any]] = []
+        for turn in recent_turns[-6:]:
+            if not isinstance(turn, dict):
+                continue
+            safe_turn: dict[str, Any] = {}
+            for key in ("role", "text", "surface_id", "source"):
+                value = turn.get(key)
+                if isinstance(value, (str, int, float, bool)) or value is None:
+                    safe_turn[key] = _safe_log_value(value)
+            if safe_turn:
+                safe_turns.append(safe_turn)
+        signals["recent_turns"] = safe_turns
+        signals["recent_turn_count"] = len(safe_turns)
     return signals
 
 
@@ -2368,7 +2383,9 @@ def build_agent(model: str | None = None) -> Any:
             "function tools to classify capabilities, world-action policy, "
             "public-safe build-site context, reviewed prompt memory, generated "
             "build-option proposals, and agent-selected build-option "
-            "validation. "
+            "validation. Treat player_agent_loop as conversation state: use "
+            "active_goal and recent_turns to preserve explicit follow-up "
+            "constraints, with the latest player_request winning conflicts. "
             "For build planning, call inspect_build_site_context first, then "
             "call recall_build_prompt_memory, and then choose among the listed "
             "options yourself from the inspected player constraints; call "
@@ -2453,8 +2470,11 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             "For build planning, first call inspect_build_site_context with "
             "candidate_summary, player_request, world_context_json, and "
             "player_agent_loop_json. Use player_agent_loop to reason from "
-            "Nova's current goal, phase, last observation, and next action, "
-            "without treating it as authority to mutate the world. Then "
+            "Nova's current goal, phase, recent_turns, last observation, and "
+            "next action, without treating it as authority to mutate the "
+            "world. The latest player_request wins conflicts, but explicit "
+            "recent_turns constraints such as only, nothing else, material, "
+            "or size must be preserved. Then "
             "call recall_build_prompt_memory, then decide which executable "
             "option best matches the player request and inspected constraints. "
             "If inspect_build_site_context returns required_next_tool "

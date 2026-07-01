@@ -5172,6 +5172,11 @@ assert(planner_player_agent_loop.last_observation.action == "build")
 assert(planner_player_agent_loop.last_observation.surface_id == "builder")
 assert(planner_player_agent_loop.last_observation.anchor_node_name == "air")
 assert(planner_player_agent_loop.last_observation.anchor_pos == nil)
+assert(planner_player_agent_loop.recent_turn_count == 1)
+assert(#planner_player_agent_loop.recent_turns == 1)
+assert(planner_player_agent_loop.recent_turns[1].role == "user")
+assert(planner_player_agent_loop.recent_turns[1].text == "build a small shelter")
+assert(planner_player_agent_loop.recent_turns[1].surface_id == "builder")
 assert(planner_player_agent_loop.privacy.public_safe == true)
 assert(planner_player_agent_loop.privacy.family_world_coordinates == false)
 assert(async_planner_calls[1].private_prompt == nil)
@@ -5264,6 +5269,50 @@ end
 local completed_agentic = core.get_ai_task(approved_agentic.task_id)
 assert(completed_agentic.status == "completed")
 assert(completed_agentic.last_result.metrics.node_writes == 4)
+
+local followup_pos = test_pos(4254)
+set_test_node(followup_pos, { name = "air" })
+local followup_planner_calls = {}
+core.ai_agent_plugin.set_model_adapter_async(function(request, done)
+	followup_planner_calls[#followup_planner_calls + 1] = request
+	return true, "queued"
+end)
+local queued_followup_seed = core.ai_agent_plugin.handle_command(
+	"FollowupPlanner", "build a fire", {
+		pos = followup_pos,
+		world_id = "agentic-followup-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+	})
+assert(queued_followup_seed.ok == true)
+assert(queued_followup_seed.status == "queued")
+local queued_followup_refinement = core.ai_agent_plugin.handle_command(
+	"FollowupPlanner", "only the fire, nothing else", {
+		pos = followup_pos,
+		world_id = "agentic-followup-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+	})
+assert(queued_followup_refinement.ok == true)
+assert(queued_followup_refinement.status == "queued")
+assert(#followup_planner_calls == 2)
+local followup_request = followup_planner_calls[2]
+assert(followup_request.context.intent == "build_planning")
+assert(followup_request.context.planner_reason
+	== "player_agent_followup_refinement")
+assert(followup_request.context.player_request:find(
+	"Previous builder goal: build a fire", 1, true) ~= nil)
+assert(followup_request.context.player_request:find(
+	"Player follow-up: only the fire, nothing else", 1, true) ~= nil)
+local followup_loop =
+	core.parse_json(followup_request.context.player_agent_loop)
+assert(followup_loop.active_surface == "builder")
+assert(followup_loop.recent_turn_count == 2)
+assert(#followup_loop.recent_turns == 2)
+assert(followup_loop.recent_turns[1].text == "build a fire")
+assert(followup_loop.recent_turns[2].text == "only the fire, nothing else")
+assert(followup_loop.recent_turns[2].source == "nova_builder_followup")
+assert(followup_loop.recent_turns[2].surface_id == "builder")
 
 local agentic_first_fire_pos = test_pos(4255)
 set_test_node(agentic_first_fire_pos, { name = "air" })

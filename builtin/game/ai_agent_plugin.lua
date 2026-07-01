@@ -43,6 +43,7 @@ local settings = {
 	max_defend_distance = 8,
 	agentic_build_planner_first = false,
 	auto_apply_build_approvals = false,
+	max_player_loop_turns = 4,
 	capabilities = table.copy(default_capabilities),
 }
 
@@ -330,6 +331,19 @@ function plugin._player_loop.copy_observation(observation)
 	return copied
 end
 
+function plugin._player_loop.copy_turns(turns)
+	if type(turns) ~= "table" then
+		return {}
+	end
+	local copied = {}
+	for index, turn in ipairs(turns) do
+		if type(turn) == "table" then
+			copied[index] = table.copy(turn)
+		end
+	end
+	return copied
+end
+
 function plugin._player_loop.public_observation(observation)
 	if type(observation) ~= "table" then
 		return nil
@@ -347,6 +361,27 @@ function plugin._player_loop.public_observation(observation)
 	}
 end
 
+function plugin._player_loop.public_turns(turns)
+	local copied = {}
+	if type(turns) ~= "table" then
+		return copied
+	end
+	local max_turns = settings.max_player_loop_turns or 4
+	local start_index = math.max(1, #turns - max_turns + 1)
+	for index = start_index, #turns do
+		local turn = turns[index]
+		if type(turn) == "table" then
+			copied[#copied + 1] = {
+				role = turn.role,
+				text = bounded_trace_text(turn.text, 120),
+				surface_id = turn.surface_id,
+				source = turn.source,
+			}
+		end
+	end
+	return copied
+end
+
 function plugin._player_loop.public_snapshot(name)
 	local state = plugin.get_player_state(name)
 	local loop = type(state.loop) == "table" and state.loop or {}
@@ -362,6 +397,9 @@ function plugin._player_loop.public_snapshot(name)
 		last_result_status = loop.last_result_status,
 		last_observation =
 			plugin._player_loop.public_observation(loop.last_observation),
+		recent_turns = plugin._player_loop.public_turns(loop.recent_turns),
+		recent_turn_count = type(loop.recent_turns) == "table"
+			and #loop.recent_turns or 0,
 		privacy = {
 			public_safe = true,
 			family_world_coordinates = false,
@@ -391,6 +429,7 @@ function plugin._player_loop.default_state()
 		active_surface = nil,
 		next_action = "wait_for_player_intent",
 		last_observation = nil,
+		recent_turns = {},
 		last_trace_id = nil,
 		last_task_id = nil,
 		last_result_status = nil,
@@ -416,6 +455,8 @@ function plugin._player_loop.copy_state(state)
 		copied.loop = table.copy(state.loop)
 		copied.loop.last_observation =
 			plugin._player_loop.copy_observation(state.loop.last_observation)
+		copied.loop.recent_turns =
+			plugin._player_loop.copy_turns(state.loop.recent_turns)
 	end
 	plugin._player_loop.ensure_state(copied)
 	return copied
@@ -518,6 +559,30 @@ function plugin._player_loop.record(name, update)
 	return plugin.get_player_state(name)
 end
 
+function plugin._player_loop.append_turn(name, role, text, surface_id, source)
+	text = bounded_trace_text(text, 240)
+	if text == nil or text == "" then
+		return plugin.get_player_state(name)
+	end
+	name = normalize_player_name(name)
+	local current = plugin._player_loop.copy_state(player_states[name] or { mode = "idle" })
+	local loop = plugin._player_loop.ensure_state(current)
+	loop.recent_turns = plugin._player_loop.copy_turns(loop.recent_turns)
+	loop.recent_turns[#loop.recent_turns + 1] = {
+		role = role or "user",
+		text = text,
+		surface_id = surface_id,
+		source = source,
+		turn_us = trace_timestamp_us(),
+	}
+	while #loop.recent_turns > (settings.max_player_loop_turns or 4) do
+		table.remove(loop.recent_turns, 1)
+	end
+	loop.last_updated_us = trace_timestamp_us()
+	player_states[name] = plugin._player_loop.copy_state(current)
+	return plugin.get_player_state(name)
+end
+
 function plugin.record_player_loop(name, update)
 	return plugin._player_loop.record(name, update)
 end
@@ -580,6 +645,11 @@ end
 local function start_request_trace(name, action, route, prompt, context, extra)
 	extra = extra or {}
 	local surface_id = extra.surface_id or (context and context.surface_id)
+	if extra.record_player_turn ~= false then
+		plugin._player_loop.append_turn(name, "user",
+			extra.player_turn_text or prompt, surface_id,
+			extra.player_turn_source or route)
+	end
 	local trace = remember_request_trace({
 		owner = name,
 		agent_id = extra.agent_id or agent_id_for(name),
@@ -4394,6 +4464,8 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 			agent_id = agent_id_for(name),
 			adapter_name = adapter_name,
 			observation_context = context,
+			player_turn_text = context.player_turn_text or raw_prompt,
+			player_turn_source = context.player_turn_source,
 		})
 	planner_context.player_agent_loop =
 		plugin._player_loop.public_context_json(name)
@@ -5794,6 +5866,48 @@ local function handle_approve(name, raw_prompt)
 	return queued
 end
 
+function plugin._player_loop.prompt_looks_like_builder_refinement(prompt)
+	if prompt == "" then
+		return false
+	end
+	return prompt:find("only", 1, true)
+		or prompt:find("just", 1, true)
+		or prompt:find("instead", 1, true)
+		or prompt:find("nothing else", 1, true)
+		or prompt:find("no platform", 1, true)
+		or prompt:find("not a platform", 1, true)
+		or prompt:find("do not", 1, true)
+		or prompt:find("don't", 1, true)
+		or prompt:find("change it", 1, true)
+		or prompt:find("make it", 1, true)
+		or prompt:find("use ", 1, true)
+		or prompt:find("tnt", 1, true)
+		or prompt:find("fire", 1, true)
+end
+
+function plugin._player_loop.builder_followup_prompt(name, raw_prompt, prompt)
+	local state = plugin.get_player_state(name)
+	local loop = state.loop or {}
+	if loop.active_surface ~= "builder" or not loop.active_goal then
+		return nil
+	end
+	if prompt == "build"
+			or prompt:match("^build%s+")
+			or prompt == "marker"
+			or prompt:match("^marker%s+")
+			or prompt:match("^plan%s+")
+			or prompt:match("^preview%s+") then
+		return nil
+	end
+	if not plugin._player_loop.prompt_looks_like_builder_refinement(prompt) then
+		return nil
+	end
+	return "Previous builder goal: "
+		.. bounded_trace_text(loop.active_goal, 240)
+		.. "\nPlayer follow-up: "
+		.. bounded_trace_text(raw_prompt, 240)
+end
+
 local function handle_model(name, prompt, context)
 	context = context or {}
 	local adapter_name = context.adapter_name or "ai_agent_plugin"
@@ -6067,6 +6181,15 @@ function plugin.handle_command(name, param, context)
 			and (prompt:find("plan", 1, true) or prompt:find("preview", 1, true)
 				or prompt:find("inventory", 1, true)) then
 		return handle_import_plan(name, context)
+	end
+	local followup_prompt =
+		plugin._player_loop.builder_followup_prompt(name, raw_prompt, prompt)
+	if followup_prompt then
+		local followup_context = table.copy(context)
+		followup_context.player_turn_text = raw_prompt
+		followup_context.player_turn_source = "nova_builder_followup"
+		return handle_agentic_build_planner(name, followup_prompt,
+			followup_context, "player_agent_followup_refinement")
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
 		if agentic_build_planner_available() then
