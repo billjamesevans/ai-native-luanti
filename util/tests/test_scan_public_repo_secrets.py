@@ -1,5 +1,8 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from util import scan_public_repo_secrets
 from util.scan_public_repo_secrets import scan_text
 
 
@@ -24,6 +27,37 @@ class TestPublicRepoSecretScan(unittest.TestCase):
         self.assertEqual(len(findings), 2)
         self.assertEqual({finding.pattern for finding in findings}, {"openai_api_key", "secret_env_assignment"})
         self.assertTrue(all(secret not in repr(finding) for finding in findings))
+
+    def test_commit_blob_decode_ignores_non_utf8_bytes(self):
+        with patch.object(scan_public_repo_secrets.subprocess, "run") as run:
+            run.return_value = SimpleNamespace(returncode=0, stdout=b"safe\x9btext\n")
+
+            text = scan_public_repo_secrets.show_commit_file("abc123", "fixture.txt")
+
+        self.assertEqual(text, "safetext\n")
+
+    def test_history_blob_paths_skip_duplicates_and_binary_extensions(self):
+        output = "\n".join(
+            [
+                "abc123",
+                "blob1 safe.env",
+                "blob1 duplicate.env",
+                "blob2 image.png",
+                "blob3 nested/config.txt",
+            ]
+        )
+        with patch.object(scan_public_repo_secrets, "run_git", return_value=output):
+            blobs = scan_public_repo_secrets.all_history_blob_paths()
+
+        self.assertEqual(blobs, {"blob1": "safe.env", "blob3": "nested/config.txt"})
+
+    def test_history_blob_decode_ignores_non_utf8_bytes(self):
+        with patch.object(scan_public_repo_secrets.subprocess, "run") as run:
+            run.return_value = SimpleNamespace(returncode=0, stdout=b"safe\x9btext\n")
+
+            text = scan_public_repo_secrets.show_blob("blob1")
+
+        self.assertEqual(text, "safetext\n")
 
 
 if __name__ == "__main__":

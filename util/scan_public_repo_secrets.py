@@ -9,9 +9,11 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -192,14 +194,38 @@ def changed_files_for_commit(commit: str) -> list[str]:
 def show_commit_file(commit: str, path: str) -> str | None:
     completed = subprocess.run(
         ["git", "show", f"{commit}:{path}"],
-        text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         check=False,
     )
     if completed.returncode != 0:
         return None
-    return completed.stdout
+    return completed.stdout.decode("utf-8", errors="ignore")
+
+
+def all_history_blob_paths() -> dict[str, str]:
+    blobs: dict[str, str] = {}
+    for line in run_git(["rev-list", "--objects", "--all"]).splitlines():
+        fields = line.split(" ", 1)
+        if len(fields) != 2:
+            continue
+        blob, path = fields
+        if blob in blobs or not should_scan_path(path):
+            continue
+        blobs[blob] = path
+    return blobs
+
+
+def show_blob(blob: str) -> str | None:
+    completed = subprocess.run(
+        ["git", "cat-file", "-p", blob],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.decode("utf-8", errors="ignore")
 
 
 def scan_commits(commits: Iterable[str]) -> list[Finding]:
@@ -213,6 +239,62 @@ def scan_commits(commits: Iterable[str]) -> list[Finding]:
             if text is None:
                 continue
             findings.extend(scan_text(text, source=f"commit:{short_commit}", path=path))
+    return findings
+
+
+def scan_all_history_blobs() -> list[Finding]:
+    findings: list[Finding] = []
+    blob_paths = all_history_blob_paths()
+    if not blob_paths:
+        return findings
+
+    object_list_path = ""
+    try:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as object_list:
+            object_list_path = object_list.name
+            for blob in blob_paths:
+                object_list.write(f"{blob}\n")
+
+        with open(object_list_path, "rb") as object_list:
+            process = subprocess.Popen(
+                ["git", "cat-file", "--batch"],
+                stdin=object_list,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            if process.stdout is None or process.stderr is None:
+                raise RuntimeError("git cat-file --batch did not expose output streams")
+
+            for blob, path in blob_paths.items():
+                header_bytes = process.stdout.readline()
+                if not header_bytes:
+                    break
+                header = header_bytes.decode("ascii", errors="replace").strip()
+                fields = header.split()
+                if len(fields) < 3 or fields[0] != blob:
+                    continue
+                try:
+                    size = int(fields[2])
+                except ValueError:
+                    continue
+                data = process.stdout.read(size)
+                process.stdout.read(1)
+                if fields[1] != "blob":
+                    continue
+                text = data.decode("utf-8", errors="ignore")
+                findings.extend(scan_text(text, source=f"blob:{blob[:12]}", path=path))
+
+            stderr = process.stderr.read().decode("utf-8", errors="ignore")
+            return_code = process.wait()
+            if return_code != 0:
+                raise RuntimeError(stderr.strip() or "git cat-file --batch failed")
+    finally:
+        if object_list_path:
+            try:
+                os.unlink(object_list_path)
+            except OSError:
+                pass
+
     return findings
 
 
@@ -261,7 +343,7 @@ def main() -> int:
     if args.pre_push:
         findings.extend(scan_commits(pre_push_commits(sys.stdin.read())))
     if args.all_history:
-        findings.extend(scan_commits(run_git(["rev-list", "--all"]).splitlines()))
+        findings.extend(scan_all_history_blobs())
 
     if findings:
         print("High-confidence secret material found. Matched values are intentionally hidden.", file=sys.stderr)
