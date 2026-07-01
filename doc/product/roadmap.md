@@ -38,32 +38,38 @@ Exit gate:
 
 Current Pi gate evidence:
 
-- 2026-07-01 follow-up side-by-side fork deploy advanced the Pi test lane to
-  `43146b09f`.
-- Backup:
-  `raspberrypi_luanti_20260701-053407.tgz`
-  (`0404fd277b183f52eb25e43bf4beffd45b75342b9713015ba5b44bf3f75e2ea8`).
+- 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
+  `752c0990c`.
+- Backup: `raspberrypi_luanti_20260701-085621.tgz`
+  (`d16acf41ecbc9fb1ed03129d03cc50f6bcd76a5069172f394e19f8bc2dba6de3`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
 - Agents SDK sidecar service `ai-native-luanti-agents-sdk-adapter.service`
   stayed active on loopback TCP `8766`.
 - memory refresh quality gate passed with live prompt eval `pass`,
-  compatibility import staging pilot `pass`, `7/7` required agentic tool cases,
+  compatibility import staging pilot `pass`, `8/8` required agentic tool cases,
   `0` attention items, and `0` violations. The retained quality gate artifact
-  was generated at `2026-07-01T10:39:36Z`.
-- request/response log gate passed with `1010` Agents SDK sidecar log entries
-  read, `5/5` checked cases passed, and `0` violations.
-- live prompt eval passed `8/8` cases; the OpenRealm golden subset passed
-  `7/7`, with `8` model-adapter requests, `8` successes, `0` failures, and
+  was generated at `2026-07-01T14:02:01Z`.
+- request/response log gate passed with `1204` request log entries and `73`
+  Nova agent log entries read, `7/7` checked cases passed, and `0`
+  violations.
+- live prompt eval passed `9/9` cases; the OpenRealm golden subset passed
+  `8/8`, with `9` model-adapter requests, `9` successes, `0` failures, and
   `0` timeouts. The retained live prompt-eval artifact was generated at
-  `2026-07-01T10:39:04Z`.
+  `2026-07-01T14:01:18Z`.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,
   and exposed `inspect_build_site_context`, `recall_build_prompt_memory`,
   `propose_build_option`, `select_build_option`, and `plan_build_actions` in
   the Agents SDK tool trace.
+- the live Pi prompt gate now includes `Build a small cabin`: Nova generated
+  and selected `generated_prompt_shaped_cabin`, preserved `wood` material,
+  produced a bounded `3 x 2 x 2` cabin preview with `10` planned node writes,
+  and exposed `recall_build_prompt_memory`, `propose_build_option`,
+  `select_build_option`, and `plan_build_actions` in the Agents SDK tool
+  trace.
 - the live Pi prompt gate now checks `player_agent_loop`, starting from natural
   chat (`Nova, Build a cozy lakeside village with floating lanterns`), then
   verifying `Nova, options`, `Nova, pending plan`, `Nova, no`, and the

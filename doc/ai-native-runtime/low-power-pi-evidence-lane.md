@@ -5,22 +5,22 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `43146b09f`
-- Backup artifact label: `raspberrypi_luanti_20260701-053407.tgz`
+- Fork commit: `752c0990c`
+- Backup artifact label: `raspberrypi_luanti_20260701-085621.tgz`
 - Backup SHA-256:
-  `0404fd277b183f52eb25e43bf4beffd45b75342b9713015ba5b44bf3f75e2ea8`
+  `d16acf41ecbc9fb1ed03129d03cc50f6bcd76a5069172f394e19f8bc2dba6de3`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: `ai-native-luanti-agents-sdk-adapter.service` active on
   loopback TCP `8766`.
 - Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
-  pilot `pass`; agentic tool cases `7/7`; attention items `0`; violations
-  `0`; retained artifact generated at `2026-07-01T10:39:36Z`.
-- Request/response log gate: `pass`; `1010` Agents SDK sidecar log entries
-  read; `5/5` checked cases passed; violations `0`.
-- Live prompt eval: `8/8` cases passed; the OpenRealm golden subset passed
-  `7/7`; model adapter requests `8`, successes `8`, failures `0`, timeouts
-  `0`; retained artifact generated at `2026-07-01T10:39:04Z`.
+  pilot `pass`; agentic tool cases `8/8`; attention items `0`; violations
+  `0`; retained artifact generated at `2026-07-01T14:02:01Z`.
+- Request/response log gate: `pass`; `1204` request log entries and `73` Nova
+  agent log entries read; `7/7` checked cases passed; violations `0`.
+- Live prompt eval: `9/9` cases passed; the OpenRealm golden subset passed
+  `8/8`; model adapter requests `9`, successes `9`, failures `0`, timeouts
+  `0`; retained artifact generated at `2026-07-01T14:01:18Z`.
 - Stone bridge generation proof: the live Pi sidecar call for
   "Build a stone bridge" returned `generated_bridge_platform` through
   `agents_sdk_generated_tool_completion`, produced a `stone` `platform`
@@ -28,6 +28,12 @@ Latest post-deploy gate:
   `inspect_build_site_context`, `recall_build_prompt_memory`,
   `propose_build_option`, `select_build_option`, and `plan_build_actions` in
   the Agents SDK tool trace.
+- Small cabin generation proof: the live Pi sidecar call for
+  "Build a small cabin" returned `generated_prompt_shaped_cabin` through
+  `agents_sdk_generated_tool_completion`, produced a `wood` `cabin` preview
+  with dimensions `3 x 2 x 2` and `10` planned node writes, and included
+  `recall_build_prompt_memory`, `propose_build_option`, `select_build_option`,
+  and `plan_build_actions` in the Agents SDK tool trace.
 - Player-loop check: `Nova, options` returns pending build choices and the
   selected candidate from runtime state without world mutation. Each executable
   option carries an `openrealm.plan.v1` safety/preview contract.
@@ -49,8 +55,24 @@ Latest post-deploy gate:
   `propose_build_option`, `select_build_option`, and `plan_build_actions` in
   the Agents SDK tool trace.
 
-This is post-deploy proof, not a retained soak manifest. Use the commands below
-for quick, one-hour, or overnight low-power evidence manifests.
+Latest retained one-hour soak manifest:
+
+- Date: 2026-07-01
+- Fork commit: `73deb2807`
+- Path:
+  `local/benchmarks/low-power-server/2026-07-01/73deb2807/pi-low-power-evidence.json`
+- Target: `one-hour`; elapsed `4192.233` seconds; duration met.
+- Iterations: `13/13` passed, `0` failed.
+- Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
+- Resource maxima: average CPU `84.313%`, interval CPU `113.699%`, RSS
+  `79.594 MB`, actionable warnings `0`, server log errors `0`.
+- Backup artifact:
+  `raspberrypi_luanti_20260701-073328.tgz`
+  (`6e153072b4a4451a6850b6b1e4260c3aceebf18e68031372bc072404bf83e147`).
+
+The post-deploy gate above is not itself a soak manifest; the retained
+one-hour manifest is recorded separately. Use the commands below for quick,
+one-hour, or overnight low-power evidence manifests.
 
 After the local verifier passes and the fork has been deployed through the
 backup-first Pi workflow, collect low-power evidence with:
