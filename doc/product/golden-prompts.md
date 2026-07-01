@@ -33,6 +33,9 @@ runtime can validate them with repeatable public-safe evidence.
   when the node is available in the profile.
 - A player must be able to ask for pending build options without causing a model
   call or world mutation.
+- A player must be able to revise a pending build preview in natural chat, such
+  as `Nova, make it wider` or `Nova, use tnt instead`, without losing the
+  approval id or mutating the world.
 - The runtime must reject direct mutation without task, audit, and rollback
   metadata.
 - Weak or wrong behavior must be logged into the request/response review queue
@@ -81,6 +84,11 @@ runtime can validate them with repeatable public-safe evidence.
   `fire` candidate, emit public-safe player-loop turns from natural chat, keep
   the planner reason as `player_agent_followup_refinement`, require approval,
   and perform no direct world mutation.
+- Natural pending-plan edits: after a pending build preview exists, natural
+  chat such as `Nova, make it wider` and `Nova, use tnt instead` must route to
+  `edit_plan`, preserve the approval id, update dimensions or material, return
+  `no_world_mutation = true`, and retain public-safe `natural_chat_review`
+  request traces.
 - Adapter template generation: the Agents SDK sidecar can now turn "Build a
   cozy lakeside village with floating lanterns" into a bounded
   `generated_openrealm_lakeside_village` option with a 96-placement
