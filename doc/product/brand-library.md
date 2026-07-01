@@ -48,9 +48,7 @@ The same library drop includes the OpenRealm Advantage Kit:
 Current local validation for the kit:
 
 ```bash
-cd openrealm_advantage_kit
-python3 -m unittest discover tests
-node --check studio/app.js
+python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check
 ```
 
 The repository-level public secret guard must also pass before publishing:

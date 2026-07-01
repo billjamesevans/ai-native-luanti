@@ -10,6 +10,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import ai_native_product_profile_verify
+import openrealm_advantage_kit_verify
 
 
 ONE_COMMAND_LOCAL_VERIFIER = [
@@ -133,6 +134,7 @@ REQUIRED_DOCS = [
             "ranked next-issue queue",
             "release_candidate_checklist",
             "python3 util/ai_native_alpha_release_gate.py",
+            "python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check",
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
             "python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks",
             "--require-live-prompt-eval",
@@ -146,6 +148,16 @@ REQUIRED_DOCS = [
             "side-by-side",
         ],
     },
+    {
+        "path": "doc/product/brand-library.md",
+        "kind": "openrealm_brand_library",
+        "phrases": [
+            "OpenRealm Brand Library",
+            "openrealm_advantage_kit/assets",
+            "AI does not mutate the world directly. Luanti remains the world authority.",
+            "python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check",
+        ],
+    },
 ]
 
 PROJECT_OPERATING_LOOP = {
@@ -154,6 +166,7 @@ PROJECT_OPERATING_LOOP = {
             "name": "pre_pr_local_gate",
             "commands": [
                 ["python3", "util/ai_native_alpha_release_gate.py"],
+                ["python3", "util/openrealm_advantage_kit_verify.py", "--run-tests", "--run-js-check"],
                 [
                     "python3",
                     "util/ai_native_runtime_verify.py",
@@ -397,6 +410,7 @@ REQUIRED_REPO_FILES = [
         "kind": "pull_request_template",
         "phrases": [
             "python3 util/ai_native_alpha_release_gate.py",
+            "python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check",
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
             "spacebase",
             "themepark",
@@ -415,6 +429,7 @@ REQUIRED_REPO_FILES = [
             "public-safe-sample-data-policy.md",
             "release-notes-template.md",
             "python3 util/ai_native_alpha_release_gate.py",
+            "python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check",
             "--require-live-prompt-eval",
         ],
     },
@@ -456,6 +471,7 @@ def build_report(root: pathlib.Path | str) -> dict:
     root = pathlib.Path(root)
     violations = []
     clean_profile_package = ai_native_product_profile_verify.build_report(root)
+    openrealm_advantage_kit = openrealm_advantage_kit_verify.build_report(root)
 
     docs = []
     for spec in REQUIRED_DOCS:
@@ -488,6 +504,8 @@ def build_report(root: pathlib.Path | str) -> dict:
         ),
         "clean_profile_package_verified": clean_profile_package.get("status") == "pass"
         and all(clean_profile_package.get("safety", {}).values()),
+        "openrealm_advantage_kit_verified": openrealm_advantage_kit.get("status") == "pass"
+        and all(openrealm_advantage_kit.get("safety", {}).values()),
     }
 
     for key, value in safety.items():
@@ -505,6 +523,18 @@ def build_report(root: pathlib.Path | str) -> dict:
                 "kind": "clean_profile_package_safety_failed",
                 "gate": key,
             })
+    if openrealm_advantage_kit.get("status") != "pass":
+        violations.append({
+            "kind": "openrealm_advantage_kit_failed",
+            "status": openrealm_advantage_kit.get("status"),
+            "violations": openrealm_advantage_kit.get("violations", []),
+        })
+    for key, value in openrealm_advantage_kit.get("safety", {}).items():
+        if value is not True:
+            violations.append({
+                "kind": "openrealm_advantage_kit_safety_failed",
+                "gate": key,
+            })
 
     return {
         "schema_version": 1,
@@ -514,6 +544,15 @@ def build_report(root: pathlib.Path | str) -> dict:
             "clean_profile": "games/ai_runtime",
             "pi_deployment_boundary": "side_by_side_test_service_only",
             "fresh_checkout_command_plan": [
+                {
+                    "step": "verify_openrealm_advantage_kit",
+                    "command": [
+                        "python3",
+                        "util/openrealm_advantage_kit_verify.py",
+                        "--run-tests",
+                        "--run-js-check",
+                    ],
+                },
                 {
                     "step": "configure_server_release",
                     "command": [
@@ -556,6 +595,7 @@ def build_report(root: pathlib.Path | str) -> dict:
         "project_operating_loop": PROJECT_OPERATING_LOOP,
         "release_candidate_checklist": RELEASE_CANDIDATE_CHECKLIST,
         "clean_profile_package": clean_profile_package,
+        "openrealm_advantage_kit": openrealm_advantage_kit,
         "docs": docs,
         "issue_templates": issue_templates,
         "repo_files": repo_files,

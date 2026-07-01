@@ -19,6 +19,7 @@ This PR is a Work in Progress / Ready for Review.
 ## AI-native alpha gate
 
 - [ ] I ran `python3 util/ai_native_alpha_release_gate.py`
+- [ ] I ran `python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check` when product identity, OpenRealm library, creator-kernel, studio, or visual assets changed.
 - [ ] I ran `python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime` or explained why it is not applicable.
 - [ ] Agent behavior changes include a live prompt eval and `python3 util/ai_native_agent_quality_gate.py ... --require-live-prompt-eval`.
 - [ ] This PR keeps `spacebase`, `themepark`, `disneyland100`, private worlds, prompts, secrets, copied proprietary assets, and family-server content out of the main fork.

@@ -4,6 +4,10 @@ This prototype intentionally avoids requiring changes to the engine. It generate
 
 ## Install path
 
+Copy the generated mod folder into a disposable Luanti world first. Do not test
+generated content against a private family world or production server until the
+plan, preview, approval, audit, and rollback evidence has been reviewed.
+
 Generated mod folders can be copied into:
 
 ```text

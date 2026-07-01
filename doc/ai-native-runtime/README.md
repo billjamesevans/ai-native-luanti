@@ -110,6 +110,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Live Nova prompt eval command: `/ai_agent_eval`
 - Live operator feedback command: `/ai_agent_feedback last; case=stone_bridge_platform; build_kind=platform; material=stone; planned_writes=12; route=agentic_build_planner`
 - Alpha release package gate: `python3 util/ai_native_alpha_release_gate.py`
+- OpenRealm Advantage Kit gate: `python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check`
 - Model adapter contract gate: `python3 util/ai_native_model_adapter_contract.py`
 - Agents SDK bridge contract gate: `python3 util/ai_native_agents_sdk_bridge_contract.py`
 - Optional model adapter scaffold: enable `ai_runtime.enable_model_adapter_probe_command` and run `/ai_model_adapter_probe`

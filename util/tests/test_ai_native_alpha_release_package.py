@@ -28,11 +28,13 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             "doc/ai-native-runtime/public-safe-sample-data-policy.md",
             "doc/ai-native-runtime/release-notes-template.md",
             "doc/ai-native-runtime/project-operating-loop.md",
+            "doc/product/brand-library.md",
             ".github/ISSUE_TEMPLATE/ai_runtime.yml",
             ".github/ISSUE_TEMPLATE/agent_plugin.yml",
             ".github/ISSUE_TEMPLATE/benchmark.yml",
             ".github/ISSUE_TEMPLATE/compat_import.yml",
             "util/ai_native_alpha_release_gate.py",
+            "util/openrealm_advantage_kit_verify.py",
         ]
 
         missing = [path for path in expected_paths if not (ROOT / path).is_file()]
@@ -60,6 +62,11 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         self.assertTrue(report["safety"]["pi_side_by_side_only"])
         self.assertTrue(report["safety"]["release_notes_separate_engine_plugins_family_content"])
         self.assertTrue(report["safety"]["clean_profile_package_verified"])
+        self.assertTrue(report["safety"]["openrealm_advantage_kit_verified"])
+        self.assertEqual(report["openrealm_advantage_kit"]["status"], "pass")
+        self.assertEqual(report["openrealm_advantage_kit"]["kit"]["product_name"], "OpenRealm")
+        self.assertEqual(report["openrealm_advantage_kit"]["kit"]["assistant_name"], "Nova")
+        self.assertEqual(len(report["openrealm_advantage_kit"]["assets"]), 7)
         operating_loop = report["project_operating_loop"]
         self.assertEqual(
             [item["issue"] for item in operating_loop["ranked_next_issue_queue"]],
@@ -102,6 +109,14 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         self.assertEqual(
             cadence_names,
             ["pre_pr_local_gate", "benchmark_review", "agent_quality_promotion", "pi_promotion"],
+        )
+        pre_pr_cadence = next(
+            entry for entry in operating_loop["cadence"]
+            if entry["name"] == "pre_pr_local_gate"
+        )
+        self.assertIn(
+            ["python3", "util/openrealm_advantage_kit_verify.py", "--run-tests", "--run-js-check"],
+            pre_pr_cadence["commands"],
         )
         agent_cadence = next(
             entry for entry in operating_loop["cadence"]
@@ -173,6 +188,10 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             for step in report["alpha_package"]["fresh_checkout_command_plan"]
         }
         self.assertEqual(
+            command_plan["verify_openrealm_advantage_kit"],
+            ["python3", "util/openrealm_advantage_kit_verify.py", "--run-tests", "--run-js-check"],
+        )
+        self.assertEqual(
             command_plan["configure_server_release"][:5],
             ["cmake", "-S", ".", "-B", "build/server-release"],
         )
@@ -212,6 +231,8 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             self.assertIn(link, readme)
 
         self.assertIn("python3 util/ai_native_alpha_release_gate.py", readme)
+        self.assertIn("python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check", readme)
+        self.assertIn("python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check", pr_template)
         self.assertIn("python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime", pr_template)
         self.assertIn("--require-live-prompt-eval", readme)
         self.assertIn("--require-live-prompt-eval", pr_template)

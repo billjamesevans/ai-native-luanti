@@ -23,6 +23,7 @@ release packaging, benchmarks, or compatibility/import behavior:
 
 ```bash
 python3 util/ai_native_alpha_release_gate.py
+python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check
 python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime
 ```
 
