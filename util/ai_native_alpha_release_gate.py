@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import subprocess
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -61,6 +62,13 @@ AGENT_QUALITY_GATE_COMMAND = [
     "<utc-timestamp>",
 ]
 
+AGENTS_SDK_SIDECAR_READINESS_COMMAND = [
+    "python3",
+    "util/ai_native_agents_sdk_sidecar_readiness.py",
+    "--mode",
+    "offline-smoke",
+]
+
 REQUIRED_DOCS = [
     {
         "path": "doc/ai-native-runtime/alpha-release-gate.md",
@@ -71,6 +79,7 @@ REQUIRED_DOCS = [
             "operator-alpha-release-runbook.md",
             "deployment lane, not a replacement for the family server",
             "--require-live-prompt-eval",
+            "python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke",
             "spacebase",
             "themepark",
             "disneyland100",
@@ -136,6 +145,7 @@ REQUIRED_DOCS = [
             "python3 util/ai_native_alpha_release_gate.py",
             "python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check",
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
+            "python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke",
             "python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmarks",
             "--require-live-prompt-eval",
             "#253",
@@ -167,6 +177,7 @@ PROJECT_OPERATING_LOOP = {
             "commands": [
                 ["python3", "util/ai_native_alpha_release_gate.py"],
                 ["python3", "util/openrealm_advantage_kit_verify.py", "--run-tests", "--run-js-check"],
+                AGENTS_SDK_SIDECAR_READINESS_COMMAND,
                 [
                     "python3",
                     "util/ai_native_runtime_verify.py",
@@ -193,6 +204,7 @@ PROJECT_OPERATING_LOOP = {
         {
             "name": "agent_quality_promotion",
             "commands": [
+                AGENTS_SDK_SIDECAR_READINESS_COMMAND,
                 LIVE_PROMPT_EVAL_COMMAND,
                 AGENT_QUALITY_GATE_COMMAND,
             ],
@@ -225,7 +237,7 @@ PROJECT_OPERATING_LOOP = {
             "issue": "#254",
             "title": "First-party AI agent productization lane",
             "when": "parallel local work while Pi evidence is occupied",
-            "gate": "live product-loop probe, streamed Agents SDK build-planning evidence, request/response log gate, required live prompt eval, agent quality gate, and one-command local verifier",
+            "gate": "offline Agents SDK sidecar readiness, live product-loop probe, streamed Agents SDK build-planning evidence, request/response log gate, required live prompt eval, agent quality gate, and one-command local verifier",
         },
         {
             "issue": "#255",
@@ -292,6 +304,7 @@ RELEASE_CANDIDATE_CHECKLIST = {
         {
             "name": "agent_quality_promotion",
             "required_commands": [
+                AGENTS_SDK_SIDECAR_READINESS_COMMAND,
                 LIVE_PROMPT_EVAL_COMMAND,
                 AGENT_QUALITY_GATE_COMMAND,
             ],
@@ -301,6 +314,7 @@ RELEASE_CANDIDATE_CHECKLIST = {
                 "local/benchmarks/ai-agent-quality-gate.json",
             ],
             "done_when": [
+                "offline sidecar readiness proves the Agents SDK bridge is present, public-safe, and non-mutating",
                 "live in-engine prompt eval passes through the Agents SDK model adapter",
                 "request/response log gate passes for the player-facing regression cases",
                 "agent quality gate passes with live_prompt_eval_required set to true",
@@ -412,6 +426,7 @@ REQUIRED_REPO_FILES = [
             "python3 util/ai_native_alpha_release_gate.py",
             "python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check",
             "python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime",
+            "python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke",
             "spacebase",
             "themepark",
             "disneyland100",
@@ -430,6 +445,7 @@ REQUIRED_REPO_FILES = [
             "release-notes-template.md",
             "python3 util/ai_native_alpha_release_gate.py",
             "python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check",
+            "python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke",
             "--require-live-prompt-eval",
         ],
     },
@@ -467,11 +483,83 @@ def check_required_file(root: pathlib.Path, spec: dict) -> tuple[dict, list[dict
     return result, violations
 
 
+def run_agents_sdk_sidecar_readiness(root: pathlib.Path) -> dict:
+    root = root.resolve()
+    script = root / "util" / "ai_native_agents_sdk_sidecar_readiness.py"
+    if not script.is_file():
+        return {
+            "schema_version": 1,
+            "report_kind": "ai_native_agents_sdk_sidecar_readiness",
+            "mode": "offline-smoke",
+            "status": "fail",
+            "checks": {"files_present": False},
+            "violations": [{"kind": "missing_sidecar_readiness_script", "details": str(script)}],
+        }
+
+    try:
+        result = subprocess.run(
+            [sys.executable, str(script), "--mode", "offline-smoke"],
+            cwd=root,
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=20,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "schema_version": 1,
+            "report_kind": "ai_native_agents_sdk_sidecar_readiness",
+            "mode": "offline-smoke",
+            "status": "fail",
+            "checks": {"timeout": True},
+            "violations": [{"kind": "sidecar_readiness_timeout", "details": "20s"}],
+        }
+
+    try:
+        report = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return {
+            "schema_version": 1,
+            "report_kind": "ai_native_agents_sdk_sidecar_readiness",
+            "mode": "offline-smoke",
+            "status": "fail",
+            "checks": {"json_parse": False},
+            "violations": [{
+                "kind": "sidecar_readiness_invalid_json",
+                "details": result.stderr[-500:],
+            }],
+        }
+    if result.returncode != 0 and report.get("status") == "pass":
+        report["status"] = "fail"
+        report.setdefault("violations", []).append({
+            "kind": "sidecar_readiness_nonzero_exit",
+            "details": str(result.returncode),
+        })
+    return report
+
+
+def agents_sdk_sidecar_readiness_safe(report: dict) -> bool:
+    checks = report.get("checks", {})
+    response = report.get("response", {})
+    return (
+        report.get("status") == "pass"
+        and checks.get("files_present") is True
+        and checks.get("offline_smoke") is True
+        and checks.get("no_provider_credentials_required") is True
+        and checks.get("no_forbidden_payload_keys") is True
+        and checks.get("tool_powers_declared") is True
+        and checks.get("no_direct_world_mutation_tools") is True
+        and checks.get("public_safe_response") is True
+        and response.get("world_mutation_authority") == "luanti"
+    )
+
+
 def build_report(root: pathlib.Path | str) -> dict:
     root = pathlib.Path(root)
     violations = []
     clean_profile_package = ai_native_product_profile_verify.build_report(root)
     openrealm_advantage_kit = openrealm_advantage_kit_verify.build_report(root)
+    agents_sdk_sidecar_readiness = run_agents_sdk_sidecar_readiness(root)
 
     docs = []
     for spec in REQUIRED_DOCS:
@@ -506,6 +594,9 @@ def build_report(root: pathlib.Path | str) -> dict:
         and all(clean_profile_package.get("safety", {}).values()),
         "openrealm_advantage_kit_verified": openrealm_advantage_kit.get("status") == "pass"
         and all(openrealm_advantage_kit.get("safety", {}).values()),
+        "agents_sdk_sidecar_readiness_verified": agents_sdk_sidecar_readiness_safe(
+            agents_sdk_sidecar_readiness
+        ),
     }
 
     for key, value in safety.items():
@@ -535,6 +626,17 @@ def build_report(root: pathlib.Path | str) -> dict:
                 "kind": "openrealm_advantage_kit_safety_failed",
                 "gate": key,
             })
+    if agents_sdk_sidecar_readiness.get("status") != "pass":
+        violations.append({
+            "kind": "agents_sdk_sidecar_readiness_failed",
+            "status": agents_sdk_sidecar_readiness.get("status"),
+            "violations": agents_sdk_sidecar_readiness.get("violations", []),
+        })
+    if not agents_sdk_sidecar_readiness_safe(agents_sdk_sidecar_readiness):
+        violations.append({
+            "kind": "agents_sdk_sidecar_readiness_safety_failed",
+            "gate": "offline_smoke_public_safe_non_mutating",
+        })
 
     return {
         "schema_version": 1,
@@ -552,6 +654,10 @@ def build_report(root: pathlib.Path | str) -> dict:
                         "--run-tests",
                         "--run-js-check",
                     ],
+                },
+                {
+                    "step": "verify_agents_sdk_sidecar_readiness",
+                    "command": AGENTS_SDK_SIDECAR_READINESS_COMMAND,
                 },
                 {
                     "step": "configure_server_release",
@@ -596,6 +702,7 @@ def build_report(root: pathlib.Path | str) -> dict:
         "release_candidate_checklist": RELEASE_CANDIDATE_CHECKLIST,
         "clean_profile_package": clean_profile_package,
         "openrealm_advantage_kit": openrealm_advantage_kit,
+        "agents_sdk_sidecar_readiness": agents_sdk_sidecar_readiness,
         "docs": docs,
         "issue_templates": issue_templates,
         "repo_files": repo_files,

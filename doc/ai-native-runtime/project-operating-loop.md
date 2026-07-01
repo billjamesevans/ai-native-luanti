@@ -24,6 +24,7 @@ release packaging, benchmarks, or compatibility/import behavior:
 ```bash
 python3 util/ai_native_alpha_release_gate.py
 python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check
+python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke
 python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime
 ```
 
@@ -34,8 +35,13 @@ python3 util/ai_native_minecraft_parity_harness.py --output-root local/benchmark
 ```
 
 When a PR changes player-facing agent behavior, the pre-PR packet must also
-prove live in-engine behavior through the Agents SDK model adapter. Run the live
-prompt eval, then make the combined quality gate require that artifact:
+prove the Agents SDK sidecar contract in offline mode and live in-engine
+behavior through the Agents SDK model adapter. Run sidecar readiness first, run
+the live prompt eval, then make the combined quality gate require that artifact:
+
+```bash
+python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke
+```
 
 ```bash
 python3 util/ai_native_agent_prompt_eval_live_probe.py \

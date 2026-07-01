@@ -34,6 +34,7 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             ".github/ISSUE_TEMPLATE/benchmark.yml",
             ".github/ISSUE_TEMPLATE/compat_import.yml",
             "util/ai_native_alpha_release_gate.py",
+            "util/ai_native_agents_sdk_sidecar_readiness.py",
             "util/openrealm_advantage_kit_verify.py",
         ]
 
@@ -63,6 +64,16 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         self.assertTrue(report["safety"]["release_notes_separate_engine_plugins_family_content"])
         self.assertTrue(report["safety"]["clean_profile_package_verified"])
         self.assertTrue(report["safety"]["openrealm_advantage_kit_verified"])
+        self.assertTrue(report["safety"]["agents_sdk_sidecar_readiness_verified"])
+        self.assertEqual(report["agents_sdk_sidecar_readiness"]["status"], "pass")
+        self.assertEqual(
+            report["agents_sdk_sidecar_readiness"]["report_kind"],
+            "ai_native_agents_sdk_sidecar_readiness",
+        )
+        self.assertEqual(
+            report["agents_sdk_sidecar_readiness"]["response"]["world_mutation_authority"],
+            "luanti",
+        )
         self.assertEqual(report["openrealm_advantage_kit"]["status"], "pass")
         self.assertEqual(report["openrealm_advantage_kit"]["kit"]["product_name"], "OpenRealm")
         self.assertEqual(report["openrealm_advantage_kit"]["kit"]["assistant_name"], "Nova")
@@ -79,6 +90,10 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         self.assertIn("recorded backup artifact and SHA", queue_by_issue["#253"]["gate"])
         self.assertIn(
             "streamed Agents SDK build-planning evidence",
+            queue_by_issue["#254"]["gate"],
+        )
+        self.assertIn(
+            "offline Agents SDK sidecar readiness",
             queue_by_issue["#254"]["gate"],
         )
         self.assertIn(
@@ -118,13 +133,17 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             ["python3", "util/openrealm_advantage_kit_verify.py", "--run-tests", "--run-js-check"],
             pre_pr_cadence["commands"],
         )
+        self.assertIn(
+            ["python3", "util/ai_native_agents_sdk_sidecar_readiness.py", "--mode", "offline-smoke"],
+            pre_pr_cadence["commands"],
+        )
         agent_cadence = next(
             entry for entry in operating_loop["cadence"]
             if entry["name"] == "agent_quality_promotion"
         )
         self.assertIn(
             "--require-live-prompt-eval",
-            agent_cadence["commands"][1],
+            agent_cadence["commands"][2],
         )
         checklist = report["release_candidate_checklist"]
         self.assertEqual(
@@ -149,7 +168,11 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
         )
         self.assertIn(
             "--require-live-prompt-eval",
-            agent_phase["required_commands"][1],
+            agent_phase["required_commands"][2],
+        )
+        self.assertEqual(
+            agent_phase["required_commands"][0],
+            ["python3", "util/ai_native_agents_sdk_sidecar_readiness.py", "--mode", "offline-smoke"],
         )
         self.assertIn(
             "local/benchmarks/ai-agent-prompt-eval-live-latest.json",
@@ -192,6 +215,10 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
             ["python3", "util/openrealm_advantage_kit_verify.py", "--run-tests", "--run-js-check"],
         )
         self.assertEqual(
+            command_plan["verify_agents_sdk_sidecar_readiness"],
+            ["python3", "util/ai_native_agents_sdk_sidecar_readiness.py", "--mode", "offline-smoke"],
+        )
+        self.assertEqual(
             command_plan["configure_server_release"][:5],
             ["cmake", "-S", ".", "-B", "build/server-release"],
         )
@@ -232,7 +259,9 @@ class AIAlphaReleasePackageTests(unittest.TestCase):
 
         self.assertIn("python3 util/ai_native_alpha_release_gate.py", readme)
         self.assertIn("python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check", readme)
+        self.assertIn("python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke", readme)
         self.assertIn("python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check", pr_template)
+        self.assertIn("python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke", pr_template)
         self.assertIn("python3 util/ai_native_runtime_verify.py --hardware-class local-mac --game-profile ai_runtime", pr_template)
         self.assertIn("--require-live-prompt-eval", readme)
         self.assertIn("--require-live-prompt-eval", pr_template)

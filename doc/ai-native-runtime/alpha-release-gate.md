@@ -22,10 +22,18 @@ python3 util/ai_native_alpha_release_gate.py
 ```
 
 That gate verifies the contributor docs, issue/PR templates, fresh-checkout
-command plan, and the clean `games/ai_runtime` package inventory. It fails if
-default-loaded AI runtime modules drift from `product_profile_manifest.json`, if
-dev/test fixtures are loaded by default, or if profile code includes private,
-test-only, import, combat, or admin-only surfaces.
+command plan, the clean `games/ai_runtime` package inventory, and the offline
+Agents SDK sidecar readiness contract. It fails if default-loaded AI runtime
+modules drift from `product_profile_manifest.json`, if dev/test fixtures are
+loaded by default, if the sidecar stops being public-safe and non-mutating by
+default, or if profile code includes private, test-only, import, combat, or
+admin-only surfaces.
+
+The offline Agents SDK sidecar readiness gate is:
+
+```bash
+python3 util/ai_native_agents_sdk_sidecar_readiness.py --mode offline-smoke
+```
 
 Use [the operator alpha release runbook](operator-alpha-release-runbook.md) for
 the backup-first side-by-side deploy, independent service checks, rollback
@@ -38,7 +46,7 @@ command, evidence retention, and public-safe promotion decision.
 3. Run the one-command local verifier.
 4. Run the product-profile hygiene gate.
 5. Run the alpha release-package gate, which includes clean-profile package
-   hygiene and the fresh-checkout command plan.
+   hygiene, Agents SDK sidecar readiness, and the fresh-checkout command plan.
 6. For any release candidate that changes agent behavior, run the live
    in-engine prompt eval through the Agents SDK model adapter and then run the
    combined agent quality gate with `--require-live-prompt-eval`.
