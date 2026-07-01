@@ -732,7 +732,11 @@ local function finish_request_trace(trace, result, extra)
 		action = result and result.action,
 		reason = result and result.reason,
 		message = bounded_trace_text(result and result.message, 1000),
+		surface_id = result and result.surface_id,
+		no_world_mutation = result and result.no_world_mutation,
 		approval_id = result and result.approval_id,
+		pending_action = result and result.pending_action,
+		discarded_action = result and result.discarded_action,
 		task_id = result and result.task_id,
 		approved_action = result and result.approved_action,
 		auto_applied_approval = result and result.auto_applied_approval,
@@ -7373,8 +7377,20 @@ function plugin.handle_natural_chat_message(name, message, context)
 	chat_context.natural_chat = true
 	chat_context.natural_chat_alias = alias
 	chat_context.player_turn_text = prompt
-	chat_context.player_turn_source = "natural_chat"
+	chat_context.player_turn_source = chat_context.player_turn_source or "natural_chat"
 	local result = plugin.handle_command(name, prompt, chat_context)
+	if result and result.trace_id == nil then
+		local trace = start_request_trace(name, result.action or "natural_chat",
+			"natural_chat_review", prompt, chat_context, {
+				surface_id = result.surface_id or chat_context.surface_id or "guide",
+				player_turn_text = prompt,
+				player_turn_source = chat_context.player_turn_source,
+			})
+		finish_request_trace(trace, result, {
+			input_surface = "natural_chat",
+			natural_chat_alias = alias,
+		})
+	end
 	local player_reply = plugin.format_player_reply(result)
 	result.player_reply = player_reply
 	plugin._player_loop.append_turn(name, "assistant", player_reply,

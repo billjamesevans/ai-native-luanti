@@ -4239,6 +4239,51 @@ assert(natural_fire_state.loop.recent_turns[2].role == "assistant")
 assert(natural_fire_state.loop.recent_turns[2].source == "natural_chat")
 assert(natural_fire_state.loop.recent_turns[2].text:find("I planned fire", 1, true))
 
+local options_handled, natural_options = core.ai_agent_plugin.handle_natural_chat_message(
+	"NaturalChat", "Nova, options", {
+		suppress_chat_send = true,
+	})
+assert(options_handled == true)
+assert(natural_options.ok == true)
+assert(natural_options.action == "build_options")
+assert(natural_options.status == "success")
+assert(natural_options.no_world_mutation == true)
+local options_trace = core.ai_agent_plugin.latest_player_request_trace("NaturalChat")
+assert(options_trace.public_prompt == "options")
+assert(options_trace.action == "build_options")
+assert(options_trace.route == "natural_chat_review")
+assert(options_trace.context.input_surface == "natural_chat")
+assert(options_trace.context.natural_chat_alias == "nova")
+assert(options_trace.response.status == "success")
+assert(options_trace.response.action == "build_options")
+assert(options_trace.response.no_world_mutation == true)
+assert(options_trace.response.build_kind == "fire")
+
+local pending_handled, natural_pending = core.ai_agent_plugin.handle_natural_chat_message(
+	"NaturalChat", "Nova, pending plan", {
+		suppress_chat_send = true,
+	})
+assert(pending_handled == true)
+assert(natural_pending.ok == true)
+assert(natural_pending.action == "pending_plan")
+assert(natural_pending.status == "success")
+local pending_trace = core.ai_agent_plugin.latest_player_request_trace("NaturalChat")
+assert(pending_trace.public_prompt == "pending plan")
+assert(pending_trace.action == "pending_plan")
+assert(pending_trace.route == "natural_chat_review")
+assert(pending_trace.response.status == "success")
+assert(pending_trace.response.action == "pending_plan")
+assert(pending_trace.response.build_kind == "fire")
+local natural_review_state = core.ai_agent_plugin.get_player_state("NaturalChat")
+assert(natural_review_state.loop.recent_turns[1].text == "options")
+assert(natural_review_state.loop.recent_turns[1].source == "natural_chat")
+assert(natural_review_state.loop.recent_turns[2].role == "assistant")
+assert(natural_review_state.loop.recent_turns[2].source == "natural_chat")
+assert(natural_review_state.loop.recent_turns[3].text == "pending plan")
+assert(natural_review_state.loop.recent_turns[3].source == "natural_chat")
+assert(natural_review_state.loop.recent_turns[4].role == "assistant")
+assert(natural_review_state.loop.recent_turns[4].source == "natural_chat")
+
 local ignored = core.ai_agent_plugin.handle_natural_chat_message(
 	"NaturalChat", "I saw a nova star", {
 		suppress_chat_send = true,

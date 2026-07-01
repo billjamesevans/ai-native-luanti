@@ -51,6 +51,10 @@ runtime can validate them with repeatable public-safe evidence.
   `Nova, pending plan` must return the same selected candidate without world
   mutation; `Nova, no` must discard the approval; the next `Nova, pending plan`
   must block with `no_pending_approval`.
+- Natural-chat review turns such as `Nova, options` and `Nova, pending plan`
+  must emit public-safe `natural_chat_review` request traces, so request/response
+  review keeps normal player conversation turns instead of only model-backed
+  build-planning turns.
 - Adapter template generation: the Agents SDK sidecar can now turn "Build a
   cozy lakeside village with floating lanterns" into a bounded
   `generated_openrealm_lakeside_village` option with a 96-placement
