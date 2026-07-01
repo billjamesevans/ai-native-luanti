@@ -5,22 +5,22 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `752c0990c`
-- Backup artifact label: `raspberrypi_luanti_20260701-085621.tgz`
+- Fork commit: `325a99211`
+- Backup artifact label: `raspberrypi_luanti_20260701-095915.tgz`
 - Backup SHA-256:
-  `d16acf41ecbc9fb1ed03129d03cc50f6bcd76a5069172f394e19f8bc2dba6de3`
+  `6ed313981de6a284f37c086a9375cd5ac9c433bca79627b6b2ff7644ba37ab20`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: `ai-native-luanti-agents-sdk-adapter.service` active on
   loopback TCP `8766`.
 - Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
-  pilot `pass`; agentic tool cases `8/8`; attention items `0`; violations
-  `0`; retained artifact generated at `2026-07-01T14:02:01Z`.
-- Request/response log gate: `pass`; `1204` request log entries and `73` Nova
+  pilot `pass`; agentic tool cases `9/9`; attention items `0`; violations
+  `0`; retained artifact generated at `2026-07-01T15:04:37Z`.
+- Request/response log gate: `pass`; `1330` request log entries and `73` Nova
   agent log entries read; `7/7` checked cases passed; violations `0`.
-- Live prompt eval: `9/9` cases passed; the OpenRealm golden subset passed
-  `8/8`; model adapter requests `9`, successes `9`, failures `0`, timeouts
-  `0`; retained artifact generated at `2026-07-01T14:01:18Z`.
+- Live prompt eval: `10/10` cases passed; the OpenRealm golden subset passed
+  `9/9`; model adapter requests `10`, successes `10`, failures `0`, timeouts
+  `0`; retained artifact generated at `2026-07-01T15:03:29Z`.
 - Stone bridge generation proof: the live Pi sidecar call for
   "Build a stone bridge" returned `generated_bridge_platform` through
   `agents_sdk_generated_tool_completion`, produced a `stone` `platform`
@@ -34,6 +34,12 @@ Latest post-deploy gate:
   with dimensions `3 x 2 x 2` and `10` planned node writes, and included
   `recall_build_prompt_memory`, `propose_build_option`, `select_build_option`,
   and `plan_build_actions` in the Agents SDK tool trace.
+- Explicit path intent proof: the live Pi sidecar call for
+  "Build a path to that hill" allowed the model to propose
+  `generated_path_platform`, then the runtime intent constraint selected
+  `parsed_request`, preserved `path` build intent, and produced an `8` node
+  write path preview. The runtime, not the generated proposal, retained final
+  mutation authority.
 - Player-loop check: `Nova, options` returns pending build choices and the
   selected candidate from runtime state without world mutation. Each executable
   option carries an `openrealm.plan.v1` safety/preview contract.
