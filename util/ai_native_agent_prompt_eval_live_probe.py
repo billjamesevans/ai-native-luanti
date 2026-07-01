@@ -145,6 +145,10 @@ def write_probe_world(
             "  local discard_trace = case.discard_trace or {}",
             "  local after_discard_reply = case.after_discard_reply or {}",
             "  local after_discard_trace = case.after_discard_trace or {}",
+            "  local followup_initial_reply = case.followup_initial_reply or {}",
+            "  local followup_final_reply = case.followup_final_reply or {}",
+            "  local followup_initial_trace = case.followup_initial_trace or {}",
+            "  local followup_final_trace = case.followup_final_trace or {}",
             "  local effective_reply = final_reply.status and final_reply or reply",
             "  return {",
             "    case_id = case.case_id,",
@@ -228,6 +232,38 @@ def write_probe_world(
             "    after_discard_trace_public_prompt = after_discard_trace.public_prompt,",
             "    after_discard_trace_status = after_discard_trace.response and after_discard_trace.response.status or nil,",
             "    after_discard_trace_reason = after_discard_trace.response and after_discard_trace.response.reason or nil,",
+            "    followup_prompt = case.followup_prompt,",
+            "    seed_handled = case.seed_handled == true,",
+            "    seed_status = case.seed_final_status,",
+            "    seed_selected_candidate_id = case.seed_selected_candidate_id,",
+            "    followup_handled = case.followup_handled == true,",
+            "    followup_initial_status = followup_initial_reply.status,",
+            "    followup_final_status = case.followup_final_status or followup_final_reply.status,",
+            "    followup_action = followup_final_reply.action,",
+            "    followup_selected_candidate_id = followup_final_reply.selected_candidate_id,",
+            "    followup_no_world_mutation = case.followup_no_world_mutation == true,",
+            "    followup_initial_trace_route = followup_initial_trace.route,",
+            "    followup_final_trace_route = followup_final_trace.route,",
+            "    followup_final_trace_status = followup_final_trace.response and followup_final_trace.response.status or nil,",
+            "    followup_trace_planner_reason = case.followup_trace_planner_reason,",
+            "    followup_trace_input_surface = case.followup_trace_input_surface,",
+            "    followup_trace_turn_source = case.followup_trace_turn_source,",
+            "    followup_previous_goal_context = case.followup_previous_goal_context == true,",
+            "    followup_player_followup_context = case.followup_player_followup_context == true,",
+            "    followup_loop_has_seed_turn = case.followup_loop_has_seed_turn == true,",
+            "    followup_loop_has_followup_turn = case.followup_loop_has_followup_turn == true,",
+            "    followup_loop_recent_turn_count = case.followup_loop_recent_turn_count,",
+            "    followup_adapter_tool_decision_source = followup_final_reply.adapter_tool_decision_source,",
+            "    followup_adapter_required_tool_calls = followup_final_reply.adapter_required_tool_calls,",
+            "    followup_adapter_missing_required_tool_calls = followup_final_reply.adapter_missing_required_tool_calls,",
+            "    followup_adapter_required_tool_calls_satisfied = followup_final_reply.adapter_required_tool_calls_satisfied,",
+            "    followup_adapter_tool_trace_names = followup_final_reply.adapter_tool_trace_names,",
+            "    followup_adapter_build_action_plan_status = followup_final_reply.adapter_build_action_plan_status,",
+            "    followup_adapter_build_action_plan_step_count = followup_final_reply.adapter_build_action_plan_step_count,",
+            "    followup_adapter_build_action_plan_world_mutation_authority = followup_final_reply.adapter_build_action_plan_world_mutation_authority,",
+            "    followup_adapter_selected_candidate_id = followup_final_reply.adapter_selected_candidate_id,",
+            "    followup_model_selected_candidate_id = followup_final_reply.model_selected_candidate_id,",
+            "    followup_candidate_count = followup_final_reply.candidate_count,",
             "    cleanup_status = case.cleanup and case.cleanup.status or nil,",
             "    failure_count = #(case.failures or {}),",
             "  }",
@@ -260,6 +296,7 @@ def write_probe_world(
             "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
             "      openrealm_village = cases.openrealm_village ~= nil,",
             "      player_agent_loop = cases.player_agent_loop ~= nil,",
+            "      natural_chat_followup = cases.natural_chat_followup ~= nil,",
             "      model = cases.model ~= nil,",
             "    },",
             "    cases = summaries,",
@@ -506,6 +543,19 @@ def write_probe_world(
             "    and player_loop_checks.select_marked_player_selected == true",
             "    and player_loop_checks.select_decision_source == true",
             "    and player_loop_checks.pending_selected_candidate == true",
+            "  local followup_case = report_cases.natural_chat_followup or {}",
+            "  local followup_checks = followup_case.checks or {}",
+            "  local natural_chat_followup_checked =",
+            "    followup_checks.seed_handled == true",
+            "    and followup_checks.seed_status == true",
+            "    and followup_checks.followup_handled == true",
+            "    and followup_checks.followup_final_status == true",
+            "    and followup_checks.followup_trace_route == true",
+            "    and followup_checks.followup_planner_reason == true",
+            "    and followup_checks.followup_previous_goal_context == true",
+            "    and followup_checks.followup_player_followup_context == true",
+            "    and followup_checks.followup_loop_seed_turn == true",
+            "    and followup_checks.followup_loop_followup_turn == true",
             "  local payload = {",
             "    schema_version = 1,",
             "    live_result_kind = \"ai_native_agent_prompt_eval_live_result\",",
@@ -545,6 +595,7 @@ def write_probe_world(
             "      player_agent_loop_checked = eval.case_ids.player_agent_loop == true,",
             "      player_agent_loop_review_traces_checked = player_loop_review_traces_checked == true,",
             "      player_agent_loop_option_selection_checked = player_loop_option_selection_checked == true,",
+            "      natural_chat_followup_checked = natural_chat_followup_checked == true,",
             "      model_checked = eval.case_ids.model == true,",
             "      model_adapter_requests = eval.metrics.model_adapter_requests_delta or 0,",
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
@@ -783,9 +834,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 10:
+    if prompt_eval.get("cases_total") != 11:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 10 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 11 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
     for case_id in (
@@ -798,6 +849,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agentic_build_planner",
         "openrealm_village",
         "player_agent_loop",
+        "natural_chat_followup",
         "model",
     ):
         if case_ids.get(case_id) is not True:
@@ -825,6 +877,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         planner = case_map.get("agentic_build_planner", {})
         openrealm = case_map.get("openrealm_village", {})
         player_loop = case_map.get("player_agent_loop", {})
+        natural_followup = case_map.get("natural_chat_followup", {})
         model = case_map.get("model", {})
         if fire.get("status") != "pass" or fire.get("build_kind") != "fire":
             raise ValueError("agent prompt eval fire case is invalid")
@@ -1050,6 +1103,39 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             expected_public_prompt="pending plan",
             expected_reason="no_pending_approval",
         )
+        if natural_followup.get("status") != "pass":
+            raise ValueError("agent prompt eval natural-chat follow-up case is invalid")
+        if natural_followup.get("prompt") != "Nova, build a fire":
+            raise ValueError("agent prompt eval natural-chat follow-up seed prompt is invalid")
+        if natural_followup.get("followup_prompt") != "Nova, only the fire, nothing else":
+            raise ValueError("agent prompt eval natural-chat follow-up prompt is invalid")
+        if natural_followup.get("seed_handled") is not True \
+                or natural_followup.get("seed_status") != "pending_approval" \
+                or natural_followup.get("seed_selected_candidate_id") != "fire":
+            raise ValueError("agent prompt eval natural-chat follow-up seed did not establish fire goal")
+        if natural_followup.get("followup_handled") is not True \
+                or natural_followup.get("followup_final_status") != "pending_approval" \
+                or natural_followup.get("followup_action") != "build":
+            raise ValueError("agent prompt eval natural-chat follow-up reply is invalid")
+        if natural_followup.get("followup_selected_candidate_id") != "fire":
+            raise ValueError("agent prompt eval natural-chat follow-up did not preserve fire candidate")
+        if natural_followup.get("followup_no_world_mutation") is not True:
+            raise ValueError("agent prompt eval natural-chat follow-up mutated the world")
+        if natural_followup.get("followup_final_trace_route") != "agentic_build_planner" \
+                or natural_followup.get("followup_final_trace_status") != "pending_approval":
+            raise ValueError("agent prompt eval natural-chat follow-up trace is invalid")
+        if natural_followup.get("followup_trace_planner_reason") != "player_agent_followup_refinement":
+            raise ValueError("agent prompt eval natural-chat follow-up planner reason is invalid")
+        if natural_followup.get("followup_trace_input_surface") != "natural_chat" \
+                or natural_followup.get("followup_trace_turn_source") != "natural_chat":
+            raise ValueError("agent prompt eval natural-chat follow-up context source is invalid")
+        for field in (
+            "followup_previous_goal_context",
+            "followup_player_followup_context",
+            "followup_loop_has_seed_turn",
+            "followup_loop_has_followup_turn",
+        ):
+            _require_bool(natural_followup, field)
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
@@ -1078,9 +1164,40 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
                 "player_agent_loop",
                 {"propose_build_option"},
             )
+            _require_agentic_tool_case(
+                {
+                    "status": natural_followup.get("status"),
+                    "route": natural_followup.get("followup_final_trace_route"),
+                    "adapter_tool_decision_source":
+                        natural_followup.get("followup_adapter_tool_decision_source"),
+                    "adapter_required_tool_calls":
+                        natural_followup.get("followup_adapter_required_tool_calls"),
+                    "adapter_missing_required_tool_calls":
+                        natural_followup.get("followup_adapter_missing_required_tool_calls"),
+                    "adapter_required_tool_calls_satisfied":
+                        natural_followup.get("followup_adapter_required_tool_calls_satisfied"),
+                    "adapter_tool_trace_names":
+                        natural_followup.get("followup_adapter_tool_trace_names"),
+                    "adapter_build_action_plan_status":
+                        natural_followup.get("followup_adapter_build_action_plan_status"),
+                    "adapter_build_action_plan_step_count":
+                        natural_followup.get("followup_adapter_build_action_plan_step_count"),
+                    "adapter_build_action_plan_world_mutation_authority":
+                        natural_followup.get("followup_adapter_build_action_plan_world_mutation_authority"),
+                    "selected_candidate_id":
+                        natural_followup.get("followup_selected_candidate_id"),
+                    "adapter_selected_candidate_id":
+                        natural_followup.get("followup_adapter_selected_candidate_id"),
+                    "model_selected_candidate_id":
+                        natural_followup.get("followup_model_selected_candidate_id"),
+                    "candidate_count":
+                        natural_followup.get("followup_candidate_count"),
+                },
+                "natural_chat_followup",
+            )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 10 or summary.get("cases_passed") != 10:
+    if summary.get("cases_total") != 11 or summary.get("cases_passed") != 11:
         raise ValueError("agent prompt eval summary case counts are invalid")
     if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
         raise ValueError("agent prompt eval golden prompt suite is invalid")
@@ -1110,6 +1227,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "player_agent_loop_checked",
         "player_agent_loop_review_traces_checked",
         "player_agent_loop_option_selection_checked",
+        "natural_chat_followup_checked",
         "model_checked",
     ):
         _require_bool(summary, field)
@@ -1160,10 +1278,17 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             "agentic_build_planner",
             "openrealm_village",
             "player_agent_loop",
+            "natural_chat_followup",
         ):
             case = case_map.get(case_id, {})
-            if case.get("adapter_tool_decision_source") in ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES \
-                    and case.get("adapter_required_tool_calls_satisfied") is True:
+            if case_id == "natural_chat_followup":
+                decision_source = case.get("followup_adapter_tool_decision_source")
+                required_satisfied = case.get("followup_adapter_required_tool_calls_satisfied")
+            else:
+                decision_source = case.get("adapter_tool_decision_source")
+                required_satisfied = case.get("adapter_required_tool_calls_satisfied")
+            if decision_source in ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES \
+                    and required_satisfied is True:
                 agentic_tool_cases += 1
 
     return {
@@ -1181,6 +1306,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_player_agent_loop_checked": True,
         "agent_prompt_eval_player_agent_loop_review_traces_checked": True,
         "agent_prompt_eval_player_agent_loop_option_selection_checked": True,
+        "agent_prompt_eval_natural_chat_followup_checked": True,
         "agent_prompt_eval_model_checked": True,
         "agent_prompt_eval_golden_prompt_suite": GOLDEN_PROMPT_SUITE,
         "agent_prompt_eval_golden_prompt_backlog_total": GOLDEN_PROMPT_BACKLOG_TOTAL,
@@ -1217,12 +1343,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_player_agent_loop_planned_node_writes": 96,
         "agent_prompt_eval_player_agent_loop_candidate_id": "generated_openrealm_lakeside_village",
         "agent_prompt_eval_player_agent_loop_selected_option_after_player_choice": "marker",
+        "agent_prompt_eval_natural_chat_followup_candidate_id": "fire",
+        "agent_prompt_eval_natural_chat_followup_context_checked": True,
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],
         "agent_prompt_eval_requires_model_network": runtime_context.get("requires_model_network") is True,
         "agent_prompt_eval_agentic_tool_cases": agentic_tool_cases,
-        "agent_prompt_eval_agentic_tool_cases_required": 9 if adapter_mode == "agents_sdk_sidecar" else 0,
+        "agent_prompt_eval_agentic_tool_cases_required": 10 if adapter_mode == "agents_sdk_sidecar" else 0,
         "agent_prompt_eval_world_mutation": False,
     }
 

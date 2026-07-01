@@ -7259,7 +7259,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(queued == true)
 	assert(reason == "queued")
 	assert(#eval_reports == 0)
-	assert(#async_eval_done == 7)
+	assert(#async_eval_done == 8)
 	assert(async_eval_requests[1].public_prompt:find("build a stone bridge", 1, true) ~= nil)
 	assert(async_eval_requests[1].context.surface_id == "builder")
 	assert(async_eval_requests[1].context.selected_candidate_id == "platform")
@@ -7282,7 +7282,26 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(async_eval_requests[6].context.surface_id == "builder")
 	assert(async_eval_requests[6].context.selected_candidate_id
 		== "generated_openrealm_lakeside_village")
-	assert(async_eval_requests[7].public_prompt == "what can you plan with tools next?")
+	assert(async_eval_requests[7].public_prompt:find(
+		"Previous builder goal: build a fire", 1, true) ~= nil)
+	assert(async_eval_requests[7].public_prompt:find(
+		"Player follow-up: only the fire, nothing else", 1, true) ~= nil)
+	assert(async_eval_requests[7].context.surface_id == "builder")
+	assert(async_eval_requests[7].context.input_surface == "natural_chat")
+	assert(async_eval_requests[7].context.player_turn_source == "natural_chat")
+	assert(async_eval_requests[7].context.planner_reason
+		== "player_agent_followup_refinement")
+	assert(async_eval_requests[7].context.player_request:find(
+		"Previous builder goal: build a fire", 1, true) ~= nil)
+	assert(async_eval_requests[7].context.player_request:find(
+		"Player follow-up: only the fire, nothing else", 1, true) ~= nil)
+	assert(async_eval_requests[7].context.selected_candidate_id == "fire")
+	local followup_request_loop =
+		core.parse_json(async_eval_requests[7].context.player_agent_loop)
+	assert(followup_request_loop.recent_turn_count >= 3)
+	assert(followup_request_loop.recent_turns[#followup_request_loop.recent_turns].text
+		== "only the fire, nothing else")
+	assert(async_eval_requests[8].public_prompt == "what can you plan with tools next?")
 	async_eval_done[1]({
 		ok = true,
 		message = "eval async stone bridge response",
@@ -7562,6 +7581,49 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(#eval_reports == 0)
 	async_eval_done[7]({
 		ok = true,
+		message = "eval async natural follow-up response",
+		adapter_name = "mock-eval-natural-followup",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			selected_option_id = "fire",
+			model_selected_option_id = "fire",
+			tool_decision_source = "agents_sdk_function_tool",
+			required_tool_calls = {
+				"recall_build_prompt_memory",
+				"select_build_option",
+				"plan_build_actions",
+			},
+			missing_required_tool_calls = {},
+			required_tool_calls_satisfied = true,
+			tool_trace = {
+				{ tool_name = "recall_build_prompt_memory" },
+				{ tool_name = "select_build_option" },
+				{ tool_name = "plan_build_actions" },
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "fire",
+				step_count = 1,
+				world_mutation_authority = "luanti",
+			},
+			tool_decisions = {
+				build_option = {
+					selected_option_id = "fire",
+					decision_source = "agent_selected_build_option",
+				},
+				build_action_plan = {
+					status = "ready",
+					selected_option_id = "fire",
+					step_count = 1,
+					world_mutation_authority = "luanti",
+				},
+			},
+		},
+	})
+	assert(#eval_reports == 0)
+	async_eval_done[8]({
+		ok = true,
 		message = "eval async adapter response",
 		adapter_name = "mock-eval-async",
 		elapsed_us = 80000,
@@ -7576,7 +7638,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_report.ok == true, core.write_json(eval_report))
 	assert(eval_report.status == "pass")
 	assert(eval_report.owner == "EvalTester")
-	assert(#eval_report.cases == 10)
+	assert(#eval_report.cases == 11)
 	local eval_cases = {}
 	for _, case_report in ipairs(eval_report.cases) do
 		eval_cases[case_report.case_id] = case_report
@@ -7726,13 +7788,35 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.player_agent_loop.after_discard_trace.response.status == "blocked")
 	assert(eval_cases.player_agent_loop.after_discard_trace.response.reason
 		== "no_pending_approval")
+	assert(eval_cases.natural_chat_followup ~= nil)
+	assert(eval_cases.natural_chat_followup.seed_handled == true)
+	assert(eval_cases.natural_chat_followup.seed_final_status == "pending_approval")
+	assert(eval_cases.natural_chat_followup.seed_selected_candidate_id == "fire")
+	assert(eval_cases.natural_chat_followup.followup_handled == true)
+	assert(eval_cases.natural_chat_followup.followup_final_status == "pending_approval")
+	assert(eval_cases.natural_chat_followup.followup_final_reply.selected_candidate_id == "fire")
+	assert(eval_cases.natural_chat_followup.followup_no_world_mutation == true)
+	assert(eval_cases.natural_chat_followup.followup_final_trace.route
+		== "agentic_build_planner")
+	assert(eval_cases.natural_chat_followup.followup_trace_planner_reason
+		== "player_agent_followup_refinement")
+	assert(eval_cases.natural_chat_followup.followup_trace_input_surface
+		== "natural_chat")
+	assert(eval_cases.natural_chat_followup.followup_trace_turn_source
+		== "natural_chat")
+	assert(eval_cases.natural_chat_followup.followup_previous_goal_context == true)
+	assert(eval_cases.natural_chat_followup.followup_player_followup_context == true)
+	assert(eval_cases.natural_chat_followup.followup_loop_has_seed_turn == true)
+	assert(eval_cases.natural_chat_followup.followup_loop_has_followup_turn == true)
+	assert(eval_cases.natural_chat_followup.cleanup.action == "discard_approval")
+	assert(eval_cases.natural_chat_followup.cleanup.status == "success")
 	assert(eval_cases.model.queued_status == "queued")
 	assert(eval_cases.model.initial_trace.route == "model_adapter_async")
 	assert(eval_cases.model.final_status == "success")
 	assert(eval_cases.model.final_trace.response.status == "success")
 	assert(eval_cases.model.final_trace.context.private_prompt == nil)
-	assert(eval_report.metrics.model_adapter_requests_delta == 7)
-	assert(eval_report.metrics.model_adapter_successes_delta == 7)
+	assert(eval_report.metrics.model_adapter_requests_delta == 8)
+	assert(eval_report.metrics.model_adapter_successes_delta == 8)
 	assert(eval_report.metrics.model_adapter_failures_delta == 0)
 	assert(eval_report.metrics.model_adapter_timeouts_delta == 0)
 	assert(eval_report.safety.audit_private_payload_retained == false)

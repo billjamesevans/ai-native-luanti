@@ -279,8 +279,8 @@ def live_prompt_eval_payload(**overrides):
             "status": "pass",
             "ok": True,
             "owner": "PromptEvalLive",
-            "cases_total": 7,
-            "cases_passed": 7,
+            "cases_total": 8,
+            "cases_passed": 8,
             "cases_failed": 0,
             "case_ids": {
                 "build_fire": True,
@@ -289,6 +289,7 @@ def live_prompt_eval_payload(**overrides):
                 "agentic_build_planner": True,
                 "openrealm_village": True,
                 "player_agent_loop": True,
+                "natural_chat_followup": True,
                 "model": True,
             },
             "cases": [
@@ -531,6 +532,51 @@ def live_prompt_eval_payload(**overrides):
                     "after_discard_trace_reason": "no_pending_approval",
                 },
                 {
+                    "case_id": "natural_chat_followup",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "Nova, build a fire",
+                    "followup_prompt": "Nova, only the fire, nothing else",
+                    "seed_handled": True,
+                    "seed_status": "pending_approval",
+                    "seed_selected_candidate_id": "fire",
+                    "followup_handled": True,
+                    "followup_initial_status": "queued",
+                    "followup_final_status": "pending_approval",
+                    "followup_action": "build",
+                    "followup_selected_candidate_id": "fire",
+                    "followup_no_world_mutation": True,
+                    "followup_final_trace_route": "agentic_build_planner",
+                    "followup_final_trace_status": "pending_approval",
+                    "followup_trace_planner_reason": "player_agent_followup_refinement",
+                    "followup_trace_input_surface": "natural_chat",
+                    "followup_trace_turn_source": "natural_chat",
+                    "followup_previous_goal_context": True,
+                    "followup_player_followup_context": True,
+                    "followup_loop_has_seed_turn": True,
+                    "followup_loop_has_followup_turn": True,
+                    "followup_loop_recent_turn_count": 3,
+                    "followup_adapter_tool_decision_source": "agents_sdk_function_tool",
+                    "followup_adapter_required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "followup_adapter_missing_required_tool_calls": [],
+                    "followup_adapter_required_tool_calls_satisfied": True,
+                    "followup_adapter_tool_trace_names": [
+                        "recall_build_prompt_memory",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "followup_adapter_build_action_plan_status": "ready",
+                    "followup_adapter_build_action_plan_step_count": 3,
+                    "followup_adapter_build_action_plan_world_mutation_authority": "luanti",
+                    "followup_adapter_selected_candidate_id": "fire",
+                    "followup_model_selected_candidate_id": "fire",
+                    "followup_candidate_count": 3,
+                },
+                {
                     "case_id": "model",
                     "status": "pass",
                     "ok": True,
@@ -542,8 +588,8 @@ def live_prompt_eval_payload(**overrides):
             "safety": {},
         },
         "summary": {
-            "cases_total": 7,
-            "cases_passed": 7,
+            "cases_total": 8,
+            "cases_passed": 8,
             "cases_failed": 0,
             "build_fire_checked": True,
             "fire_only_strict_checked": True,
@@ -553,9 +599,10 @@ def live_prompt_eval_payload(**overrides):
             "player_agent_loop_checked": True,
             "player_agent_loop_review_traces_checked": True,
             "player_agent_loop_option_selection_checked": True,
+            "natural_chat_followup_checked": True,
             "model_checked": True,
-            "model_adapter_requests": 7,
-            "model_adapter_successes": 7,
+            "model_adapter_requests": 8,
+            "model_adapter_successes": 8,
             "model_adapter_failures": 0,
             "model_adapter_timeouts": 0,
             "golden_prompt_suite": "openrealm_creator_loop",
@@ -670,20 +717,23 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
-        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 10)
-        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 10)
+        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 11)
+        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 11)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_backlog_total"], 11)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 9)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 9)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_failed"], 0)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 9)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 9)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 10)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 10)
         self.assertTrue(
             report["summary"]["live_prompt_eval_player_agent_loop_review_traces_checked"]
         )
         self.assertTrue(
             report["summary"]["live_prompt_eval_player_agent_loop_option_selection_checked"]
+        )
+        self.assertTrue(
+            report["summary"]["live_prompt_eval_natural_chat_followup_checked"]
         )
 
     def test_required_live_prompt_eval_missing_fails_gate(self):

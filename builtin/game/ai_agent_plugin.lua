@@ -309,6 +309,8 @@ end
 
 local function compact_trace_context(context)
 	context = context or {}
+	local player_request = type(context.player_request) == "string"
+		and context.player_request or ""
 	return {
 		surface_id = context.surface_id,
 		task_id = context.task_id,
@@ -321,10 +323,15 @@ local function compact_trace_context(context)
 		build_material_node = context.build_material_node,
 		adapter_name = context.adapter_name,
 		planner_mode = context.planner_mode,
+		planner_reason = context.planner_reason,
 		input_surface = context.input_surface,
 		natural_chat_alias = context.natural_chat_alias,
 		player_turn_source = context.player_turn_source,
 		player_agent_loop = context.player_agent_loop,
+		player_request_has_previous_builder_goal =
+			player_request:find("Previous builder goal:", 1, true) ~= nil,
+		player_request_has_player_followup =
+			player_request:find("Player follow-up:", 1, true) ~= nil,
 		selected_candidate_id = context.selected_candidate_id,
 		candidate_count = context.candidate_count,
 	}
@@ -5404,13 +5411,17 @@ end
 
 local function agentic_tool_trace_names(response)
 	local names = {}
+	local seen = {}
 	if type(response) ~= "table" or type(response.tool_trace) ~= "table" then
 		return names
 	end
 	for _, entry in ipairs(response.tool_trace) do
-		if type(entry) == "table" and type(entry.tool_name) == "string" then
+		if type(entry) == "table"
+				and type(entry.tool_name) == "string"
+				and not seen[entry.tool_name] then
+			seen[entry.tool_name] = true
 			names[#names + 1] = bounded_trace_text(entry.tool_name, 80)
-			if #names >= 8 then
+			if #names >= 12 then
 				break
 			end
 		end
@@ -7713,9 +7724,10 @@ local EVAL_DEFAULT_CASES = {
 	"agentic_build_planner",
 	"openrealm_village",
 	"player_agent_loop",
+	"natural_chat_followup",
 	"model",
 }
-local EVAL_MAX_OUTPUT_BYTES = 12000
+local EVAL_MAX_OUTPUT_BYTES = 20000
 
 local function eval_metric_delta(before, after, key)
 	return (after[key] or 0) - (before[key] or 0)
@@ -7906,6 +7918,16 @@ local function compact_eval_trace(trace)
 			fallback_blocked_reason = response.fallback_blocked_reason,
 		},
 		context = {
+			surface_id = context.surface_id,
+			planner_reason = context.planner_reason,
+			input_surface = context.input_surface,
+			natural_chat_alias = context.natural_chat_alias,
+			player_turn_source = context.player_turn_source,
+			player_agent_loop = context.player_agent_loop,
+			player_request_has_previous_builder_goal =
+				context.player_request_has_previous_builder_goal,
+			player_request_has_player_followup =
+				context.player_request_has_player_followup,
 			build_kind = context.build_kind,
 			build_width = context.build_width,
 			build_depth = context.build_depth,
@@ -8399,6 +8421,206 @@ function plugin._run_player_agent_loop_eval_case(report, owner, context, async_d
 	return false
 end
 
+function plugin._player_loop.eval_has_public_turn(loop, text, source)
+	if type(loop) ~= "table" or type(loop.recent_turns) ~= "table" then
+		return false
+	end
+	for _, turn in ipairs(loop.recent_turns) do
+		if type(turn) == "table"
+				and turn.text == text
+				and (source == nil or turn.source == source) then
+			return true
+		end
+	end
+	return false
+end
+
+function plugin._player_loop.eval_public_loop_from_trace(trace)
+	local context = trace and trace.context or {}
+	local encoded = context.player_agent_loop
+	if type(encoded) ~= "string" or not core.parse_json then
+		return {}
+	end
+	local ok, decoded = pcall(core.parse_json, encoded)
+	if ok and type(decoded) == "table" then
+		return decoded
+	end
+	return {}
+end
+
+function plugin._finish_natural_chat_followup_eval_case(case_report,
+		final_reply, final_trace)
+	final_trace = final_trace or trace_by_id(case_report.followup_trace_id)
+		or latest_request_trace()
+	local cleanup
+	if final_reply and final_reply.status == "pending_approval" then
+		cleanup = plugin.handle_command(case_report.owner, "discard plan", {})
+	end
+	case_report.followup_final_reply = compact_eval_reply(final_reply)
+	case_report.followup_final_trace = compact_eval_trace(final_trace)
+	case_report.followup_final_status = final_reply and final_reply.status
+	case_report.seed_selected_candidate_id = case_report.seed_final_reply
+		and (case_report.seed_final_reply.selected_candidate_id
+			or case_report.seed_final_reply.build_kind)
+	case_report.followup_no_world_mutation = final_reply
+		and (final_reply.no_world_mutation == true
+			or (final_reply.status == "pending_approval"
+				and final_reply.approval_id ~= nil))
+	case_report.cleanup = cleanup and {
+		action = cleanup.action,
+		status = cleanup.status,
+		reason = cleanup.reason,
+	} or nil
+	local trace_context = final_trace and final_trace.context or {}
+	local public_loop = plugin._player_loop.eval_public_loop_from_trace(final_trace)
+	case_report.followup_loop_recent_turn_count = public_loop.recent_turn_count
+	case_report.followup_trace_planner_reason = trace_context.planner_reason
+	case_report.followup_trace_input_surface = trace_context.input_surface
+	case_report.followup_trace_turn_source = trace_context.player_turn_source
+	case_report.followup_previous_goal_context =
+		trace_context.player_request_has_previous_builder_goal == true
+	case_report.followup_player_followup_context =
+		trace_context.player_request_has_player_followup == true
+	case_report.followup_loop_has_seed_turn =
+		plugin._player_loop.eval_has_public_turn(public_loop,
+			"build a fire", "natural_chat")
+	case_report.followup_loop_has_followup_turn =
+		plugin._player_loop.eval_has_public_turn(public_loop,
+			"only the fire, nothing else", "natural_chat")
+	case_report.checks.seed_handled = case_report.seed_handled == true
+	case_report.checks.seed_status =
+		case_report.seed_final_status == "pending_approval"
+	case_report.checks.seed_selected_fire =
+		case_report.seed_selected_candidate_id == "fire"
+	case_report.checks.followup_handled =
+		case_report.followup_handled == true
+	case_report.checks.followup_final_status =
+		final_reply and final_reply.status == "pending_approval"
+	case_report.checks.followup_action =
+		final_reply and final_reply.action == "build"
+	case_report.checks.followup_selected_fire =
+		final_reply and final_reply.selected_candidate_id == "fire"
+	case_report.checks.followup_trace_route =
+		final_trace and final_trace.route == "agentic_build_planner"
+	case_report.checks.followup_trace_status =
+		final_trace and final_trace.response
+		and final_trace.response.status == "pending_approval"
+	case_report.checks.followup_public_prompt =
+		final_trace and type(final_trace.public_prompt) == "string"
+		and final_trace.public_prompt:find(
+			"Previous builder goal: build a fire", 1, true) ~= nil
+		and final_trace.public_prompt:find(
+			"Player follow-up: only the fire, nothing else", 1, true) ~= nil
+	case_report.checks.followup_planner_reason =
+		trace_context.planner_reason == "player_agent_followup_refinement"
+	case_report.checks.followup_natural_chat_context =
+		trace_context.input_surface == "natural_chat"
+		and trace_context.player_turn_source == "natural_chat"
+	case_report.checks.followup_previous_goal_context =
+		case_report.followup_previous_goal_context == true
+	case_report.checks.followup_player_followup_context =
+		case_report.followup_player_followup_context == true
+	case_report.checks.followup_loop_seed_turn =
+		case_report.followup_loop_has_seed_turn == true
+	case_report.checks.followup_loop_followup_turn =
+		case_report.followup_loop_has_followup_turn == true
+	case_report.checks.followup_no_world_mutation =
+		case_report.followup_no_world_mutation == true
+	case_report.checks.cleanup_discarded = cleanup
+		and cleanup.action == "discard_approval"
+		and cleanup.status == "success"
+	local ok, failures = eval_checks_status(case_report.checks)
+	case_report.ok = ok
+	case_report.status = ok and "pass" or "fail"
+	case_report.failures = failures
+	case_report.owner = nil
+end
+
+function plugin._run_natural_chat_followup_eval_case(report, owner, context, async_done)
+	local case_report = {
+		case_id = "natural_chat_followup",
+		owner = owner,
+		prompt = "Nova, build a fire",
+		followup_prompt = "Nova, only the fire, nothing else",
+		checks = {},
+	}
+	report.cases[#report.cases + 1] = case_report
+	local async_required = false
+	local followup_completed = false
+
+	local function finish_followup(final_reply, final_trace)
+		followup_completed = true
+		plugin._finish_natural_chat_followup_eval_case(case_report,
+			final_reply, final_trace)
+		if async_required then
+			async_done()
+		end
+	end
+
+	local function start_followup(seed_reply, seed_trace)
+		case_report.seed_final_reply = compact_eval_reply(seed_reply)
+		case_report.seed_final_trace = compact_eval_trace(seed_trace)
+		case_report.seed_final_status = seed_reply and seed_reply.status
+		local followup_context = table.copy(context or {})
+		followup_context.suppress_chat_send = true
+		followup_context.on_agentic_build_planner_complete = finish_followup
+		local handled, followup_reply = plugin.handle_natural_chat_message(owner,
+			case_report.followup_prompt, followup_context)
+		local followup_trace = followup_reply and followup_reply.trace_id
+			and trace_by_id(followup_reply.trace_id) or latest_request_trace()
+		case_report.followup_handled = handled == true
+		case_report.followup_initial_reply = compact_eval_reply(followup_reply)
+		case_report.followup_initial_trace = compact_eval_trace(followup_trace)
+		case_report.followup_trace_id = followup_reply and followup_reply.trace_id
+			or (followup_trace and followup_trace.trace_id)
+		case_report.followup_queued_status =
+			followup_reply and followup_reply.status
+		case_report.checks.followup_initial_queued = followup_reply
+			and (followup_reply.status == "queued"
+				or followup_reply.status == "pending_approval")
+		if followup_reply and followup_reply.status == "queued"
+				and not followup_completed then
+			async_required = true
+			case_report.status = "queued"
+			return true
+		end
+		if not followup_completed then
+			finish_followup(followup_reply, followup_trace)
+		end
+		return false
+	end
+
+	local seed_context = table.copy(context or {})
+	seed_context.suppress_chat_send = true
+	seed_context.on_agentic_build_planner_complete = function(final_reply, final_trace)
+		case_report.seed_completed_by_hook = true
+		start_followup(final_reply, final_trace)
+	end
+	local handled, seed_reply = plugin.handle_natural_chat_message(owner,
+		case_report.prompt, seed_context)
+	local seed_trace = seed_reply and seed_reply.trace_id
+		and trace_by_id(seed_reply.trace_id) or latest_request_trace()
+	case_report.seed_handled = handled == true
+	case_report.seed_initial_reply = compact_eval_reply(seed_reply)
+	case_report.seed_initial_trace = compact_eval_trace(seed_trace)
+	case_report.seed_trace_id = seed_reply and seed_reply.trace_id
+		or (seed_trace and seed_trace.trace_id)
+	case_report.seed_queued_status = seed_reply and seed_reply.status
+	case_report.checks.seed_initial_queued = seed_reply
+		and (seed_reply.status == "queued"
+			or seed_reply.status == "pending_approval")
+	if seed_reply and seed_reply.status == "queued"
+			and not case_report.seed_completed_by_hook then
+		async_required = true
+		case_report.status = "queued"
+		return true
+	end
+	if not case_report.seed_completed_by_hook then
+		return start_followup(seed_reply, seed_trace) or async_required
+	end
+	return async_required
+end
+
 local function audit_payload_retained(records)
 	for _, record in ipairs(records or {}) do
 		if record.private_payload ~= nil or record.payload_retained == true then
@@ -8513,6 +8735,10 @@ local function normalize_eval_case(value)
 			or value == "playeragentloop" or value == "multiturn"
 			or value == "multiturncreator" or value == "creatorloop" then
 		return "player_agent_loop"
+	elseif value == "followup" or value == "naturalfollowup"
+			or value == "naturalchatfollowup" or value == "refinement"
+			or value == "followuprefinement" then
+		return "natural_chat_followup"
 	elseif value == "model" or value == "unknown" or value == "adapter" then
 		return "model"
 	end
@@ -8784,14 +9010,19 @@ function plugin.run_prompt_eval(options, callback)
 					case_id, expected) then
 				pending_async_count = pending_async_count + 1
 			end
-		elseif case_id == "player_agent_loop" then
-			if plugin._run_player_agent_loop_eval_case(report, owner,
-					context, async_case_done) then
-				pending_async_count = pending_async_count + 1
-			end
-		elseif case_id == "model" then
-			if run_model_eval_case(report, owner,
-				options.model_prompt or EVAL_DEFAULT_MODEL_PROMPT,
+			elseif case_id == "player_agent_loop" then
+				if plugin._run_player_agent_loop_eval_case(report, owner,
+						context, async_case_done) then
+					pending_async_count = pending_async_count + 1
+				end
+			elseif case_id == "natural_chat_followup" then
+				if plugin._run_natural_chat_followup_eval_case(report, owner,
+						context, async_case_done) then
+					pending_async_count = pending_async_count + 1
+				end
+			elseif case_id == "model" then
+				if run_model_eval_case(report, owner,
+					options.model_prompt or EVAL_DEFAULT_MODEL_PROMPT,
 				context, async_case_done) then
 				pending_async_count = pending_async_count + 1
 			end

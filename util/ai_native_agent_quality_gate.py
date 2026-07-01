@@ -388,6 +388,11 @@ def build_quality_gate(
                     "agent_prompt_eval_player_agent_loop_option_selection_checked"
                 ) is True
                 or live_prompt_summary.get("player_agent_loop_option_selection_checked") is True,
+            "live_prompt_eval_natural_chat_followup_checked":
+                live_prompt_evidence.get(
+                    "agent_prompt_eval_natural_chat_followup_checked"
+                ) is True
+                or live_prompt_summary.get("natural_chat_followup_checked") is True,
             "live_prompt_eval_required": require_live_prompt_eval,
             "candidates_total": _int(candidate_summary.get("candidates_total"), _list_len(candidate_queue.get("candidates"))),
             "ready_for_prompt_eval": _int(candidate_summary.get("ready_for_prompt_eval")),

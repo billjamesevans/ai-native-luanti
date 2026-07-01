@@ -474,8 +474,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "status": "pass",
                 "ok": True,
                 "owner": "PromptEvalLive",
-                "cases_total": 7,
-                "cases_passed": 7,
+                "cases_total": 8,
+                "cases_passed": 8,
                 "cases_failed": 0,
                 "case_ids": {
                     "build_fire": True,
@@ -484,6 +484,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "agentic_build_planner": True,
                     "openrealm_village": True,
                     "player_agent_loop": True,
+                    "natural_chat_followup": True,
                     "model": True,
                 },
                 "cases": [
@@ -631,6 +632,52 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "failure_count": 0,
                     },
                     {
+                        "case_id": "natural_chat_followup",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "Nova, build a fire",
+                        "followup_prompt": "Nova, only the fire, nothing else",
+                        "seed_handled": True,
+                        "seed_status": "pending_approval",
+                        "seed_selected_candidate_id": "fire",
+                        "followup_handled": True,
+                        "followup_initial_status": "queued",
+                        "followup_final_status": "pending_approval",
+                        "followup_action": "build",
+                        "followup_selected_candidate_id": "fire",
+                        "followup_no_world_mutation": True,
+                        "followup_final_trace_route": "agentic_build_planner",
+                        "followup_final_trace_status": "pending_approval",
+                        "followup_trace_planner_reason": "player_agent_followup_refinement",
+                        "followup_trace_input_surface": "natural_chat",
+                        "followup_trace_turn_source": "natural_chat",
+                        "followup_previous_goal_context": True,
+                        "followup_player_followup_context": True,
+                        "followup_loop_has_seed_turn": True,
+                        "followup_loop_has_followup_turn": True,
+                        "followup_loop_recent_turn_count": 3,
+                        "followup_adapter_tool_decision_source": "agents_sdk_function_tool",
+                        "followup_adapter_required_tool_calls": [
+                            "recall_build_prompt_memory",
+                            "select_build_option",
+                            "plan_build_actions",
+                        ],
+                        "followup_adapter_missing_required_tool_calls": [],
+                        "followup_adapter_required_tool_calls_satisfied": True,
+                        "followup_adapter_tool_trace_names": [
+                            "recall_build_prompt_memory",
+                            "select_build_option",
+                            "plan_build_actions",
+                        ],
+                        "followup_adapter_build_action_plan_status": "ready",
+                        "followup_adapter_build_action_plan_step_count": 3,
+                        "followup_adapter_build_action_plan_world_mutation_authority": "luanti",
+                        "followup_adapter_selected_candidate_id": "fire",
+                        "followup_model_selected_candidate_id": "fire",
+                        "followup_candidate_count": 3,
+                        "failure_count": 0,
+                    },
+                    {
                         "case_id": "model",
                         "status": "pass",
                         "ok": True,
@@ -644,8 +691,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     },
                 ],
                 "metrics": {
-                    "model_adapter_requests_delta": 7,
-                    "model_adapter_successes_delta": 7,
+                    "model_adapter_requests_delta": 8,
+                    "model_adapter_successes_delta": 8,
                     "model_adapter_failures_delta": 0,
                     "model_adapter_timeouts_delta": 0,
                 },
@@ -654,8 +701,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 },
             },
             "summary": {
-                "cases_total": 7,
-                "cases_passed": 7,
+                "cases_total": 8,
+                "cases_passed": 8,
                 "cases_failed": 0,
                 "build_fire_checked": True,
                 "fire_only_strict_checked": True,
@@ -665,9 +712,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "player_agent_loop_checked": True,
                 "player_agent_loop_review_traces_checked": True,
                 "player_agent_loop_option_selection_checked": True,
+                "natural_chat_followup_checked": True,
                 "model_checked": True,
-                "model_adapter_requests": 7,
-                "model_adapter_successes": 7,
+                "model_adapter_requests": 8,
+                "model_adapter_successes": 8,
                 "model_adapter_failures": 0,
                 "model_adapter_timeouts": 0,
                 "golden_prompt_suite": "openrealm_creator_loop",
@@ -1743,8 +1791,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             payload = json.loads(artifact.read_text(encoding="utf-8"))
 
             evidence = probe.validate_live_result(payload)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 9)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 9)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 10)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 10)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_backlog_total"], 11)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 9)
@@ -2398,7 +2446,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
-                10,
+                11,
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2539,13 +2587,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_requests"
                 ],
-                10,
+                11,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_successes"
                 ],
-                10,
+                11,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2715,7 +2763,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 22100)
+            self.assertLess(len(serialized), 23000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 

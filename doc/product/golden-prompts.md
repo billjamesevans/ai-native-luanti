@@ -7,7 +7,8 @@ The full OpenRealm backlog currently contains eleven product prompts. The
 runtime gate enforces the implemented subset first: fire, strict fire-only, TNT
 wall, stone bridge generation, small cabin generation, path-to-hill planning,
 agentic build-planner selection, the OpenRealm village template, player-like
-multi-turn creator review, and model/tool routing.
+multi-turn creator review, natural-chat follow-up refinement, and model/tool
+routing.
 New prompts move from backlog to enforced only when the
 runtime can validate them with repeatable public-safe evidence.
 
@@ -43,7 +44,8 @@ runtime can validate them with repeatable public-safe evidence.
 - Suite: `openrealm_creator_loop`
 - Backlog total: `11`
 - Enforced runtime prompt cases: `9`
-- Supporting model/tool route case: `1`
+- Supporting route cases: `1 natural-chat follow-up + 1 model`
+- Full prompt-eval cases: `11`
 - Stone bridge generation: `Build a stone bridge` must produce a
   tool-validated `generated_bridge_platform` option, preserve stone material,
   validate a bounded `6-8 x 2` platform shape, plan node writes equal to the
@@ -73,6 +75,12 @@ runtime can validate them with repeatable public-safe evidence.
   must emit public-safe `natural_chat_review` request traces, so request/response
   review keeps normal player conversation turns instead of only model-backed
   build-planning turns.
+- Natural-chat follow-up refinement: `Nova, build a fire` followed by `Nova,
+  only the fire, nothing else` must carry the previous builder goal and the new
+  player constraint into the agentic build-planner prompt, preserve the selected
+  `fire` candidate, emit public-safe player-loop turns from natural chat, keep
+  the planner reason as `player_agent_followup_refinement`, require approval,
+  and perform no direct world mutation.
 - Adapter template generation: the Agents SDK sidecar can now turn "Build a
   cozy lakeside village with floating lanterns" into a bounded
   `generated_openrealm_lakeside_village` option with a 96-placement
