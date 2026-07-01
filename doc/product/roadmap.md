@@ -39,28 +39,33 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 follow-up side-by-side fork deploy advanced the Pi test lane to
-  `28e121515`.
+  `28a8fdc0a`.
 - Backup:
-  `raspberrypi_luanti_20260701-035234.tgz`
-  (`639601436b000b31bf42c210f8b8c5d61a01fd2ab2cbb9113685e59b1675b4b1`).
+  `raspberrypi_luanti_20260701-042006.tgz`
+  (`5f0b74662481bfbc11ffe008a11ad63e87be8377fca0c9c59d11351b9ee6bb65`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
-- Agents SDK sidecar stayed active on loopback TCP `8766`.
+- Agents SDK sidecar service `ai-native-luanti-agents-sdk-adapter.service`
+  stayed active on loopback TCP `8766`.
 - memory refresh quality gate passed with live prompt eval `pass`,
   compatibility import staging pilot `pass`, `6/6` required agentic tool cases,
   `0` attention items, and `0` violations. The retained quality gate artifact
-  was generated at `2026-07-01T08:57:28Z`.
-- request/response log gate passed with `857` Agents SDK sidecar log entries
+  was generated at `2026-07-01T09:24:44Z`.
+- request/response log gate passed with `871` Agents SDK sidecar log entries
   read, `5/5` checked cases passed, and `0` violations.
 - live prompt eval passed `7/7` cases; the OpenRealm golden subset passed
   `6/6`, with `7` model-adapter requests, `7` successes, `0` failures, and
   `0` timeouts. The retained live prompt-eval artifact was generated at
-  `2026-07-01T08:56:40Z`.
+  `2026-07-01T09:24:14Z`.
 - the live Pi prompt gate now checks `player_agent_loop`, starting from natural
   chat (`Nova, Build a cozy lakeside village with floating lanterns`), then
   verifying `Nova, options`, `Nova, pending plan`, `Nova, no`, and the
   after-discard `no_pending_approval` block without world mutation.
+- the retained live Pi prompt-eval artifact now requires
+  `player_agent_loop_review_traces_checked = true`, proving public-safe
+  `natural_chat_review` traces for options, pending-plan review, discard, and
+  after-discard blocked review turns.
 - Agents SDK adapter health reports OpenAI key present, hosted web search
   available, and `world_mutation_authority = luanti`.
 - `Nova, options` remains the player-loop review path for pending build choices
