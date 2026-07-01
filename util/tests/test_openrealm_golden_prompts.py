@@ -30,13 +30,16 @@ class OpenRealmGoldenPromptTests(unittest.TestCase):
 
         self.assertEqual(evidence["agent_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
         self.assertEqual(evidence["agent_prompt_eval_golden_prompt_backlog_total"], 11)
-        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 8)
-        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_passed"], 8)
+        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 9)
+        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_passed"], 9)
         self.assertEqual(evidence["agent_prompt_eval_golden_prompts_failed"], 0)
         self.assertTrue(evidence["agent_prompt_eval_stone_bridge_checked"])
         self.assertTrue(evidence["agent_prompt_eval_small_cabin_checked"])
         self.assertEqual(evidence["agent_prompt_eval_small_cabin_candidate_id"], "generated_prompt_shaped_cabin")
         self.assertEqual(evidence["agent_prompt_eval_small_cabin_planned_node_writes"], 10)
+        self.assertTrue(evidence["agent_prompt_eval_path_to_hill_checked"])
+        self.assertEqual(evidence["agent_prompt_eval_path_to_hill_candidate_id"], "parsed_request")
+        self.assertEqual(evidence["agent_prompt_eval_path_to_hill_planned_node_writes"], 8)
         self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_checked"])
         self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_review_traces_checked"])
 
@@ -44,7 +47,7 @@ class OpenRealmGoldenPromptTests(unittest.TestCase):
         quality_gate = load_module(QUALITY_GATE, "openrealm_quality_gate_test")
         live_eval = live_prompt_eval_payload()
         live_eval["summary"]["golden_prompt_case_ids"]["fire_only_strict"] = False
-        live_eval["summary"]["golden_prompts_passed"] = 7
+        live_eval["summary"]["golden_prompts_passed"] = 8
         live_eval["summary"]["golden_prompts_failed"] = 1
 
         report = quality_gate.build_quality_gate(

@@ -7194,6 +7194,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		max_lights = 128,
 		cabin_node = "ai_runtime_test:wood",
 		house_node = "ai_runtime_test:wood",
+		path_node = "ai_runtime_test:stone",
 		build_material_nodes = {
 			fire = "ai_runtime_test:fire",
 			tnt = "ai_runtime_test:tnt",
@@ -7226,27 +7227,30 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(queued == true)
 	assert(reason == "queued")
 	assert(#eval_reports == 0)
-	assert(#async_eval_done == 6)
+	assert(#async_eval_done == 7)
 	assert(async_eval_requests[1].public_prompt:find("build a stone bridge", 1, true) ~= nil)
 	assert(async_eval_requests[1].context.surface_id == "builder")
 	assert(async_eval_requests[1].context.selected_candidate_id == "platform")
 	assert(async_eval_requests[2].public_prompt:find("build a small cabin", 1, true) ~= nil)
 	assert(async_eval_requests[2].context.surface_id == "builder")
 	assert(async_eval_requests[2].context.selected_candidate_id == "parsed_request")
-	assert(async_eval_requests[3].public_prompt:find("build a small shelter", 1, true) ~= nil)
+	assert(async_eval_requests[3].public_prompt:find("build a path to that hill", 1, true) ~= nil)
 	assert(async_eval_requests[3].context.surface_id == "builder")
-	assert(async_eval_requests[3].context.selected_candidate_id == "platform")
-	assert(async_eval_requests[4].public_prompt:find(
-		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
+	assert(async_eval_requests[3].context.selected_candidate_id == "parsed_request")
+	assert(async_eval_requests[4].public_prompt:find("build a small shelter", 1, true) ~= nil)
 	assert(async_eval_requests[4].context.surface_id == "builder")
-	assert(async_eval_requests[4].context.selected_candidate_id
-		== "generated_openrealm_lakeside_village")
+	assert(async_eval_requests[4].context.selected_candidate_id == "platform")
 	assert(async_eval_requests[5].public_prompt:find(
 		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
 	assert(async_eval_requests[5].context.surface_id == "builder")
 	assert(async_eval_requests[5].context.selected_candidate_id
 		== "generated_openrealm_lakeside_village")
-	assert(async_eval_requests[6].public_prompt == "what can you plan with tools next?")
+	assert(async_eval_requests[6].public_prompt:find(
+		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
+	assert(async_eval_requests[6].context.surface_id == "builder")
+	assert(async_eval_requests[6].context.selected_candidate_id
+		== "generated_openrealm_lakeside_village")
+	assert(async_eval_requests[7].public_prompt == "what can you plan with tools next?")
 	async_eval_done[1]({
 		ok = true,
 		message = "eval async stone bridge response",
@@ -7381,6 +7385,49 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(#eval_reports == 0)
 	async_eval_done[3]({
 		ok = true,
+		message = "eval async path-to-hill response",
+		adapter_name = "mock-eval-path-to-hill",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			selected_option_id = "parsed_request",
+			model_selected_option_id = "parsed_request",
+			tool_decision_source = "agents_sdk_function_tool",
+			required_tool_calls = {
+				"recall_build_prompt_memory",
+				"select_build_option",
+				"plan_build_actions",
+			},
+			missing_required_tool_calls = {},
+			required_tool_calls_satisfied = true,
+			tool_trace = {
+				{ tool_name = "recall_build_prompt_memory" },
+				{ tool_name = "select_build_option" },
+				{ tool_name = "plan_build_actions" },
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "parsed_request",
+				step_count = 8,
+				world_mutation_authority = "luanti",
+			},
+			tool_decisions = {
+				build_option = {
+					selected_option_id = "parsed_request",
+					decision_source = "agent_selected_build_option",
+				},
+				build_action_plan = {
+					status = "ready",
+					selected_option_id = "parsed_request",
+					step_count = 8,
+					world_mutation_authority = "luanti",
+				},
+			},
+		},
+	})
+	assert(#eval_reports == 0)
+	async_eval_done[4]({
+		ok = true,
 		message = "eval async build planner response",
 		adapter_name = "mock-eval-build-planner",
 		elapsed_us = 80000,
@@ -7390,7 +7437,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[4]({
+	async_eval_done[5]({
 		ok = true,
 		message = "eval async OpenRealm village response",
 		adapter_name = "mock-eval-openrealm",
@@ -7435,7 +7482,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[5]({
+	async_eval_done[6]({
 		ok = true,
 		message = "eval async player-loop OpenRealm response",
 		adapter_name = "mock-eval-player-loop-openrealm",
@@ -7481,7 +7528,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[6]({
+	async_eval_done[7]({
 		ok = true,
 		message = "eval async adapter response",
 		adapter_name = "mock-eval-async",
@@ -7497,7 +7544,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_report.ok == true, core.write_json(eval_report))
 	assert(eval_report.status == "pass")
 	assert(eval_report.owner == "EvalTester")
-	assert(#eval_report.cases == 9)
+	assert(#eval_report.cases == 10)
 	local eval_cases = {}
 	for _, case_report in ipairs(eval_report.cases) do
 		eval_cases[case_report.case_id] = case_report
@@ -7566,6 +7613,19 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.small_cabin.final_trace.response.status == "pending_approval")
 	assert(eval_cases.small_cabin.cleanup.action == "discard_approval")
 	assert(eval_cases.small_cabin.cleanup.status == "success")
+	assert(eval_cases.path_to_hill.queued_status == "queued")
+	assert(eval_cases.path_to_hill.prompt == "build a path to that hill")
+	assert(eval_cases.path_to_hill.initial_trace.route == "agentic_build_planner")
+	assert(eval_cases.path_to_hill.final_status == "pending_approval")
+	assert(eval_cases.path_to_hill.final_reply.selected_candidate_id
+		== "parsed_request")
+	assert(eval_cases.path_to_hill.final_reply.build_kind == "path")
+	assert(eval_cases.path_to_hill.final_reply.build_material_name == "stone")
+	assert(eval_cases.path_to_hill.final_reply.build_count == 8)
+	assert(eval_cases.path_to_hill.final_reply.planned_node_writes == 8)
+	assert(eval_cases.path_to_hill.final_trace.response.status == "pending_approval")
+	assert(eval_cases.path_to_hill.cleanup.action == "discard_approval")
+	assert(eval_cases.path_to_hill.cleanup.status == "success")
 	assert(eval_cases.agentic_build_planner.queued_status == "queued")
 	assert(eval_cases.agentic_build_planner.initial_trace.route == "agentic_build_planner")
 	assert(eval_cases.agentic_build_planner.final_status == "pending_approval")
@@ -7627,8 +7687,8 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.model.final_status == "success")
 	assert(eval_cases.model.final_trace.response.status == "success")
 	assert(eval_cases.model.final_trace.context.private_prompt == nil)
-	assert(eval_report.metrics.model_adapter_requests_delta == 6)
-	assert(eval_report.metrics.model_adapter_successes_delta == 6)
+	assert(eval_report.metrics.model_adapter_requests_delta == 7)
+	assert(eval_report.metrics.model_adapter_successes_delta == 7)
 	assert(eval_report.metrics.model_adapter_failures_delta == 0)
 	assert(eval_report.metrics.model_adapter_timeouts_delta == 0)
 	assert(eval_report.safety.audit_private_payload_retained == false)

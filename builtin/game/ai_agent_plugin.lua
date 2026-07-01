@@ -2154,6 +2154,7 @@ local function compact_pending_approval(pending)
 		build_width = pending.build_width,
 		build_depth = pending.build_depth,
 		build_height = pending.build_height,
+		build_count = pending.build_count,
 		build_material_name = pending.build_material_name,
 		build_material_node = pending.build_material_node,
 		openrealm_plan_id = pending.openrealm_plan_id,
@@ -3227,6 +3228,11 @@ local function build_count_for(context)
 	return context.build_count or 1
 end
 
+function plugin._build_length_for(context)
+	context = context or {}
+	return context.build_length or context.build_count or context.length or 3
+end
+
 function plugin._bounded_shell_writes(width, depth, height, limit)
 	width = math.max(1, math.floor(width or 1))
 	depth = math.max(1, math.floor(depth or 1))
@@ -3292,6 +3298,7 @@ local function material_node_candidates(material_name)
 		append_candidate_node(candidates, "fire:basic_flame")
 		append_candidate_node(candidates, "fire:permanent_flame")
 	elseif material_name == "stone" then
+		append_candidate_node(candidates, settings.path_node)
 		append_candidate_node(candidates, settings.platform_node)
 		append_candidate_node(candidates, settings.marker_node)
 	end
@@ -3384,6 +3391,14 @@ local function build_options_for(name, context, task_id)
 		options.material_node = options.material_node or settings.platform_node
 		options.max_node_writes_per_step = options.max_node_writes_per_step
 			or math.min(options.width * options.depth, settings.max_lights)
+	elseif kind == "path" then
+		options.length = plugin._build_length_for(context)
+		options.count = options.length
+		options.direction = context.build_direction or context.direction
+			or { x = 1, y = 0, z = 0 }
+		options.material_node = options.material_node or settings.path_node
+		options.max_node_writes_per_step = options.max_node_writes_per_step
+			or math.min(options.length, settings.max_lights)
 	elseif kind == "wall" then
 		options.width = build_width_for(context)
 		options.height = build_height_for(context)
@@ -3525,6 +3540,34 @@ local function parse_build_options(raw_prompt, context)
 			return nil, "build_shape_out_of_bounds"
 		end
 		parsed.build_count = count
+		parsed.build_width = nil
+		parsed.build_depth = nil
+		parsed.build_height = nil
+	elseif lower:find("path", 1, true)
+			or lower:find("trail", 1, true)
+			or lower:find("road", 1, true) then
+		parsed.build_kind = "path"
+		parsed.build_material_name = material_name or "stone"
+		parsed.build_material_node = resolve_build_material_node(
+			parsed.build_material_name, settings.path_node)
+		if not parsed.build_material_node then
+			return nil, "build_material_unavailable"
+		end
+		local length = parse_named_build_int(lower, "length")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+long"))
+			or parse_named_build_int(lower, "long")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+nodes?"))
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+blocks?"))
+			or 8
+		if not length then
+			return nil, "invalid_build_dimensions"
+		end
+		if length > settings.max_lights then
+			return nil, "build_shape_out_of_bounds"
+		end
+		parsed.build_length = length
+		parsed.build_count = length
+		parsed.build_direction = { x = 1, y = 0, z = 0 }
 		parsed.build_width = nil
 		parsed.build_depth = nil
 		parsed.build_height = nil
@@ -3790,6 +3833,9 @@ function plugin._planned_feedback_writes_for(context)
 	if kind == "platform" then
 		return build_width_for(context) * build_depth_for(context)
 	end
+	if kind == "path" then
+		return plugin._build_length_for(context)
+	end
 	if kind == "fire" then
 		return build_count_for(context)
 	end
@@ -3821,6 +3867,9 @@ function plugin._feedback_case_hint_for(context, material_name)
 	end
 	if kind == "wall" and material_name == "tnt" then
 		return "tnt_wall"
+	end
+	if kind == "path" then
+		return "path_to_hill"
 	end
 	return tostring(material_name or "default"):gsub("[^%w_%-]+", "_")
 		.. "_" .. tostring(kind or "build")
@@ -4031,6 +4080,9 @@ local function prompt_has_build_surface(prompt)
 	return prompt:find("build", 1, true)
 		or prompt:find("marker", 1, true)
 		or prompt:find("platform", 1, true)
+		or prompt:find("path", 1, true)
+		or prompt:find("trail", 1, true)
+		or prompt:find("road", 1, true)
 		or prompt:find("wall", 1, true)
 		or prompt:find("fire", 1, true)
 		or prompt:find("tnt", 1, true)
@@ -4352,7 +4404,7 @@ local function build_plan_for(name, context)
 	plan.build_width = build_options.width
 	plan.build_depth = build_options.depth
 	plan.build_height = build_options.height
-	plan.build_count = build_options.count
+	plan.build_count = build_options.count or build_options.length
 	plan.build_material_name = context.build_material_name
 	plan.build_material_node = build_options.material_node
 	return result, plan
@@ -4368,6 +4420,7 @@ local function handle_build_plan(name, context)
 		build_width = plan.build_width,
 		build_depth = plan.build_depth,
 		build_height = plan.build_height,
+		build_count = plan.build_count,
 		build_material_name = plan.build_material_name,
 		build_material_node = plan.build_material_node,
 	})
@@ -4389,6 +4442,7 @@ function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
 	queued.build_width = pending.build_width
 	queued.build_depth = pending.build_depth
 	queued.build_height = pending.build_height
+	queued.build_count = pending.build_count
 	queued.build_material_name = pending.build_material_name
 	queued.build_material_node = pending.build_material_node
 	queued.openrealm_plan_id = pending.openrealm_plan_id
@@ -4450,6 +4504,7 @@ local function create_build_pending_reply(name, context, message, extra)
 		build_width = plan.build_width,
 		build_depth = plan.build_depth,
 		build_height = plan.build_height,
+		build_count = plan.build_count,
 		build_material_name = plan.build_material_name,
 		build_material_node = plan.build_material_node,
 		openrealm_plan_id = plan.openrealm_plan_id,
@@ -4511,6 +4566,7 @@ local function create_build_pending_reply(name, context, message, extra)
 			build_width = plan.build_width,
 			build_depth = plan.build_depth,
 			build_height = plan.build_height,
+			build_count = plan.build_count,
 			build_material_name = plan.build_material_name,
 			build_material_node = plan.build_material_node,
 			openrealm_plan_id = plan.openrealm_plan_id,
@@ -4907,6 +4963,9 @@ local function select_agentic_build_candidate(candidates, lower_prompt, parsed_c
 				or lower_prompt:find("home", 1, true)
 				or lower_prompt:find("cabin", 1, true)
 				or lower_prompt:find("hut", 1, true)
+				or lower_prompt:find("path", 1, true)
+				or lower_prompt:find("trail", 1, true)
+				or lower_prompt:find("road", 1, true)
 				or lower_prompt:find("landmark", 1, true)
 				or lower_prompt:find("monument", 1, true)
 				or lower_prompt:find("statue", 1, true)) then
@@ -4994,6 +5053,12 @@ local function locked_agentic_build_candidate_id(raw_prompt, candidates)
 			and lower_prompt:find("wall", 1, true)
 			and find_agentic_build_candidate(candidates, "tnt_wall") then
 		return "tnt_wall", "player_request_requires_tnt_wall"
+	end
+	if (lower_prompt:find("path", 1, true)
+			or lower_prompt:find("trail", 1, true)
+			or lower_prompt:find("road", 1, true))
+			and find_agentic_build_candidate(candidates, "parsed_request") then
+		return "parsed_request", "player_request_requires_path"
 	end
 	return nil, nil
 end
@@ -6353,6 +6418,7 @@ function plugin.get_last_command_diagnostic(name)
 		build_width = response.build_width,
 		build_depth = response.build_depth,
 		build_height = response.build_height,
+		build_count = response.build_count,
 		build_material_name = response.build_material_name,
 		build_material_node = response.build_material_node,
 		planned_node_writes = response.planned_node_writes,
@@ -6628,6 +6694,7 @@ local function handle_pending_plan(name)
 		build_width = pending.build_width,
 		build_depth = pending.build_depth,
 		build_height = pending.build_height,
+		build_count = pending.build_count,
 		build_material_name = pending.build_material_name,
 		build_material_node = pending.build_material_node,
 		openrealm_plan_id = pending.openrealm_plan_id,
@@ -6718,6 +6785,7 @@ function plugin.handle_build_options(name)
 			build_width = pending.build_width,
 			build_depth = pending.build_depth,
 			build_height = pending.build_height,
+			build_count = pending.build_count,
 			build_material_name = pending.build_material_name,
 			build_material_node = pending.build_material_node,
 			openrealm_plan_id = pending.openrealm_plan_id,
@@ -6745,6 +6813,7 @@ local function update_build_pending_plan(name, pending, raw_prompt)
 	pending.build_width = plan.build_width
 	pending.build_depth = plan.build_depth
 	pending.build_height = plan.build_height
+	pending.build_count = plan.build_count
 	pending.build_material_name = plan.build_material_name
 	pending.build_material_node = plan.build_material_node
 	pending.repair_radius = nil
@@ -6763,6 +6832,7 @@ local function update_build_pending_plan(name, pending, raw_prompt)
 			build_width = pending.build_width,
 			build_depth = pending.build_depth,
 			build_height = pending.build_height,
+			build_count = pending.build_count,
 			build_material_name = pending.build_material_name,
 			build_material_node = pending.build_material_node,
 		})
@@ -7410,6 +7480,7 @@ local EVAL_DEFAULT_CASES = {
 	"tnt_wall",
 	"stone_bridge",
 	"small_cabin",
+	"path_to_hill",
 	"agentic_build_planner",
 	"openrealm_village",
 	"player_agent_loop",
@@ -8161,6 +8232,10 @@ local function normalize_eval_case(value)
 		return "stone_bridge"
 	elseif value == "cabin" or value == "smallcabin" or value == "buildsmallcabin" then
 		return "small_cabin"
+	elseif value == "path" or value == "hillpath" or value == "pathhill"
+			or value == "pathtohill" or value == "buildpath"
+			or value == "buildpathtohill" then
+		return "path_to_hill"
 	elseif value == "agentic" or value == "planner" or value == "buildplanner"
 			or value == "agenticbuildplanner" or value == "shelter" then
 		return "agentic_build_planner"
@@ -8245,6 +8320,23 @@ local function eval_report_ok(report)
 		end
 	end
 	return true
+end
+
+function plugin._run_path_to_hill_eval_case(report, owner, context, async_case_done)
+	local path_context = table.copy(context)
+	path_context.force_agentic_build_planner = true
+	local expected = {
+		route = "agentic_build_planner",
+		build_kind = "path",
+		build_material_name = "stone",
+		selected_candidate_id = "parsed_request",
+		initial_selected_candidate_id = "parsed_request",
+		build_count = 8,
+		planned_node_writes = 8,
+	}
+	return run_agentic_build_eval_case(report, owner,
+		"build a path to that hill", path_context, async_case_done,
+		"path_to_hill", expected)
 end
 
 function plugin.run_prompt_eval(options, callback)
@@ -8399,6 +8491,11 @@ function plugin.run_prompt_eval(options, callback)
 				}
 				if run_agentic_build_eval_case(report, owner, "build a small cabin",
 						cabin_context, async_case_done, case_id, expected) then
+					pending_async_count = pending_async_count + 1
+				end
+			elseif case_id == "path_to_hill" then
+				if plugin._run_path_to_hill_eval_case(report, owner, context,
+						async_case_done) then
 					pending_async_count = pending_async_count + 1
 				end
 			elseif case_id == "agentic_build_planner" then

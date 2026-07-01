@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIVE_ARTIFACT_NAME = "ai-runtime-agent-prompt-eval-live-result.json"
 LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-probe-result.json"
 PROBE_MOD_NAME = "ai_agent_prompt_eval_live_probe"
-DEFAULT_MAX_BYTES = 34000
+DEFAULT_MAX_BYTES = 40000
 DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
 GOLDEN_PROMPT_SUITE = "openrealm_creator_loop"
 GOLDEN_PROMPT_BACKLOG_TOTAL = 11
@@ -27,6 +27,7 @@ ENFORCED_GOLDEN_PROMPT_CASE_IDS = (
     "tnt_wall",
     "stone_bridge",
     "small_cabin",
+    "path_to_hill",
     "agentic_build_planner",
     "openrealm_village",
     "player_agent_loop",
@@ -158,6 +159,7 @@ def write_probe_world(
             "    build_width = effective_reply.build_width,",
             "    build_depth = effective_reply.build_depth,",
             "    build_height = effective_reply.build_height,",
+            "    build_count = effective_reply.build_count,",
             "    build_material_name = effective_reply.build_material_name,",
             "    planned_node_writes = effective_reply.planned_node_writes,",
             "    planner_mode = effective_reply.planner_mode,",
@@ -237,6 +239,7 @@ def write_probe_world(
             "      tnt_wall = cases.tnt_wall ~= nil,",
             "      stone_bridge = cases.stone_bridge ~= nil,",
             "      small_cabin = cases.small_cabin ~= nil,",
+            "      path_to_hill = cases.path_to_hill ~= nil,",
             "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
             "      openrealm_village = cases.openrealm_village ~= nil,",
             "      player_agent_loop = cases.player_agent_loop ~= nil,",
@@ -369,6 +372,39 @@ def write_probe_world(
             "            },",
             "          },",
             "        }",
+            "      elseif prompt:find(\"path to that hill\", 1, true) then",
+            "        response = {",
+            "          agentic_execution = true,",
+            "          selected_option_id = \"parsed_request\",",
+            "          model_selected_option_id = \"parsed_request\",",
+            "          tool_decision_source = \"agents_sdk_function_tool\",",
+            "          required_tool_calls = { \"recall_build_prompt_memory\", \"select_build_option\", \"plan_build_actions\" },",
+            "          missing_required_tool_calls = {},",
+            "          required_tool_calls_satisfied = true,",
+            "          tool_trace = {",
+            "            { tool_name = \"recall_build_prompt_memory\" },",
+            "            { tool_name = \"select_build_option\" },",
+            "            { tool_name = \"plan_build_actions\" },",
+            "          },",
+            "          build_action_plan = {",
+            "            status = \"ready\",",
+            "            selected_option_id = \"parsed_request\",",
+            "            step_count = 8,",
+            "            world_mutation_authority = \"luanti\",",
+            "          },",
+            "          tool_decisions = {",
+            "            build_option = {",
+            "              selected_option_id = \"parsed_request\",",
+            "              decision_source = \"agent_selected_build_option\",",
+            "            },",
+            "            build_action_plan = {",
+            "              status = \"ready\",",
+            "              selected_option_id = \"parsed_request\",",
+            "              step_count = 8,",
+            "              world_mutation_authority = \"luanti\",",
+            "            },",
+            "          },",
+            "        }",
             "      end",
             "      done({",
             "        ok = true,",
@@ -420,6 +456,7 @@ def write_probe_world(
             "    \"tnt_wall\",",
             "    \"stone_bridge\",",
             "    \"small_cabin\",",
+            "    \"path_to_hill\",",
             "    \"agentic_build_planner\",",
             "    \"openrealm_village\",",
             "    \"player_agent_loop\",",
@@ -474,6 +511,7 @@ def write_probe_world(
             "      tnt_wall_checked = eval.case_ids.tnt_wall == true,",
             "      stone_bridge_checked = eval.case_ids.stone_bridge == true,",
             "      small_cabin_checked = eval.case_ids.small_cabin == true,",
+            "      path_to_hill_checked = eval.case_ids.path_to_hill == true,",
             "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
             "      openrealm_village_checked = eval.case_ids.openrealm_village == true,",
             "      player_agent_loop_checked = eval.case_ids.player_agent_loop == true,",
@@ -715,9 +753,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 9:
+    if prompt_eval.get("cases_total") != 10:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 9 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 10 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
     for case_id in (
@@ -726,6 +764,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "tnt_wall",
         "stone_bridge",
         "small_cabin",
+        "path_to_hill",
         "agentic_build_planner",
         "openrealm_village",
         "player_agent_loop",
@@ -752,6 +791,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         tnt = case_map.get("tnt_wall", {})
         stone_bridge = case_map.get("stone_bridge", {})
         small_cabin = case_map.get("small_cabin", {})
+        path_to_hill = case_map.get("path_to_hill", {})
         planner = case_map.get("agentic_build_planner", {})
         openrealm = case_map.get("openrealm_village", {})
         player_loop = case_map.get("player_agent_loop", {})
@@ -827,6 +867,25 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval small cabin generated candidate is invalid")
         if small_cabin.get("generated_build_option_status") != "validated":
             raise ValueError("agent prompt eval small cabin generated option was not validated")
+        if path_to_hill.get("status") != "pass":
+            raise ValueError("agent prompt eval path-to-hill case is invalid")
+        if path_to_hill.get("prompt") != "build a path to that hill":
+            raise ValueError("agent prompt eval path-to-hill prompt is invalid")
+        if path_to_hill.get("route") != "agentic_build_planner" \
+                and path_to_hill.get("final_route") != "agentic_build_planner":
+            raise ValueError("agent prompt eval path-to-hill route is invalid")
+        if path_to_hill.get("build_kind") != "path":
+            raise ValueError("agent prompt eval path-to-hill build kind is invalid")
+        if path_to_hill.get("build_material_name") != "stone":
+            raise ValueError("agent prompt eval path-to-hill material is invalid")
+        if path_to_hill.get("build_count") != 8:
+            raise ValueError("agent prompt eval path-to-hill build count is invalid")
+        if path_to_hill.get("planned_node_writes") != 8:
+            raise ValueError("agent prompt eval path-to-hill must plan exactly eight node writes")
+        if path_to_hill.get("selected_candidate_id") != "parsed_request":
+            raise ValueError("agent prompt eval path-to-hill selected candidate is invalid")
+        if path_to_hill.get("generated_candidate_id") is not None:
+            raise ValueError("agent prompt eval path-to-hill must use parsed request, not generated content")
         if planner.get("status") != "pass":
             raise ValueError("agent prompt eval build planner case is invalid")
         if planner.get("route") != "agentic_build_planner" and planner.get("final_route") != "agentic_build_planner":
@@ -951,6 +1010,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
                 "small_cabin",
                 {"propose_build_option"},
             )
+            _require_agentic_tool_case(path_to_hill, "path_to_hill")
             _require_agentic_tool_case(
                 openrealm,
                 "openrealm_village",
@@ -963,7 +1023,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 9 or summary.get("cases_passed") != 9:
+    if summary.get("cases_total") != 10 or summary.get("cases_passed") != 10:
         raise ValueError("agent prompt eval summary case counts are invalid")
     if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
         raise ValueError("agent prompt eval golden prompt suite is invalid")
@@ -987,6 +1047,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "tnt_wall_checked",
         "stone_bridge_checked",
         "small_cabin_checked",
+        "path_to_hill_checked",
         "agentic_build_planner_checked",
         "openrealm_village_checked",
         "player_agent_loop_checked",
@@ -1037,6 +1098,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             "tnt_wall",
             "stone_bridge",
             "small_cabin",
+            "path_to_hill",
             "agentic_build_planner",
             "openrealm_village",
             "player_agent_loop",
@@ -1055,6 +1117,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_fire_only_strict_checked": True,
         "agent_prompt_eval_tnt_wall_checked": True,
         "agent_prompt_eval_stone_bridge_checked": True,
+        "agent_prompt_eval_path_to_hill_checked": True,
         "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_openrealm_village_checked": True,
         "agent_prompt_eval_player_agent_loop_checked": True,
@@ -1080,6 +1143,8 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_small_cabin_checked": True,
         "agent_prompt_eval_small_cabin_planned_node_writes": 10,
         "agent_prompt_eval_small_cabin_candidate_id": "generated_prompt_shaped_cabin",
+        "agent_prompt_eval_path_to_hill_planned_node_writes": 8,
+        "agent_prompt_eval_path_to_hill_candidate_id": "parsed_request",
         "agent_prompt_eval_agentic_build_planner_planned_node_writes": next(
             (
                 item.get("planned_node_writes")
@@ -1097,7 +1162,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],
         "agent_prompt_eval_requires_model_network": runtime_context.get("requires_model_network") is True,
         "agent_prompt_eval_agentic_tool_cases": agentic_tool_cases,
-        "agent_prompt_eval_agentic_tool_cases_required": 8 if adapter_mode == "agents_sdk_sidecar" else 0,
+        "agent_prompt_eval_agentic_tool_cases_required": 9 if adapter_mode == "agents_sdk_sidecar" else 0,
         "agent_prompt_eval_world_mutation": False,
     }
 

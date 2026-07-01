@@ -684,7 +684,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "no_private_prompt_retained": True,
             },
             "bounds": {
-                "max_bytes": 28000,
+                "max_bytes": 40000,
                 "output_bytes": 0,
                 "truncated": False,
             },
@@ -734,10 +734,31 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "cleanup_status": "success",
             "failure_count": 0,
         }
+        path_to_hill_case = {
+            "case_id": "path_to_hill",
+            "status": "pass",
+            "ok": True,
+            "prompt": "build a path to that hill",
+            "action": "build",
+            "reply_status": "queued",
+            "final_status": "pending_approval",
+            "route": "agentic_build_planner",
+            "final_route": "agentic_build_planner",
+            "build_kind": "path",
+            "build_count": 8,
+            "build_material_name": "stone",
+            "selected_candidate_id": "parsed_request",
+            "candidate_count": 5,
+            "planned_node_writes": 8,
+            "cleanup_status": "success",
+            "failure_count": 0,
+        }
         payload["prompt_eval"]["cases"].insert(3, stone_bridge_case)
         payload["prompt_eval"]["cases"].insert(4, small_cabin_case)
+        payload["prompt_eval"]["cases"].insert(5, path_to_hill_case)
         payload["prompt_eval"]["case_ids"]["stone_bridge"] = True
         payload["prompt_eval"]["case_ids"]["small_cabin"] = True
+        payload["prompt_eval"]["case_ids"]["path_to_hill"] = True
         payload["prompt_eval"]["cases_total"] = len(payload["prompt_eval"]["cases"])
         payload["prompt_eval"]["cases_passed"] = len(payload["prompt_eval"]["cases"])
         payload["prompt_eval"]["cases_failed"] = 0
@@ -746,8 +767,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["summary"]["cases_failed"] = 0
         payload["summary"]["stone_bridge_checked"] = True
         payload["summary"]["small_cabin_checked"] = True
+        payload["summary"]["path_to_hill_checked"] = True
         payload["summary"]["golden_prompt_case_ids"]["stone_bridge"] = True
         payload["summary"]["golden_prompt_case_ids"]["small_cabin"] = True
+        payload["summary"]["golden_prompt_case_ids"]["path_to_hill"] = True
         payload["summary"]["golden_prompts_total"] = len(
             payload["summary"]["golden_prompt_case_ids"]
         )
@@ -766,6 +789,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "tnt_wall": ("tnt_wall", 5, 4),
             "stone_bridge": ("generated_bridge_platform", 5, 12),
             "small_cabin": ("generated_prompt_shaped_cabin", 5, 10),
+            "path_to_hill": ("parsed_request", 5, 8),
             "agentic_build_planner": ("wall", 4, 4),
             "openrealm_village": (
                 "generated_openrealm_lakeside_village",
@@ -1680,6 +1704,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "small cabin must plan exactly ten node writes"):
                 probe.validate_live_result(cabin_underplanned)
 
+            path_underplanned = json.loads(json.dumps(payload))
+            path_case = next(
+                case for case in path_underplanned["prompt_eval"]["cases"]
+                if case["case_id"] == "path_to_hill"
+            )
+            path_case["planned_node_writes"] = 7
+            with self.assertRaisesRegex(ValueError, "path-to-hill must plan exactly eight node writes"):
+                probe.validate_live_result(path_underplanned)
+
     def test_agent_prompt_eval_sidecar_validator_requires_tool_evidence(self):
         probe = load_agent_prompt_eval_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1688,11 +1721,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             payload = json.loads(artifact.read_text(encoding="utf-8"))
 
             evidence = probe.validate_live_result(payload)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 8)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 8)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 9)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 9)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_backlog_total"], 11)
-            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 8)
+            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 9)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompts_failed"], 0)
 
             generated_completion_source = json.loads(json.dumps(payload))
@@ -2334,7 +2367,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
-                9,
+                10,
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2364,6 +2397,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_small_cabin_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_path_to_hill_checked"
                 ]
             )
             self.assertTrue(
@@ -2420,6 +2458,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_path_to_hill_planned_node_writes"
+                ],
+                8,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_path_to_hill_candidate_id"
+                ],
+                "parsed_request",
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_openrealm_village_planned_node_writes"
                 ],
                 96,
@@ -2440,7 +2490,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_golden_prompts_total"
                 ],
-                8,
+                9,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2458,13 +2508,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_requests"
                 ],
-                9,
+                10,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_successes"
                 ],
-                9,
+                10,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][

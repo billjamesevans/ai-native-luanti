@@ -5,9 +5,9 @@ Raspberry Pi fork test server before a public alpha cut.
 
 The full OpenRealm backlog currently contains eleven product prompts. The
 runtime gate enforces the implemented subset first: fire, strict fire-only, TNT
-wall, stone bridge generation, small cabin generation, agentic build-planner
-selection, the OpenRealm village template, player-like multi-turn creator review,
-and model/tool routing.
+wall, stone bridge generation, small cabin generation, path-to-hill planning,
+agentic build-planner selection, the OpenRealm village template, player-like
+multi-turn creator review, and model/tool routing.
 New prompts move from backlog to enforced only when the
 runtime can validate them with repeatable public-safe evidence.
 
@@ -42,7 +42,7 @@ runtime can validate them with repeatable public-safe evidence.
 
 - Suite: `openrealm_creator_loop`
 - Backlog total: `11`
-- Enforced runtime prompt cases: `8`
+- Enforced runtime prompt cases: `9`
 - Supporting model/tool route case: `1`
 - Stone bridge generation: `Build a stone bridge` must produce a
   tool-validated `generated_bridge_platform` option, preserve stone material,
@@ -53,6 +53,11 @@ runtime can validate them with repeatable public-safe evidence.
   `generated_prompt_shaped_cabin` option, preserve `wood` material, validate a
   bounded `3 x 2 x 2` cabin shell, plan exactly `10` node writes, require
   approval, and expose `propose_build_option`/`select_build_option`/
+  `plan_build_actions` evidence.
+- Path-to-hill planning: `Build a path to that hill` must preserve the specific
+  path intent, use the parsed request instead of a generated platform fallback,
+  preserve `stone` material, plan exactly `8` node writes, require approval, and
+  expose `recall_build_prompt_memory`/`select_build_option`/
   `plan_build_actions` evidence.
 - Player-loop option review: `Nova, options` returns selected and alternate
   pending build choices from runtime state, including an `openrealm.plan.v1`
