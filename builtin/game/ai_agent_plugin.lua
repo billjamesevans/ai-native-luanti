@@ -1016,6 +1016,13 @@ function plugin._build_option_summary(option)
 	if option.reason then
 		append(parts, "reason=" .. bounded_trace_text(option.reason, 80))
 	end
+	if type(option.openrealm_plan) == "table" then
+		append(parts, "openrealm_plan="
+			.. tostring(option.openrealm_plan.schema_version or "unknown"))
+		if option.openrealm_plan.plan_id then
+			append(parts, "plan_id=" .. tostring(option.openrealm_plan.plan_id))
+		end
+	end
 	return table.concat(parts, " ")
 end
 
@@ -4298,8 +4305,111 @@ local function agentic_build_context(base_context, fields)
 	return context
 end
 
-local function public_candidate_option(candidate)
+function plugin._openrealm_plan_id(seed)
+	local text = tostring(seed or "openrealm")
+	local a = 0x1357
+	local b = 0x2468
+	local c = 0x369c
+	for index = 1, #text do
+		local byte = text:byte(index)
+		a = (a + byte * index) % 0x10000
+		b = (b * 33 + byte) % 0x10000
+		c = (c + byte * 17 + index) % 0x10000
+	end
+	return string.format("orplan_%04x%04x%04x", a, b, c)
+end
+
+function plugin._openrealm_mod_name(raw)
+	local text = tostring(raw or "runtime_build"):lower()
+	text = text:gsub("[^a-z0-9_]+", "_")
+	text = text:gsub("^_+", ""):gsub("_+$", "")
+	if text == "" then
+		text = "runtime_build"
+	end
+	if not text:match("^[a-z]") then
+		text = "or_" .. text
+	end
+	if #text > 52 then
+		text = text:sub(1, 52):gsub("_+$", "")
+	end
+	if #text < 2 then
+		text = "runtime_build"
+	end
+	return "openrealm_" .. text
+end
+
+function plugin._openrealm_plan_for_candidate(candidate)
+	if type(candidate) ~= "table" or type(candidate.context) ~= "table" then
+		return nil
+	end
+	local context = candidate.context
+	local option_id = tostring(candidate.option_id or "generated_agent_option")
+	local source_prompt = bounded_trace_text(
+		context.openrealm_source_prompt
+			or context.player_request
+			or context.player_turn_text
+			or "runtime build option",
+		2000)
+	local planned_node_writes = candidate.planned_node_writes or 0
+	local title = bounded_trace_text(candidate.label or option_id, 120)
+	local summary = bounded_trace_text(candidate.reason
+		or "Runtime validated OpenRealm build option.", 1000)
 	return {
+		schema_version = "openrealm.plan.v1",
+		product = "OpenRealm",
+		assistant = "Nova",
+		plan_id = plugin._openrealm_plan_id(table.concat({
+			source_prompt,
+			option_id,
+			tostring(context.build_kind or "build"),
+			tostring(context.build_material_name or context.build_material_node or "default"),
+			tostring(planned_node_writes),
+		}, "|")),
+		plan_kind = "structure",
+		title = title,
+		source_prompt = source_prompt,
+		mod_name = plugin._openrealm_mod_name(option_id),
+		summary = summary,
+		tags = { "structure", "preview", "rollback", "runtime-generated", "nova" },
+		safety_budget = {
+			max_node_definitions = 0,
+			max_structure_nodes = planned_node_writes,
+			requires_preview = true,
+			requires_approval = true,
+			rollback_required = true,
+			ai_direct_world_mutation_allowed = false,
+		},
+		structures = {
+			{
+				name = option_id,
+				description = summary,
+				placement_count = planned_node_writes,
+				max_radius = 32,
+			},
+		},
+		approval_steps = {
+			"Review generated OpenRealm plan.",
+			"Inspect preview and node/write budget.",
+			"Approve in-world command before mutation.",
+			"Use rollback if the result is not wanted.",
+		},
+		ai_disclosure = {
+			ai_assisted = true,
+			assistant_name = "Nova",
+			human_approval_required = true,
+			direct_world_mutation_by_ai = false,
+			generated_code_is_template_based = true,
+		},
+		provenance = {
+			generator = "openrealm_creator_kernel",
+			generator_version = "runtime-contract-v1",
+			source = "agentic_build_candidate",
+		},
+	}
+end
+
+local function public_candidate_option(candidate)
+	local option = {
 		option_id = candidate.option_id,
 		label = candidate.label,
 		reason = candidate.reason,
@@ -4316,6 +4426,8 @@ local function public_candidate_option(candidate)
 		requires_rollback = true,
 		executable = true,
 	}
+	option.openrealm_plan = plugin._openrealm_plan_for_candidate(candidate)
+	return option
 end
 
 local function public_candidate_options(candidates)
@@ -4784,8 +4896,10 @@ end
 local function build_agentic_candidate_options(name, raw_prompt, context)
 	local lower = raw_prompt:lower()
 	local candidates = {}
-	local parsed_context = parse_build_options(raw_prompt, context)
-	append_agentic_build_candidate(candidates, name, context, "platform",
+	local option_context = table.copy(context or {})
+	option_context.openrealm_source_prompt = raw_prompt
+	local parsed_context = parse_build_options(raw_prompt, option_context)
+	append_agentic_build_candidate(candidates, name, option_context, "platform",
 		"Small platform", "safe default buildable surface", {
 			build_kind = "platform",
 			build_width = 2,
@@ -4793,13 +4907,13 @@ local function build_agentic_candidate_options(name, raw_prompt, context)
 			build_material_name = nil,
 			build_material_node = settings.platform_node,
 		})
-	append_agentic_build_candidate(candidates, name, context, "marker",
+	append_agentic_build_candidate(candidates, name, option_context, "marker",
 		"Marker block", "single-block visible marker", {
 			build_kind = "marker",
 			build_material_name = nil,
 			build_material_node = settings.marker_node,
 		})
-	append_agentic_build_candidate(candidates, name, context, "wall",
+	append_agentic_build_candidate(candidates, name, option_context, "wall",
 		"Small wall", "bounded wall preview", {
 			build_kind = "wall",
 			build_width = 4,
@@ -4809,7 +4923,7 @@ local function build_agentic_candidate_options(name, raw_prompt, context)
 		})
 	local fire_node = resolve_build_material_node("fire", settings.fire_node)
 	if fire_node then
-		append_agentic_build_candidate(candidates, name, context, "fire",
+		append_agentic_build_candidate(candidates, name, option_context, "fire",
 			"Single fire", "requested as approval-gated game build", {
 				build_kind = "fire",
 				build_count = 1,
@@ -4819,7 +4933,7 @@ local function build_agentic_candidate_options(name, raw_prompt, context)
 	end
 	local tnt_node = resolve_build_material_node("tnt", settings.tnt_node)
 	if tnt_node and lower:find("tnt", 1, true) then
-		append_agentic_build_candidate(candidates, name, context, "tnt_wall",
+		append_agentic_build_candidate(candidates, name, option_context, "tnt_wall",
 			"Small TNT wall", "requested game material behind approval and rollback", {
 				build_kind = "wall",
 				build_width = 4,
@@ -4830,7 +4944,7 @@ local function build_agentic_candidate_options(name, raw_prompt, context)
 	end
 	local parsed_candidate = find_matching_agentic_build_candidate(candidates, parsed_context)
 	if parsed_context and not parsed_candidate then
-		parsed_candidate = append_agentic_build_candidate(candidates, name, context,
+		parsed_candidate = append_agentic_build_candidate(candidates, name, option_context,
 			"parsed_request", "Parsed player request",
 			"exact bounded command parsed from the player request",
 			parsed_context)

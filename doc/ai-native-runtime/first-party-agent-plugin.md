@@ -225,6 +225,13 @@ counts, and gated surface reasons. The structured Lua result remains available t
 operator tooling, but the registered chat command must not hide those details
 behind a generic success string.
 
+Pending build-option review also exposes an `openrealm.plan.v1` summary for each
+executable candidate. The summary carries OpenRealm/Nova identity, the source
+prompt, structure placement count, preview/approval/rollback requirements,
+`ai_direct_world_mutation_allowed=false`, and `openrealm_creator_kernel`
+provenance. This lets the runtime and the Advantage Kit share a public contract
+without giving any agent direct world-mutation authority.
+
 Targeted task, audit, rollback-review, and approval commands are deliberately
 scoped to remembered player-owned plugin tasks, player-owned rollback audit
 records, and the current player's pending approval. They do not provide a

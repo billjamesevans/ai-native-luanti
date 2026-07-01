@@ -500,6 +500,10 @@ Initial tools are deliberately read-only:
   `luanti_build_action_plan_v1` workflow. It does not mutate the world; it
   states that Luanti owns preview, player approval, rollback-backed task
   execution, and improvement evidence.
+- Runtime build-option candidates are also published back to players with an
+  `openrealm.plan.v1` summary compatible with the OpenRealm Advantage Kit:
+  preview, approval, rollback, no direct AI mutation, structure placement count,
+  and `openrealm_creator_kernel` provenance are explicit.
 - `propose_build_option`: creates a bounded generated build option for
   open-ended player requests such as towers, bridges, paths, or shelter floors;
   it is read-only and Luanti may reject it before preview.

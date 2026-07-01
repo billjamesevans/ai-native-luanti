@@ -43,5 +43,6 @@ repeatable public-safe evidence.
 - Enforced runtime prompt cases: `4`
 - Supporting model/tool route case: `1`
 - Player-loop option review: `Nova, options` returns selected and alternate
-  pending build choices from runtime state.
+  pending build choices from runtime state, including an `openrealm.plan.v1`
+  safety/preview contract for each executable option.
 - Blocking gate: `python3 util/ai_native_agent_quality_gate.py ... --require-live-prompt-eval`
