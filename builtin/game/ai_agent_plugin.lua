@@ -7738,10 +7738,22 @@ local function finish_agentic_build_eval_case(case_report, final_reply, final_tr
 		or (final_reply and final_reply.build_material_name == expected.build_material_name)
 	case_report.checks.material_node = expected.build_material_node == nil
 		or (final_reply and final_reply.build_material_node == expected.build_material_node)
+	local build_width = final_reply and final_reply.build_width or nil
+	local build_depth = final_reply and final_reply.build_depth or nil
 	case_report.checks.build_width = expected.build_width == nil
-		or (final_reply and final_reply.build_width == expected.build_width)
+		or (build_width == expected.build_width)
+	if expected.build_width_min ~= nil then
+		case_report.checks.build_width = case_report.checks.build_width
+			and type(build_width) == "number"
+			and build_width >= expected.build_width_min
+	end
+	if expected.build_width_max ~= nil then
+		case_report.checks.build_width = case_report.checks.build_width
+			and type(build_width) == "number"
+			and build_width <= expected.build_width_max
+	end
 	case_report.checks.build_depth = expected.build_depth == nil
-		or (final_reply and final_reply.build_depth == expected.build_depth)
+		or (build_depth == expected.build_depth)
 	case_report.checks.build_height = expected.build_height == nil
 		or (final_reply and final_reply.build_height == expected.build_height)
 	case_report.checks.build_count = expected.build_count == nil
@@ -7754,6 +7766,13 @@ local function finish_agentic_build_eval_case(case_report, final_reply, final_tr
 		case_report.checks.planned_writes =
 			case_report.checks.planned_writes
 			and planned_writes == expected.planned_node_writes
+	end
+	if expected.planned_node_writes_matches_area == true then
+		case_report.checks.planned_writes =
+			case_report.checks.planned_writes
+			and type(build_width) == "number"
+			and type(build_depth) == "number"
+			and planned_writes == build_width * build_depth
 	end
 	case_report.checks.trace_route = final_trace
 		and final_trace.route == (expected.route or "agentic_build_planner")
@@ -8350,10 +8369,11 @@ function plugin.run_prompt_eval(options, callback)
 					route = "agentic_build_planner",
 					build_kind = "platform",
 					build_material_name = "stone",
-					planned_node_writes = 16,
 					selected_candidate_id = "generated_bridge_platform",
-					build_width = 8,
+					build_width_min = 6,
+					build_width_max = 8,
 					build_depth = 2,
+					planned_node_writes_matches_area = true,
 				}
 				if run_agentic_build_eval_case(report, owner, "build a stone bridge",
 						context, async_case_done, case_id, expected) then

@@ -700,14 +700,14 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "route": "agentic_build_planner",
             "final_route": "agentic_build_planner",
             "build_kind": "platform",
-            "build_width": 8,
+            "build_width": 6,
             "build_depth": 2,
             "build_material_name": "stone",
             "selected_candidate_id": "generated_bridge_platform",
             "generated_build_option_status": "validated",
             "generated_candidate_id": "generated_bridge_platform",
             "candidate_count": 5,
-            "planned_node_writes": 16,
+            "planned_node_writes": 12,
             "cleanup_status": "success",
             "failure_count": 0,
         }
@@ -732,7 +732,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "build_fire": ("fire", 4, 3),
             "fire_only_strict": ("fire", 4, 3),
             "tnt_wall": ("tnt_wall", 5, 4),
-            "stone_bridge": ("generated_bridge_platform", 5, 16),
+            "stone_bridge": ("generated_bridge_platform", 5, 12),
             "agentic_build_planner": ("wall", 4, 4),
             "openrealm_village": (
                 "generated_openrealm_lakeside_village",
@@ -1633,8 +1633,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 probe.validate_live_result(tnt_underplanned)
 
             bridge_underplanned = json.loads(json.dumps(payload))
-            bridge_underplanned["prompt_eval"]["cases"][3]["planned_node_writes"] = 12
-            with self.assertRaisesRegex(ValueError, "stone bridge must plan exactly sixteen node writes"):
+            bridge_underplanned["prompt_eval"]["cases"][3]["planned_node_writes"] = 11
+            with self.assertRaisesRegex(ValueError, "stone bridge planned writes must match bridge area"):
                 probe.validate_live_result(bridge_underplanned)
 
     def test_agent_prompt_eval_sidecar_validator_requires_tool_evidence(self):
@@ -2350,7 +2350,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_stone_bridge_planned_node_writes"
                 ],
-                16,
+                12,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][

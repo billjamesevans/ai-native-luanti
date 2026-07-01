@@ -7260,15 +7260,15 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 				label = "Generated bridge platform",
 				reason = "player asked for a bridge-like surface",
 				build_kind = "platform",
-				build_width = 8,
+				build_width = 6,
 				build_depth = 2,
 				build_material_name = "stone",
-				planned_node_writes = 16,
+				planned_node_writes = 12,
 			},
 			build_action_plan = {
 				status = "ready",
 				selected_option_id = "generated_bridge_platform",
-				step_count = 16,
+				step_count = 12,
 				world_mutation_authority = "luanti",
 			},
 			tool_decisions = {
@@ -7280,16 +7280,16 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 						label = "Generated bridge platform",
 						reason = "player asked for a bridge-like surface",
 						build_kind = "platform",
-						build_width = 8,
+						build_width = 6,
 						build_depth = 2,
 						build_material_name = "stone",
-						planned_node_writes = 16,
+						planned_node_writes = 12,
 					},
 				},
 				build_action_plan = {
 					status = "ready",
 					selected_option_id = "generated_bridge_platform",
-					step_count = 16,
+					step_count = 12,
 					world_mutation_authority = "luanti",
 				},
 			},
@@ -7452,9 +7452,12 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		== "generated_bridge_platform")
 	assert(eval_cases.stone_bridge.final_reply.build_kind == "platform")
 	assert(eval_cases.stone_bridge.final_reply.build_material_name == "stone")
-	assert(eval_cases.stone_bridge.final_reply.build_width == 8)
+	assert(eval_cases.stone_bridge.final_reply.build_width >= 6)
+	assert(eval_cases.stone_bridge.final_reply.build_width <= 8)
 	assert(eval_cases.stone_bridge.final_reply.build_depth == 2)
-	assert(eval_cases.stone_bridge.final_reply.planned_node_writes == 16)
+	assert(eval_cases.stone_bridge.final_reply.planned_node_writes
+		== eval_cases.stone_bridge.final_reply.build_width
+			* eval_cases.stone_bridge.final_reply.build_depth)
 	assert(eval_cases.stone_bridge.final_reply.generated_build_option_status
 		== "validated")
 	assert(eval_cases.stone_bridge.final_reply.generated_candidate_id

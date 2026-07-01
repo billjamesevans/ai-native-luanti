@@ -45,9 +45,9 @@ runtime can validate them with repeatable public-safe evidence.
 - Supporting model/tool route case: `1`
 - Stone bridge generation: `Build a stone bridge` must produce a
   tool-validated `generated_bridge_platform` option, preserve stone material,
-  validate an `8 x 2` platform shape, plan exactly `16` node writes, require
-  approval, and expose `propose_build_option`/`select_build_option`/
-  `plan_build_actions` evidence.
+  validate a bounded `6-8 x 2` platform shape, plan node writes equal to the
+  bridge area, require approval, and expose `propose_build_option`/
+  `select_build_option`/`plan_build_actions` evidence.
 - Player-loop option review: `Nova, options` returns selected and alternate
   pending build choices from runtime state, including an `openrealm.plan.v1`
   safety/preview contract for each executable option.

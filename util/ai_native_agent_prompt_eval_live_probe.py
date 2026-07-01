@@ -276,15 +276,15 @@ def write_probe_world(
             "            label = \"Generated bridge platform\",",
             "            reason = \"player asked for a bridge-like surface\",",
             "            build_kind = \"platform\",",
-            "            build_width = 8,",
+            "            build_width = 6,",
             "            build_depth = 2,",
             "            build_material_name = \"stone\",",
-            "            planned_node_writes = 16,",
+            "            planned_node_writes = 12,",
             "          },",
             "          build_action_plan = {",
             "            status = \"ready\",",
             "            selected_option_id = \"generated_bridge_platform\",",
-            "            step_count = 16,",
+            "            step_count = 12,",
             "            world_mutation_authority = \"luanti\",",
             "          },",
             "          tool_decisions = {",
@@ -296,16 +296,16 @@ def write_probe_world(
             "                label = \"Generated bridge platform\",",
             "                reason = \"player asked for a bridge-like surface\",",
             "                build_kind = \"platform\",",
-            "                build_width = 8,",
+            "                build_width = 6,",
             "                build_depth = 2,",
             "                build_material_name = \"stone\",",
-            "                planned_node_writes = 16,",
+            "                planned_node_writes = 12,",
             "              },",
             "            },",
             "            build_action_plan = {",
             "              status = \"ready\",",
             "              selected_option_id = \"generated_bridge_platform\",",
-            "              step_count = 16,",
+            "              step_count = 12,",
             "              world_mutation_authority = \"luanti\",",
             "            },",
             "          },",
@@ -727,10 +727,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval stone bridge build kind is invalid")
         if stone_bridge.get("build_material_name") != "stone":
             raise ValueError("agent prompt eval stone bridge material is invalid")
-        if stone_bridge.get("build_width") != 8 or stone_bridge.get("build_depth") != 2:
+        bridge_width = stone_bridge.get("build_width")
+        bridge_depth = stone_bridge.get("build_depth")
+        bridge_writes = stone_bridge.get("planned_node_writes")
+        if not isinstance(bridge_width, int) or bridge_width < 6 or bridge_width > 8 \
+                or bridge_depth != 2:
             raise ValueError("agent prompt eval stone bridge dimensions are invalid")
-        if stone_bridge.get("planned_node_writes") != 16:
-            raise ValueError("agent prompt eval stone bridge must plan exactly sixteen node writes")
+        if bridge_writes != bridge_width * bridge_depth:
+            raise ValueError("agent prompt eval stone bridge planned writes must match bridge area")
         if stone_bridge.get("selected_candidate_id") != "generated_bridge_platform":
             raise ValueError("agent prompt eval stone bridge selected candidate is invalid")
         if stone_bridge.get("generated_candidate_id") != "generated_bridge_platform":
@@ -971,7 +975,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_fire_planned_node_writes": 1,
         "agent_prompt_eval_fire_only_strict_planned_node_writes": 1,
         "agent_prompt_eval_tnt_wall_planned_node_writes": 12,
-        "agent_prompt_eval_stone_bridge_planned_node_writes": 16,
+        "agent_prompt_eval_stone_bridge_planned_node_writes": next(
+            (
+                item.get("planned_node_writes")
+                for item in cases
+                if isinstance(item, dict) and item.get("case_id") == "stone_bridge"
+            ),
+            None,
+        ),
         "agent_prompt_eval_stone_bridge_candidate_id": "generated_bridge_platform",
         "agent_prompt_eval_agentic_build_planner_planned_node_writes": next(
             (

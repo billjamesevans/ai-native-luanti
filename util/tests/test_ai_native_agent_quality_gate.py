@@ -40,10 +40,10 @@ def stone_bridge_prompt_eval_case():
         "route": "agentic_build_planner",
         "final_route": "agentic_build_planner",
         "build_kind": "platform",
-        "build_width": 8,
+        "build_width": 6,
         "build_depth": 2,
         "build_material_name": "stone",
-        "planned_node_writes": 16,
+        "planned_node_writes": 12,
         "selected_candidate_id": "generated_bridge_platform",
         "adapter_selected_candidate_id": "generated_bridge_platform",
         "model_selected_candidate_id": "generated_bridge_platform",
@@ -66,7 +66,7 @@ def stone_bridge_prompt_eval_case():
             "plan_build_actions",
         ],
         "adapter_build_action_plan_status": "ready",
-        "adapter_build_action_plan_step_count": 16,
+        "adapter_build_action_plan_step_count": 12,
         "adapter_build_action_plan_world_mutation_authority": "luanti",
     }
 
