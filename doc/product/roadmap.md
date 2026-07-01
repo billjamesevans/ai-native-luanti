@@ -39,9 +39,9 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
-  `c1e37d0cd`.
-- Backup: `raspberrypi_luanti_20260701-165421.tgz`
-  (`21fc88e2c9f0bfac364801c7c14ed11c1dda7b112e908bf80a59ace61b409099`).
+  `3a3ed842a`.
+- Backup: `raspberrypi_luanti_20260701-175501.tgz`
+  (`c4545731a80b74b89c6353df571c5ba24fda14b9321ae349c5a1324520c40706`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
@@ -50,15 +50,15 @@ Current Pi gate evidence:
 - memory refresh quality gate passed with live prompt eval `pass`,
   compatibility import staging pilot `pass`, `10/10` required agentic tool cases,
   `0` attention items, and `0` violations. The retained quality gate artifact
-  was generated at `2026-07-01T22:00:50Z`.
-- request/response log gate passed with `1736` request log entries and `74`
+  was generated at `2026-07-01T23:01:04Z`.
+- request/response log gate passed with `1945` request log entries and `74`
   Nova agent log entries read, `7/7` checked cases passed, and `0`
   violations. The retained request/response artifact was generated at
-  `2026-07-01T22:00:26Z`.
-- live prompt eval passed `11/11` cases; the OpenRealm golden subset passed
-  `9/9`, with `12` model-adapter requests, `12` successes, `0` failures, and
+  `2026-07-01T23:00:37Z`.
+- live prompt eval passed `12/12` cases; the OpenRealm golden subset passed
+  `9/9`, with `11` model-adapter requests, `11` successes, `0` failures, and
   `0` timeouts. The current live-probe prompt-eval artifact was generated at
-  `2026-07-01T21:59:18Z`.
+  `2026-07-01T22:59:27Z`.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,
@@ -103,7 +103,9 @@ Current Pi gate evidence:
   over: `Nova, make it wider` updates dimensions and `Nova, use tnt instead`
   updates material through `edit_plan`, preserving the approval id, returning
   `no_world_mutation = true`, and retaining a public-safe `natural_chat_review`
-  trace.
+  trace. The retained live Pi prompt-eval and quality-gate artifacts now require
+  `natural_pending_edit_checked = true` /
+  `live_prompt_eval_natural_pending_edit_checked = true`.
 - Generated Agents SDK build options can now carry an `openrealm.plan.v1`
   structure placement plan. Luanti converts that into a non-mutating preview
   first, then queues a rollback-backed `openrealm.structure.apply` task only

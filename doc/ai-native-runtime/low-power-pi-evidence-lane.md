@@ -5,22 +5,22 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `325a99211`
-- Backup artifact label: `raspberrypi_luanti_20260701-095915.tgz`
+- Fork commit: `3a3ed842a`
+- Backup artifact label: `raspberrypi_luanti_20260701-175501.tgz`
 - Backup SHA-256:
-  `6ed313981de6a284f37c086a9375cd5ac9c433bca79627b6b2ff7644ba37ab20`
+  `c4545731a80b74b89c6353df571c5ba24fda14b9321ae349c5a1324520c40706`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: `ai-native-luanti-agents-sdk-adapter.service` active on
   loopback TCP `8766`.
 - Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
-  pilot `pass`; agentic tool cases `9/9`; attention items `0`; violations
-  `0`; retained artifact generated at `2026-07-01T15:04:37Z`.
-- Request/response log gate: `pass`; `1330` request log entries and `73` Nova
+  pilot `pass`; agentic tool cases `10/10`; attention items `0`; violations
+  `0`; retained artifact generated at `2026-07-01T23:01:04Z`.
+- Request/response log gate: `pass`; `1945` request log entries and `74` Nova
   agent log entries read; `7/7` checked cases passed; violations `0`.
-- Live prompt eval: `10/10` cases passed; the OpenRealm golden subset passed
-  `9/9`; model adapter requests `10`, successes `10`, failures `0`, timeouts
-  `0`; retained artifact generated at `2026-07-01T15:03:29Z`.
+- Live prompt eval: `12/12` cases passed; the OpenRealm golden subset passed
+  `9/9`; model adapter requests `11`, successes `11`, failures `0`, timeouts
+  `0`; retained artifact generated at `2026-07-01T22:59:27Z`.
 - Stone bridge generation proof: the live Pi sidecar call for
   "Build a stone bridge" returned `generated_bridge_platform` through
   `agents_sdk_generated_tool_completion`, produced a `stone` `platform`
@@ -49,6 +49,11 @@ Latest post-deploy gate:
   `Nova, pending plan`, `Nova, no`, and the after-discard
   `no_pending_approval` review turn. The top-level quality gate also exposes
   `live_prompt_eval_player_agent_loop_review_traces_checked = true`.
+- Natural pending-edit proof: the live Pi gate requires
+  `natural_pending_edit_checked = true` and the top-level quality gate exposes
+  `live_prompt_eval_natural_pending_edit_checked = true`; `Nova, make it wider`
+  and `Nova, use tnt instead` revise the same pending build preview through
+  `edit_plan` without world mutation.
 - OpenRealm structure apply path: generated Agents SDK build options with an
   `openrealm.plan.v1` placement plan now become non-mutating previews first and
   rollback-backed `openrealm.structure.apply` tasks only after approval.

@@ -449,6 +449,12 @@ Live side-by-side Pi proof from 2026-07-01:
   Pi-side probe confirmed the OpenRealm template nodes map to registered clean
   runtime placeholders: `ai_runtime_base:stone`, `ai_runtime_base:wood`,
   `ai_runtime_base:glass`, and `ai_runtime_base:glow`.
+- The 2026-07-01 Pi gate for `3a3ed842a` passed the live prompt eval `12/12`
+  with `10/10` required agentic tool cases, including
+  `natural_chat_followup_checked = true` and `natural_pending_edit_checked =
+  true`. The protected pending-edit case proves `Nova, make it wider` and
+  `Nova, use tnt instead` revise a pending build preview through runtime
+  `edit_plan` without giving the model direct world-mutation authority.
 
 ## Luanti Adapter
 
