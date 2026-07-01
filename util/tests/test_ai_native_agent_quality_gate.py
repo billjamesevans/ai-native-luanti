@@ -157,14 +157,15 @@ def live_prompt_eval_payload(**overrides):
             "status": "pass",
             "ok": True,
             "owner": "PromptEvalLive",
-            "cases_total": 5,
-            "cases_passed": 5,
+            "cases_total": 6,
+            "cases_passed": 6,
             "cases_failed": 0,
             "case_ids": {
                 "build_fire": True,
                 "fire_only_strict": True,
                 "tnt_wall": True,
                 "agentic_build_planner": True,
+                "openrealm_village": True,
                 "model": True,
             },
             "cases": [
@@ -289,6 +290,40 @@ def live_prompt_eval_payload(**overrides):
                     "adapter_build_action_plan_world_mutation_authority": "luanti",
                 },
                 {
+                    "case_id": "openrealm_village",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "Build a cozy lakeside village with floating lanterns",
+                    "route": "agentic_build_planner",
+                    "build_kind": "openrealm_structure",
+                    "build_material_name": "openrealm_template",
+                    "planned_node_writes": 96,
+                    "selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "adapter_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "model_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "generated_build_option_status": "validated",
+                    "generated_candidate_id": "generated_openrealm_lakeside_village",
+                    "candidate_count": 4,
+                    "adapter_tool_decision_source": "agents_sdk_generated_tool_completion",
+                    "adapter_required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "propose_build_option",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_missing_required_tool_calls": [],
+                    "adapter_required_tool_calls_satisfied": True,
+                    "adapter_tool_trace_names": [
+                        "recall_build_prompt_memory",
+                        "propose_build_option",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_build_action_plan_status": "ready",
+                    "adapter_build_action_plan_step_count": 96,
+                    "adapter_build_action_plan_world_mutation_authority": "luanti",
+                },
+                {
                     "case_id": "model",
                     "status": "pass",
                     "ok": True,
@@ -300,16 +335,17 @@ def live_prompt_eval_payload(**overrides):
             "safety": {},
         },
         "summary": {
-            "cases_total": 5,
-            "cases_passed": 5,
+            "cases_total": 6,
+            "cases_passed": 6,
             "cases_failed": 0,
             "build_fire_checked": True,
             "fire_only_strict_checked": True,
             "tnt_wall_checked": True,
             "agentic_build_planner_checked": True,
+            "openrealm_village_checked": True,
             "model_checked": True,
-            "model_adapter_requests": 5,
-            "model_adapter_successes": 5,
+            "model_adapter_requests": 6,
+            "model_adapter_successes": 6,
             "model_adapter_failures": 0,
             "model_adapter_timeouts": 0,
             "golden_prompt_suite": "openrealm_creator_loop",
@@ -319,9 +355,10 @@ def live_prompt_eval_payload(**overrides):
                 "fire_only_strict": True,
                 "tnt_wall": True,
                 "agentic_build_planner": True,
+                "openrealm_village": True,
             },
-            "golden_prompts_total": 4,
-            "golden_prompts_passed": 4,
+            "golden_prompts_total": 5,
+            "golden_prompts_passed": 5,
             "golden_prompts_failed": 0,
         },
         "safety": {
@@ -397,15 +434,15 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
-        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 5)
-        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 6)
+        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 6)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_backlog_total"], 11)
-        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 4)
-        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 4)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 5)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_failed"], 0)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 4)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 4)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 5)
 
     def test_required_live_prompt_eval_missing_fails_gate(self):
         module = load_quality_gate_module()
@@ -514,8 +551,9 @@ class AgentQualityGateTests(unittest.TestCase):
                     "fire_only_strict": False,
                     "tnt_wall": True,
                     "agentic_build_planner": True,
+                    "openrealm_village": True,
                 },
-                "golden_prompts_passed": 3,
+                "golden_prompts_passed": 4,
                 "golden_prompts_failed": 1,
             }
         )

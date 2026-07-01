@@ -30,15 +30,15 @@ class OpenRealmGoldenPromptTests(unittest.TestCase):
 
         self.assertEqual(evidence["agent_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
         self.assertEqual(evidence["agent_prompt_eval_golden_prompt_backlog_total"], 11)
-        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 4)
-        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_passed"], 4)
+        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 5)
+        self.assertEqual(evidence["agent_prompt_eval_golden_prompts_passed"], 5)
         self.assertEqual(evidence["agent_prompt_eval_golden_prompts_failed"], 0)
 
     def test_quality_gate_blocks_openrealm_golden_prompt_regression(self):
         quality_gate = load_module(QUALITY_GATE, "openrealm_quality_gate_test")
         live_eval = live_prompt_eval_payload()
         live_eval["summary"]["golden_prompt_case_ids"]["fire_only_strict"] = False
-        live_eval["summary"]["golden_prompts_passed"] = 3
+        live_eval["summary"]["golden_prompts_passed"] = 4
         live_eval["summary"]["golden_prompts_failed"] = 1
 
         report = quality_gate.build_quality_gate(

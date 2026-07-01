@@ -474,14 +474,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "status": "pass",
                 "ok": True,
                 "owner": "PromptEvalLive",
-                "cases_total": 5,
-                "cases_passed": 5,
+                "cases_total": 6,
+                "cases_passed": 6,
                 "cases_failed": 0,
                 "case_ids": {
                     "build_fire": True,
                     "fire_only_strict": True,
                     "tnt_wall": True,
                     "agentic_build_planner": True,
+                    "openrealm_village": True,
                     "model": True,
                 },
                 "cases": [
@@ -545,6 +546,26 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "failure_count": 0,
                     },
                     {
+                        "case_id": "openrealm_village",
+                        "status": "pass",
+                        "ok": True,
+                        "prompt": "Build a cozy lakeside village with floating lanterns",
+                        "action": "build",
+                        "reply_status": "queued",
+                        "final_status": "pending_approval",
+                        "route": "agentic_build_planner",
+                        "final_route": "agentic_build_planner",
+                        "build_kind": "openrealm_structure",
+                        "build_material_name": "openrealm_template",
+                        "selected_candidate_id": "generated_openrealm_lakeside_village",
+                        "generated_build_option_status": "validated",
+                        "generated_candidate_id": "generated_openrealm_lakeside_village",
+                        "candidate_count": 4,
+                        "planned_node_writes": 96,
+                        "cleanup_status": "success",
+                        "failure_count": 0,
+                    },
+                    {
                         "case_id": "model",
                         "status": "pass",
                         "ok": True,
@@ -558,8 +579,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     },
                 ],
                 "metrics": {
-                    "model_adapter_requests_delta": 2,
-                    "model_adapter_successes_delta": 2,
+                    "model_adapter_requests_delta": 3,
+                    "model_adapter_successes_delta": 3,
                     "model_adapter_failures_delta": 0,
                     "model_adapter_timeouts_delta": 0,
                 },
@@ -568,16 +589,17 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 },
             },
             "summary": {
-                "cases_total": 5,
-                "cases_passed": 5,
+                "cases_total": 6,
+                "cases_passed": 6,
                 "cases_failed": 0,
                 "build_fire_checked": True,
                 "fire_only_strict_checked": True,
                 "tnt_wall_checked": True,
                 "agentic_build_planner_checked": True,
+                "openrealm_village_checked": True,
                 "model_checked": True,
-                "model_adapter_requests": 2,
-                "model_adapter_successes": 2,
+                "model_adapter_requests": 3,
+                "model_adapter_successes": 3,
                 "model_adapter_failures": 0,
                 "model_adapter_timeouts": 0,
                 "golden_prompt_suite": "openrealm_creator_loop",
@@ -587,9 +609,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "fire_only_strict": True,
                     "tnt_wall": True,
                     "agentic_build_planner": True,
+                    "openrealm_village": True,
                 },
-                "golden_prompts_total": 4,
-                "golden_prompts_passed": 4,
+                "golden_prompts_total": 5,
+                "golden_prompts_passed": 5,
                 "golden_prompts_failed": 0,
             },
             "safety": {
@@ -615,6 +638,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "fire_only_strict": ("fire", 4, 3),
             "tnt_wall": ("tnt_wall", 5, 4),
             "agentic_build_planner": ("wall", 4, 4),
+            "openrealm_village": (
+                "generated_openrealm_lakeside_village",
+                4,
+                96,
+            ),
         }
         for case in payload["prompt_eval"]["cases"]:
             case_id = case.get("case_id")
@@ -626,27 +654,32 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             case["adapter_selected_candidate_id"] = case["selected_candidate_id"]
             case["model_selected_candidate_id"] = case["selected_candidate_id"]
             case["candidate_count"] = candidate_count
-            case["adapter_tool_decision_source"] = "agents_sdk_function_tool"
-            case["adapter_required_tool_calls"] = [
+            generated_openrealm = case_id == "openrealm_village"
+            case["adapter_tool_decision_source"] = (
+                "agents_sdk_generated_tool_completion"
+                if generated_openrealm else "agents_sdk_function_tool"
+            )
+            required_tools = [
                 "recall_build_prompt_memory",
+            ]
+            if generated_openrealm:
+                required_tools.append("propose_build_option")
+            required_tools.extend([
                 "select_build_option",
                 "plan_build_actions",
-            ]
+            ])
+            case["adapter_required_tool_calls"] = required_tools
             case["adapter_missing_required_tool_calls"] = []
             case["adapter_required_tool_calls_satisfied"] = True
-            case["adapter_tool_trace_names"] = [
-                "recall_build_prompt_memory",
-                "select_build_option",
-                "plan_build_actions",
-            ]
+            case["adapter_tool_trace_names"] = required_tools
             case["adapter_build_action_plan_status"] = "ready"
             case["adapter_build_action_plan_step_count"] = step_count
             case["adapter_build_action_plan_world_mutation_authority"] = "luanti"
         if adapter_mode == "agents_sdk_sidecar":
-            payload["prompt_eval"]["metrics"]["model_adapter_requests_delta"] = 5
-            payload["prompt_eval"]["metrics"]["model_adapter_successes_delta"] = 5
-            payload["summary"]["model_adapter_requests"] = 5
-            payload["summary"]["model_adapter_successes"] = 5
+            payload["prompt_eval"]["metrics"]["model_adapter_requests_delta"] = 6
+            payload["prompt_eval"]["metrics"]["model_adapter_successes_delta"] = 6
+            payload["summary"]["model_adapter_requests"] = 6
+            payload["summary"]["model_adapter_successes"] = 6
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -1502,11 +1535,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             payload = json.loads(artifact.read_text(encoding="utf-8"))
 
             evidence = probe.validate_live_result(payload)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 4)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 4)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 5)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 5)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_backlog_total"], 11)
-            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 4)
+            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 5)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompts_failed"], 0)
 
             generated_completion_source = json.loads(json.dumps(payload))
@@ -1532,7 +1565,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
 
             golden_regression = json.loads(json.dumps(payload))
             golden_regression["summary"]["golden_prompt_case_ids"]["fire_only_strict"] = False
-            golden_regression["summary"]["golden_prompts_passed"] = 3
+            golden_regression["summary"]["golden_prompts_passed"] = 4
             golden_regression["summary"]["golden_prompts_failed"] = 1
             with self.assertRaisesRegex(ValueError, "golden prompts did not all pass"):
                 probe.validate_live_result(golden_regression)
@@ -2118,7 +2151,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
-                5,
+                6,
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2138,6 +2171,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_agentic_build_planner_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_openrealm_village_checked"
                 ]
             )
             self.assertTrue(
@@ -2165,6 +2203,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_openrealm_village_planned_node_writes"
+                ],
+                96,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_golden_prompt_suite"
                 ],
                 "openrealm_creator_loop",
@@ -2173,7 +2217,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_golden_prompts_total"
                 ],
-                4,
+                5,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2191,13 +2235,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_requests"
                 ],
-                2,
+                3,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_successes"
                 ],
-                2,
+                3,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2367,7 +2411,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 21000)
+            self.assertLess(len(serialized), 22000)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 

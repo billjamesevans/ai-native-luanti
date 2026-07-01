@@ -4240,6 +4240,8 @@ function plugin._openrealm_structure_plan_for(name, context)
 		will_mutate = false,
 		build_kind = "openrealm_structure",
 		build_count = #placements,
+		build_material_name = context.build_material_name,
+		build_material_node = context.build_material_node,
 		openrealm_plan_id = context.openrealm_plan_id,
 		samples = samples,
 		metrics = metrics,
@@ -4770,6 +4772,124 @@ local function append_agentic_build_candidate(candidates, name, base_context,
 	return candidate
 end
 
+plugin._openrealm_village_prompt =
+	"Build a cozy lakeside village with floating lanterns"
+
+function plugin._prompt_requests_openrealm_village(lower_prompt)
+	lower_prompt = tostring(lower_prompt or "")
+	return lower_prompt:find("openrealm", 1, true) ~= nil
+		or lower_prompt:find("lakeside village", 1, true) ~= nil
+		or (lower_prompt:find("village", 1, true) ~= nil
+			and lower_prompt:find("lantern", 1, true) ~= nil)
+		or lower_prompt:find("floating lantern", 1, true) ~= nil
+end
+
+function plugin._openrealm_village_template_option(raw_prompt)
+	local function first_registered_node(...)
+		for index = 1, select("#", ...) do
+			local node_name = select(index, ...)
+			if node_is_registered(node_name) then
+				return node_name
+			end
+		end
+		return nil
+	end
+	local stone = first_registered_node(
+		settings.build_material_nodes and settings.build_material_nodes.stone,
+		settings.platform_node,
+		settings.wall_node,
+		settings.marker_node)
+	local lantern = first_registered_node(
+		settings.build_material_nodes and settings.build_material_nodes.glow,
+		settings.light_node,
+		settings.marker_node,
+		stone)
+	if not stone or not lantern then
+		return nil
+	end
+	local placements = {}
+	local function add(x, y, z, node_name)
+		placements[#placements + 1] = {
+			x = x,
+			y = y,
+			z = z,
+			node = node_name,
+		}
+	end
+	for _, center in ipairs({
+		{ x = -6, z = 0 },
+		{ x = 0, z = 4 },
+		{ x = 6, z = 0 },
+	}) do
+		for x = -2, 2 do
+			for z = -2, 2 do
+				add(center.x + x, 0, center.z + z, stone)
+			end
+		end
+	end
+	for x = -8, 8 do
+		add(x, 0, 9, stone)
+	end
+	for _, x in ipairs({ -6, 0, 6 }) do
+		add(x, 2, 2, lantern)
+	end
+	add(8, 2, 8, lantern)
+	return {
+		option_id = "generated_openrealm_lakeside_village",
+		label = "Cozy Lakeside Village",
+		reason = "template-generated OpenRealm structure plan with runtime-safe placements",
+		build_kind = "openrealm_structure",
+		build_material_name = "openrealm_template",
+		planned_node_writes = #placements,
+		openrealm_plan = {
+			schema_version = "openrealm.plan.v1",
+			product = "OpenRealm",
+			assistant = "Nova",
+			plan_id = "orplan_lakeside_village",
+			plan_kind = "structure",
+			title = "Cozy Lakeside Village",
+			source_prompt = bounded_trace_text(
+				raw_prompt or plugin._openrealm_village_prompt, 2000),
+			mod_name = "openrealm_lakeside_village",
+			summary = "Template-generated OpenRealm village plan validated by the runtime before preview.",
+			tags = { "structure", "preview", "rollback", "template-generated", "nova" },
+			safety_budget = {
+				max_node_definitions = 0,
+				max_structure_nodes = #placements,
+				requires_preview = true,
+				requires_approval = true,
+				rollback_required = true,
+				ai_direct_world_mutation_allowed = false,
+			},
+			structures = {
+				{
+					name = "lakeside_village",
+					description = "Bounded cozy lakeside village with floating lantern markers.",
+					max_radius = 32,
+					placements = placements,
+				},
+			},
+			approval_steps = {
+				"Review generated OpenRealm placement plan.",
+				"Approve in-world before mutation.",
+				"Use rollback if the result is not wanted.",
+			},
+			ai_disclosure = {
+				ai_assisted = true,
+				assistant_name = "Nova",
+				human_approval_required = true,
+				direct_world_mutation_by_ai = false,
+				generated_code_is_template_based = true,
+			},
+			provenance = {
+				generator = "openrealm_creator_kernel",
+				generator_version = "runtime-contract-v1",
+				source = "agentic_openrealm_template",
+			},
+		},
+	}
+end
+
 local function select_agentic_build_candidate(candidates, lower_prompt, parsed_candidate)
 	if parsed_candidate
 			and (lower_prompt:find("width", 1, true)
@@ -4789,7 +4909,14 @@ local function select_agentic_build_candidate(candidates, lower_prompt, parsed_c
 		return parsed_candidate
 	end
 	local preferred = "platform"
-	if lower_prompt:find("tnt", 1, true) then
+	if plugin._prompt_requests_openrealm_village(lower_prompt) then
+		for _, candidate in ipairs(candidates or {}) do
+			if candidate.option_id == "generated_openrealm_lakeside_village" then
+				preferred = "generated_openrealm_lakeside_village"
+				break
+			end
+		end
+	elseif lower_prompt:find("tnt", 1, true) then
 		preferred = "tnt_wall"
 	elseif lower_prompt:find("fire", 1, true) or lower_prompt:find("flame", 1, true) then
 		preferred = "fire"
@@ -4972,6 +5099,8 @@ local function append_generated_agentic_build_candidate(candidates, name,
 		local option_id = safe_generated_option_id(option.option_id)
 		local context = agentic_build_context(base_context, {
 			build_kind = "openrealm_structure",
+			build_material_name =
+				option.build_material_name or "openrealm_template",
 			build_count = #placements,
 			openrealm_plan_id = public_plan.plan_id,
 			openrealm_plan = public_plan,
@@ -5275,6 +5404,10 @@ local function build_agentic_candidate_options(name, raw_prompt, context)
 				build_material_node = tnt_node,
 			})
 	end
+	if plugin._prompt_requests_openrealm_village(lower) then
+		append_generated_agentic_build_candidate(candidates, name, option_context,
+			plugin._openrealm_village_template_option(raw_prompt))
+	end
 	local parsed_candidate = find_matching_agentic_build_candidate(candidates, parsed_context)
 	if parsed_context and not parsed_candidate then
 		parsed_candidate = append_agentic_build_candidate(candidates, name, option_context,
@@ -5400,6 +5533,14 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 					and "model_tool_decision_rejected_intent_constraint"
 					or "intent_constraint_preselection"
 			end
+		end
+		if not generated_candidate_id
+				and final_selected
+				and final_selected.openrealm_plan
+				and tostring(final_selected.option_id):find("^generated") then
+			generated_option_status = "validated"
+			generated_option_reason = "validated_by_luanti_build_planner"
+			generated_candidate_id = final_selected.option_id
 		end
 		local agentic_tool_success_required =
 			final_selected.option_id == "parsed_request"
@@ -7245,7 +7386,14 @@ function plugin.handle_natural_chat_message(name, message, context)
 end
 
 local EVAL_DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
-local EVAL_DEFAULT_CASES = { "build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner", "model" }
+local EVAL_DEFAULT_CASES = {
+	"build_fire",
+	"fire_only_strict",
+	"tnt_wall",
+	"agentic_build_planner",
+	"openrealm_village",
+	"model",
+}
 local EVAL_MAX_OUTPUT_BYTES = 12000
 
 local function eval_metric_delta(before, after, key)
@@ -7778,6 +7926,10 @@ local function normalize_eval_case(value)
 	elseif value == "agentic" or value == "planner" or value == "buildplanner"
 			or value == "agenticbuildplanner" or value == "shelter" then
 		return "agentic_build_planner"
+	elseif value == "openrealm" or value == "village"
+			or value == "lakeside" or value == "lakesidevillage"
+			or value == "openrealmvillage" then
+		return "openrealm_village"
 	elseif value == "model" or value == "unknown" or value == "adapter" then
 		return "model"
 	end
@@ -7978,6 +8130,21 @@ function plugin.run_prompt_eval(options, callback)
 		elseif case_id == "agentic_build_planner" then
 			if run_agentic_build_eval_case(report, owner, "build a small shelter",
 					context, async_case_done) then
+				pending_async_count = pending_async_count + 1
+			end
+		elseif case_id == "openrealm_village" then
+			local expected = {
+				route = "agentic_build_planner",
+				build_kind = "openrealm_structure",
+				build_material_name = "openrealm_template",
+				planned_node_writes = 96,
+				selected_candidate_id = "generated_openrealm_lakeside_village",
+				initial_selected_candidate_id =
+					"generated_openrealm_lakeside_village",
+			}
+			if run_agentic_build_eval_case(report, owner,
+					plugin._openrealm_village_prompt, context, async_case_done,
+					case_id, expected) then
 				pending_async_count = pending_async_count + 1
 			end
 		elseif case_id == "model" then

@@ -26,6 +26,7 @@ ENFORCED_GOLDEN_PROMPT_CASE_IDS = (
     "fire_only_strict",
     "tnt_wall",
     "agentic_build_planner",
+    "openrealm_village",
 )
 ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES = {
     "agents_sdk_function_tool",
@@ -158,6 +159,9 @@ def write_probe_world(
             "    adapter_selected_candidate_id = effective_reply.adapter_selected_candidate_id,",
             "    model_selected_candidate_id = effective_reply.model_selected_candidate_id,",
             "    build_option_decision_source = effective_reply.build_option_decision_source,",
+            "    generated_build_option_status = effective_reply.generated_build_option_status,",
+            "    generated_candidate_id = effective_reply.generated_candidate_id,",
+            "    openrealm_plan_id = effective_reply.openrealm_plan_id,",
             "    cleanup_status = case.cleanup and case.cleanup.status or nil,",
             "    failure_count = #(case.failures or {}),",
             "  }",
@@ -185,6 +189,7 @@ def write_probe_world(
             "      fire_only_strict = cases.fire_only_strict ~= nil,",
             "      tnt_wall = cases.tnt_wall ~= nil,",
             "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
+            "      openrealm_village = cases.openrealm_village ~= nil,",
             "      model = cases.model ~= nil,",
             "    },",
             "    cases = summaries,",
@@ -251,6 +256,7 @@ def write_probe_world(
             "    \"fire_only_strict\",",
             "    \"tnt_wall\",",
             "    \"agentic_build_planner\",",
+            "    \"openrealm_village\",",
             "  }",
             "  local golden_case_status = {}",
             "  local golden_passed = 0",
@@ -294,6 +300,7 @@ def write_probe_world(
             "      fire_only_strict_checked = eval.case_ids.fire_only_strict == true,",
             "      tnt_wall_checked = eval.case_ids.tnt_wall == true,",
             "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
+            "      openrealm_village_checked = eval.case_ids.openrealm_village == true,",
             "      model_checked = eval.case_ids.model == true,",
             "      model_adapter_requests = eval.metrics.model_adapter_requests_delta or 0,",
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
@@ -346,7 +353,7 @@ def write_probe_world(
             "    shutdown(\"agent prompt eval probe failed\")",
             "    return",
             "  end",
-            "  core.ai_agent_plugin.configure({ max_lights = 16 })",
+            "  core.ai_agent_plugin.configure({ max_lights = 128 })",
             "  install_mock_adapter()",
             "  local command = core.registered_chatcommands",
             "    and core.registered_chatcommands.ai_agent_eval",
@@ -412,7 +419,11 @@ def _string_list(value: object) -> list[str]:
     return [item for item in value if isinstance(item, str)]
 
 
-def _require_agentic_tool_case(case: dict, case_id: str) -> None:
+def _require_agentic_tool_case(
+    case: dict,
+    case_id: str,
+    extra_expected_tools: set[str] | None = None,
+) -> None:
     if case.get("route") != "agentic_build_planner" and case.get("final_route") != "agentic_build_planner":
         raise ValueError(f"agent prompt eval {case_id} route is not agentic")
     if case.get("adapter_tool_decision_source") not in ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES:
@@ -428,6 +439,8 @@ def _require_agentic_tool_case(case: dict, case_id: str) -> None:
         "select_build_option",
         "plan_build_actions",
     }
+    if extra_expected_tools:
+        expected |= extra_expected_tools
     missing_required = expected - required
     if missing_required:
         raise ValueError(f"agent prompt eval {case_id} required tool metadata is incomplete")
@@ -495,12 +508,19 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 5:
+    if prompt_eval.get("cases_total") != 6:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 5 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 6 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
-    for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner", "model"):
+    for case_id in (
+        "build_fire",
+        "fire_only_strict",
+        "tnt_wall",
+        "agentic_build_planner",
+        "openrealm_village",
+        "model",
+    ):
         if case_ids.get(case_id) is not True:
             raise ValueError(f"agent prompt eval missing {case_id}")
 
@@ -521,6 +541,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         fire_only = case_map.get("fire_only_strict", {})
         tnt = case_map.get("tnt_wall", {})
         planner = case_map.get("agentic_build_planner", {})
+        openrealm = case_map.get("openrealm_village", {})
         model = case_map.get("model", {})
         if fire.get("status") != "pass" or fire.get("build_kind") != "fire":
             raise ValueError("agent prompt eval fire case is invalid")
@@ -559,6 +580,25 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval build planner planned writes are invalid")
         if planner["planned_node_writes"] <= 0 or planner["planned_node_writes"] > 16:
             raise ValueError("agent prompt eval build planner planned writes are out of bounds")
+        if openrealm.get("status") != "pass":
+            raise ValueError("agent prompt eval OpenRealm village case is invalid")
+        if openrealm.get("prompt") != "Build a cozy lakeside village with floating lanterns":
+            raise ValueError("agent prompt eval OpenRealm village prompt is invalid")
+        if openrealm.get("route") != "agentic_build_planner" \
+                and openrealm.get("final_route") != "agentic_build_planner":
+            raise ValueError("agent prompt eval OpenRealm village route is invalid")
+        if openrealm.get("build_kind") != "openrealm_structure":
+            raise ValueError("agent prompt eval OpenRealm village build kind is invalid")
+        if openrealm.get("build_material_name") != "openrealm_template":
+            raise ValueError("agent prompt eval OpenRealm village material is invalid")
+        if openrealm.get("planned_node_writes") != 96:
+            raise ValueError("agent prompt eval OpenRealm village must plan exactly 96 node writes")
+        if openrealm.get("selected_candidate_id") != "generated_openrealm_lakeside_village":
+            raise ValueError("agent prompt eval OpenRealm village selected candidate is invalid")
+        if openrealm.get("generated_candidate_id") != "generated_openrealm_lakeside_village":
+            raise ValueError("agent prompt eval OpenRealm village generated candidate is invalid")
+        if openrealm.get("generated_build_option_status") != "validated":
+            raise ValueError("agent prompt eval OpenRealm village generated option was not validated")
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
@@ -566,9 +606,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         if adapter_mode == "agents_sdk_sidecar":
             for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner"):
                 _require_agentic_tool_case(case_map.get(case_id, {}), case_id)
+            _require_agentic_tool_case(
+                openrealm,
+                "openrealm_village",
+                {"propose_build_option"},
+            )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 5 or summary.get("cases_passed") != 5:
+    if summary.get("cases_total") != 6 or summary.get("cases_passed") != 6:
         raise ValueError("agent prompt eval summary case counts are invalid")
     if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
         raise ValueError("agent prompt eval golden prompt suite is invalid")
@@ -591,6 +636,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "fire_only_strict_checked",
         "tnt_wall_checked",
         "agentic_build_planner_checked",
+        "openrealm_village_checked",
         "model_checked",
     ):
         _require_bool(summary, field)
@@ -631,7 +677,13 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
 
     agentic_tool_cases = 0
     if cases:
-        for case_id in ("build_fire", "fire_only_strict", "tnt_wall", "agentic_build_planner"):
+        for case_id in (
+            "build_fire",
+            "fire_only_strict",
+            "tnt_wall",
+            "agentic_build_planner",
+            "openrealm_village",
+        ):
             case = case_map.get(case_id, {})
             if case.get("adapter_tool_decision_source") in ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES \
                     and case.get("adapter_required_tool_calls_satisfied") is True:
@@ -646,6 +698,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_fire_only_strict_checked": True,
         "agent_prompt_eval_tnt_wall_checked": True,
         "agent_prompt_eval_agentic_build_planner_checked": True,
+        "agent_prompt_eval_openrealm_village_checked": True,
         "agent_prompt_eval_model_checked": True,
         "agent_prompt_eval_golden_prompt_suite": GOLDEN_PROMPT_SUITE,
         "agent_prompt_eval_golden_prompt_backlog_total": GOLDEN_PROMPT_BACKLOG_TOTAL,
@@ -663,12 +716,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             ),
             None,
         ),
+        "agent_prompt_eval_openrealm_village_planned_node_writes": 96,
+        "agent_prompt_eval_openrealm_village_candidate_id": "generated_openrealm_lakeside_village",
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],
         "agent_prompt_eval_requires_model_network": runtime_context.get("requires_model_network") is True,
         "agent_prompt_eval_agentic_tool_cases": agentic_tool_cases,
-        "agent_prompt_eval_agentic_tool_cases_required": 4 if adapter_mode == "agents_sdk_sidecar" else 0,
+        "agent_prompt_eval_agentic_tool_cases_required": 5 if adapter_mode == "agents_sdk_sidecar" else 0,
         "agent_prompt_eval_world_mutation": False,
     }
 

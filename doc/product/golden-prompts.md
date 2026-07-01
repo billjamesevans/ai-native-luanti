@@ -5,9 +5,9 @@ Raspberry Pi fork test server before a public alpha cut.
 
 The full OpenRealm backlog currently contains eleven product prompts. The
 runtime gate enforces the implemented subset first: fire, strict fire-only, TNT
-wall, agentic build-planner selection, and model/tool routing. New prompts move
-from backlog to enforced only when the runtime can validate them with
-repeatable public-safe evidence.
+wall, agentic build-planner selection, the OpenRealm village template, and
+model/tool routing. New prompts move from backlog to enforced only when the
+runtime can validate them with repeatable public-safe evidence.
 
 | Prompt | Expected Build | Material | Writes | Approval | Rollback |
 | --- | --- | --- | ---: | --- | --- |
@@ -40,7 +40,7 @@ repeatable public-safe evidence.
 
 - Suite: `openrealm_creator_loop`
 - Backlog total: `11`
-- Enforced runtime prompt cases: `4`
+- Enforced runtime prompt cases: `5`
 - Supporting model/tool route case: `1`
 - Player-loop option review: `Nova, options` returns selected and alternate
   pending build choices from runtime state, including an `openrealm.plan.v1`
@@ -49,6 +49,7 @@ repeatable public-safe evidence.
   cozy lakeside village with floating lanterns" into a bounded
   `generated_openrealm_lakeside_village` option with a 96-placement
   `openrealm.plan.v1` structure plan using registered `ai_runtime_base:*`
-  placeholder nodes. This is contract-tested and live-probed on the Pi sidecar,
-  but is not yet part of the live enforced golden subset.
+  placeholder nodes. This is now an enforced live golden prompt and must expose
+  `agents_sdk_generated_tool_completion`, `propose_build_option`,
+  `openrealm_structure`, `openrealm_template`, and `96` planned writes.
 - Blocking gate: `python3 util/ai_native_agent_quality_gate.py ... --require-live-prompt-eval`
