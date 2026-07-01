@@ -63,8 +63,8 @@ def case_pack_payload(**overrides):
         "generated_at": "2026-06-30T18:00:00Z",
         "status": "ready",
         "summary": {
-            "cases_total": 6,
-            "ready_for_runtime_prompt_eval": 6,
+            "cases_total": 7,
+            "ready_for_runtime_prompt_eval": 7,
             "requires_maintainer_review_before_default_gate": True,
         },
         "cases": [],
@@ -86,8 +86,8 @@ def review_queue_payload(**overrides):
             "adapter_contract_failures_active": 0,
             "adapter_contract_failures_resolved": 1,
             "candidates_total": 9,
-            "case_pack_cases_total": 6,
-            "case_pack_unique_cases_total": 6,
+            "case_pack_cases_total": 7,
+            "case_pack_unique_cases_total": 7,
             "manual_review_required": 0,
             "operator_feedback_events_read": 61,
             "operator_labels_applied": 4,
@@ -95,7 +95,7 @@ def review_queue_payload(**overrides):
             "ready_for_prompt_eval": 9,
             "review_items_retained": 0,
             "review_items_total": 0,
-            "unique_ready_for_prompt_eval": 6,
+            "unique_ready_for_prompt_eval": 7,
             "verified_live_probe_cases_read": 30,
         },
         "action_items": [],
@@ -157,8 +157,8 @@ def live_prompt_eval_payload(**overrides):
             "status": "pass",
             "ok": True,
             "owner": "PromptEvalLive",
-            "cases_total": 6,
-            "cases_passed": 6,
+            "cases_total": 7,
+            "cases_passed": 7,
             "cases_failed": 0,
             "case_ids": {
                 "build_fire": True,
@@ -166,6 +166,7 @@ def live_prompt_eval_payload(**overrides):
                 "tnt_wall": True,
                 "agentic_build_planner": True,
                 "openrealm_village": True,
+                "player_agent_loop": True,
                 "model": True,
             },
             "cases": [
@@ -324,6 +325,61 @@ def live_prompt_eval_payload(**overrides):
                     "adapter_build_action_plan_world_mutation_authority": "luanti",
                 },
                 {
+                    "case_id": "player_agent_loop",
+                    "status": "pass",
+                    "ok": True,
+                    "prompt": "Nova, Build a cozy lakeside village with floating lanterns",
+                    "natural_chat_handled": True,
+                    "action": "build",
+                    "reply_status": "queued",
+                    "final_status": "pending_approval",
+                    "route": "agentic_build_planner",
+                    "final_route": "agentic_build_planner",
+                    "build_kind": "openrealm_structure",
+                    "build_material_name": "openrealm_template",
+                    "planned_node_writes": 96,
+                    "selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "adapter_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "model_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "generated_build_option_status": "validated",
+                    "generated_candidate_id": "generated_openrealm_lakeside_village",
+                    "candidate_count": 5,
+                    "adapter_tool_decision_source": "agents_sdk_generated_tool_completion",
+                    "adapter_required_tool_calls": [
+                        "recall_build_prompt_memory",
+                        "propose_build_option",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_missing_required_tool_calls": [],
+                    "adapter_required_tool_calls_satisfied": True,
+                    "adapter_tool_trace_names": [
+                        "inspect_build_site_context",
+                        "recall_build_prompt_memory",
+                        "propose_build_option",
+                        "select_build_option",
+                        "plan_build_actions",
+                    ],
+                    "adapter_build_action_plan_status": "ready",
+                    "adapter_build_action_plan_step_count": 96,
+                    "adapter_build_action_plan_world_mutation_authority": "luanti",
+                    "options_handled": True,
+                    "options_status": "success",
+                    "options_action": "build_options",
+                    "options_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "options_no_world_mutation": True,
+                    "pending_plan_handled": True,
+                    "pending_plan_status": "success",
+                    "pending_plan_action": "pending_plan",
+                    "pending_plan_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "discard_handled": True,
+                    "discard_status": "success",
+                    "discard_action": "discard_approval",
+                    "after_discard_handled": True,
+                    "after_discard_status": "blocked",
+                    "after_discard_reason": "no_pending_approval",
+                },
+                {
                     "case_id": "model",
                     "status": "pass",
                     "ok": True,
@@ -335,17 +391,18 @@ def live_prompt_eval_payload(**overrides):
             "safety": {},
         },
         "summary": {
-            "cases_total": 6,
-            "cases_passed": 6,
+            "cases_total": 7,
+            "cases_passed": 7,
             "cases_failed": 0,
             "build_fire_checked": True,
             "fire_only_strict_checked": True,
             "tnt_wall_checked": True,
             "agentic_build_planner_checked": True,
             "openrealm_village_checked": True,
+            "player_agent_loop_checked": True,
             "model_checked": True,
-            "model_adapter_requests": 6,
-            "model_adapter_successes": 6,
+            "model_adapter_requests": 7,
+            "model_adapter_successes": 7,
             "model_adapter_failures": 0,
             "model_adapter_timeouts": 0,
             "golden_prompt_suite": "openrealm_creator_loop",
@@ -356,9 +413,10 @@ def live_prompt_eval_payload(**overrides):
                 "tnt_wall": True,
                 "agentic_build_planner": True,
                 "openrealm_village": True,
+                "player_agent_loop": True,
             },
-            "golden_prompts_total": 5,
-            "golden_prompts_passed": 5,
+            "golden_prompts_total": 6,
+            "golden_prompts_passed": 6,
             "golden_prompts_failed": 0,
         },
         "safety": {
@@ -373,7 +431,7 @@ def live_prompt_eval_payload(**overrides):
             "no_family_world_coordinates": True,
             "no_private_prompt_retained": True,
         },
-        "bounds": {"max_bytes": 22000, "output_bytes": 3000, "truncated": False},
+        "bounds": {"max_bytes": 28000, "output_bytes": 3000, "truncated": False},
     }
     payload.update(overrides)
     return payload
@@ -434,15 +492,15 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
-        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 6)
-        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 6)
+        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 7)
+        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 7)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_backlog_total"], 11)
-        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 5)
-        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 6)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 6)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_failed"], 0)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 5)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 6)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 6)
 
     def test_required_live_prompt_eval_missing_fails_gate(self):
         module = load_quality_gate_module()
@@ -552,8 +610,9 @@ class AgentQualityGateTests(unittest.TestCase):
                     "tnt_wall": True,
                     "agentic_build_planner": True,
                     "openrealm_village": True,
+                    "player_agent_loop": True,
                 },
-                "golden_prompts_passed": 4,
+                "golden_prompts_passed": 5,
                 "golden_prompts_failed": 1,
             }
         )

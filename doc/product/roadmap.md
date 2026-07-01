@@ -76,6 +76,12 @@ Current Pi gate evidence:
   `inspect_build_site_context`, `recall_build_prompt_memory`,
   `propose_build_option`, `select_build_option`, and `plan_build_actions` in
   the Agents SDK tool trace.
+- New local fork gate, pending Pi redeploy: default prompt eval now passes
+  `7/7` local cases with `6/6` enforced OpenRealm golden prompts. The added
+  `player_agent_loop` case starts from natural chat (`Nova, Build a cozy
+  lakeside village with floating lanterns`), verifies `Nova, options`, `Nova,
+  pending plan`, `Nova, no`, and the after-discard `no_pending_approval` block,
+  and retains public-safe evidence with no world mutation.
 
 ## Phase 2: Luminara Creator Playground
 

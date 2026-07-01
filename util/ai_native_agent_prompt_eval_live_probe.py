@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIVE_ARTIFACT_NAME = "ai-runtime-agent-prompt-eval-live-result.json"
 LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-probe-result.json"
 PROBE_MOD_NAME = "ai_agent_prompt_eval_live_probe"
-DEFAULT_MAX_BYTES = 22000
+DEFAULT_MAX_BYTES = 28000
 DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
 GOLDEN_PROMPT_SUITE = "openrealm_creator_loop"
 GOLDEN_PROMPT_BACKLOG_TOTAL = 11
@@ -27,6 +27,7 @@ ENFORCED_GOLDEN_PROMPT_CASE_IDS = (
     "tnt_wall",
     "agentic_build_planner",
     "openrealm_village",
+    "player_agent_loop",
 )
 ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES = {
     "agents_sdk_function_tool",
@@ -131,12 +132,17 @@ def write_probe_world(
             "  local trace = case.trace or case.initial_trace or case.final_trace or {}",
             "  local final_trace = case.final_trace or {}",
             "  local final_reply = case.final_reply or {}",
+            "  local options_reply = case.options_reply or {}",
+            "  local pending_plan_reply = case.pending_plan_reply or {}",
+            "  local discard_reply = case.discard_reply or {}",
+            "  local after_discard_reply = case.after_discard_reply or {}",
             "  local effective_reply = final_reply.status and final_reply or reply",
             "  return {",
             "    case_id = case.case_id,",
             "    status = case.status,",
             "    ok = case.ok == true,",
             "    prompt = case.prompt,",
+            "    natural_chat_handled = case.natural_chat_handled == true,",
             "    action = effective_reply.action,",
             "    reply_status = reply.status,",
             "    final_status = case.final_status or final_reply.status,",
@@ -162,6 +168,21 @@ def write_probe_world(
             "    generated_build_option_status = effective_reply.generated_build_option_status,",
             "    generated_candidate_id = effective_reply.generated_candidate_id,",
             "    openrealm_plan_id = effective_reply.openrealm_plan_id,",
+            "    options_handled = case.options_handled == true,",
+            "    options_status = options_reply.status,",
+            "    options_action = options_reply.action,",
+            "    options_selected_candidate_id = options_reply.selected_candidate_id,",
+            "    options_no_world_mutation = options_reply.no_world_mutation,",
+            "    pending_plan_handled = case.pending_plan_handled == true,",
+            "    pending_plan_status = pending_plan_reply.status,",
+            "    pending_plan_action = pending_plan_reply.action,",
+            "    pending_plan_selected_candidate_id = pending_plan_reply.selected_candidate_id,",
+            "    discard_handled = case.discard_handled == true,",
+            "    discard_status = discard_reply.status,",
+            "    discard_action = discard_reply.action,",
+            "    after_discard_handled = case.after_discard_handled == true,",
+            "    after_discard_status = after_discard_reply.status,",
+            "    after_discard_reason = after_discard_reply.reason,",
             "    cleanup_status = case.cleanup and case.cleanup.status or nil,",
             "    failure_count = #(case.failures or {}),",
             "  }",
@@ -190,6 +211,7 @@ def write_probe_world(
             "      tnt_wall = cases.tnt_wall ~= nil,",
             "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
             "      openrealm_village = cases.openrealm_village ~= nil,",
+            "      player_agent_loop = cases.player_agent_loop ~= nil,",
             "      model = cases.model ~= nil,",
             "    },",
             "    cases = summaries,",
@@ -257,6 +279,7 @@ def write_probe_world(
             "    \"tnt_wall\",",
             "    \"agentic_build_planner\",",
             "    \"openrealm_village\",",
+            "    \"player_agent_loop\",",
             "  }",
             "  local golden_case_status = {}",
             "  local golden_passed = 0",
@@ -301,6 +324,7 @@ def write_probe_world(
             "      tnt_wall_checked = eval.case_ids.tnt_wall == true,",
             "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
             "      openrealm_village_checked = eval.case_ids.openrealm_village == true,",
+            "      player_agent_loop_checked = eval.case_ids.player_agent_loop == true,",
             "      model_checked = eval.case_ids.model == true,",
             "      model_adapter_requests = eval.metrics.model_adapter_requests_delta or 0,",
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
@@ -508,9 +532,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 6:
+    if prompt_eval.get("cases_total") != 7:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 6 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 7 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
     for case_id in (
@@ -519,6 +543,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "tnt_wall",
         "agentic_build_planner",
         "openrealm_village",
+        "player_agent_loop",
         "model",
     ):
         if case_ids.get(case_id) is not True:
@@ -542,6 +567,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         tnt = case_map.get("tnt_wall", {})
         planner = case_map.get("agentic_build_planner", {})
         openrealm = case_map.get("openrealm_village", {})
+        player_loop = case_map.get("player_agent_loop", {})
         model = case_map.get("model", {})
         if fire.get("status") != "pass" or fire.get("build_kind") != "fire":
             raise ValueError("agent prompt eval fire case is invalid")
@@ -599,6 +625,47 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval OpenRealm village generated candidate is invalid")
         if openrealm.get("generated_build_option_status") != "validated":
             raise ValueError("agent prompt eval OpenRealm village generated option was not validated")
+        if player_loop.get("status") != "pass":
+            raise ValueError("agent prompt eval player agent loop case is invalid")
+        if player_loop.get("prompt") != "Nova, Build a cozy lakeside village with floating lanterns":
+            raise ValueError("agent prompt eval player agent loop prompt is invalid")
+        if player_loop.get("route") != "agentic_build_planner" \
+                and player_loop.get("final_route") != "agentic_build_planner":
+            raise ValueError("agent prompt eval player agent loop route is invalid")
+        if player_loop.get("final_status") != "pending_approval":
+            raise ValueError("agent prompt eval player agent loop final status is invalid")
+        if player_loop.get("build_kind") != "openrealm_structure":
+            raise ValueError("agent prompt eval player agent loop build kind is invalid")
+        if player_loop.get("build_material_name") != "openrealm_template":
+            raise ValueError("agent prompt eval player agent loop material is invalid")
+        if player_loop.get("planned_node_writes") != 96:
+            raise ValueError("agent prompt eval player agent loop must plan exactly 96 node writes")
+        if player_loop.get("selected_candidate_id") != "generated_openrealm_lakeside_village":
+            raise ValueError("agent prompt eval player agent loop selected candidate is invalid")
+        if player_loop.get("natural_chat_handled") is not True:
+            raise ValueError("agent prompt eval player agent loop natural chat was not handled")
+        if player_loop.get("options_handled") is not True \
+                or player_loop.get("options_status") != "success" \
+                or player_loop.get("options_action") != "build_options":
+            raise ValueError("agent prompt eval player agent loop options reply is invalid")
+        if player_loop.get("options_selected_candidate_id") != "generated_openrealm_lakeside_village":
+            raise ValueError("agent prompt eval player agent loop options selected candidate is invalid")
+        if player_loop.get("options_no_world_mutation") is not True:
+            raise ValueError("agent prompt eval player agent loop options mutated the world")
+        if player_loop.get("pending_plan_handled") is not True \
+                or player_loop.get("pending_plan_status") != "success" \
+                or player_loop.get("pending_plan_action") != "pending_plan":
+            raise ValueError("agent prompt eval player agent loop pending plan reply is invalid")
+        if player_loop.get("pending_plan_selected_candidate_id") != "generated_openrealm_lakeside_village":
+            raise ValueError("agent prompt eval player agent loop pending plan selected candidate is invalid")
+        if player_loop.get("discard_handled") is not True \
+                or player_loop.get("discard_status") != "success" \
+                or player_loop.get("discard_action") != "discard_approval":
+            raise ValueError("agent prompt eval player agent loop discard reply is invalid")
+        if player_loop.get("after_discard_handled") is not True \
+                or player_loop.get("after_discard_status") != "blocked" \
+                or player_loop.get("after_discard_reason") != "no_pending_approval":
+            raise ValueError("agent prompt eval player agent loop after-discard reply is invalid")
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
@@ -611,9 +678,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
                 "openrealm_village",
                 {"propose_build_option"},
             )
+            _require_agentic_tool_case(
+                player_loop,
+                "player_agent_loop",
+                {"propose_build_option"},
+            )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 6 or summary.get("cases_passed") != 6:
+    if summary.get("cases_total") != 7 or summary.get("cases_passed") != 7:
         raise ValueError("agent prompt eval summary case counts are invalid")
     if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
         raise ValueError("agent prompt eval golden prompt suite is invalid")
@@ -637,6 +709,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "tnt_wall_checked",
         "agentic_build_planner_checked",
         "openrealm_village_checked",
+        "player_agent_loop_checked",
         "model_checked",
     ):
         _require_bool(summary, field)
@@ -683,6 +756,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             "tnt_wall",
             "agentic_build_planner",
             "openrealm_village",
+            "player_agent_loop",
         ):
             case = case_map.get(case_id, {})
             if case.get("adapter_tool_decision_source") in ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES \
@@ -699,6 +773,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_tnt_wall_checked": True,
         "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_openrealm_village_checked": True,
+        "agent_prompt_eval_player_agent_loop_checked": True,
         "agent_prompt_eval_model_checked": True,
         "agent_prompt_eval_golden_prompt_suite": GOLDEN_PROMPT_SUITE,
         "agent_prompt_eval_golden_prompt_backlog_total": GOLDEN_PROMPT_BACKLOG_TOTAL,
@@ -718,12 +793,14 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         ),
         "agent_prompt_eval_openrealm_village_planned_node_writes": 96,
         "agent_prompt_eval_openrealm_village_candidate_id": "generated_openrealm_lakeside_village",
+        "agent_prompt_eval_player_agent_loop_planned_node_writes": 96,
+        "agent_prompt_eval_player_agent_loop_candidate_id": "generated_openrealm_lakeside_village",
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],
         "agent_prompt_eval_requires_model_network": runtime_context.get("requires_model_network") is True,
         "agent_prompt_eval_agentic_tool_cases": agentic_tool_cases,
-        "agent_prompt_eval_agentic_tool_cases_required": 5 if adapter_mode == "agents_sdk_sidecar" else 0,
+        "agent_prompt_eval_agentic_tool_cases_required": 6 if adapter_mode == "agents_sdk_sidecar" else 0,
         "agent_prompt_eval_world_mutation": False,
     }
 

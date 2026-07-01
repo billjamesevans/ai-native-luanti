@@ -7392,6 +7392,7 @@ local EVAL_DEFAULT_CASES = {
 	"tnt_wall",
 	"agentic_build_planner",
 	"openrealm_village",
+	"player_agent_loop",
 	"model",
 }
 local EVAL_MAX_OUTPUT_BYTES = 12000
@@ -7486,6 +7487,7 @@ local function compact_eval_reply(reply)
 		fallback_blocked_reason = reply.fallback_blocked_reason,
 		adapter_name = reply.adapter_name,
 		async_model_request = reply.async_model_request,
+		no_world_mutation = reply.no_world_mutation,
 	}
 end
 
@@ -7828,6 +7830,166 @@ local function run_agentic_build_eval_case(report, owner, prompt, context, async
 	return false
 end
 
+function plugin._finish_player_agent_loop_eval_case(case_report, owner,
+		final_reply, final_trace)
+	final_trace = final_trace or trace_by_id(case_report.trace_id)
+		or latest_request_trace()
+	case_report.final_reply = compact_eval_reply(final_reply)
+	case_report.final_trace = compact_eval_trace(final_trace)
+	case_report.final_status = final_reply and final_reply.status
+	case_report.final_reason = final_reply and final_reply.reason
+
+	local options_handled, options_reply = plugin.handle_natural_chat_message(
+		owner, "Nova, options", {
+			suppress_chat_send = true,
+			player_turn_source = "player_agent_loop_eval",
+		})
+	local pending_handled, pending_reply = plugin.handle_natural_chat_message(
+		owner, "Nova, pending plan", {
+			suppress_chat_send = true,
+			player_turn_source = "player_agent_loop_eval",
+		})
+	local discard_handled, discard_reply = plugin.handle_natural_chat_message(
+		owner, "Nova, no", {
+			suppress_chat_send = true,
+			player_turn_source = "player_agent_loop_eval",
+		})
+	local after_discard_handled, after_discard_reply =
+		plugin.handle_natural_chat_message(owner, "Nova, pending plan", {
+			suppress_chat_send = true,
+			player_turn_source = "player_agent_loop_eval",
+		})
+
+	case_report.options_reply = compact_eval_reply(options_reply)
+	case_report.options_handled = options_handled == true
+	case_report.pending_plan_reply = compact_eval_reply(pending_reply)
+	case_report.pending_plan_handled = pending_handled == true
+	case_report.discard_reply = compact_eval_reply(discard_reply)
+	case_report.discard_handled = discard_handled == true
+	case_report.after_discard_reply = compact_eval_reply(after_discard_reply)
+	case_report.after_discard_handled = after_discard_handled == true
+	case_report.player_loop = plugin._player_loop.public_snapshot(owner)
+
+	case_report.checks.final_action = final_reply and final_reply.action == "build"
+	case_report.checks.final_status =
+		final_reply and final_reply.status == "pending_approval"
+	case_report.checks.final_selected_candidate = final_reply
+		and final_reply.selected_candidate_id
+			== "generated_openrealm_lakeside_village"
+	case_report.checks.final_build_kind = final_reply
+		and final_reply.build_kind == "openrealm_structure"
+	case_report.checks.final_material = final_reply
+		and final_reply.build_material_name == "openrealm_template"
+	case_report.checks.final_planned_writes = final_reply
+		and final_reply.planned_node_writes == 96
+	case_report.checks.final_route = final_trace
+		and final_trace.route == "agentic_build_planner"
+	case_report.checks.final_trace_status = final_trace and final_trace.response
+		and final_trace.response.status == "pending_approval"
+	case_report.checks.no_trace_private_context =
+		not trace_private_context_retained(final_trace)
+	case_report.checks.options_handled = options_handled == true
+	case_report.checks.options_success = options_reply
+		and options_reply.status == "success"
+		and options_reply.action == "build_options"
+	case_report.checks.options_no_world_mutation = options_reply
+		and options_reply.no_world_mutation == true
+	case_report.checks.options_same_approval = options_reply and final_reply
+		and options_reply.approval_id == final_reply.approval_id
+	case_report.checks.options_selected_candidate = options_reply
+		and options_reply.selected_candidate_id
+			== "generated_openrealm_lakeside_village"
+	case_report.checks.pending_handled = pending_handled == true
+	case_report.checks.pending_success = pending_reply
+		and pending_reply.status == "success"
+		and pending_reply.action == "pending_plan"
+	case_report.checks.pending_same_approval = pending_reply and final_reply
+		and pending_reply.approval_id == final_reply.approval_id
+	case_report.checks.pending_selected_candidate = pending_reply
+		and pending_reply.selected_candidate_id
+			== "generated_openrealm_lakeside_village"
+	case_report.checks.discard_handled = discard_handled == true
+	case_report.checks.discard_success = discard_reply
+		and discard_reply.status == "success"
+		and discard_reply.action == "discard_approval"
+	case_report.checks.after_discard_handled = after_discard_handled == true
+	case_report.checks.after_discard_blocked = after_discard_reply
+		and after_discard_reply.status == "blocked"
+		and after_discard_reply.reason == "no_pending_approval"
+	local ok, failures = eval_checks_status(case_report.checks)
+	case_report.ok = ok
+	case_report.status = ok and "pass" or "fail"
+	case_report.failures = failures
+	case_report.owner = nil
+end
+
+function plugin._run_player_agent_loop_eval_case(report, owner, context, async_done)
+	local case_report = {
+		case_id = "player_agent_loop",
+		owner = owner,
+		prompt = "Nova, " .. plugin._openrealm_village_prompt,
+		expected = {
+			route = "agentic_build_planner",
+			build_kind = "openrealm_structure",
+			build_material_name = "openrealm_template",
+			planned_node_writes = 96,
+			selected_candidate_id = "generated_openrealm_lakeside_village",
+		},
+		checks = {},
+	}
+	report.cases[#report.cases + 1] = case_report
+	local planner_context = table.copy(context or {})
+	planner_context.player_turn_source = "player_agent_loop_eval"
+	planner_context.on_agentic_build_planner_complete = function(final_reply, final_trace)
+		case_report.completed_by_hook = true
+		plugin._finish_player_agent_loop_eval_case(case_report, owner,
+			final_reply, final_trace)
+		if case_report.initial_recorded then
+			async_done()
+		end
+	end
+	local handled, initial_reply = plugin.handle_natural_chat_message(owner,
+		"Nova, " .. plugin._openrealm_village_prompt, planner_context)
+	local initial_trace = initial_reply and initial_reply.trace_id
+		and trace_by_id(initial_reply.trace_id) or latest_request_trace()
+	case_report.natural_chat_handled = handled == true
+	case_report.trace_id = initial_reply and initial_reply.trace_id
+		or (initial_trace and initial_trace.trace_id)
+	case_report.initial_reply = compact_eval_reply(initial_reply)
+	case_report.initial_trace = compact_eval_trace(initial_trace)
+	case_report.queued_status = initial_reply and initial_reply.status
+	case_report.queued_reason = initial_reply and initial_reply.reason
+	case_report.checks.natural_chat_handled = handled == true
+	case_report.checks.initial_action = initial_reply
+		and initial_reply.action == "build_plan"
+	case_report.checks.initial_trace_id = case_report.trace_id ~= nil
+	case_report.checks.initial_queued = initial_reply
+		and (initial_reply.status == "queued"
+			or initial_reply.status == "pending_approval")
+	case_report.checks.initial_planner_mode = initial_reply
+		and (initial_reply.planner_mode == "agentic_model_adapter"
+			or initial_reply.planner_mode == "deterministic_candidate_fallback")
+	case_report.checks.initial_selected_candidate = initial_reply
+		and initial_reply.selected_candidate_id
+			== "generated_openrealm_lakeside_village"
+	case_report.checks.initial_trace_route = initial_trace
+		and initial_trace.route == "agentic_build_planner"
+	case_report.checks.no_initial_trace_private_context =
+		not trace_private_context_retained(initial_trace)
+	case_report.initial_recorded = true
+	if initial_reply and initial_reply.status == "queued"
+			and not case_report.completed_by_hook then
+		case_report.status = "queued"
+		return true
+	end
+	if case_report.completed_by_hook then
+		return false
+	end
+	plugin._finish_player_agent_loop_eval_case(case_report, owner,
+		initial_reply, initial_trace)
+	return false
+end
+
 local function audit_payload_retained(records)
 	for _, record in ipairs(records or {}) do
 		if record.private_payload ~= nil or record.payload_retained == true then
@@ -7930,6 +8092,10 @@ local function normalize_eval_case(value)
 			or value == "lakeside" or value == "lakesidevillage"
 			or value == "openrealmvillage" then
 		return "openrealm_village"
+	elseif value == "playerloop" or value == "agentloop"
+			or value == "playeragentloop" or value == "multiturn"
+			or value == "multiturncreator" or value == "creatorloop" then
+		return "player_agent_loop"
 	elseif value == "model" or value == "unknown" or value == "adapter" then
 		return "model"
 	end
@@ -8145,6 +8311,11 @@ function plugin.run_prompt_eval(options, callback)
 			if run_agentic_build_eval_case(report, owner,
 					plugin._openrealm_village_prompt, context, async_case_done,
 					case_id, expected) then
+				pending_async_count = pending_async_count + 1
+			end
+		elseif case_id == "player_agent_loop" then
+			if plugin._run_player_agent_loop_eval_case(report, owner,
+					context, async_case_done) then
 				pending_async_count = pending_async_count + 1
 			end
 		elseif case_id == "model" then

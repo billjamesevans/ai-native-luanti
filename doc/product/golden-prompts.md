@@ -5,8 +5,9 @@ Raspberry Pi fork test server before a public alpha cut.
 
 The full OpenRealm backlog currently contains eleven product prompts. The
 runtime gate enforces the implemented subset first: fire, strict fire-only, TNT
-wall, agentic build-planner selection, the OpenRealm village template, and
-model/tool routing. New prompts move from backlog to enforced only when the
+wall, agentic build-planner selection, the OpenRealm village template,
+player-like multi-turn creator review, and model/tool routing. New prompts move
+from backlog to enforced only when the
 runtime can validate them with repeatable public-safe evidence.
 
 | Prompt | Expected Build | Material | Writes | Approval | Rollback |
@@ -40,11 +41,16 @@ runtime can validate them with repeatable public-safe evidence.
 
 - Suite: `openrealm_creator_loop`
 - Backlog total: `11`
-- Enforced runtime prompt cases: `5`
+- Enforced runtime prompt cases: `6`
 - Supporting model/tool route case: `1`
 - Player-loop option review: `Nova, options` returns selected and alternate
   pending build choices from runtime state, including an `openrealm.plan.v1`
   safety/preview contract for each executable option.
+- Player-like creator loop: `Nova, Build a cozy lakeside village with floating
+  lanterns` must queue a pending OpenRealm village preview; `Nova, options` and
+  `Nova, pending plan` must return the same selected candidate without world
+  mutation; `Nova, no` must discard the approval; the next `Nova, pending plan`
+  must block with `no_pending_approval`.
 - Adapter template generation: the Agents SDK sidecar can now turn "Build a
   cozy lakeside village with floating lanterns" into a bounded
   `generated_openrealm_lakeside_village` option with a 96-placement
