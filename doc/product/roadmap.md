@@ -39,23 +39,24 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 follow-up side-by-side fork deploy advanced the Pi test lane to
-  `fa3cd9548`.
+  `28e121515`.
 - Backup:
-  `raspberrypi_luanti_20260701-033122.tgz`
-  (`97e83cfced8aad8744ae1d3c6c7c576212d9710e784f5f4f7d4f4689a138bc14`).
+  `raspberrypi_luanti_20260701-035234.tgz`
+  (`639601436b000b31bf42c210f8b8c5d61a01fd2ab2cbb9113685e59b1675b4b1`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
 - Agents SDK sidecar stayed active on loopback TCP `8766`.
 - memory refresh quality gate passed with live prompt eval `pass`,
   compatibility import staging pilot `pass`, `6/6` required agentic tool cases,
-  `0` attention items, and `0` violations.
-- request/response log gate passed with `836` Agents SDK sidecar log entries
+  `0` attention items, and `0` violations. The retained quality gate artifact
+  was generated at `2026-07-01T08:57:28Z`.
+- request/response log gate passed with `857` Agents SDK sidecar log entries
   read, `5/5` checked cases passed, and `0` violations.
 - live prompt eval passed `7/7` cases; the OpenRealm golden subset passed
   `6/6`, with `7` model-adapter requests, `7` successes, `0` failures, and
   `0` timeouts. The retained live prompt-eval artifact was generated at
-  `2026-07-01T08:35:25Z`.
+  `2026-07-01T08:56:40Z`.
 - the live Pi prompt gate now checks `player_agent_loop`, starting from natural
   chat (`Nova, Build a cozy lakeside village with floating lanterns`), then
   verifying `Nova, options`, `Nova, pending plan`, `Nova, no`, and the
