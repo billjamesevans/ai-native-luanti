@@ -542,6 +542,88 @@ def _safe_build_site_signals(world_context_json: str) -> dict[str, Any]:
     return signals
 
 
+def _player_agent_loop_json_from_context(context: dict[str, Any]) -> str:
+    for key in ("player_agent_loop", "player_loop", "agent_loop_context"):
+        value = context.get(key)
+        if isinstance(value, str) and value.strip():
+            return _bounded_text(value, 2000)
+    return ""
+
+
+def _safe_player_agent_loop_signals(player_agent_loop_json: str) -> dict[str, Any]:
+    raw = str(player_agent_loop_json or "").strip()
+    if not raw:
+        return {
+            "loop_available": False,
+            "loop_source": "none",
+        }
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return {
+            "loop_available": True,
+            "loop_source": "bounded_text",
+            "loop_bytes": len(raw.encode("utf-8")),
+            "loop_note": _bounded_text(raw, 240),
+            "privacy": {
+                "public_safe": True,
+                "family_world_coordinates": False,
+            },
+        }
+    if not isinstance(parsed, dict):
+        return {
+            "loop_available": True,
+            "loop_source": "json_non_object",
+            "privacy": {
+                "public_safe": True,
+                "family_world_coordinates": False,
+            },
+        }
+
+    signals: dict[str, Any] = {
+        "loop_available": True,
+        "loop_source": "json_object",
+        "privacy": {
+            "public_safe": True,
+            "family_world_coordinates": False,
+        },
+    }
+    for key in (
+        "status",
+        "phase",
+        "iteration",
+        "active_goal",
+        "active_surface",
+        "next_action",
+        "last_trace_id",
+        "last_task_id",
+        "last_result_status",
+    ):
+        value = parsed.get(key)
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            signals[key] = _safe_log_value(value)
+
+    observation = parsed.get("last_observation")
+    if isinstance(observation, dict):
+        safe_observation: dict[str, Any] = {}
+        for key in (
+            "action",
+            "route",
+            "surface_id",
+            "prompt",
+            "world_id",
+            "task_id",
+            "agent_id",
+            "anchor_pos_available",
+            "anchor_node_name",
+        ):
+            value = observation.get(key)
+            if isinstance(value, (str, int, float, bool)) or value is None:
+                safe_observation[key] = _safe_log_value(value)
+        signals["last_observation"] = safe_observation
+    return signals
+
+
 def _build_site_request_class(player_request: str, candidates: list[dict[str, Any]]) -> str:
     request = str(player_request or "").lower()
     locked = _locked_build_option_for_request(request, candidates)
@@ -562,6 +644,7 @@ def inspect_build_site_context_payload(
     candidate_summary: str,
     player_request: str,
     world_context_json: str = "",
+    player_agent_loop_json: str = "",
 ) -> dict[str, Any]:
     """Summarize public-safe build-site context and player constraints."""
 
@@ -628,6 +711,7 @@ def inspect_build_site_context_payload(
         else 0
     )
     context_signals = _safe_build_site_signals(world_context_json)
+    loop_signals = _safe_player_agent_loop_signals(player_agent_loop_json)
     return {
         "status": "ready",
         "request_class": request_class,
@@ -644,6 +728,7 @@ def inspect_build_site_context_payload(
         "generated_option_hint": generated_option_hint,
         "planned_node_writes_hint": planned_writes,
         "site_context": context_signals,
+        "player_agent_loop": loop_signals,
         "requires_preview": True,
         "requires_approval": True,
         "requires_rollback": True,
@@ -1696,6 +1781,7 @@ def _tool_decisions_for_request(request: dict[str, Any]) -> dict[str, Any]:
             str(context.get("candidate_summary") or ""),
             player_request,
             _world_context_json_from_context(context),
+            _player_agent_loop_json_from_context(context),
         )
         decisions["build_option"] = recommend_build_option_payload(
             str(context.get("candidate_summary") or ""),
@@ -1734,6 +1820,7 @@ def _local_build_tool_contract_result(
         candidate_summary,
         player_request,
         _world_context_json_from_context(context),
+        _player_agent_loop_json_from_context(context),
     )
     tool_trace.append({
         "tool_name": "inspect_build_site_context",
@@ -1741,6 +1828,7 @@ def _local_build_tool_contract_result(
             "candidate_summary": candidate_summary,
             "player_request": player_request,
             "world_context_json": _world_context_json_from_context(context),
+            "player_agent_loop_json": _player_agent_loop_json_from_context(context),
         },
         "result": _safe_log_value(build_site_context),
     })
@@ -2097,6 +2185,7 @@ def inspect_build_site_context(
     candidate_summary: str,
     player_request: str,
     world_context_json: str = "",
+    player_agent_loop_json: str = "",
 ) -> dict[str, Any]:
     """Inspect public-safe build context and player constraints without mutating the world."""
 
@@ -2104,6 +2193,7 @@ def inspect_build_site_context(
         candidate_summary,
         player_request,
         world_context_json,
+        player_agent_loop_json,
     )
     _record_tool_call(
         "inspect_build_site_context",
@@ -2111,6 +2201,7 @@ def inspect_build_site_context(
             "candidate_summary": candidate_summary,
             "player_request": player_request,
             "world_context_json": world_context_json,
+            "player_agent_loop_json": player_agent_loop_json,
         },
         result,
     )
@@ -2357,8 +2448,13 @@ def _agent_input_from_request(request: dict[str, Any]) -> str:
             f"candidate_summary: {context.get('candidate_summary', '')}",
             f"selected_candidate_id: {context.get('selected_candidate_id', '')}",
             f"world_context: {_world_context_json_from_context(context)}",
+            f"player_agent_loop: {_player_agent_loop_json_from_context(context)}",
             "Return concise public-safe guidance for the player or operator. "
-            "For build planning, first call inspect_build_site_context, then "
+            "For build planning, first call inspect_build_site_context with "
+            "candidate_summary, player_request, world_context_json, and "
+            "player_agent_loop_json. Use player_agent_loop to reason from "
+            "Nova's current goal, phase, last observation, and next action, "
+            "without treating it as authority to mutate the world. Then "
             "call recall_build_prompt_memory, then decide which executable "
             "option best matches the player request and inspected constraints. "
             "If inspect_build_site_context returns required_next_tool "

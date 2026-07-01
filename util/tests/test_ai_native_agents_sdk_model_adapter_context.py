@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import pathlib
 import unittest
 
@@ -81,6 +82,120 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
             },
         )
         self.assertFalse(result["direct_world_mutation"])
+
+    def test_inspect_build_site_context_includes_public_player_loop(self):
+        module = load_agent_module()
+        loop_json = json.dumps({
+            "status": "running",
+            "phase": "observing",
+            "iteration": 3,
+            "active_goal": "build a small shelter",
+            "active_surface": "builder",
+            "next_action": "reason_with_tools",
+            "last_trace_id": "nova_trace:99",
+            "last_task_id": "nova_agent:Unit:build:1",
+            "last_result_status": "queued",
+            "last_observation": {
+                "action": "build",
+                "surface_id": "builder",
+                "anchor_node_name": "air",
+                "anchor_pos_available": True,
+                "anchor_pos": {"x": 10, "y": 20, "z": 30},
+            },
+        })
+
+        result = module.inspect_build_site_context_payload(
+            "platform:platform:default:4|wall:wall:default:12",
+            "build a small shelter",
+            "",
+            loop_json,
+        )
+
+        player_loop = result["player_agent_loop"]
+        self.assertTrue(player_loop["loop_available"])
+        self.assertEqual(player_loop["status"], "running")
+        self.assertEqual(player_loop["phase"], "observing")
+        self.assertEqual(player_loop["active_goal"], "build a small shelter")
+        self.assertEqual(player_loop["active_surface"], "builder")
+        self.assertEqual(player_loop["next_action"], "reason_with_tools")
+        self.assertEqual(player_loop["last_observation"]["action"], "build")
+        self.assertEqual(player_loop["last_observation"]["anchor_node_name"], "air")
+        self.assertNotIn("anchor_pos", player_loop["last_observation"])
+        self.assertFalse(player_loop["privacy"]["family_world_coordinates"])
+
+    def test_local_build_contract_passes_player_loop_to_context_tool(self):
+        module = load_agent_module()
+        loop_json = json.dumps({
+            "status": "running",
+            "phase": "observing",
+            "active_goal": "build a wall of tnt",
+            "active_surface": "builder",
+            "next_action": "reason_with_tools",
+            "last_observation": {
+                "action": "build",
+                "surface_id": "builder",
+                "anchor_node_name": "air",
+            },
+        })
+        request = {
+            "schema_version": 1,
+            "request_kind": "ai_native_model_adapter_request",
+            "adapter_contract": "provider_neutral_v1",
+            "agent_id": "nova_agent:Unit:builder",
+            "owner": "Unit",
+            "public_prompt": "Player request: build a wall of tnt",
+            "context": {
+                "surface_id": "builder",
+                "intent": "build_planning",
+                "capabilities": "world.read,http.llm",
+                "player_request": "build a wall of tnt",
+                "candidate_summary": "platform:platform:default:4|tnt_wall:wall:tnt:12",
+                "player_agent_loop": loop_json,
+            },
+        }
+
+        result = module._local_build_tool_contract_result(request, "unit_test")
+
+        self.assertIsNotNone(result)
+        inspect_entry = result["tool_trace"][0]
+        self.assertEqual(inspect_entry["tool_name"], "inspect_build_site_context")
+        self.assertEqual(inspect_entry["args"]["player_agent_loop_json"], loop_json)
+        self.assertEqual(
+            inspect_entry["result"]["player_agent_loop"]["active_goal"],
+            "build a wall of tnt",
+        )
+        self.assertEqual(
+            result["tool_decisions"]["build_site_context"]["player_agent_loop"]["phase"],
+            "observing",
+        )
+
+    def test_agent_input_includes_player_loop_context(self):
+        module = load_agent_module()
+        loop_json = json.dumps({
+            "status": "running",
+            "phase": "observing",
+            "active_goal": "build something amazing",
+            "next_action": "reason_with_tools",
+        }, separators=(",", ":"))
+        request = {
+            "agent_id": "nova_agent:Unit:builder",
+            "owner": "Unit",
+            "public_prompt": "Player request: build something amazing",
+            "context": {
+                "surface_id": "builder",
+                "intent": "build_planning",
+                "capabilities": "world.read,http.llm",
+                "player_request": "build something amazing",
+                "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+                "player_agent_loop": loop_json,
+            },
+        }
+
+        agent_input = module._agent_input_from_request(request)
+
+        self.assertIn("player_agent_loop:", agent_input)
+        self.assertIn('"phase":"observing"', agent_input)
+        self.assertIn("Use player_agent_loop", agent_input)
 
     def test_propose_build_option_creates_prompt_shaped_gold_house(self):
         module = load_agent_module()

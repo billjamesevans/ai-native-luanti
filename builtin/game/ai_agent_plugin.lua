@@ -311,6 +311,7 @@ local function compact_trace_context(context)
 		build_material_node = context.build_material_node,
 		adapter_name = context.adapter_name,
 		planner_mode = context.planner_mode,
+		player_agent_loop = context.player_agent_loop,
 		selected_candidate_id = context.selected_candidate_id,
 		candidate_count = context.candidate_count,
 	}
@@ -327,6 +328,58 @@ function plugin._player_loop.copy_observation(observation)
 		copied.anchor_pos = copy_pos(observation.anchor_pos)
 	end
 	return copied
+end
+
+function plugin._player_loop.public_observation(observation)
+	if type(observation) ~= "table" then
+		return nil
+	end
+	return {
+		action = observation.action,
+		route = observation.route,
+		surface_id = observation.surface_id,
+		prompt = observation.prompt,
+		world_id = observation.world_id,
+		task_id = observation.task_id,
+		agent_id = observation.agent_id,
+		anchor_pos_available = observation.anchor_pos_available == true,
+		anchor_node_name = observation.anchor_node_name,
+	}
+end
+
+function plugin._player_loop.public_snapshot(name)
+	local state = plugin.get_player_state(name)
+	local loop = type(state.loop) == "table" and state.loop or {}
+	return {
+		status = loop.status,
+		phase = loop.phase,
+		iteration = loop.iteration,
+		active_goal = loop.active_goal,
+		active_surface = loop.active_surface,
+		next_action = loop.next_action,
+		last_trace_id = loop.last_trace_id,
+		last_task_id = loop.last_task_id,
+		last_result_status = loop.last_result_status,
+		last_observation =
+			plugin._player_loop.public_observation(loop.last_observation),
+		privacy = {
+			public_safe = true,
+			family_world_coordinates = false,
+			raw_player_payload = false,
+		},
+	}
+end
+
+function plugin._player_loop.public_context_json(name)
+	if not core.write_json then
+		return nil
+	end
+	local ok, encoded = pcall(core.write_json,
+		plugin._player_loop.public_snapshot(name))
+	if not ok or type(encoded) ~= "string" then
+		return nil
+	end
+	return bounded_trace_text(encoded, 1400)
 end
 
 function plugin._player_loop.default_state()
@@ -549,7 +602,8 @@ local function start_request_trace(name, action, route, prompt, context, extra)
 		next_action = "reason_with_tools",
 		last_trace_id = trace.trace_id,
 		increment_iteration = true,
-		last_observation = plugin._player_loop.compact_observation(context, {
+		last_observation = plugin._player_loop.compact_observation(
+			extra.observation_context or context, {
 			action = action,
 			route = route,
 			surface_id = surface_id,
@@ -4339,7 +4393,11 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 			surface_id = "builder",
 			agent_id = agent_id_for(name),
 			adapter_name = adapter_name,
+			observation_context = context,
 		})
+	planner_context.player_agent_loop =
+		plugin._player_loop.public_context_json(name)
+	trace.context = compact_trace_context(planner_context)
 	local function finish_with_pending(model_result, planner_mode)
 		model_result = model_result or {}
 		local adapter_metadata = agentic_build_planner_adapter_metadata(model_result)
