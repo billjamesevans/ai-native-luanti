@@ -79,7 +79,10 @@ Important files:
   agent through a read-only prompt-memory tool. For open-ended build requests,
   the sidecar can also return a read-only generated build option through
   `propose_build_option`; Luanti must validate its kind, material, dimensions,
-  and planned writes before it can become a pending preview.
+  planned writes, and optional `openrealm.plan.v1` placement plan before it can
+  become a pending preview. Luanti turns accepted OpenRealm placement plans into
+  approval-gated `openrealm.structure.apply` tasks; the sidecar still has no
+  direct world-mutation authority.
 - `main.py`: HTTP service with `GET /health` and `POST /v1/model-adapter`.
 - `pyproject.toml`: declares `openai-agents`.
 

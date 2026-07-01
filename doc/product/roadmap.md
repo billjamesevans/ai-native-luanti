@@ -39,18 +39,28 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
-  `d375eeee7`.
+  `271a3696f`.
+- Backup:
+  `raspberrypi_luanti_20260701-012900.tgz`
+  (`bc558d41e58a22729b92f03110d4bc91d3d3c2b1463e7fae78d9acdc5e1be601`).
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
 - Agents SDK sidecar stayed active on loopback TCP `8766`.
-- quality gate passed with live prompt eval `pass`, compatibility import staging
-  pilot `pass`, `0` violations, and `0` attention items.
-- `openrealm_demo` is discoverable in the Pi build alongside `ai_runtime` and
-  `devtest`.
-- `Nova, options` is now a player-loop review path for pending build choices
+- memory refresh quality gate passed with live prompt eval `pass`,
+  compatibility import staging pilot `pass`, `0` attention items, and `0`
+  blocking attention items.
+- live prompt eval passed `5/5` cases; the OpenRealm golden subset passed
+  `4/4`, with `5` model-adapter requests, `5` successes, `0` failures, and
+  `0` timeouts.
+- Agents SDK adapter health reports OpenAI key present, hosted web search
+  available, and `world_mutation_authority = luanti`.
+- `Nova, options` remains the player-loop review path for pending build choices
   and selected candidate reasoning without provider calls or world mutation.
-  Its executable candidates carry `openrealm.plan.v1` safety contracts.
+- Generated Agents SDK build options can now carry an `openrealm.plan.v1`
+  structure placement plan. Luanti converts that into a non-mutating preview
+  first, then queues a rollback-backed `openrealm.structure.apply` task only
+  after approval.
 
 ## Phase 2: Luminara Creator Playground
 
