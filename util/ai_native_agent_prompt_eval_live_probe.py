@@ -137,6 +137,8 @@ def write_probe_world(
             "  local final_reply = case.final_reply or {}",
             "  local options_reply = case.options_reply or {}",
             "  local options_trace = case.options_trace or {}",
+            "  local select_reply = case.select_reply or {}",
+            "  local select_trace = case.select_trace or {}",
             "  local pending_plan_reply = case.pending_plan_reply or {}",
             "  local pending_plan_trace = case.pending_plan_trace or {}",
             "  local discard_reply = case.discard_reply or {}",
@@ -191,6 +193,18 @@ def write_probe_world(
             "    options_trace_action = options_trace.action,",
             "    options_trace_public_prompt = options_trace.public_prompt,",
             "    options_trace_status = options_trace.response and options_trace.response.status or nil,",
+            "    select_handled = case.select_handled == true,",
+            "    select_status = select_reply.status,",
+            "    select_action = select_reply.action,",
+            "    select_selected_candidate_id = select_reply.selected_candidate_id,",
+            "    select_previous_selected_candidate_id = select_reply.previous_selected_candidate_id,",
+            "    select_selected_by_player = select_reply.selected_by_player,",
+            "    select_decision_source = select_reply.build_option_decision_source,",
+            "    select_no_world_mutation = select_reply.no_world_mutation,",
+            "    select_trace_route = select_trace.route,",
+            "    select_trace_action = select_trace.action,",
+            "    select_trace_public_prompt = select_trace.public_prompt,",
+            "    select_trace_status = select_trace.response and select_trace.response.status or nil,",
             "    pending_plan_handled = case.pending_plan_handled == true,",
             "    pending_plan_status = pending_plan_reply.status,",
             "    pending_plan_action = pending_plan_reply.action,",
@@ -478,9 +492,20 @@ def write_probe_world(
             "  local player_loop_checks = player_loop_case.checks or {}",
             "  local player_loop_review_traces_checked =",
             "    player_loop_checks.options_trace_logged == true",
+            "    and player_loop_checks.select_trace_logged == true",
             "    and player_loop_checks.pending_trace_logged == true",
             "    and player_loop_checks.discard_trace_logged == true",
             "    and player_loop_checks.after_discard_trace_logged == true",
+            "  local player_loop_option_selection_checked =",
+            "    player_loop_checks.select_handled == true",
+            "    and player_loop_checks.select_success == true",
+            "    and player_loop_checks.select_no_world_mutation == true",
+            "    and player_loop_checks.select_same_approval == true",
+            "    and player_loop_checks.select_previous_candidate == true",
+            "    and player_loop_checks.select_selected_candidate == true",
+            "    and player_loop_checks.select_marked_player_selected == true",
+            "    and player_loop_checks.select_decision_source == true",
+            "    and player_loop_checks.pending_selected_candidate == true",
             "  local payload = {",
             "    schema_version = 1,",
             "    live_result_kind = \"ai_native_agent_prompt_eval_live_result\",",
@@ -519,6 +544,7 @@ def write_probe_world(
             "      openrealm_village_checked = eval.case_ids.openrealm_village == true,",
             "      player_agent_loop_checked = eval.case_ids.player_agent_loop == true,",
             "      player_agent_loop_review_traces_checked = player_loop_review_traces_checked == true,",
+            "      player_agent_loop_option_selection_checked = player_loop_option_selection_checked == true,",
             "      model_checked = eval.case_ids.model == true,",
             "      model_adapter_requests = eval.metrics.model_adapter_requests_delta or 0,",
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
@@ -963,11 +989,33 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             expected_status="success",
             expected_public_prompt="options",
         )
+        if player_loop.get("select_handled") is not True \
+                or player_loop.get("select_status") != "success" \
+                or player_loop.get("select_action") != "select_build_option":
+            raise ValueError("agent prompt eval player agent loop select reply is invalid")
+        if player_loop.get("select_selected_candidate_id") != "marker":
+            raise ValueError("agent prompt eval player agent loop select candidate is invalid")
+        if player_loop.get("select_previous_selected_candidate_id") != "generated_openrealm_lakeside_village":
+            raise ValueError("agent prompt eval player agent loop select previous candidate is invalid")
+        if player_loop.get("select_selected_by_player") is not True:
+            raise ValueError("agent prompt eval player agent loop select was not marked player-selected")
+        if player_loop.get("select_decision_source") != "player_selected_build_option":
+            raise ValueError("agent prompt eval player agent loop select decision source is invalid")
+        if player_loop.get("select_no_world_mutation") is not True:
+            raise ValueError("agent prompt eval player agent loop select mutated the world")
+        _require_natural_review_trace(
+            player_loop,
+            prefix="select",
+            label="select option",
+            expected_action="select_build_option",
+            expected_status="success",
+            expected_public_prompt="select option marker",
+        )
         if player_loop.get("pending_plan_handled") is not True \
                 or player_loop.get("pending_plan_status") != "success" \
                 or player_loop.get("pending_plan_action") != "pending_plan":
             raise ValueError("agent prompt eval player agent loop pending plan reply is invalid")
-        if player_loop.get("pending_plan_selected_candidate_id") != "generated_openrealm_lakeside_village":
+        if player_loop.get("pending_plan_selected_candidate_id") != "marker":
             raise ValueError("agent prompt eval player agent loop pending plan selected candidate is invalid")
         _require_natural_review_trace(
             player_loop,
@@ -1061,6 +1109,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "openrealm_village_checked",
         "player_agent_loop_checked",
         "player_agent_loop_review_traces_checked",
+        "player_agent_loop_option_selection_checked",
         "model_checked",
     ):
         _require_bool(summary, field)
@@ -1131,6 +1180,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_openrealm_village_checked": True,
         "agent_prompt_eval_player_agent_loop_checked": True,
         "agent_prompt_eval_player_agent_loop_review_traces_checked": True,
+        "agent_prompt_eval_player_agent_loop_option_selection_checked": True,
         "agent_prompt_eval_model_checked": True,
         "agent_prompt_eval_golden_prompt_suite": GOLDEN_PROMPT_SUITE,
         "agent_prompt_eval_golden_prompt_backlog_total": GOLDEN_PROMPT_BACKLOG_TOTAL,
@@ -1166,6 +1216,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_openrealm_village_candidate_id": "generated_openrealm_lakeside_village",
         "agent_prompt_eval_player_agent_loop_planned_node_writes": 96,
         "agent_prompt_eval_player_agent_loop_candidate_id": "generated_openrealm_lakeside_village",
+        "agent_prompt_eval_player_agent_loop_selected_option_after_player_choice": "marker",
         "agent_prompt_eval_model_adapter_requests": summary["model_adapter_requests"],
         "agent_prompt_eval_model_adapter_successes": summary["model_adapter_successes"],
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],

@@ -122,6 +122,12 @@ Implemented deterministic commands:
   message. Private prompts and raw provider payloads are not retained.
 - `pending`, `pending plan`, `plan`, `review plan`: returns the current
   player-owned pending build or repair approval without queuing mutation.
+- `choose option <option_id>`, `select option <option_id>`,
+  `pick option <option_id>`, `go with <option_id>`: updates the current
+  pending build approval to a reviewed candidate option without mutating the
+  world. The approval id is preserved, the selected candidate is marked as
+  player-selected, and `approve` is still required before any rollback-backed
+  task is queued.
 - `edit plan platform width N depth N`, `plan edit platform width N depth N`:
   updates the current pending build approval with a new bounded platform preview
   while keeping the same approval id and without mutating the world.
@@ -229,8 +235,10 @@ Pending build-option review also exposes an `openrealm.plan.v1` summary for each
 executable candidate. The summary carries OpenRealm/Nova identity, the source
 prompt, structure placement count, preview/approval/rollback requirements,
 `ai_direct_world_mutation_allowed=false`, and `openrealm_creator_kernel`
-provenance. This lets the runtime and the Advantage Kit share a public contract
-without giving any agent direct world-mutation authority.
+provenance. The runtime keeps the executable candidate contexts player-local
+and hidden, so `choose option <option_id>` can switch the pending preview,
+including generated OpenRealm structure options, without exposing raw payloads
+or giving any agent direct world-mutation authority.
 
 Targeted task, audit, rollback-review, and approval commands are deliberately
 scoped to remembered player-owned plugin tasks, player-owned rollback audit

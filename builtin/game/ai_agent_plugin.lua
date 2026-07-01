@@ -75,6 +75,8 @@ local PRODUCT_SURFACES = {
 			"build wall width N height N",
 			"build wall of tnt",
 			"build <freeform request>",
+			"choose option <option_id>",
+			"select option <option_id>",
 			"approve build",
 			"light",
 		},
@@ -121,6 +123,8 @@ local PRODUCT_SURFACES = {
 			"wrong <expected build>",
 			"teach <expected build>",
 			"pending plan",
+			"choose option <option_id>",
+			"select option <option_id>",
 			"edit plan",
 			"discard plan",
 			"cancel plan",
@@ -987,6 +991,9 @@ local function pending_approval_summary(pending)
 	if pending.selected_candidate_id then
 		append(parts, "selected_candidate=" .. tostring(pending.selected_candidate_id))
 	end
+	if pending.selected_by_player then
+		append(parts, "selected_by=player")
+	end
 	if pending.adapter_tool_decision_source then
 		append(parts, "tool_decision_source=" .. tostring(pending.adapter_tool_decision_source))
 	end
@@ -1269,6 +1276,20 @@ local function format_command_reply(result)
 			if summary then
 				append(lines, summary)
 			end
+		end
+	elseif result.action == "select_build_option" then
+		append_task_details(lines, result)
+		local pending = pending_approval_summary(result.pending_approval)
+		append(lines, pending or "pending=none")
+		if result.previous_selected_candidate_id then
+			append(lines, "previous_selected_candidate="
+				.. tostring(result.previous_selected_candidate_id))
+		end
+		if result.selected_candidate_id then
+			append(lines, "selected_candidate=" .. tostring(result.selected_candidate_id))
+		end
+		if result.plan_status then
+			append(lines, "plan_status=" .. tostring(result.plan_status))
 		end
 	elseif result.action == "edit_plan" then
 		append_task_details(lines, result)
@@ -1636,6 +1657,12 @@ function plugin.format_player_reply(result)
 			append(parts, table.concat(option_text, " | "))
 		end
 		return table.concat(parts, " ")
+	end
+	if result.action == "select_build_option" then
+		return "I selected option "
+			.. tostring(result.selected_candidate_id or "unknown")
+			.. " for the pending plan. It still needs approval; say `Nova, approve` to run it or `Nova, no` to discard it."
+			.. trace_suffix
 	end
 	if result.status == "pending_approval" then
 		local build_kind = result.build_kind and tostring(result.build_kind) or "that"
@@ -2166,6 +2193,9 @@ local function compact_pending_approval(pending)
 		intent_constraint_option_id = pending.intent_constraint_option_id,
 		intent_constraint_reason = pending.intent_constraint_reason,
 		candidate_options = pending.candidate_options,
+		selected_by_player = pending.selected_by_player,
+		previous_selected_candidate_id =
+			pending.previous_selected_candidate_id,
 		adapter_tool_decision_source = pending.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
 			pending.adapter_model_selected_candidate_id,
@@ -2222,6 +2252,7 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		build_width = extra.build_width,
 		build_depth = extra.build_depth,
 		build_height = extra.build_height,
+		build_count = extra.build_count,
 		build_material_name = extra.build_material_name,
 		build_material_node = extra.build_material_node,
 		openrealm_plan_id = extra.openrealm_plan_id,
@@ -2233,6 +2264,10 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		intent_constraint_option_id = extra.intent_constraint_option_id,
 		intent_constraint_reason = extra.intent_constraint_reason,
 		candidate_options = extra.candidate_options,
+		candidate_contexts = extra.candidate_contexts,
+		selected_by_player = extra.selected_by_player,
+		previous_selected_candidate_id =
+			extra.previous_selected_candidate_id,
 		adapter_tool_decision_source = extra.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
 			extra.adapter_model_selected_candidate_id,
@@ -4516,6 +4551,7 @@ local function create_build_pending_reply(name, context, message, extra)
 		intent_constraint_option_id = extra.intent_constraint_option_id,
 		intent_constraint_reason = extra.intent_constraint_reason,
 		candidate_options = extra.candidate_options,
+		candidate_contexts = extra.candidate_contexts,
 		candidate_count = extra.candidate_count,
 		adapter_tool_decision_source = extra.adapter_tool_decision_source,
 		adapter_model_selected_candidate_id =
@@ -4579,6 +4615,9 @@ local function create_build_pending_reply(name, context, message, extra)
 			intent_constraint_option_id = extra.intent_constraint_option_id,
 			intent_constraint_reason = extra.intent_constraint_reason,
 			candidate_options = extra.candidate_options,
+			selected_by_player = extra.selected_by_player,
+			previous_selected_candidate_id =
+				extra.previous_selected_candidate_id,
 			candidate_count = extra.candidate_count,
 			adapter_tool_decision_source = extra.adapter_tool_decision_source,
 			adapter_model_selected_candidate_id =
@@ -4800,6 +4839,17 @@ local function public_candidate_options(candidates)
 		public_candidates[#public_candidates + 1] = public_candidate_option(candidate)
 	end
 	return public_candidates
+end
+
+function plugin._candidate_contexts_by_option_id(candidates)
+	local contexts = {}
+	for _, candidate in ipairs(candidates or {}) do
+		if type(candidate) == "table" and candidate.option_id
+				and type(candidate.context) == "table" then
+			contexts[candidate.option_id] = approval_context(candidate.context)
+		end
+	end
+	return contexts
 end
 
 local function candidate_summary(candidates)
@@ -5672,6 +5722,8 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 				intent_constraint_option_id = locked_candidate_id,
 				intent_constraint_reason = locked_candidate_reason,
 				candidate_options = public_candidates,
+				candidate_contexts =
+					plugin._candidate_contexts_by_option_id(candidates),
 				candidate_count = #public_candidates,
 				planner_model_status = model_result.status,
 				planner_model_reason = model_result.reason,
@@ -6223,6 +6275,8 @@ local function handle_guide(name)
 			"wrong <expected build>",
 			"teach <expected build>",
 			"pending plan",
+			"choose option <option_id>",
+			"select option <option_id>",
 			"edit plan",
 			"edit plan platform width N depth N",
 			"edit plan radius N",
@@ -6768,18 +6822,184 @@ function plugin.handle_build_options(name)
 	local options = table.copy(pending.candidate_options or {})
 	return public_reply(name, "build_options", "success",
 		"Pending build options returned without mutation.", {
+		surface_id = pending.surface_id or "builder",
+		no_world_mutation = true,
+		pending_approval = compact_pending_approval(pending),
+		approval_id = pending.approval_id,
+		pending_action = pending.action,
+		selected_candidate_id = pending.selected_candidate_id,
+		adapter_selected_candidate_id = pending.adapter_selected_candidate_id,
+		model_selected_candidate_id = pending.model_selected_candidate_id,
+		selection_source = pending.selection_source,
+		candidate_count = pending.candidate_count or #options,
+		candidate_options = options,
+		planner_mode = pending.planner_mode,
+		planned_node_writes = pending.planned_node_writes,
+		build_kind = pending.build_kind,
+		build_width = pending.build_width,
+		build_depth = pending.build_depth,
+		build_height = pending.build_height,
+		build_count = pending.build_count,
+		build_material_name = pending.build_material_name,
+		build_material_node = pending.build_material_node,
+		openrealm_plan_id = pending.openrealm_plan_id,
+	})
+end
+
+function plugin._selected_build_option_id(raw_prompt)
+	local requested = raw_prompt:match("^[Cc][Hh][Oo][Oo][Ss][Ee]%s+(.+)$")
+		or raw_prompt:match("^[Ss][Ee][Ll][Ee][Cc][Tt]%s+(.+)$")
+		or raw_prompt:match("^[Pp][Ii][Cc][Kk]%s+(.+)$")
+		or raw_prompt:match("^[Uu][Ss][Ee]%s+[Oo][Pp][Tt][Ii][Oo][Nn]%s+(.+)$")
+		or raw_prompt:match("^[Gg][Oo]%s+[Ww][Ii][Tt][Hh]%s+(.+)$")
+	if not requested then
+		return nil
+	end
+	requested = requested:trim()
+	local option_prefixed = requested:match("^[Oo][Pp][Tt][Ii][Oo][Nn]%s+(.+)$")
+	if option_prefixed then
+		requested = option_prefixed:trim()
+	end
+	local id = requested:match("^([%w_:%.-]+)")
+	return id and id:trim() or nil
+end
+
+function plugin._pending_build_option_by_id(pending, requested_option_id)
+	if type(pending) ~= "table" or type(pending.candidate_options) ~= "table" then
+		return nil
+	end
+	local requested = tostring(requested_option_id or ""):lower()
+	if requested == "" then
+		return nil
+	end
+	local numeric_index = tonumber(requested)
+	if numeric_index and pending.candidate_options[numeric_index] then
+		return pending.candidate_options[numeric_index]
+	end
+	for _, option in ipairs(pending.candidate_options) do
+		if type(option) == "table" then
+			local option_id = tostring(option.option_id or "")
+			local label = tostring(option.label or "")
+			if option_id:lower() == requested or label:lower() == requested then
+				return option
+			end
+		end
+	end
+	return nil
+end
+
+function plugin._context_from_public_build_option(pending, option)
+	if type(option) ~= "table" then
+		return nil
+	end
+	local contexts = type(pending) == "table" and pending.candidate_contexts or nil
+	if type(contexts) == "table" and option.option_id and contexts[option.option_id] then
+		return approval_context(contexts[option.option_id])
+	end
+	if option.build_kind == "openrealm_structure" then
+		return nil
+	end
+	local context = approval_context(type(pending) == "table" and pending.context or {})
+	context.build_kind = option.build_kind
+	context.build_width = option.build_width
+	context.build_depth = option.build_depth
+	context.build_height = option.build_height
+	context.build_count = option.build_count
+	context.build_material_name = option.build_material_name
+	context.build_material_node = option.build_material_node
+	context.openrealm_plan_id = option.openrealm_plan
+		and option.openrealm_plan.plan_id or nil
+	context.openrealm_plan = table.copy(option.openrealm_plan or {})
+	return context
+end
+
+function plugin.handle_select_build_option(name, raw_prompt)
+	plugin.ensure_surface_agent(name, "guide")
+	local requested_option_id = plugin._selected_build_option_id(raw_prompt)
+	if not requested_option_id then
+		return public_reply(name, "select_build_option", "blocked",
+			"No build option id was provided.", {
+				surface_id = "guide",
+				reason = "missing_build_option_id",
+			})
+	end
+	local pending = player_pending_approvals[name]
+	if not pending then
+		return public_reply(name, "select_build_option", "blocked",
+			"No pending build options are available.", {
+				surface_id = "guide",
+				reason = "no_pending_approval",
+				requested_option_id = requested_option_id,
+			})
+	end
+	if pending.action ~= "build" then
+		return public_reply(name, "select_build_option", "blocked",
+			"Pending approval is not a build plan.", {
+				surface_id = pending.surface_id or "guide",
+				reason = "pending_approval_not_build",
+				requested_option_id = requested_option_id,
+				pending_action = pending.action,
+				pending_approval = compact_pending_approval(pending),
+			})
+	end
+	local option = plugin._pending_build_option_by_id(pending, requested_option_id)
+	if not option then
+		return public_reply(name, "select_build_option", "blocked",
+			"Requested build option was not found on the pending plan.", {
+				surface_id = pending.surface_id or "builder",
+				reason = "build_option_not_found",
+				requested_option_id = requested_option_id,
+				approval_id = pending.approval_id,
+				pending_approval = compact_pending_approval(pending),
+				candidate_options = table.copy(pending.candidate_options or {}),
+			})
+	end
+	local selected_context = plugin._context_from_public_build_option(pending, option)
+	if not selected_context then
+		return public_reply(name, "select_build_option", "blocked",
+			"Requested build option is missing executable context.", {
+				surface_id = pending.surface_id or "builder",
+				reason = "build_option_context_unavailable",
+				requested_option_id = requested_option_id,
+				selected_candidate_id = option.option_id,
+				approval_id = pending.approval_id,
+				pending_approval = compact_pending_approval(pending),
+			})
+	end
+	local previous_selected = pending.selected_candidate_id
+	local result, plan = build_plan_for(name, selected_context)
+	pending.context = approval_context(selected_context)
+	pending.plan = plan
+	pending.planned_node_writes = plan.metrics.planned_node_writes or 0
+	pending.build_kind = plan.build_kind
+	pending.build_width = plan.build_width
+	pending.build_depth = plan.build_depth
+	pending.build_height = plan.build_height
+	pending.build_count = plan.build_count
+	pending.build_material_name = plan.build_material_name
+	pending.build_material_node = plan.build_material_node
+	pending.openrealm_plan_id = plan.openrealm_plan_id
+		or (option.openrealm_plan and option.openrealm_plan.plan_id)
+	pending.selected_candidate_id = option.option_id
+	pending.selection_source = "player_selected_build_option"
+	pending.build_option_decision_source = "player_selected_build_option"
+	pending.selected_by_player = true
+	pending.previous_selected_candidate_id = previous_selected
+	player_pending_approvals[name] = pending
+	return public_reply(name, "select_build_option", "success",
+		"Pending build option selected without mutation.", {
 			surface_id = pending.surface_id or "builder",
 			no_world_mutation = true,
-			pending_approval = compact_pending_approval(pending),
 			approval_id = pending.approval_id,
 			pending_action = pending.action,
+			pending_approval = compact_pending_approval(pending),
+			plan = plan,
+			plan_status = result.status,
+			previous_selected_candidate_id = previous_selected,
 			selected_candidate_id = pending.selected_candidate_id,
-			adapter_selected_candidate_id = pending.adapter_selected_candidate_id,
-			model_selected_candidate_id = pending.model_selected_candidate_id,
-			selection_source = pending.selection_source,
-			candidate_count = pending.candidate_count or #options,
-			candidate_options = options,
-			planner_mode = pending.planner_mode,
+			selected_by_player = true,
+			candidate_count = pending.candidate_count,
+			candidate_options = table.copy(pending.candidate_options or {}),
 			planned_node_writes = pending.planned_node_writes,
 			build_kind = pending.build_kind,
 			build_width = pending.build_width,
@@ -6789,6 +7009,8 @@ function plugin.handle_build_options(name)
 			build_material_name = pending.build_material_name,
 			build_material_node = pending.build_material_node,
 			openrealm_plan_id = pending.openrealm_plan_id,
+			selection_source = pending.selection_source,
+			build_option_decision_source = pending.build_option_decision_source,
 		})
 end
 
@@ -7271,6 +7493,13 @@ function plugin.handle_command(name, param, context)
 			or prompt == "what options" then
 		return plugin.handle_build_options(name)
 	end
+	if prompt:match("^choose%s+.+$")
+			or prompt:match("^select%s+.+$")
+			or prompt:match("^pick%s+.+$")
+			or prompt:match("^use%s+option%s+.+$")
+			or prompt:match("^go%s+with%s+.+$") then
+		return plugin.handle_select_build_option(name, raw_prompt)
+	end
 	if prompt == "edit plan" or prompt:match("^edit%s+plan%s+.+$")
 			or prompt:match("^plan%s+edit%s+.+$")
 			or prompt:match("^update%s+plan%s+.+$")
@@ -7533,6 +7762,8 @@ local function compact_eval_reply(reply)
 		adapter_selected_candidate_id = reply.adapter_selected_candidate_id,
 		model_selected_candidate_id = reply.model_selected_candidate_id,
 		selection_source = reply.selection_source,
+		selected_by_player = reply.selected_by_player,
+		previous_selected_candidate_id = reply.previous_selected_candidate_id,
 		intent_constraint_option_id = reply.intent_constraint_option_id,
 		intent_constraint_reason = reply.intent_constraint_reason,
 		candidate_count = reply.candidate_count,
@@ -7615,6 +7846,9 @@ local function compact_eval_trace(trace)
 			model_selected_candidate_id =
 				response.model_selected_candidate_id,
 			selection_source = response.selection_source,
+			selected_by_player = response.selected_by_player,
+			previous_selected_candidate_id =
+				response.previous_selected_candidate_id,
 			intent_constraint_option_id = response.intent_constraint_option_id,
 			intent_constraint_reason = response.intent_constraint_reason,
 			candidate_count = response.candidate_count,
@@ -7955,6 +8189,12 @@ function plugin._finish_player_agent_loop_eval_case(case_report, owner,
 			player_turn_source = "player_agent_loop_eval",
 		})
 	local options_trace = plugin.latest_player_request_trace(owner)
+	local select_handled, select_reply = plugin.handle_natural_chat_message(
+		owner, "Nova, select option marker", {
+			suppress_chat_send = true,
+			player_turn_source = "player_agent_loop_eval",
+		})
+	local select_trace = plugin.latest_player_request_trace(owner)
 	local pending_handled, pending_reply = plugin.handle_natural_chat_message(
 		owner, "Nova, pending plan", {
 			suppress_chat_send = true,
@@ -7977,6 +8217,9 @@ function plugin._finish_player_agent_loop_eval_case(case_report, owner,
 	case_report.options_reply = compact_eval_reply(options_reply)
 	case_report.options_trace = compact_eval_trace(options_trace)
 	case_report.options_handled = options_handled == true
+	case_report.select_reply = compact_eval_reply(select_reply)
+	case_report.select_trace = compact_eval_trace(select_trace)
+	case_report.select_handled = select_handled == true
 	case_report.pending_plan_reply = compact_eval_reply(pending_reply)
 	case_report.pending_plan_trace = compact_eval_trace(pending_trace)
 	case_report.pending_plan_handled = pending_handled == true
@@ -8023,6 +8266,30 @@ function plugin._finish_player_agent_loop_eval_case(case_report, owner,
 		and options_trace.public_prompt == "options"
 		and options_trace.response
 		and options_trace.response.status == "success"
+	case_report.checks.select_handled = select_handled == true
+	case_report.checks.select_success = select_reply
+		and select_reply.status == "success"
+		and select_reply.action == "select_build_option"
+	case_report.checks.select_no_world_mutation = select_reply
+		and select_reply.no_world_mutation == true
+	case_report.checks.select_same_approval = select_reply and final_reply
+		and select_reply.approval_id == final_reply.approval_id
+	case_report.checks.select_previous_candidate = select_reply
+		and select_reply.previous_selected_candidate_id
+			== "generated_openrealm_lakeside_village"
+	case_report.checks.select_selected_candidate = select_reply
+		and select_reply.selected_candidate_id == "marker"
+	case_report.checks.select_marked_player_selected = select_reply
+		and select_reply.selected_by_player == true
+	case_report.checks.select_decision_source = select_reply
+		and select_reply.build_option_decision_source
+			== "player_selected_build_option"
+	case_report.checks.select_trace_logged = select_trace
+		and select_trace.route == "natural_chat_review"
+		and select_trace.action == "select_build_option"
+		and select_trace.public_prompt == "select option marker"
+		and select_trace.response
+		and select_trace.response.status == "success"
 	case_report.checks.pending_handled = pending_handled == true
 	case_report.checks.pending_success = pending_reply
 		and pending_reply.status == "success"
@@ -8030,8 +8297,7 @@ function plugin._finish_player_agent_loop_eval_case(case_report, owner,
 	case_report.checks.pending_same_approval = pending_reply and final_reply
 		and pending_reply.approval_id == final_reply.approval_id
 	case_report.checks.pending_selected_candidate = pending_reply
-		and pending_reply.selected_candidate_id
-			== "generated_openrealm_lakeside_village"
+		and pending_reply.selected_candidate_id == "marker"
 	case_report.checks.pending_trace_logged = pending_trace
 		and pending_trace.route == "natural_chat_review"
 		and pending_trace.action == "pending_plan"

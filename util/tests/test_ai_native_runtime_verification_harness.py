@@ -593,10 +593,22 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "options_trace_action": "build_options",
                         "options_trace_public_prompt": "options",
                         "options_trace_status": "success",
+                        "select_handled": True,
+                        "select_status": "success",
+                        "select_action": "select_build_option",
+                        "select_selected_candidate_id": "marker",
+                        "select_previous_selected_candidate_id": "generated_openrealm_lakeside_village",
+                        "select_selected_by_player": True,
+                        "select_decision_source": "player_selected_build_option",
+                        "select_no_world_mutation": True,
+                        "select_trace_route": "natural_chat_review",
+                        "select_trace_action": "select_build_option",
+                        "select_trace_public_prompt": "select option marker",
+                        "select_trace_status": "success",
                         "pending_plan_handled": True,
                         "pending_plan_status": "success",
                         "pending_plan_action": "pending_plan",
-                        "pending_plan_selected_candidate_id": "generated_openrealm_lakeside_village",
+                        "pending_plan_selected_candidate_id": "marker",
                         "pending_plan_trace_route": "natural_chat_review",
                         "pending_plan_trace_action": "pending_plan",
                         "pending_plan_trace_public_prompt": "pending plan",
@@ -652,6 +664,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "openrealm_village_checked": True,
                 "player_agent_loop_checked": True,
                 "player_agent_loop_review_traces_checked": True,
+                "player_agent_loop_option_selection_checked": True,
                 "model_checked": True,
                 "model_adapter_requests": 7,
                 "model_adapter_successes": 7,
@@ -1786,6 +1799,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "natural review trace evidence"):
                 probe.validate_live_result(missing_options_trace)
 
+            missing_select_trace = json.loads(json.dumps(payload))
+            player_loop = next(
+                case for case in missing_select_trace["prompt_eval"]["cases"]
+                if case["case_id"] == "player_agent_loop"
+            )
+            del player_loop["select_trace_route"]
+            with self.assertRaisesRegex(ValueError, "natural review trace evidence"):
+                probe.validate_live_result(missing_select_trace)
+
             wrong_pending_trace = json.loads(json.dumps(payload))
             player_loop = next(
                 case for case in wrong_pending_trace["prompt_eval"]["cases"]
@@ -2693,7 +2715,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertFalse(manifest["run_context"]["requires_model_network"])
 
             serialized = json.dumps(manifest, sort_keys=True)
-            self.assertLess(len(serialized), 22000)
+            self.assertLess(len(serialized), 22100)
             self.assertNotIn(str(output_root), serialized)
             self.assertNotRegex(serialized, PRIVATE_PATTERNS)
 

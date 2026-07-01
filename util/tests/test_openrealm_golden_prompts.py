@@ -42,6 +42,11 @@ class OpenRealmGoldenPromptTests(unittest.TestCase):
         self.assertEqual(evidence["agent_prompt_eval_path_to_hill_planned_node_writes"], 8)
         self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_checked"])
         self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_review_traces_checked"])
+        self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_option_selection_checked"])
+        self.assertEqual(
+            evidence["agent_prompt_eval_player_agent_loop_selected_option_after_player_choice"],
+            "marker",
+        )
 
     def test_quality_gate_blocks_openrealm_golden_prompt_regression(self):
         quality_gate = load_module(QUALITY_GATE, "openrealm_quality_gate_test")

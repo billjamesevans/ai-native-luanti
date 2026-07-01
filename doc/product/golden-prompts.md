@@ -63,9 +63,11 @@ runtime can validate them with repeatable public-safe evidence.
   pending build choices from runtime state, including an `openrealm.plan.v1`
   safety/preview contract for each executable option.
 - Player-like creator loop: `Nova, Build a cozy lakeside village with floating
-  lanterns` must queue a pending OpenRealm village preview; `Nova, options` and
-  `Nova, pending plan` must return the same selected candidate without world
-  mutation; `Nova, no` must discard the approval; the next `Nova, pending plan`
+  lanterns` must queue a pending OpenRealm village preview; `Nova, options`
+  must expose candidate choices; `Nova, select option marker` must switch the
+  pending approval to the `marker` candidate without world mutation while
+  preserving the approval id; `Nova, pending plan` must return the player-picked
+  candidate; `Nova, no` must discard the approval; the next `Nova, pending plan`
   must block with `no_pending_approval`.
 - Natural-chat review turns such as `Nova, options` and `Nova, pending plan`
   must emit public-safe `natural_chat_review` request traces, so request/response

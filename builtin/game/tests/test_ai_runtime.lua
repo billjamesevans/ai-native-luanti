@@ -5506,6 +5506,26 @@ local options_player_text = core.ai_agent_plugin.format_player_reply(pending_opt
 assert(options_player_text:find("I have ", 1, true))
 assert(options_player_text:find("options", 1, true))
 assert(options_player_text:find("selected platform", 1, true))
+local agentic_approval_id = pending_agentic.approval_id
+local selected_marker = core.ai_agent_plugin.handle_command(
+	"Planner", "select option marker", {})
+assert(selected_marker.ok == true)
+assert(selected_marker.action == "select_build_option")
+assert(selected_marker.status == "success")
+assert(selected_marker.no_world_mutation == true)
+assert(selected_marker.approval_id == agentic_approval_id)
+assert(selected_marker.previous_selected_candidate_id == "platform")
+assert(selected_marker.selected_candidate_id == "marker")
+assert(selected_marker.pending_approval.selected_candidate_id == "marker")
+assert(selected_marker.pending_approval.selected_by_player == true)
+assert(selected_marker.pending_approval.previous_selected_candidate_id == "platform")
+assert(selected_marker.build_kind == "marker")
+assert(selected_marker.planned_node_writes == 1)
+assert(get_test_node(planner_pos).name == "air")
+local selected_marker_player_text =
+	core.ai_agent_plugin.format_player_reply(selected_marker)
+assert(selected_marker_player_text:find("I selected option marker", 1, true))
+assert(selected_marker_player_text:find("still needs approval", 1, true))
 local completed_planner_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
 assert(completed_planner_trace.route == "agentic_build_planner")
 assert(completed_planner_trace.response.status == "pending_approval")
@@ -5523,15 +5543,10 @@ assert(approved_agentic.ok == true)
 assert(approved_agentic.action == "approve")
 assert(approved_agentic.approved_action == "build")
 core.step_ai_tasks()
-for x = 0, 1 do
-	for z = 0, 1 do
-		assert(get_test_node(vector.add(planner_pos, { x = x, y = 0, z = z })).name
-			== "ai_runtime_test:stone")
-	end
-end
+assert(get_test_node(planner_pos).name == "ai_runtime_test:stone")
 local completed_agentic = core.get_ai_task(approved_agentic.task_id)
 assert(completed_agentic.status == "completed")
-assert(completed_agentic.last_result.metrics.node_writes == 4)
+assert(completed_agentic.last_result.metrics.node_writes == 1)
 
 local openrealm_pos = test_pos(4271)
 for x = 0, 2 do
@@ -5673,6 +5688,23 @@ assert(openrealm_option.openrealm_plan.structures[1].placement_count == 3)
 assert(openrealm_option.openrealm_plan.structures[1].placements[1].node
 	== "ai_runtime_test:stone")
 assert(openrealm_option.openrealm_plan.structures[1].placements[3].x == 2)
+local openrealm_approval_id = pending_openrealm.approval_id
+local selected_openrealm = core.ai_agent_plugin.handle_command(
+	"OpenRealmPlanner", "select option generated_openrealm_bridge", {})
+assert(selected_openrealm.ok == true)
+assert(selected_openrealm.action == "select_build_option")
+assert(selected_openrealm.status == "success")
+assert(selected_openrealm.no_world_mutation == true)
+assert(selected_openrealm.approval_id == openrealm_approval_id)
+assert(selected_openrealm.selected_candidate_id == "generated_openrealm_bridge")
+assert(selected_openrealm.pending_approval.selected_by_player == true)
+assert(selected_openrealm.build_kind == "openrealm_structure")
+assert(selected_openrealm.openrealm_plan_id == "orplan_test_bridge")
+assert(selected_openrealm.planned_node_writes == 3)
+for x = 0, 2 do
+	assert(get_test_node(vector.add(openrealm_pos, { x = x, y = 0, z = 0 })).name
+		== "air")
+end
 local approved_openrealm = core.ai_agent_plugin.handle_command(
 	"OpenRealmPlanner", "approve build", {})
 assert(approved_openrealm.ok == true)
@@ -7661,9 +7693,21 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.player_agent_loop.options_trace.action == "build_options")
 	assert(eval_cases.player_agent_loop.options_trace.public_prompt == "options")
 	assert(eval_cases.player_agent_loop.options_trace.response.status == "success")
-	assert(eval_cases.player_agent_loop.pending_plan_reply.status == "success")
-	assert(eval_cases.player_agent_loop.pending_plan_reply.selected_candidate_id
+	assert(eval_cases.player_agent_loop.select_reply.status == "success")
+	assert(eval_cases.player_agent_loop.select_reply.action == "select_build_option")
+	assert(eval_cases.player_agent_loop.select_reply.previous_selected_candidate_id
 		== "generated_openrealm_lakeside_village")
+	assert(eval_cases.player_agent_loop.select_reply.selected_candidate_id == "marker")
+	assert(eval_cases.player_agent_loop.select_reply.selected_by_player == true)
+	assert(eval_cases.player_agent_loop.select_reply.build_option_decision_source
+		== "player_selected_build_option")
+	assert(eval_cases.player_agent_loop.select_reply.no_world_mutation == true)
+	assert(eval_cases.player_agent_loop.select_trace.route == "natural_chat_review")
+	assert(eval_cases.player_agent_loop.select_trace.action == "select_build_option")
+	assert(eval_cases.player_agent_loop.select_trace.public_prompt == "select option marker")
+	assert(eval_cases.player_agent_loop.select_trace.response.status == "success")
+	assert(eval_cases.player_agent_loop.pending_plan_reply.status == "success")
+	assert(eval_cases.player_agent_loop.pending_plan_reply.selected_candidate_id == "marker")
 	assert(eval_cases.player_agent_loop.pending_plan_trace.route == "natural_chat_review")
 	assert(eval_cases.player_agent_loop.pending_plan_trace.action == "pending_plan")
 	assert(eval_cases.player_agent_loop.pending_plan_trace.public_prompt == "pending plan")

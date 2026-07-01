@@ -494,10 +494,22 @@ def live_prompt_eval_payload(**overrides):
                     "options_trace_action": "build_options",
                     "options_trace_public_prompt": "options",
                     "options_trace_status": "success",
+                    "select_handled": True,
+                    "select_status": "success",
+                    "select_action": "select_build_option",
+                    "select_selected_candidate_id": "marker",
+                    "select_previous_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "select_selected_by_player": True,
+                    "select_decision_source": "player_selected_build_option",
+                    "select_no_world_mutation": True,
+                    "select_trace_route": "natural_chat_review",
+                    "select_trace_action": "select_build_option",
+                    "select_trace_public_prompt": "select option marker",
+                    "select_trace_status": "success",
                     "pending_plan_handled": True,
                     "pending_plan_status": "success",
                     "pending_plan_action": "pending_plan",
-                    "pending_plan_selected_candidate_id": "generated_openrealm_lakeside_village",
+                    "pending_plan_selected_candidate_id": "marker",
                     "pending_plan_trace_route": "natural_chat_review",
                     "pending_plan_trace_action": "pending_plan",
                     "pending_plan_trace_public_prompt": "pending plan",
@@ -540,6 +552,7 @@ def live_prompt_eval_payload(**overrides):
             "openrealm_village_checked": True,
             "player_agent_loop_checked": True,
             "player_agent_loop_review_traces_checked": True,
+            "player_agent_loop_option_selection_checked": True,
             "model_checked": True,
             "model_adapter_requests": 7,
             "model_adapter_successes": 7,
@@ -668,6 +681,9 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 9)
         self.assertTrue(
             report["summary"]["live_prompt_eval_player_agent_loop_review_traces_checked"]
+        )
+        self.assertTrue(
+            report["summary"]["live_prompt_eval_player_agent_loop_option_selection_checked"]
         )
 
     def test_required_live_prompt_eval_missing_fails_gate(self):
