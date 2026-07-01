@@ -1,148 +1,133 @@
-<div align="center">
-    <img src="textures/base/pack/logo.png" width="32%">
-    <h1>Luanti (formerly Minetest)</h1>
-    <img src="https://github.com/luanti-org/luanti/workflows/build/badge.svg" alt="Build Status">
-    <a href="https://hosted.weblate.org/engage/minetest/?utm_source=widget"><img src="https://hosted.weblate.org/widgets/minetest/-/svg-badge.svg" alt="Translation status"></a>
-    <a href="https://www.gnu.org/licenses/old-licenses/lgpl-2.1.en.html"><img src="https://img.shields.io/badge/license-LGPLv2.1%2B-blue.svg" alt="License"></a>
-</div>
-<br>
+# OpenRealm
 
-Luanti is a free open-source voxel game engine with easy modding and game creation.
+Describe a voxel world. Play it with friends. Own the code.
 
-Copyright (C) 2010-2026 Perttu Ahola <celeron55@gmail.com>
-and contributors (see source file comments and the version control log)
+OpenRealm is an open-source AI-native voxel creation platform built on
+[Luanti](https://www.luanti.org/). Nova is the in-world AI assistant. The
+first showcase world is Luminara: a small, polished creator playground where a
+player can ask Nova to build, preview the plan, approve it, walk through the
+result, and undo the change.
 
-Table of Contents
-------------------
+This fork is not trying to be a Minecraft clone with a chatbot bolted on. The
+project goal is a safe AI creation layer for voxel worlds: human players and AI
+agents share a world through bounded tasks, visible previews, capability gates,
+audit trails, and rollback.
 
-1. [Further Documentation](#further-documentation)
-2. [Default Controls](#default-controls)
-3. [Paths](#paths)
-4. [Configuration File](#configuration-file)
-5. [Command-line Options](#command-line-options)
-6. [Compiling](#compiling)
-7. [Docker](#docker)
-8. [Version Scheme](#version-scheme)
+## What Works Today
 
+- AI-native runtime docs and verification gates under
+  [`doc/ai-native-runtime/`](doc/ai-native-runtime/).
+- A clean `ai_runtime` game profile for early runtime playtesting.
+- First-party agent surfaces for build, repair, guide, defender, and import
+  workflows.
+- Nova player-facing controls through `/nova`, `/bot`, and `/aibot`.
+- Agent SDK model-adapter integration with tool traces and reviewed prompt
+  memory.
+- Prompt-to-plan build flows that route world mutation through Luanti-owned
+  capability, preview, task, audit, and rollback APIs.
+- Request/response logging and quality gates for reviewing weak agent behavior
+  and promoting good cases into repeatable evals.
 
-Further documentation
-----------------------
+## The Magic Moment
+
+The first public milestone is intentionally narrow:
+
+1. Open a small creator world.
+2. Type: `Nova, build a small cabin by the lake.`
+3. See what Nova plans to build, including size, material, location, block
+   count, and rollback status.
+4. Approve the plan.
+5. Watch Nova build it.
+6. Walk inside.
+7. Ask for a campfire and path.
+8. Undo one change.
+9. Share the world recipe.
+
+Everything else serves that loop.
+
+## Product Direction
+
+OpenRealm is the platform. Nova is the AI assistant. Luminara is the first
+showcase world.
+
+The product lane is safe, open, AI-native world creation:
+
+- **Creator first:** prompt -> plan -> preview -> approve -> apply -> audit ->
+  rollback.
+- **Player visible trust:** show what Nova will change before it mutates the
+  world.
+- **Bounded agent power:** agents use approved runtime tools, not arbitrary
+  hidden world mutation.
+- **Public-safe content:** no private family worlds, copied proprietary assets,
+  or one-off showcase builds in the core fork.
+- **Compatibility later:** Minecraft-style compatibility and import tooling come
+  after runtime safety and observability are reliable.
+- **Ecosystem friendly:** make ContentDB and Luanti packages easier to install,
+  verify, run, share, and host instead of replacing that ecosystem.
+
+See:
+
+- [OpenRealm goal](doc/product/openrealm-goal.md)
+- [Product roadmap](doc/product/roadmap.md)
+- [Canonical demo script](doc/product/demo-script.md)
+- [Golden prompts](doc/product/golden-prompts.md)
+- [AI-native runtime](doc/ai-native-runtime/README.md)
+
+## Safety Model
+
+Nova and other agents should never be trusted just because a model produced a
+confident answer. The engine remains the world mutation authority.
+
+The runtime pattern is:
+
+1. Agent receives a bounded public context.
+2. Agent proposes or selects a safe operation.
+3. Runtime validates capabilities, protected areas, budgets, and rollback
+   policy.
+4. Player sees a preview.
+5. Player approves, edits, or cancels.
+6. Runtime applies the task in slices.
+7. Runtime records result, metrics, audit events, and rollback metadata.
+
+This is the core unfair advantage of the fork.
+
+## Try The Runtime
+
+For local runtime validation from a built checkout:
+
+```bash
+bin/luantiserver --run-unittests --test-module TestAIRuntime
+python3 util/ai_native_runtime_verify.py --server-bin bin/luantiserver
+```
+
+For product-profile hygiene:
+
+```bash
+python3 util/ai_native_product_profile_verify.py
+```
+
+For the local public-repo secret guard:
+
+```bash
+python3 util/install_public_repo_secret_guard.py
+python3 util/scan_public_repo_secrets.py --tracked --untracked
+```
+
+## Built On Luanti
+
+OpenRealm is built on Luanti, a free open-source voxel game engine with easy
+modding and game creation.
+
+Useful upstream resources:
+
 - Website: https://www.luanti.org/
-- Luanti Documentation: https://docs.luanti.org/
+- Documentation: https://docs.luanti.org/
 - Forum: https://forum.luanti.org/
-- GitHub: https://github.com/luanti-org/luanti/
-- [Developer documentation](doc/developing/)
-- [doc/](doc/) directory of source distribution
+- Upstream GitHub: https://github.com/luanti-org/luanti/
+- Developer documentation: [`doc/developing/`](doc/developing/)
 
-Default controls
-----------------
-All controls are re-bindable using settings.
-Some can be changed in the key config dialog in the settings tab.
+## License
 
-| Button                        | Action                                                         |
-|-------------------------------|----------------------------------------------------------------|
-| Move mouse                    | Look around                                                    |
-| W, A, S, D                    | Move                                                           |
-| Space                         | Jump/move up                                                   |
-| Shift                         | Sneak/move down                                                |
-| Q                             | Drop itemstack                                                 |
-| Shift + Q                     | Drop single item                                               |
-| Left mouse button             | Dig/punch/use                                                  |
-| Right mouse button            | Place/use                                                      |
-| Shift + right mouse button    | Build (without using)                                          |
-| I                             | Inventory menu                                                 |
-| Mouse wheel                   | Select item                                                    |
-| 0-9                           | Select item                                                    |
-| Z                             | Zoom (needs zoom privilege)                                    |
-| T                             | Chat                                                           |
-| /                             | Command                                                        |
-| Esc                           | Pause menu/abort/exit (pauses only singleplayer game)          |
-| +                             | Increase view range                                            |
-| -                             | Decrease view range                                            |
-| K                             | Enable/disable fly mode (needs fly privilege)                  |
-| J                             | Enable/disable fast mode (needs fast privilege)                |
-| H                             | Enable/disable noclip mode (needs noclip privilege)            |
-| E                             | Aux1 (Move fast in fast mode. Games may add special features)  |
-| C                             | Cycle through camera modes                                     |
-| V                             | Cycle through minimap modes                                    |
-| Shift + V                     | Change minimap orientation                                     |
-| F1                            | Hide/show HUD                                                  |
-| F2                            | Hide/show chat                                                 |
-| F3                            | Disable/enable fog                                             |
-| F4                            | Disable/enable camera update (Mapblocks are not updated anymore when disabled, disabled in release builds)  |
-| F5                            | Cycle through debug information screens                        |
-| F6                            | Cycle through profiler info screens                            |
-| F10                           | Show/hide console                                              |
-| F12                           | Take screenshot                                                |
-
-Paths
------
-Locations:
-
-* `bin`   - Compiled binaries
-* `share` - Distributed read-only data
-* `user`  - User-created modifiable data
-
-Where each location is on each platform:
-
-* Windows .zip / RUN_IN_PLACE source:
-    * `bin`   = `bin`
-    * `share` = `.`
-    * `user`  = `.`
-* Windows installed:
-    * `bin`   = `C:\Program Files\Minetest\bin (Depends on the install location)`
-    * `share` = `C:\Program Files\Minetest (Depends on the install location)`
-    * `user`  = `%APPDATA%\Minetest` or `%MINETEST_USER_PATH%`
-* Linux installed:
-    * `bin`   = `/usr/bin`
-    * `share` = `/usr/share/minetest`
-    * `user`  = `~/.minetest` or `$MINETEST_USER_PATH`
-* macOS:
-    * `bin`   = `Contents/MacOS`
-    * `share` = `Contents/Resources`
-    * `user`  = `Contents/User` or `~/Library/Application Support/minetest` or `$MINETEST_USER_PATH`
-
-Worlds can be found as separate folders in: `user/worlds/`
-
-Configuration file
-------------------
-- Default location:
-    `user/minetest.conf`
-- This file is created by closing Luanti for the first time.
-- A specific file can be specified on the command line:
-    `--config <path-to-file>`
-- A run-in-place build will look for the configuration file in
-    `location_of_exe/../minetest.conf` and also `location_of_exe/../../minetest.conf`
-
-Command-line options
---------------------
-- Use `--help`
-
-Compiling
----------
-
-- [Compiling - common information](doc/compiling/README.md)
-- [Compiling on GNU/Linux](doc/compiling/linux.md)
-- [Compiling on Windows](doc/compiling/windows.md)
-- [Compiling on MacOS](doc/compiling/macos.md)
-
-Docker
-------
-
-- [Developing minetestserver with Docker](doc/developing/docker.md)
-- [Running a server with Docker](doc/docker_server.md)
-
-Version scheme
---------------
-We use `major.minor.patch` since 5.0.0-dev. Prior to that we used `0.major.minor`.
-
-- Major is incremented when the release contains breaking changes, all other
-numbers are set to 0.
-- Minor is incremented when the release contains new non-breaking features,
-patch is set to 0.
-- Patch is incremented when the release only contains bugfixes and very
-minor/trivial features considered necessary.
-
-Since 5.0.0-dev and 0.4.17-dev, the dev notation refers to the next release,
-i.e.: 5.0.0-dev is the development version leading to 5.0.0.
-Prior to that we used `previous_version-dev`.
+This fork retains the upstream Luanti licensing structure. See
+[`LICENSE.txt`](LICENSE.txt), [`COPYING.LESSER`](COPYING.LESSER), and source
+file headers.

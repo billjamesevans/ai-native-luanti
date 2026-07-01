@@ -2,6 +2,20 @@
 
 Status: project direction for the `billjamesevans/ai-native-luanti` fork.
 
+## Product Layer
+
+OpenRealm is the public platform identity for this runtime work: an
+open-source AI-native voxel studio where players describe worlds, play them
+with friends, and own the code. Nova is the player-facing AI assistant.
+Luminara is the first showcase creator playground.
+
+See:
+
+- [OpenRealm goal](../product/openrealm-goal.md)
+- [Product roadmap](../product/roadmap.md)
+- [Canonical demo script](../product/demo-script.md)
+- [Golden prompts](../product/golden-prompts.md)
+
 ## Mission
 
 Build an AI-native voxel server/runtime on top of Luanti. The first milestone is not Minecraft compatibility. The first milestone is a safer runtime where human players and AI agents can share a world, perform bounded work, report structured results, and remain observable and cancellable.
