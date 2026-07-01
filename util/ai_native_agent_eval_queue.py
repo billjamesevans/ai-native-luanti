@@ -712,7 +712,11 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
         return None
 
     status = "unknown"
-    if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
+    nova_plan_tool_observation = decision_source == NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE
+    if candidate.get("source_kind") == "nova_agent_sidecar_request_response" or (
+        candidate.get("source_kind") == REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND
+        and nova_plan_tool_observation
+    ):
         expected_decision_sources = {
             NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE,
             *ACCEPTED_AGENT_TOOL_DECISION_SOURCES,
@@ -735,7 +739,7 @@ def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | Non
         status = "review"
     expected_decision_source = (
         NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE
-        if candidate.get("source_kind") == "nova_agent_sidecar_request_response"
+        if nova_plan_tool_observation or candidate.get("source_kind") == "nova_agent_sidecar_request_response"
         else PRIMARY_AGENT_TOOL_DECISION_SOURCE
     )
 
@@ -1141,6 +1145,7 @@ def candidate_from_request_response_log_gate_case(
         planned_writes = safe_int(response.get("generated_option_planned_node_writes"), minimum=0)
     if planned_writes is None:
         planned_writes = safe_int(summary_option.get("planned_node_writes"), minimum=0)
+    is_nova_plan_gate_case = response.get("tool_decision_source") == NOVA_AGENT_PLAN_TOOL_DECISION_SOURCE
 
     candidate = _base_candidate(
         REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND,
@@ -1226,8 +1231,9 @@ def candidate_from_request_response_log_gate_case(
                 minimum=0,
             ),
         },
-        "adapter_replay_request": adapter_replay_request_from_agents_sdk_request(request, prompt),
     })
+    if not is_nova_plan_gate_case:
+        candidate["adapter_replay_request"] = adapter_replay_request_from_agents_sdk_request(request, prompt)
     return finalize_candidate(candidate)
 
 

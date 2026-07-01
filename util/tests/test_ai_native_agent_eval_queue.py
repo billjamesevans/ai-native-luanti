@@ -1301,6 +1301,123 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(generated["observed"]["tool_decision_source"], "local_agent_tool_contract_fast_path")
         self.assertEqual(generated["adapter_tool_contract"]["status"], "pass")
 
+    def test_nova_agent_gate_cases_do_not_create_adapter_replay_failures(self):
+        module = load_queue_module()
+        gate_payload = {
+            "schema_version": 1,
+            "artifact_kind": "ai_native_agent_request_response_log_gate",
+            "generated_at": "2026-07-01T12:24:58Z",
+            "status": "pass",
+            "source_summary": {
+                "files_read": 1,
+                "lines_read": 10,
+                "entries_read": 5,
+                "nova_agent_log_files_read": 1,
+                "nova_agent_log_lines_read": 2,
+                "nova_agent_log_entries_read": 2,
+                "case_count": 2,
+                "cases_passed": 2,
+                "cases_failed": 0,
+            },
+            "cases": [
+                {
+                    "case_id": "nova_agent_fire_only_strict",
+                    "prompt": "build me a fire and only a fire",
+                    "status": "pass",
+                    "matches": 1,
+                    "failures": [],
+                    "observed": {
+                        "ts": "2026-07-01T11:55:12Z",
+                        "player": "Eval",
+                        "prompt": "build me a fire and only a fire",
+                        "response": {
+                            "ok": True,
+                            "source": "agents_sdk_tool_plan",
+                            "agent_runtime": "openai-agents-sdk",
+                            "agent_model_called": True,
+                            "tool_decision_source": "agents_sdk_submit_nova_plan_tool",
+                            "selected_option_id": "reviewed_prompt_memory",
+                            "required_tool_calls": ["resolve_build_plan", "submit_nova_plan"],
+                            "missing_required_tool_calls": [],
+                            "required_tool_calls_satisfied": True,
+                            "tool_trace_names": ["resolve_build_plan", "submit_nova_plan"],
+                            "build_kind": "place_node",
+                            "build_material_name": "fire",
+                            "planned_node_writes": 1,
+                            "contract_kind": "single_fire",
+                            "contract_satisfied": True,
+                            "actions": [{"type": "place_node", "material": "fire", "count": 1}],
+                        },
+                    },
+                },
+                {
+                    "case_id": "nova_agent_tnt_wall",
+                    "prompt": "build a wall of tnt",
+                    "status": "pass",
+                    "matches": 1,
+                    "failures": [],
+                    "observed": {
+                        "ts": "2026-07-01T11:55:43Z",
+                        "player": "Eval",
+                        "prompt": "build a wall of tnt",
+                        "response": {
+                            "ok": True,
+                            "source": "agents_sdk_tool_plan",
+                            "agent_runtime": "openai-agents-sdk",
+                            "agent_model_called": True,
+                            "tool_decision_source": "agents_sdk_submit_nova_plan_tool",
+                            "selected_option_id": "reviewed_prompt_memory",
+                            "required_tool_calls": ["resolve_build_plan", "submit_nova_plan"],
+                            "missing_required_tool_calls": [],
+                            "required_tool_calls_satisfied": True,
+                            "tool_trace_names": ["resolve_build_plan", "submit_nova_plan"],
+                            "build_kind": "wall",
+                            "build_material_name": "tnt",
+                            "planned_node_writes": 75,
+                            "contract_kind": "tnt_wall",
+                            "contract_satisfied": True,
+                            "actions": [
+                                {
+                                    "type": "fill_box",
+                                    "material": "tnt",
+                                    "size": {"x": 15, "y": 5, "z": 1},
+                                }
+                            ],
+                        },
+                    },
+                },
+            ],
+            "failures": [],
+            "violations": [],
+            "safety": {"public_safe_output": True, "no_world_mutation": True},
+        }
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            gate = root / "ai-agent-request-response-log-gate.json"
+            gate.write_text(json.dumps(gate_payload), encoding="utf-8")
+
+            payload = module.build_eval_candidate_queue(
+                request_response_log_gate_paths=[gate],
+                generated_at="2026-07-01T12:30:00Z",
+                max_bytes=100000,
+            )
+
+        self.assertEqual(payload["status"], "ready")
+        self.assertEqual(payload["source_summary"]["request_response_log_gate_candidates_added"], 2)
+        self.assertEqual(payload["source_summary"]["adapter_contract_failures_active"], 0)
+        self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 0)
+        by_hint = {candidate["case_hint"]: candidate for candidate in payload["candidates"]}
+        fire = by_hint["fire_only_strict"]
+        tnt = by_hint["tnt_wall"]
+        self.assertEqual(fire["adapter_tool_contract"]["status"], "pass")
+        self.assertEqual(tnt["adapter_tool_contract"]["status"], "pass")
+        self.assertEqual(
+            fire["adapter_tool_contract"]["expected"]["tool_decision_source"],
+            "agents_sdk_submit_nova_plan_tool",
+        )
+        self.assertNotIn("adapter_replay_request", fire)
+        self.assertNotIn("adapter_replay_request", tnt)
+
     def test_verified_live_probe_cases_become_prompt_eval_candidates(self):
         module = load_queue_module()
         with tempfile.TemporaryDirectory() as tmpdir:
