@@ -57,6 +57,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - [Safe entity operations API](safe-entity-ops-api.md)
 - [Safe player operations API](safe-player-ops-api.md)
 - [Model and import runtime gates](model-import-runtime-gates.md)
+- [OpenRealm Plan contract](openrealm-plan-contract.md)
 - [Model adapter contract](model-adapter-contract.md)
 - [Agents SDK Model Adapter](agents-sdk-model-adapter.md)
 - [Model adapter plugin scaffold](model-adapter-plugin-scaffold.md)
@@ -112,6 +113,7 @@ The fork should not absorb private-server content, showcase builds, copied propr
 - Live operator feedback command: `/ai_agent_feedback last; case=stone_bridge_platform; build_kind=platform; material=stone; planned_writes=12; route=agentic_build_planner`
 - Alpha release package gate: `python3 util/ai_native_alpha_release_gate.py`
 - OpenRealm Advantage Kit gate: `python3 util/openrealm_advantage_kit_verify.py --run-tests --run-js-check`
+- OpenRealm Plan contract gate: `python3 util/openrealm_plan_contract.py`
 - Model adapter contract gate: `python3 util/ai_native_model_adapter_contract.py`
 - Agents SDK bridge contract gate: `python3 util/ai_native_agents_sdk_bridge_contract.py`
 - Optional model adapter scaffold: enable `ai_runtime.enable_model_adapter_probe_command` and run `/ai_model_adapter_probe`

@@ -1,0 +1,131 @@
+{
+  "schema_version": "openrealm.plan.v1",
+  "product": "OpenRealm",
+  "assistant": "Nova",
+  "plan_id": "orplan_012345abcdef",
+  "plan_kind": "structure",
+  "title": "Starter Lantern Path",
+  "source_prompt": "Build a short path with two lanterns",
+  "created_at": "2026-07-01T00:00:00Z",
+  "mod_name": "openrealm_starter_path",
+  "summary": "A tiny previewable path plan used as the public OpenRealm Plan v1 example.",
+  "tags": [
+    "structure",
+    "preview",
+    "rollback",
+    "nova"
+  ],
+  "safety_budget": {
+    "max_node_definitions": 4,
+    "max_craft_items": 0,
+    "max_tools": 0,
+    "max_recipes": 0,
+    "max_ores": 0,
+    "max_structures": 1,
+    "max_structure_nodes": 8,
+    "requires_preview": true,
+    "requires_approval": true,
+    "rollback_required": true,
+    "ai_direct_world_mutation_allowed": false
+  },
+  "nodes": [
+    {
+      "name": "realmstone",
+      "description": "OpenRealm Smooth Stone",
+      "texture_hint": "soft blue gray stone block",
+      "groups": {
+        "cracky": 2,
+        "stone": 1
+      },
+      "light_source": 0,
+      "drawtype": "normal",
+      "paramtype": null,
+      "walkable": true
+    },
+    {
+      "name": "nova_lantern",
+      "description": "Nova Lantern",
+      "texture_hint": "floating cyan violet lantern",
+      "groups": {
+        "cracky": 1,
+        "light": 1
+      },
+      "light_source": 12,
+      "drawtype": "glasslike",
+      "paramtype": "light",
+      "walkable": false
+    }
+  ],
+  "craft_items": [],
+  "tools": [],
+  "recipes": [],
+  "ores": [],
+  "structures": [
+    {
+      "name": "starter_lantern_path",
+      "description": "Four stones and two lanterns, kept small for contract review.",
+      "placements": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_starter_path:realmstone"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_starter_path:realmstone"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_starter_path:realmstone"
+        },
+        {
+          "x": 3,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_starter_path:realmstone"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 1,
+          "node": "openrealm_starter_path:nova_lantern"
+        },
+        {
+          "x": 3,
+          "y": 1,
+          "z": 1,
+          "node": "openrealm_starter_path:nova_lantern"
+        }
+      ],
+      "max_radius": 8
+    }
+  ],
+  "world_recipe": {
+    "recipe_kind": "structure_preview",
+    "recommended_demo_prompt": "Build a short path with two lanterns"
+  },
+  "approval_steps": [
+    "Review generated OpenRealm plan.",
+    "Inspect preview and node/write budget.",
+    "Approve in-world before mutation.",
+    "Use rollback command if result is not wanted."
+  ],
+  "ai_disclosure": {
+    "ai_assisted": true,
+    "assistant_name": "Nova",
+    "human_approval_required": true,
+    "direct_world_mutation_by_ai": false,
+    "generated_code_is_template_based": true
+  },
+  "provenance": {
+    "generator": "openrealm_contract_example",
+    "generator_version": "1.0.0",
+    "created_by": "repository",
+    "source": "template"
+  }
+}

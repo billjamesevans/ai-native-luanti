@@ -4,6 +4,11 @@
 
 Create a committed `doc/openrealm-plan-schema.md` and JSON schema for prompt-created plans.
 
+Status: implemented in the engine-fork docs as
+`doc/ai-native-runtime/openrealm-plan-contract.md`,
+`doc/ai-native-runtime/schemas/openrealm-plan-v1.schema.json`, and
+`python3 util/openrealm_plan_contract.py`.
+
 Acceptance:
 
 - schema includes nodes, craft items, tools, recipes, ores, structures, approval steps, AI disclosure, provenance, and budgets;
