@@ -7860,29 +7860,37 @@ function plugin._finish_player_agent_loop_eval_case(case_report, owner,
 			suppress_chat_send = true,
 			player_turn_source = "player_agent_loop_eval",
 		})
+	local options_trace = plugin.latest_player_request_trace(owner)
 	local pending_handled, pending_reply = plugin.handle_natural_chat_message(
 		owner, "Nova, pending plan", {
 			suppress_chat_send = true,
 			player_turn_source = "player_agent_loop_eval",
 		})
+	local pending_trace = plugin.latest_player_request_trace(owner)
 	local discard_handled, discard_reply = plugin.handle_natural_chat_message(
 		owner, "Nova, no", {
 			suppress_chat_send = true,
 			player_turn_source = "player_agent_loop_eval",
 		})
+	local discard_trace = plugin.latest_player_request_trace(owner)
 	local after_discard_handled, after_discard_reply =
 		plugin.handle_natural_chat_message(owner, "Nova, pending plan", {
 			suppress_chat_send = true,
 			player_turn_source = "player_agent_loop_eval",
 		})
+	local after_discard_trace = plugin.latest_player_request_trace(owner)
 
 	case_report.options_reply = compact_eval_reply(options_reply)
+	case_report.options_trace = compact_eval_trace(options_trace)
 	case_report.options_handled = options_handled == true
 	case_report.pending_plan_reply = compact_eval_reply(pending_reply)
+	case_report.pending_plan_trace = compact_eval_trace(pending_trace)
 	case_report.pending_plan_handled = pending_handled == true
 	case_report.discard_reply = compact_eval_reply(discard_reply)
+	case_report.discard_trace = compact_eval_trace(discard_trace)
 	case_report.discard_handled = discard_handled == true
 	case_report.after_discard_reply = compact_eval_reply(after_discard_reply)
+	case_report.after_discard_trace = compact_eval_trace(after_discard_trace)
 	case_report.after_discard_handled = after_discard_handled == true
 	case_report.player_loop = plugin._player_loop.public_snapshot(owner)
 
@@ -7915,6 +7923,12 @@ function plugin._finish_player_agent_loop_eval_case(case_report, owner,
 	case_report.checks.options_selected_candidate = options_reply
 		and options_reply.selected_candidate_id
 			== "generated_openrealm_lakeside_village"
+	case_report.checks.options_trace_logged = options_trace
+		and options_trace.route == "natural_chat_review"
+		and options_trace.action == "build_options"
+		and options_trace.public_prompt == "options"
+		and options_trace.response
+		and options_trace.response.status == "success"
 	case_report.checks.pending_handled = pending_handled == true
 	case_report.checks.pending_success = pending_reply
 		and pending_reply.status == "success"
@@ -7924,14 +7938,33 @@ function plugin._finish_player_agent_loop_eval_case(case_report, owner,
 	case_report.checks.pending_selected_candidate = pending_reply
 		and pending_reply.selected_candidate_id
 			== "generated_openrealm_lakeside_village"
+	case_report.checks.pending_trace_logged = pending_trace
+		and pending_trace.route == "natural_chat_review"
+		and pending_trace.action == "pending_plan"
+		and pending_trace.public_prompt == "pending plan"
+		and pending_trace.response
+		and pending_trace.response.status == "success"
 	case_report.checks.discard_handled = discard_handled == true
 	case_report.checks.discard_success = discard_reply
 		and discard_reply.status == "success"
 		and discard_reply.action == "discard_approval"
+	case_report.checks.discard_trace_logged = discard_trace
+		and discard_trace.route == "natural_chat_review"
+		and discard_trace.action == "discard_approval"
+		and discard_trace.public_prompt == "no"
+		and discard_trace.response
+		and discard_trace.response.status == "success"
 	case_report.checks.after_discard_handled = after_discard_handled == true
 	case_report.checks.after_discard_blocked = after_discard_reply
 		and after_discard_reply.status == "blocked"
 		and after_discard_reply.reason == "no_pending_approval"
+	case_report.checks.after_discard_trace_logged = after_discard_trace
+		and after_discard_trace.route == "natural_chat_review"
+		and after_discard_trace.action == "pending_plan"
+		and after_discard_trace.public_prompt == "pending plan"
+		and after_discard_trace.response
+		and after_discard_trace.response.status == "blocked"
+		and after_discard_trace.response.reason == "no_pending_approval"
 	local ok, failures = eval_checks_status(case_report.checks)
 	case_report.ok = ok
 	case_report.status = ok and "pass" or "fail"

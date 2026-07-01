@@ -34,6 +34,7 @@ class OpenRealmGoldenPromptTests(unittest.TestCase):
         self.assertEqual(evidence["agent_prompt_eval_golden_prompts_passed"], 6)
         self.assertEqual(evidence["agent_prompt_eval_golden_prompts_failed"], 0)
         self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_checked"])
+        self.assertTrue(evidence["agent_prompt_eval_player_agent_loop_review_traces_checked"])
 
     def test_quality_gate_blocks_openrealm_golden_prompt_regression(self):
         quality_gate = load_module(QUALITY_GATE, "openrealm_quality_gate_test")

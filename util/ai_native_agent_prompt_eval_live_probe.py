@@ -133,9 +133,13 @@ def write_probe_world(
             "  local final_trace = case.final_trace or {}",
             "  local final_reply = case.final_reply or {}",
             "  local options_reply = case.options_reply or {}",
+            "  local options_trace = case.options_trace or {}",
             "  local pending_plan_reply = case.pending_plan_reply or {}",
+            "  local pending_plan_trace = case.pending_plan_trace or {}",
             "  local discard_reply = case.discard_reply or {}",
+            "  local discard_trace = case.discard_trace or {}",
             "  local after_discard_reply = case.after_discard_reply or {}",
+            "  local after_discard_trace = case.after_discard_trace or {}",
             "  local effective_reply = final_reply.status and final_reply or reply",
             "  return {",
             "    case_id = case.case_id,",
@@ -173,16 +177,33 @@ def write_probe_world(
             "    options_action = options_reply.action,",
             "    options_selected_candidate_id = options_reply.selected_candidate_id,",
             "    options_no_world_mutation = options_reply.no_world_mutation,",
+            "    options_trace_route = options_trace.route,",
+            "    options_trace_action = options_trace.action,",
+            "    options_trace_public_prompt = options_trace.public_prompt,",
+            "    options_trace_status = options_trace.response and options_trace.response.status or nil,",
             "    pending_plan_handled = case.pending_plan_handled == true,",
             "    pending_plan_status = pending_plan_reply.status,",
             "    pending_plan_action = pending_plan_reply.action,",
             "    pending_plan_selected_candidate_id = pending_plan_reply.selected_candidate_id,",
+            "    pending_plan_trace_route = pending_plan_trace.route,",
+            "    pending_plan_trace_action = pending_plan_trace.action,",
+            "    pending_plan_trace_public_prompt = pending_plan_trace.public_prompt,",
+            "    pending_plan_trace_status = pending_plan_trace.response and pending_plan_trace.response.status or nil,",
             "    discard_handled = case.discard_handled == true,",
             "    discard_status = discard_reply.status,",
             "    discard_action = discard_reply.action,",
+            "    discard_trace_route = discard_trace.route,",
+            "    discard_trace_action = discard_trace.action,",
+            "    discard_trace_public_prompt = discard_trace.public_prompt,",
+            "    discard_trace_status = discard_trace.response and discard_trace.response.status or nil,",
             "    after_discard_handled = case.after_discard_handled == true,",
             "    after_discard_status = after_discard_reply.status,",
             "    after_discard_reason = after_discard_reply.reason,",
+            "    after_discard_trace_route = after_discard_trace.route,",
+            "    after_discard_trace_action = after_discard_trace.action,",
+            "    after_discard_trace_public_prompt = after_discard_trace.public_prompt,",
+            "    after_discard_trace_status = after_discard_trace.response and after_discard_trace.response.status or nil,",
+            "    after_discard_trace_reason = after_discard_trace.response and after_discard_trace.response.reason or nil,",
             "    cleanup_status = case.cleanup and case.cleanup.status or nil,",
             "    failure_count = #(case.failures or {}),",
             "  }",
@@ -291,6 +312,13 @@ def write_probe_world(
             "      golden_passed = golden_passed + 1",
             "    end",
             "  end",
+            "  local player_loop_case = report_cases.player_agent_loop or {}",
+            "  local player_loop_checks = player_loop_case.checks or {}",
+            "  local player_loop_review_traces_checked =",
+            "    player_loop_checks.options_trace_logged == true",
+            "    and player_loop_checks.pending_trace_logged == true",
+            "    and player_loop_checks.discard_trace_logged == true",
+            "    and player_loop_checks.after_discard_trace_logged == true",
             "  local payload = {",
             "    schema_version = 1,",
             "    live_result_kind = \"ai_native_agent_prompt_eval_live_result\",",
@@ -325,6 +353,7 @@ def write_probe_world(
             "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
             "      openrealm_village_checked = eval.case_ids.openrealm_village == true,",
             "      player_agent_loop_checked = eval.case_ids.player_agent_loop == true,",
+            "      player_agent_loop_review_traces_checked = player_loop_review_traces_checked == true,",
             "      model_checked = eval.case_ids.model == true,",
             "      model_adapter_requests = eval.metrics.model_adapter_requests_delta or 0,",
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
@@ -486,6 +515,36 @@ def _require_agentic_tool_case(
         raise ValueError(f"agent prompt eval {case_id} model-selected candidate missing")
     if not isinstance(case.get("candidate_count"), int) or case["candidate_count"] < 3:
         raise ValueError(f"agent prompt eval {case_id} candidate count is invalid")
+
+
+def _require_natural_review_trace(
+    case: dict,
+    *,
+    prefix: str,
+    label: str,
+    expected_action: str,
+    expected_status: str,
+    expected_public_prompt: str,
+    expected_reason: str | None = None,
+) -> None:
+    required_fields = (
+        f"{prefix}_trace_route",
+        f"{prefix}_trace_action",
+        f"{prefix}_trace_public_prompt",
+        f"{prefix}_trace_status",
+    )
+    if any(not case.get(field) for field in required_fields):
+        raise ValueError("agent prompt eval natural review trace evidence missing")
+    if case.get(f"{prefix}_trace_route") != "natural_chat_review":
+        raise ValueError(f"agent prompt eval {label} trace route is invalid")
+    if case.get(f"{prefix}_trace_action") != expected_action:
+        raise ValueError(f"agent prompt eval {label} trace action is invalid")
+    if case.get(f"{prefix}_trace_public_prompt") != expected_public_prompt:
+        raise ValueError(f"agent prompt eval {label} trace prompt is invalid")
+    if case.get(f"{prefix}_trace_status") != expected_status:
+        raise ValueError(f"agent prompt eval {label} trace status is invalid")
+    if expected_reason is not None and case.get(f"{prefix}_trace_reason") != expected_reason:
+        raise ValueError(f"agent prompt eval {label} trace reason is invalid")
 
 
 def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> dict:
@@ -652,20 +711,53 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval player agent loop options selected candidate is invalid")
         if player_loop.get("options_no_world_mutation") is not True:
             raise ValueError("agent prompt eval player agent loop options mutated the world")
+        _require_natural_review_trace(
+            player_loop,
+            prefix="options",
+            label="options",
+            expected_action="build_options",
+            expected_status="success",
+            expected_public_prompt="options",
+        )
         if player_loop.get("pending_plan_handled") is not True \
                 or player_loop.get("pending_plan_status") != "success" \
                 or player_loop.get("pending_plan_action") != "pending_plan":
             raise ValueError("agent prompt eval player agent loop pending plan reply is invalid")
         if player_loop.get("pending_plan_selected_candidate_id") != "generated_openrealm_lakeside_village":
             raise ValueError("agent prompt eval player agent loop pending plan selected candidate is invalid")
+        _require_natural_review_trace(
+            player_loop,
+            prefix="pending_plan",
+            label="pending plan",
+            expected_action="pending_plan",
+            expected_status="success",
+            expected_public_prompt="pending plan",
+        )
         if player_loop.get("discard_handled") is not True \
                 or player_loop.get("discard_status") != "success" \
                 or player_loop.get("discard_action") != "discard_approval":
             raise ValueError("agent prompt eval player agent loop discard reply is invalid")
+        _require_natural_review_trace(
+            player_loop,
+            prefix="discard",
+            label="discard",
+            expected_action="discard_approval",
+            expected_status="success",
+            expected_public_prompt="no",
+        )
         if player_loop.get("after_discard_handled") is not True \
                 or player_loop.get("after_discard_status") != "blocked" \
                 or player_loop.get("after_discard_reason") != "no_pending_approval":
             raise ValueError("agent prompt eval player agent loop after-discard reply is invalid")
+        _require_natural_review_trace(
+            player_loop,
+            prefix="after_discard",
+            label="after discard",
+            expected_action="pending_plan",
+            expected_status="blocked",
+            expected_public_prompt="pending plan",
+            expected_reason="no_pending_approval",
+        )
         if model.get("status") != "pass":
             raise ValueError("agent prompt eval model case is invalid")
         if model.get("route") != "model_adapter_async" and model.get("final_route") != "model_adapter_async":
@@ -710,6 +802,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agentic_build_planner_checked",
         "openrealm_village_checked",
         "player_agent_loop_checked",
+        "player_agent_loop_review_traces_checked",
         "model_checked",
     ):
         _require_bool(summary, field)
@@ -774,6 +867,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_openrealm_village_checked": True,
         "agent_prompt_eval_player_agent_loop_checked": True,
+        "agent_prompt_eval_player_agent_loop_review_traces_checked": True,
         "agent_prompt_eval_model_checked": True,
         "agent_prompt_eval_golden_prompt_suite": GOLDEN_PROMPT_SUITE,
         "agent_prompt_eval_golden_prompt_backlog_total": GOLDEN_PROMPT_BACKLOG_TOTAL,

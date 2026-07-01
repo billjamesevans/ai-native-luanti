@@ -589,16 +589,33 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                         "options_action": "build_options",
                         "options_selected_candidate_id": "generated_openrealm_lakeside_village",
                         "options_no_world_mutation": True,
+                        "options_trace_route": "natural_chat_review",
+                        "options_trace_action": "build_options",
+                        "options_trace_public_prompt": "options",
+                        "options_trace_status": "success",
                         "pending_plan_handled": True,
                         "pending_plan_status": "success",
                         "pending_plan_action": "pending_plan",
                         "pending_plan_selected_candidate_id": "generated_openrealm_lakeside_village",
+                        "pending_plan_trace_route": "natural_chat_review",
+                        "pending_plan_trace_action": "pending_plan",
+                        "pending_plan_trace_public_prompt": "pending plan",
+                        "pending_plan_trace_status": "success",
                         "discard_handled": True,
                         "discard_status": "success",
                         "discard_action": "discard_approval",
+                        "discard_trace_route": "natural_chat_review",
+                        "discard_trace_action": "discard_approval",
+                        "discard_trace_public_prompt": "no",
+                        "discard_trace_status": "success",
                         "after_discard_handled": True,
                         "after_discard_status": "blocked",
                         "after_discard_reason": "no_pending_approval",
+                        "after_discard_trace_route": "natural_chat_review",
+                        "after_discard_trace_action": "pending_plan",
+                        "after_discard_trace_public_prompt": "pending plan",
+                        "after_discard_trace_status": "blocked",
+                        "after_discard_trace_reason": "no_pending_approval",
                         "failure_count": 0,
                     },
                     {
@@ -634,6 +651,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "agentic_build_planner_checked": True,
                 "openrealm_village_checked": True,
                 "player_agent_loop_checked": True,
+                "player_agent_loop_review_traces_checked": True,
                 "model_checked": True,
                 "model_adapter_requests": 7,
                 "model_adapter_successes": 7,
@@ -1612,6 +1630,30 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             golden_regression["summary"]["golden_prompts_failed"] = 1
             with self.assertRaisesRegex(ValueError, "golden prompts did not all pass"):
                 probe.validate_live_result(golden_regression)
+
+    def test_agent_prompt_eval_validator_requires_natural_review_trace_evidence(self):
+        probe = load_agent_prompt_eval_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact = pathlib.Path(tmpdir) / "agent-prompt-eval.json"
+            self.write_agent_prompt_eval_live_artifact(artifact, adapter_mode="agents_sdk_sidecar")
+            payload = json.loads(artifact.read_text(encoding="utf-8"))
+
+            evidence = probe.validate_live_result(payload)
+            self.assertTrue(
+                evidence["agent_prompt_eval_player_agent_loop_review_traces_checked"]
+            )
+
+            missing_options_trace = json.loads(json.dumps(payload))
+            player_loop = missing_options_trace["prompt_eval"]["cases"][5]
+            del player_loop["options_trace_route"]
+            with self.assertRaisesRegex(ValueError, "natural review trace evidence"):
+                probe.validate_live_result(missing_options_trace)
+
+            wrong_pending_trace = json.loads(json.dumps(payload))
+            player_loop = wrong_pending_trace["prompt_eval"]["cases"][5]
+            player_loop["pending_plan_trace_route"] = "agentic_build_planner"
+            with self.assertRaisesRegex(ValueError, "pending plan trace route"):
+                probe.validate_live_result(wrong_pending_trace)
 
     def test_nova_auto_apply_validator_requires_exact_build_write_counts(self):
         probe = load_nova_auto_apply_module()
