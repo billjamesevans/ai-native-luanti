@@ -13,7 +13,7 @@
 ## Execution Status
 
 - Task 1 is complete in commit `3ea6f33e3`: the public README and product docs now define OpenRealm, Nova, Luminara, the creator loop, and the AI-native runtime safety model.
-- Task 3 is partially complete in the current follow-up slice: the live prompt-eval artifact now emits the named `openrealm_creator_loop` golden-prompt suite, tracks the eleven-prompt backlog, enforces the four currently implemented runtime prompt cases, and makes `ai_native_agent_quality_gate` fail on golden prompt regressions.
+- Task 3 is complete in commit `566585dbf`: the live prompt-eval artifact now emits the named `openrealm_creator_loop` golden-prompt suite, tracks the eleven-prompt backlog, enforces the four currently implemented runtime prompt cases, and makes `ai_native_agent_quality_gate` fail on golden prompt regressions.
 - Task 2 remains the next behavior-expansion track for moving more backlog prompts from documented expectations into enforced runtime cases.
 
 ## File Structure
@@ -176,7 +176,7 @@ Expected: one behavior-focused commit.
 - Modify: `util/ai_native_agent_quality_gate.py`
 - Create: `util/tests/test_openrealm_golden_prompts.py`
 
-- [ ] **Step 1: Write Python gate tests**
+- [x] **Step 1: Write Python gate tests**
 
 Create a test that feeds a synthetic prompt-eval result containing one failed golden prompt:
 
@@ -191,7 +191,7 @@ def test_quality_gate_blocks_failed_golden_prompt(tmp_path):
 
 Expected before implementation: the current quality gate has no golden-prompt field to enforce.
 
-- [ ] **Step 2: Add named golden suite output**
+- [x] **Step 2: Add named golden suite output**
 
 Extend the live prompt eval output with:
 
@@ -203,12 +203,12 @@ Extend the live prompt eval output with:
 }
 ```
 
-- [ ] **Step 3: Fail the quality gate on golden prompt regressions**
+- [x] **Step 3: Fail the quality gate on golden prompt regressions**
 
 `util/ai_native_agent_quality_gate.py` must set quality gate status to `fail` when
 `golden_prompts_failed > 0`.
 
-- [ ] **Step 4: Run tests**
+- [x] **Step 4: Run tests**
 
 Run:
 
@@ -219,7 +219,7 @@ python3 util/scan_public_repo_secrets.py --tracked --untracked
 
 Expected: tests pass and no high-confidence secret material is found.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 Run:
 
