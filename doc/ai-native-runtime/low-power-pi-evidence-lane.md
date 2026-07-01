@@ -5,22 +5,22 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `28a8fdc0a`
-- Backup artifact label: `raspberrypi_luanti_20260701-042006.tgz`
+- Fork commit: `b7ed7e371`
+- Backup artifact label: `raspberrypi_luanti_20260701-043657.tgz`
 - Backup SHA-256:
-  `5f0b74662481bfbc11ffe008a11ad63e87be8377fca0c9c59d11351b9ee6bb65`
+  `b2c0ea5b653a46918768344ad39402339fffad2111293f212486ba25a946df1c`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: `ai-native-luanti-agents-sdk-adapter.service` active on
   loopback TCP `8766`.
 - Quality gate: `pass`; live prompt eval `pass`; compatibility import staging
   pilot `pass`; agentic tool cases `6/6`; attention items `0`; violations
-  `0`; retained artifact generated at `2026-07-01T09:24:44Z`.
-- Request/response log gate: `pass`; `871` Agents SDK sidecar log entries
+  `0`; retained artifact generated at `2026-07-01T09:42:04Z`.
+- Request/response log gate: `pass`; `878` Agents SDK sidecar log entries
   read; `5/5` checked cases passed; violations `0`.
 - Live prompt eval: `7/7` cases passed; the OpenRealm golden subset passed
   `6/6`; model adapter requests `7`, successes `7`, failures `0`, timeouts
-  `0`; retained artifact generated at `2026-07-01T09:24:14Z`.
+  `0`; retained artifact generated at `2026-07-01T09:41:22Z`.
 - Player-loop check: `Nova, options` returns pending build choices and the
   selected candidate from runtime state without world mutation. Each executable
   option carries an `openrealm.plan.v1` safety/preview contract.
@@ -28,7 +28,8 @@ Latest post-deploy gate:
   `player_agent_loop_review_traces_checked = true`, with public-safe
   `natural_chat_review` traces retained for `Nova, options`,
   `Nova, pending plan`, `Nova, no`, and the after-discard
-  `no_pending_approval` review turn.
+  `no_pending_approval` review turn. The top-level quality gate also exposes
+  `live_prompt_eval_player_agent_loop_review_traces_checked = true`.
 - OpenRealm structure apply path: generated Agents SDK build options with an
   `openrealm.plan.v1` placement plan now become non-mutating previews first and
   rollback-backed `openrealm.structure.apply` tasks only after approval.
