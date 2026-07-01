@@ -570,6 +570,41 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
                 "danger_refusal_allowed": False,
             },
         }
+    generated = generated_expected_outcome(candidate, observed)
+    if generated is not None:
+        return generated
+    if agentic_nova_sidecar and any(word in lower for word in ("cabin", "house", "home", "hut", "shelter")):
+        build_kind = "cabin" if "cabin" in lower or "hut" in lower else "house"
+        material = _expected_material_hint(lower, observed, default="wood")
+        writes = safe_int(observed.get("planned_node_writes"), minimum=1) or 1
+        return {
+            "case_hint": f"prompt_shaped_{build_kind}",
+            "ready_for_prompt_eval": True,
+            "review_status": "candidate_ready",
+            "expected": {
+                "action": "build",
+                "route": "agentic_build_planner",
+                "build_kind": build_kind,
+                "build_material_name": material,
+                "planned_node_writes": writes,
+                "forbidden_extra_structure": True,
+            },
+        }
+    if agentic_nova_sidecar and any(word in lower for word in ("amazing", "awesome", "epic", "cool", "surprising", "surprise")):
+        material = _expected_material_hint(lower, observed, default="quartz")
+        writes = safe_int(observed.get("planned_node_writes"), minimum=1) or 1
+        return {
+            "case_hint": "creative_landmark",
+            "ready_for_prompt_eval": True,
+            "review_status": "candidate_ready",
+            "expected": {
+                "action": "build",
+                "route": "agentic_build_planner",
+                "build_kind": "landmark",
+                "build_material_name": material,
+                "planned_node_writes": writes,
+            },
+        }
     if "fire" in lower:
         return {
             "case_hint": "build_fire",
@@ -583,9 +618,6 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
                 "forbidden_extra_structure": True,
             },
         }
-    generated = generated_expected_outcome(candidate, observed)
-    if generated is not None:
-        return generated
     if route == "agentic_build_planner":
         return {
             "case_hint": "agentic_build_planner_review",
@@ -614,6 +646,52 @@ def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, An
         "review_status": "needs_operator_label",
         "expected": {"operator_must_label_expected_behavior": True},
     }
+
+
+def _expected_material_hint(prompt_lower: str, observed: dict[str, Any], *, default: str) -> str:
+    material_words = (
+        "black_glass",
+        "blackstone",
+        "blue_glass",
+        "blue_wool",
+        "brick",
+        "brown",
+        "cobble",
+        "cyan",
+        "diamond",
+        "dark_green",
+        "fire",
+        "glass",
+        "glow",
+        "gold",
+        "gray",
+        "green",
+        "ice",
+        "iron",
+        "lantern",
+        "lava",
+        "lime",
+        "slime",
+        "magenta",
+        "orange",
+        "pink",
+        "purple",
+        "quartz",
+        "red",
+        "red_glass",
+        "sand",
+        "snow",
+        "stone",
+        "tnt",
+        "water",
+        "white",
+        "wood",
+        "yellow",
+    )
+    for material in sorted(material_words, key=len, reverse=True):
+        if material.replace("_", " ") in prompt_lower or material in prompt_lower:
+            return material
+    return default
 
 
 def adapter_tool_contract_for(candidate: dict[str, Any]) -> dict[str, Any] | None:
@@ -1329,6 +1407,15 @@ def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any]
     reviewed_prompt_memory = safe_reviewed_prompt_memory(entry.get("reviewed_prompt_memory"))
     correction_source = safe_scalar(entry.get("correction_source"))
     contract_satisfied = entry.get("contract_satisfied")
+    observed_build_kind = safe_scalar(entry.get("build_kind")) or safe_scalar(
+        _build_kind_from_sidecar_action(entry, first_action)
+    )
+    observed_material = safe_scalar(entry.get("build_material_name")) or safe_scalar(
+        first_action.get("material")
+    )
+    observed_writes = safe_int(entry.get("planned_node_writes"), minimum=0)
+    if observed_writes is None:
+        observed_writes = _planned_node_writes_from_actions(entry)
     observed_status = "success" if entry.get("ok") is True else "failed"
     if correction_source:
         observed_status = "corrected"
@@ -1353,9 +1440,9 @@ def candidate_from_nova_agent_log_entry(entry: dict[str, Any]) -> dict[str, Any]
             "tool_decision_source": safe_scalar(entry.get("tool_decision_source")),
             "label": safe_scalar(entry.get("label"), 200),
             "action": safe_scalar(first_action.get("type")),
-            "build_kind": safe_scalar(_build_kind_from_sidecar_action(entry, first_action)),
-            "build_material_name": safe_scalar(first_action.get("material")),
-            "planned_node_writes": _planned_node_writes_from_actions(entry),
+            "build_kind": observed_build_kind,
+            "build_material_name": observed_material,
+            "planned_node_writes": observed_writes,
             "selected_option_id": safe_scalar(entry.get("selected_option_id"), 120),
             "selected_candidate_id": safe_scalar(entry.get("selected_option_id"), 120),
             "decision_reason": safe_scalar(entry.get("decision_reason"), 300),

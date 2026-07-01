@@ -516,6 +516,59 @@ def nova_agent_fire_only_option_log_entry():
     }
 
 
+def nova_agent_gold_house_option_log_entry():
+    return {
+        "ts": "2026-06-30T12:16:00Z",
+        "player": "Eval",
+        "prompt": "build a house out of gold",
+        "model": "gpt-5-nano",
+        "source": "agents_sdk_tool_plan",
+        "tool_decision_source": "agents_sdk_submit_nova_plan_tool",
+        "required_tool_calls": ["resolve_build_plan", "submit_nova_plan"],
+        "missing_required_tool_calls": [],
+        "required_tool_calls_satisfied": True,
+        "ok": True,
+        "label": "gold house",
+        "message": "Building a compact gold house.",
+        "selected_option_id": "prompt_shaped_build",
+        "build_kind": "house",
+        "build_material_name": "gold",
+        "planned_node_writes": 220,
+        "decision_reason": "Selected the prompt-shaped house option.",
+        "contract_satisfied": True,
+        "build_options": [
+            {
+                "option_id": "prompt_shaped_build",
+                "source": "local_prompt_shape",
+                "label": "gold house",
+                "build_kind": "house",
+                "build_material_name": "gold",
+                "planned_node_writes": 220,
+                "contract_satisfied": True,
+                "action_count": 4,
+            }
+        ],
+        "actions": [
+            {
+                "type": "hollow_box",
+                "material": "gold",
+                "offset": {"x": 0, "y": 1, "z": 0},
+                "size": {"x": 9, "y": 5, "z": 7},
+            },
+            {
+                "type": "fill_box",
+                "material": "gold",
+                "offset": {"x": 0, "y": 6, "z": 0},
+                "size": {"x": 11, "y": 1, "z": 9},
+            },
+        ],
+        "tool_trace": [
+            {"tool_name": "resolve_build_plan"},
+            {"tool_name": "submit_nova_plan"},
+        ],
+    }
+
+
 def nova_agent_resolved_plan_timeout_log_entry():
     return {
         "ts": "2026-06-30T12:18:00Z",
@@ -1625,6 +1678,64 @@ class AgentEvalQueueTests(unittest.TestCase):
         )
         self.assertFalse(candidate["ready_for_adapter_contract_eval"])
 
+    def test_nova_agent_log_candidate_promotes_prompt_shaped_house_eval(self):
+        module = load_queue_module()
+
+        candidate = module.candidate_from_nova_agent_log_entry(nova_agent_gold_house_option_log_entry())
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["source_kind"], "nova_agent_sidecar_request_response")
+        self.assertEqual(candidate["case_hint"], "prompt_shaped_house")
+        self.assertTrue(candidate["ready_for_prompt_eval"])
+        self.assertEqual(candidate["expected"]["route"], "agentic_build_planner")
+        self.assertEqual(candidate["expected"]["build_kind"], "house")
+        self.assertEqual(candidate["expected"]["build_material_name"], "gold")
+        self.assertEqual(candidate["expected"]["planned_node_writes"], 220)
+        self.assertEqual(candidate["observed"]["build_kind"], "house")
+        self.assertEqual(candidate["observed"]["build_material_name"], "gold")
+        self.assertEqual(candidate["observed"]["planned_node_writes"], 220)
+        self.assertEqual(candidate["observed"]["build_options"][0]["build_kind"], "house")
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "pass")
+
+    def test_legacy_generic_house_trace_still_becomes_named_prompt_eval_backlog(self):
+        module = load_queue_module()
+        entry = nova_agent_resolved_plan_timeout_log_entry()
+        entry["prompt"] = "build a house out of gold"
+        entry["source"] = "agents_sdk_tool_plan"
+        entry["tool_decision_source"] = "agents_sdk_submit_nova_plan_tool"
+        entry["required_tool_calls"] = ["resolve_build_plan", "submit_nova_plan"]
+        entry["missing_required_tool_calls"] = []
+        entry["required_tool_calls_satisfied"] = True
+
+        candidate = module.candidate_from_nova_agent_log_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["case_hint"], "prompt_shaped_house")
+        self.assertTrue(candidate["ready_for_prompt_eval"])
+        self.assertEqual(candidate["expected"]["build_kind"], "house")
+        self.assertEqual(candidate["expected"]["build_material_name"], "gold")
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "pass")
+
+    def test_legacy_generic_creative_trace_becomes_landmark_prompt_eval_backlog(self):
+        module = load_queue_module()
+        entry = nova_agent_resolved_plan_timeout_log_entry()
+        entry["prompt"] = "build something amazing"
+        entry["source"] = "agents_sdk_tool_plan"
+        entry["tool_decision_source"] = "agents_sdk_submit_nova_plan_tool"
+        entry["required_tool_calls"] = ["resolve_build_plan", "submit_nova_plan"]
+        entry["missing_required_tool_calls"] = []
+        entry["required_tool_calls_satisfied"] = True
+
+        candidate = module.candidate_from_nova_agent_log_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["case_hint"], "creative_landmark")
+        self.assertTrue(candidate["ready_for_prompt_eval"])
+        self.assertEqual(candidate["expected"]["route"], "agentic_build_planner")
+        self.assertEqual(candidate["expected"]["build_kind"], "landmark")
+        self.assertEqual(candidate["expected"]["build_material_name"], "quartz")
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "pass")
+
     def test_non_replayable_nova_timeout_trace_requires_review_not_replay(self):
         module = load_queue_module()
 
@@ -1635,6 +1746,9 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertIsNotNone(candidate)
         self.assertEqual(candidate["source_kind"], "nova_agent_sidecar_request_response")
         self.assertEqual(candidate["route"], "agents_sdk_resolved_plan_after_timeout")
+        self.assertEqual(candidate["case_hint"], "prompt_shaped_cabin")
+        self.assertTrue(candidate["ready_for_prompt_eval"])
+        self.assertEqual(candidate["expected"]["build_kind"], "cabin")
         self.assertEqual(candidate["adapter_tool_contract"]["status"], "review")
         self.assertEqual(
             candidate["adapter_tool_contract"]["review_reason"],
@@ -1662,7 +1776,8 @@ class AgentEvalQueueTests(unittest.TestCase):
         self.assertEqual(payload["source_summary"]["candidates_total"], 1)
         self.assertEqual(payload["source_summary"]["ready_for_adapter_contract_eval"], 0)
         self.assertEqual(payload["source_summary"]["adapter_contract_failures_active"], 0)
-        self.assertEqual(payload["source_summary"]["manual_review_required"], 1)
+        self.assertEqual(payload["source_summary"]["manual_review_required"], 0)
+        self.assertEqual(payload["source_summary"]["ready_for_prompt_eval"], 1)
 
     def test_nova_agent_sidecar_candidates_rank_ahead_of_live_probe_evidence(self):
         module = load_queue_module()
