@@ -2440,9 +2440,6 @@ def _complete_generated_build_tool_sequence_from_trace(
     }
     if not required_prefix.issubset(set(names)):
         return None
-    generated_options = _generated_options_from_tool_trace(tool_trace)
-    if not generated_options:
-        return None
     candidate_summary = str(context.get("candidate_summary") or "")
     player_request = str(context.get("player_request") or "").strip()
     if not player_request:
@@ -2451,6 +2448,21 @@ def _complete_generated_build_tool_sequence_from_trace(
         return None
 
     completed_trace = [dict(entry) for entry in tool_trace if isinstance(entry, dict)]
+    generated_options = _generated_options_from_tool_trace(completed_trace)
+    if not generated_options:
+        generated = propose_build_option_payload(candidate_summary, player_request)
+        generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
+        if not isinstance(generated_option, dict) or generated.get("status") != "ready":
+            return None
+        generated_options = [generated_option]
+        completed_trace.append({
+            "tool_name": "propose_build_option",
+            "args": {
+                "candidate_summary": candidate_summary,
+                "player_request": player_request,
+            },
+            "result": _safe_log_value(generated),
+        })
     decisions = _tool_decisions_from_trace(completed_trace)
     selected_option_id = _model_selected_option_id(decisions, completed_trace)
     if not selected_option_id:
