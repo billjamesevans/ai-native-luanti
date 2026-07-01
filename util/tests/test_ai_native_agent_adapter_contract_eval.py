@@ -148,6 +148,12 @@ def fixed_local_fast_path_response(request):
     return response
 
 
+def fixed_generated_completion_response(request):
+    response = fixed_good_response(request)
+    response["response"]["tool_decision_source"] = "agents_sdk_generated_tool_completion"
+    return response
+
+
 class AgentAdapterContractEvalTests(unittest.TestCase):
     def test_replays_ready_adapter_contract_candidate_successfully(self):
         module = load_module(CONTRACT_EVAL, "ai_native_agent_adapter_contract_eval_success")
@@ -187,6 +193,30 @@ class AgentAdapterContractEvalTests(unittest.TestCase):
         )
         self.assertIn(
             "local_agent_tool_contract_fast_path",
+            case["expected"]["tool_decision_sources"],
+        )
+
+    def test_replay_accepts_generated_tool_completion_source(self):
+        module = load_module(
+            CONTRACT_EVAL,
+            "ai_native_agent_adapter_contract_eval_generated_completion",
+        )
+
+        report = module.build_adapter_contract_eval(
+            candidate_queue_payload(),
+            generated_at="2026-06-30T14:10:00Z",
+            request_runner=fixed_generated_completion_response,
+        )
+
+        self.assertEqual(report["status"], "pass")
+        case = report["cases"][0]
+        self.assertTrue(case["ok"])
+        self.assertEqual(
+            case["response"]["tool_decision_source"],
+            "agents_sdk_generated_tool_completion",
+        )
+        self.assertIn(
+            "agents_sdk_generated_tool_completion",
             case["expected"]["tool_decision_sources"],
         )
 

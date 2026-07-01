@@ -850,6 +850,7 @@ def _validate_case(
     if reply.get("adapter_tool_decision_source") not in {
         "agents_sdk_function_tool",
         "agents_sdk_repair_function_tool",
+        "agents_sdk_generated_tool_completion",
         "local_agent_tool_contract_fast_path",
     }:
         raise ValueError(f"nova auto-apply {case_id} did not use agent tool decision")

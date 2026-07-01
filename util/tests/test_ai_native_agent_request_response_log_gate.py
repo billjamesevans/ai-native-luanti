@@ -167,6 +167,35 @@ class AgentRequestResponseLogGateTests(unittest.TestCase):
             "generated_dimensioned_wall",
         )
 
+    def test_accepts_generated_tool_completion_source(self):
+        module = load_gate_module()
+        entries = passing_entries()
+        entries[3]["response"]["response"][
+            "tool_decision_source"
+        ] = "agents_sdk_generated_tool_completion"
+        entries[4]["response"]["response"][
+            "tool_decision_source"
+        ] = "agents_sdk_generated_tool_completion"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = pathlib.Path(tmpdir) / "agents-sdk-model-adapter.jsonl"
+            write_jsonl(log_path, entries)
+
+            report = module.build_report(
+                log_paths=[log_path],
+                generated_at="2026-06-30T20:00:00Z",
+            )
+
+        self.assertEqual(report["status"], "pass", report)
+        by_id = {case["case_id"]: case for case in report["cases"]}
+        self.assertEqual(
+            by_id["generated_build_option"]["observed"]["response"]["tool_decision_source"],
+            "agents_sdk_generated_tool_completion",
+        )
+        self.assertEqual(
+            by_id["generated_dimensioned_wall"]["observed"]["response"]["tool_decision_source"],
+            "agents_sdk_generated_tool_completion",
+        )
+
     def test_fails_when_fire_only_selects_generic_structure(self):
         module = load_gate_module()
         entries = passing_entries()

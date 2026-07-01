@@ -1242,6 +1242,27 @@ class AgentEvalQueueTests(unittest.TestCase):
             candidate["adapter_tool_contract"]["expected"]["tool_decision_sources"],
         )
 
+    def test_generated_tool_completion_can_be_prompt_eval_candidate(self):
+        module = load_queue_module()
+        entry = agents_sdk_generated_option_entry()
+        entry["response"]["response"]["tool_decision_source"] = "agents_sdk_generated_tool_completion"
+
+        candidate = module.candidate_from_agents_sdk_entry(entry)
+
+        self.assertIsNotNone(candidate)
+        self.assertEqual(candidate["case_hint"], "generated_dimensioned_wall")
+        self.assertTrue(candidate["ready_for_prompt_eval"])
+        self.assertFalse(candidate["ready_for_adapter_contract_eval"])
+        self.assertEqual(
+            candidate["observed"]["tool_decision_source"],
+            "agents_sdk_generated_tool_completion",
+        )
+        self.assertEqual(candidate["adapter_tool_contract"]["status"], "pass")
+        self.assertIn(
+            "agents_sdk_generated_tool_completion",
+            candidate["adapter_tool_contract"]["expected"]["tool_decision_sources"],
+        )
+
     def test_request_response_log_gate_cases_become_prompt_eval_candidates(self):
         module = load_queue_module()
         with tempfile.TemporaryDirectory() as tmpdir:

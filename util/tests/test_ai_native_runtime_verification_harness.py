@@ -1494,6 +1494,12 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 4)
             self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 4)
 
+            generated_completion_source = json.loads(json.dumps(payload))
+            generated_completion_source["prompt_eval"]["cases"][3][
+                "adapter_tool_decision_source"
+            ] = "agents_sdk_generated_tool_completion"
+            probe.validate_live_result(generated_completion_source)
+
             missing_tool = json.loads(json.dumps(payload))
             missing_tool["prompt_eval"]["cases"][0]["adapter_tool_trace_names"] = [
                 "recall_build_prompt_memory",

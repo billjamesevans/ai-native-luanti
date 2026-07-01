@@ -17,6 +17,7 @@ DEFAULT_MAX_BYTES = 30000
 ACCEPTED_TOOL_DECISION_SOURCES = {
     "agents_sdk_function_tool",
     "agents_sdk_repair_function_tool",
+    "agents_sdk_generated_tool_completion",
     "local_agent_tool_contract_fast_path",
 }
 BASE_REQUIRED_TOOLS = {
