@@ -61,6 +61,11 @@ Current Pi gate evidence:
   structure placement plan. Luanti converts that into a non-mutating preview
   first, then queues a rollback-backed `openrealm.structure.apply` task only
   after approval.
+- New local adapter contract evidence: the checked-in OpenRealm creator kernel
+  now backs the "cozy lakeside village with floating lanterns" prompt, producing
+  `generated_openrealm_lakeside_village` with `96` runtime-safe placements
+  mapped to `ai_runtime_base:stone`, `ai_runtime_base:wood`,
+  `ai_runtime_base:glass`, and `ai_runtime_base:glow`.
 
 ## Phase 2: Luminara Creator Playground
 

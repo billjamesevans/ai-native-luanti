@@ -45,4 +45,10 @@ repeatable public-safe evidence.
 - Player-loop option review: `Nova, options` returns selected and alternate
   pending build choices from runtime state, including an `openrealm.plan.v1`
   safety/preview contract for each executable option.
+- Adapter template generation: the Agents SDK sidecar can now turn "Build a
+  cozy lakeside village with floating lanterns" into a bounded
+  `generated_openrealm_lakeside_village` option with a 96-placement
+  `openrealm.plan.v1` structure plan using registered `ai_runtime_base:*`
+  placeholder nodes. This is contract-tested but is not yet part of the live
+  enforced golden subset.
 - Blocking gate: `python3 util/ai_native_agent_quality_gate.py ... --require-live-prompt-eval`

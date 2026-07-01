@@ -250,6 +250,103 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
         self.assertTrue(recommendation["requires_approval"])
         self.assertFalse(recommendation["direct_world_mutation"])
 
+    def test_openrealm_structure_prompt_generates_template_plan(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        candidate_summary = "platform:platform:default:4|wall:wall:default:12|marker:marker:default:1"
+        player_request = "Build a cozy lakeside village with floating lanterns"
+        proposal = module.propose_build_option_payload(candidate_summary, player_request)
+        generated_option = proposal["generated_option"]
+        self.assertIsNotNone(generated_option)
+        openrealm_plan = generated_option["openrealm_plan"]
+        selection = module.select_build_option_payload(
+            candidate_summary,
+            generated_option["option_id"],
+            player_request,
+            "the generated OpenRealm plan matches the requested village",
+            [generated_option],
+        )
+        action_plan = module.plan_build_actions_payload(
+            candidate_summary,
+            player_request,
+            generated_option["option_id"],
+            [generated_option],
+        )
+
+        self.assertEqual(proposal["status"], "ready")
+        self.assertEqual(generated_option["option_id"], "generated_openrealm_lakeside_village")
+        self.assertEqual(generated_option["build_kind"], "openrealm_structure")
+        self.assertEqual(generated_option["build_material_name"], "openrealm_template")
+        self.assertGreater(generated_option["planned_node_writes"], 60)
+        self.assertLessEqual(generated_option["planned_node_writes"], 240)
+        self.assertEqual(openrealm_plan["schema_version"], "openrealm.plan.v1")
+        self.assertEqual(openrealm_plan["product"], "OpenRealm")
+        self.assertEqual(openrealm_plan["assistant"], "Nova")
+        self.assertEqual(openrealm_plan["plan_kind"], "structure")
+        self.assertEqual(openrealm_plan["title"], "Cozy Lakeside Village")
+        self.assertFalse(
+            openrealm_plan["safety_budget"]["ai_direct_world_mutation_allowed"]
+        )
+        self.assertTrue(openrealm_plan["safety_budget"]["requires_preview"])
+        self.assertTrue(openrealm_plan["safety_budget"]["requires_approval"])
+        self.assertTrue(openrealm_plan["safety_budget"]["rollback_required"])
+        placements = openrealm_plan["structures"][0]["placements"]
+        self.assertEqual(len(placements), generated_option["planned_node_writes"])
+        nodes = {placement["node"] for placement in placements}
+        self.assertIn("ai_runtime_base:stone", nodes)
+        self.assertIn("ai_runtime_base:wood", nodes)
+        self.assertIn("ai_runtime_base:glow", nodes)
+        self.assertNotIn("openrealm_lakeside_village:realmstone", nodes)
+        self.assertEqual(selection["selected_option_id"], generated_option["option_id"])
+        self.assertEqual(selection["selection_status"], "accepted")
+        self.assertEqual(selection["decision_source"], "agent_selected_generated_build_option")
+        self.assertEqual(selection["generated_option"], generated_option)
+        self.assertEqual(action_plan["status"], "ready")
+        self.assertEqual(action_plan["selected_option_id"], generated_option["option_id"])
+        self.assertEqual(action_plan["build_kind"], "openrealm_structure")
+        self.assertEqual(action_plan["planned_node_writes"], generated_option["planned_node_writes"])
+        self.assertEqual(action_plan["world_mutation_authority"], "luanti")
+        self.assertFalse(action_plan["direct_world_mutation"])
+
+    def test_offline_build_planning_response_exposes_openrealm_generated_option(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "\n".join([
+            "Plan a Luanti build request using only the listed executable options.",
+            "Player request: Build a cozy lakeside village with floating lanterns",
+            "Options:",
+            "- platform: Small platform kind=platform material=default planned_writes=4",
+            "- wall: Small wall kind=wall material=default planned_writes=12",
+        ])
+        request["context"] = {
+            "intent": "build_planning",
+            "surface_id": "builder",
+            "capabilities": "world.read,http.llm,world.place,task.cancel,import.assets,world.batch",
+            "candidate_summary": "platform:platform:default:4|wall:wall:default:12|marker:marker:default:1",
+            "player_request": "Build a cozy lakeside village with floating lanterns",
+        }
+
+        response = module.run_model_adapter_request(request, force_offline=True)
+        body = response["response"]
+        self.assertIn("generated_build_option", body)
+        generated = body["generated_build_option"]
+
+        self.assertTrue(response["ok"])
+        self.assertEqual(body["selected_option_id"], "generated_openrealm_lakeside_village")
+        self.assertEqual(generated["option_id"], "generated_openrealm_lakeside_village")
+        self.assertEqual(generated["openrealm_plan"]["schema_version"], "openrealm.plan.v1")
+        self.assertEqual(body["build_action_plan"]["selected_option_id"], generated["option_id"])
+        self.assertEqual(body["world_mutation_authority"], "luanti")
+
     def test_agent_authored_generated_option_flows_through_build_tools(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)

@@ -82,7 +82,11 @@ Important files:
   planned writes, and optional `openrealm.plan.v1` placement plan before it can
   become a pending preview. Luanti turns accepted OpenRealm placement plans into
   approval-gated `openrealm.structure.apply` tasks; the sidecar still has no
-  direct world-mutation authority.
+  direct world-mutation authority. The current OpenRealm template path uses the
+  checked-in `openrealm_creator_kernel` for prompts such as "Build a cozy
+  lakeside village with floating lanterns", emits a bounded `openrealm.plan.v1`
+  structure plan, and maps custom kit nodes to registered `ai_runtime_base:*`
+  placeholder nodes so the clean runtime can preview and apply it.
 - `main.py`: HTTP service with `GET /health` and `POST /v1/model-adapter`.
 - `pyproject.toml`: declares `openai-agents`.
 

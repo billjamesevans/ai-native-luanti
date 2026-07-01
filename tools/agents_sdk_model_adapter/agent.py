@@ -11,6 +11,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 import time
 from typing import Any
 
@@ -76,6 +77,7 @@ GENERATED_BUILD_KINDS = {
     "house",
     "cabin",
     "landmark",
+    "openrealm_structure",
 }
 GENERATED_BUILD_MATERIALS = {
     "default",
@@ -88,19 +90,41 @@ GENERATED_BUILD_MATERIALS = {
     "glass",
     "diamond",
     "glow",
+    "openrealm_template",
 }
+OPENREALM_RUNTIME_NODE_BY_HINT = {
+    "realmstone": "ai_runtime_base:stone",
+    "stone": "ai_runtime_base:stone",
+    "cobble": "ai_runtime_base:stone",
+    "realmwood": "ai_runtime_base:wood",
+    "wood": "ai_runtime_base:wood",
+    "lantern": "ai_runtime_base:glow",
+    "light": "ai_runtime_base:glow",
+    "glow": "ai_runtime_base:glow",
+    "glass": "ai_runtime_base:glass",
+}
+OPENREALM_STRUCTURE_WORDS = (
+    "openrealm",
+    "village",
+    "lakeside",
+    "lantern",
+    "floating lantern",
+)
 GENERATED_SHAPE_REQUEST_WORDS = (
     "tower",
     "tall",
+    "village",
     "bridge",
     "road",
     "path",
     "walkway",
+    "dock",
     "shelter",
     "house",
     "home",
     "cabin",
     "hut",
+    "castle",
     "base",
     "floor",
     "room",
@@ -760,6 +784,170 @@ def _generated_build_budget(candidates: list[dict[str, Any]]) -> int:
     return max(1, min(32, candidate_budget))
 
 
+def _openrealm_creator_plan_from_prompt(prompt: str) -> dict[str, Any] | None:
+    repo_root = Path(__file__).resolve().parents[2]
+    kit_path = repo_root / "openrealm_advantage_kit"
+    if not kit_path.is_dir():
+        return None
+    kit_path_text = str(kit_path)
+    inserted = False
+    if kit_path_text not in sys.path:
+        sys.path.insert(0, kit_path_text)
+        inserted = True
+    try:
+        from openrealm_creator_kernel.planner import plan_from_prompt
+
+        plan = plan_from_prompt(prompt)
+        payload = plan.to_dict()
+        return payload if isinstance(payload, dict) else None
+    except Exception:
+        return None
+    finally:
+        if inserted:
+            try:
+                sys.path.remove(kit_path_text)
+            except ValueError:
+                pass
+
+
+def _openrealm_runtime_node_name(node_name: Any) -> str:
+    raw = str(node_name or "").lower()
+    suffix = raw.rsplit(":", 1)[-1]
+    for hint, runtime_node in OPENREALM_RUNTIME_NODE_BY_HINT.items():
+        if hint in suffix:
+            return runtime_node
+    return "ai_runtime_base:stone"
+
+
+def _openrealm_public_placements(
+    structures: Any,
+    *,
+    budget: int,
+) -> tuple[list[dict[str, Any]], int]:
+    public_structures: list[dict[str, Any]] = []
+    remaining = max(1, min(240, int(budget or 1)))
+    total = 0
+    if not isinstance(structures, list):
+        return [], 0
+    for index, structure in enumerate(structures, start=1):
+        if not isinstance(structure, dict) or remaining <= 0:
+            continue
+        placements = structure.get("placements")
+        if not isinstance(placements, list):
+            continue
+        public_placements: list[dict[str, Any]] = []
+        for placement in placements:
+            if not isinstance(placement, dict) or remaining <= 0:
+                break
+            try:
+                x = int(placement.get("x"))
+                y = int(placement.get("y"))
+                z = int(placement.get("z"))
+            except (TypeError, ValueError):
+                continue
+            if max(abs(x), abs(y), abs(z)) > 32:
+                continue
+            public_placements.append({
+                "x": x,
+                "y": y,
+                "z": z,
+                "node": _openrealm_runtime_node_name(placement.get("node")),
+            })
+            remaining -= 1
+            total += 1
+        if public_placements:
+            public_structures.append({
+                "name": _bounded_text(
+                    structure.get("name") or f"structure_{index}",
+                    80,
+                ),
+                "description": _bounded_text(
+                    structure.get("description")
+                    or "Template-generated OpenRealm structure.",
+                    240,
+                ),
+                "max_radius": min(32, int(structure.get("max_radius") or 32)),
+                "placements": public_placements,
+            })
+    return public_structures, total
+
+
+def _openrealm_generated_structure_option(
+    player_request: str,
+    *,
+    budget: int,
+) -> dict[str, Any] | None:
+    request = str(player_request or "")
+    lowered = request.lower()
+    if not any(word in lowered for word in OPENREALM_STRUCTURE_WORDS):
+        return None
+    plan = _openrealm_creator_plan_from_prompt(request)
+    if not isinstance(plan, dict) or plan.get("plan_kind") != "structure":
+        return None
+    public_structures, placement_count = _openrealm_public_placements(
+        plan.get("structures"),
+        budget=budget,
+    )
+    if placement_count <= 0:
+        return None
+    safety_budget = plan.get("safety_budget") if isinstance(plan.get("safety_budget"), dict) else {}
+    title = _bounded_text(plan.get("title") or "OpenRealm Structure", 120)
+    slug = re.sub(r"[^a-z0-9_]+", "_", str(plan.get("mod_name") or title).lower()).strip("_")
+    slug = slug.replace("openrealm_", "", 1) or "structure"
+    openrealm_plan = {
+        "schema_version": "openrealm.plan.v1",
+        "product": "OpenRealm",
+        "assistant": "Nova",
+        "plan_id": _bounded_text(plan.get("plan_id") or f"orplan_{slug[:12]}", 80),
+        "plan_kind": "structure",
+        "title": title,
+        "source_prompt": _bounded_text(plan.get("source_prompt") or request, 2000),
+        "mod_name": _bounded_text(plan.get("mod_name") or f"openrealm_{slug}", 80),
+        "summary": _bounded_text(
+            plan.get("summary")
+            or "Template-generated OpenRealm structure plan.",
+            1000,
+        ),
+        "tags": ["structure", "preview", "rollback", "template-generated", "nova"],
+        "safety_budget": {
+            "max_node_definitions": int(safety_budget.get("max_node_definitions") or 0),
+            "max_structure_nodes": placement_count,
+            "requires_preview": True,
+            "requires_approval": True,
+            "rollback_required": True,
+            "ai_direct_world_mutation_allowed": False,
+        },
+        "structures": public_structures,
+        "approval_steps": [
+            "Review generated OpenRealm placement plan.",
+            "Approve in-world before mutation.",
+            "Use rollback if the result is not wanted.",
+        ],
+        "ai_disclosure": {
+            "ai_assisted": True,
+            "assistant_name": "Nova",
+            "human_approval_required": True,
+            "direct_world_mutation_by_ai": False,
+            "generated_code_is_template_based": True,
+        },
+        "provenance": {
+            "generator": "openrealm_creator_kernel",
+            "generator_version": "0.1.0",
+            "source": "agentic_openrealm_template",
+            "runtime_node_mapping": "ai_runtime_base_safe_placeholders",
+        },
+    }
+    return {
+        "option_id": f"generated_openrealm_{slug}",
+        "label": title,
+        "reason": "template-generated OpenRealm structure plan with runtime-safe placements",
+        "build_kind": "openrealm_structure",
+        "build_material_name": "openrealm_template",
+        "planned_node_writes": placement_count,
+        "openrealm_plan": openrealm_plan,
+    }
+
+
 def _bounded_generated_dims(width: int, depth_or_height: int, budget: int) -> tuple[int, int]:
     width = max(1, int(width))
     depth_or_height = max(1, int(depth_or_height))
@@ -1149,6 +1337,24 @@ def propose_build_option_payload(
             "status": "not_needed",
             "reason": "fixed_tnt_candidate_preferred",
             "generated_option": None,
+            "direct_world_mutation": False,
+            "policy": "luanti_validates_generated_options_before_preview",
+        }
+
+    openrealm_option = _openrealm_generated_structure_option(
+        player_request,
+        budget=96,
+    )
+    if isinstance(openrealm_option, dict):
+        return {
+            "status": "ready",
+            "reason": "openrealm_template_plan_requires_luanti_validation",
+            "generated_option": openrealm_option,
+            "candidate_count": len(candidates),
+            "build_budget": openrealm_option["planned_node_writes"],
+            "requires_preview": True,
+            "requires_approval": True,
+            "requires_rollback": True,
             "direct_world_mutation": False,
             "policy": "luanti_validates_generated_options_before_preview",
         }
@@ -2132,6 +2338,18 @@ def _selected_option_id(decisions: dict[str, Any]) -> str | None:
     return None
 
 
+def _generated_build_option_from_decisions(
+    decisions: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if not isinstance(decisions, dict):
+        return None
+    build_option = decisions.get("build_option")
+    if not isinstance(build_option, dict):
+        return None
+    generated = build_option.get("generated_option")
+    return generated if isinstance(generated, dict) else None
+
+
 def _model_selected_option_id(
     decisions: dict[str, Any] | None,
     tool_trace: Any,
@@ -2917,6 +3135,7 @@ def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
     prompt = _bounded_text(request.get("public_prompt"), 400)
     tool_decisions = _tool_decisions_for_request(request)
     required_tools = _required_tool_names_for_request(request, tool_decisions)
+    generated_build_option = _generated_build_option_from_decisions(tool_decisions)
     return {
         "schema_version": 1,
         "response_kind": "ai_native_model_adapter_response",
@@ -2936,6 +3155,7 @@ def _offline_fallback(request: dict[str, Any], reason: str) -> dict[str, Any]:
             "selected_option_id": _selected_option_id(tool_decisions),
             "build_action_plan": tool_decisions.get("build_action_plan")
                 if isinstance(tool_decisions, dict) else None,
+            "generated_build_option": generated_build_option,
             "required_tool_calls": required_tools,
             "missing_required_tool_calls": required_tools,
             "required_tool_calls_satisfied": not required_tools,
@@ -3137,6 +3357,7 @@ def run_model_adapter_request(
                         decision_source = _adapter_fallback_decision_source(repair_reason)
 
     final_selected_option_id = _selected_option_id(tool_decisions)
+    generated_build_option = _generated_build_option_from_decisions(tool_decisions)
     intent_constraint = _intent_constraint_for_request(request)
     rejected_model_selected_option_id = None
     if (
@@ -3184,6 +3405,7 @@ def run_model_adapter_request(
             "initial_missing_required_tool_calls": initial_missing_required_tools,
             "build_action_plan": tool_decisions.get("build_action_plan")
                 if isinstance(tool_decisions, dict) else None,
+            "generated_build_option": generated_build_option,
             "intent_constraint_option_id": intent_constraint.get("option_id")
                 if isinstance(intent_constraint, dict) else None,
             "intent_constraint_reason": intent_constraint.get("reason")
