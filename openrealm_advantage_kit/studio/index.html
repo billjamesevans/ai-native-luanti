@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenRealm Creator Studio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <main class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">OR</div>
+        <div>
+          <h1>OpenRealm</h1>
+          <p>Creator Studio</p>
+        </div>
+      </div>
+      <nav>
+        <button class="nav-item active">Playground</button>
+        <button class="nav-item">World Recipes</button>
+        <button class="nav-item">Mods</button>
+        <button class="nav-item">Host</button>
+      </nav>
+      <section class="principles">
+        <h2>Nova Rules</h2>
+        <p><strong>1.</strong> AI proposes. The runtime mutates.</p>
+        <p><strong>2.</strong> Every build is previewed.</p>
+        <p><strong>3.</strong> Approval is explicit.</p>
+        <p><strong>4.</strong> Rollback is always captured.</p>
+      </section>
+    </aside>
+
+    <section class="workspace">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">AI-native voxel creation</p>
+          <h2>Describe a world. Preview it. Build it safely.</h2>
+        </div>
+        <div class="status-pill"><span></span> Local planner ready</div>
+      </header>
+
+      <section class="prompt-card glass">
+        <label for="prompt">Prompt Nova</label>
+        <textarea id="prompt" rows="3">Build a cozy lakeside village with floating lanterns</textarea>
+        <div class="prompt-actions">
+          <select id="preset">
+            <option value="Build a cozy lakeside village with floating lanterns">Cozy lakeside village</option>
+            <option value="Make this biome feel like Glacier National Park with trails and cabins">Glacier-inspired biome</option>
+            <option value="Create a glowing portal garden with pine trees">Portal garden</option>
+            <option value="Build a stone bridge across this river with lanterns">Stone bridge</option>
+            <option value="Build a lookout tower near a lake">Lookout tower</option>
+          </select>
+          <button id="generate" class="primary">Generate plan</button>
+          <button id="approve" class="success" disabled>Approve and build</button>
+          <button id="undo" disabled>Undo last build</button>
+        </div>
+      </section>
+
+      <section class="grid">
+        <section class="preview glass">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Preview</p>
+              <h3 id="preview-title">No plan yet</h3>
+            </div>
+            <div id="risk" class="risk low">LOW RISK</div>
+          </div>
+          <canvas id="world" width="980" height="620"></canvas>
+        </section>
+
+        <section class="plan glass">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Nova plan</p>
+              <h3 id="plan-summary">Waiting for prompt</h3>
+            </div>
+          </div>
+          <div class="metrics" id="metrics"></div>
+          <ol id="plan-list" class="plan-list"></ol>
+          <div class="export-row">
+            <button id="export-json" disabled>Export recipe JSON</button>
+            <button id="export-lua" disabled>Export Lua mod</button>
+          </div>
+        </section>
+      </section>
+
+      <section class="bottom-grid">
+        <section class="glass">
+          <div class="section-head compact">
+            <h3>Audit log</h3>
+          </div>
+          <div id="audit" class="audit"></div>
+        </section>
+        <section class="glass">
+          <div class="section-head compact">
+            <h3>World recipe</h3>
+          </div>
+          <pre id="recipe" class="recipe"></pre>
+        </section>
+      </section>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

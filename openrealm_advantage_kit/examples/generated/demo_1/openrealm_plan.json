@@ -1,0 +1,191 @@
+{
+  "schema_version": "openrealm.plan.v1",
+  "product": "OpenRealm",
+  "assistant": "Nova",
+  "plan_id": "orplan_de3e999337af",
+  "plan_kind": "ore_mod",
+  "title": "Moonstone Ore Pack",
+  "source_prompt": "Add a new ore called moonstone that spawns below level -200 and crafts a glowing sword",
+  "created_at": "2026-07-01T04:37:46Z",
+  "mod_name": "openrealm_moonstone",
+  "summary": "Adds Moonstone ore, crystal, block, glowing sword, recipes, ore generation, and a tiny preview shrine.",
+  "tags": [
+    "ore",
+    "tool",
+    "recipe",
+    "template-generated",
+    "nova"
+  ],
+  "safety_budget": {
+    "max_node_definitions": 32,
+    "max_craft_items": 32,
+    "max_tools": 16,
+    "max_recipes": 32,
+    "max_ores": 16,
+    "max_structures": 8,
+    "max_structure_nodes": 256,
+    "requires_preview": true,
+    "requires_approval": true,
+    "rollback_required": true,
+    "ai_direct_world_mutation_allowed": false
+  },
+  "nodes": [
+    {
+      "name": "moonstone_ore",
+      "description": "Moonstone Ore",
+      "texture_hint": "deep violet stone with cyan crystal flecks",
+      "groups": {
+        "cracky": 2,
+        "ore": 1
+      },
+      "light_source": 8,
+      "drawtype": "normal",
+      "paramtype": null,
+      "walkable": true
+    },
+    {
+      "name": "moonstone_block",
+      "description": "Moonstone Block",
+      "texture_hint": "polished luminous moon crystal block",
+      "groups": {
+        "cracky": 1,
+        "level": 2
+      },
+      "light_source": 10,
+      "drawtype": "normal",
+      "paramtype": null,
+      "walkable": true
+    }
+  ],
+  "craft_items": [
+    {
+      "name": "moonstone_crystal",
+      "description": "Moonstone Crystal",
+      "inventory_image_hint": "single glowing cyan violet crystal"
+    }
+  ],
+  "tools": [
+    {
+      "name": "moonstone_glowing_sword",
+      "description": "Moonstone Glowing Sword",
+      "inventory_image_hint": "short glowing sword with violet blade",
+      "damage_groups": {
+        "fleshy": 8
+      },
+      "full_punch_interval": 0.7
+    }
+  ],
+  "recipes": [
+    {
+      "output": "openrealm_moonstone:moonstone_block",
+      "recipe": [
+        [
+          "openrealm_moonstone:moonstone_crystal",
+          "openrealm_moonstone:moonstone_crystal",
+          "openrealm_moonstone:moonstone_crystal"
+        ],
+        [
+          "openrealm_moonstone:moonstone_crystal",
+          "openrealm_moonstone:moonstone_crystal",
+          "openrealm_moonstone:moonstone_crystal"
+        ],
+        [
+          "openrealm_moonstone:moonstone_crystal",
+          "openrealm_moonstone:moonstone_crystal",
+          "openrealm_moonstone:moonstone_crystal"
+        ]
+      ]
+    },
+    {
+      "output": "openrealm_moonstone:moonstone_glowing_sword",
+      "recipe": [
+        [
+          "openrealm_moonstone:moonstone_crystal"
+        ],
+        [
+          "openrealm_moonstone:moonstone_crystal"
+        ],
+        [
+          "default:stick"
+        ]
+      ]
+    }
+  ],
+  "ores": [
+    {
+      "ore": "openrealm_moonstone:moonstone_ore",
+      "wherein": "default:stone",
+      "clust_scarcity": 729,
+      "clust_num_ores": 5,
+      "clust_size": 3,
+      "y_min": -31000,
+      "y_max": -200
+    }
+  ],
+  "structures": [
+    {
+      "name": "moonstone_shrine",
+      "description": "Tiny safe showcase shrine for Moonstone.",
+      "placements": [
+        {
+          "x": 0,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_moonstone:moonstone_block"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_moonstone:moonstone_block"
+        },
+        {
+          "x": -1,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_moonstone:moonstone_block"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_moonstone:moonstone_block"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_moonstone:moonstone_block"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 0,
+          "node": "openrealm_moonstone:moonstone_ore"
+        }
+      ],
+      "max_radius": 32
+    }
+  ],
+  "world_recipe": {},
+  "approval_steps": [
+    "Review generated OpenRealm plan.",
+    "Inspect preview and node/write budget.",
+    "Install only in a disposable test world first.",
+    "Approve in-world command before mutation.",
+    "Use rollback command if result is not wanted."
+  ],
+  "ai_disclosure": {
+    "ai_assisted": true,
+    "assistant_name": "Nova",
+    "human_approval_required": true,
+    "direct_world_mutation_by_ai": false,
+    "generated_code_is_template_based": true
+  },
+  "provenance": {
+    "generator": "openrealm_creator_kernel",
+    "generator_version": "0.1.0",
+    "created_by": "local_operator",
+    "source": "prompt"
+  }
+}

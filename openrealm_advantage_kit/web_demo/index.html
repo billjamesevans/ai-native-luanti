@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>OpenRealm Creator Demo</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <main class="shell">
+    <aside>
+      <div class="logo">OpenRealm</div>
+      <button class="active">Create</button>
+      <button>Worlds</button>
+      <button>Mods</button>
+      <button>Host</button>
+      <button>Community</button>
+    </aside>
+    <section class="content">
+      <p class="eyebrow">AI-native open-source voxel creator</p>
+      <h1>Describe a world. Preview the plan. Build with confidence.</h1>
+      <div class="composer">
+        <textarea id="prompt">Build a cozy lakeside village with floating lanterns</textarea>
+        <button id="generate">Generate safe plan</button>
+      </div>
+      <div class="grid">
+        <article class="card">
+          <h2>Nova Plan</h2>
+          <ol id="steps"></ol>
+        </article>
+        <article class="card">
+          <h2>Safety</h2>
+          <ul id="safety"></ul>
+        </article>
+        <article class="card wide">
+          <h2>Preview</h2>
+          <div id="preview"></div>
+        </article>
+      </div>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

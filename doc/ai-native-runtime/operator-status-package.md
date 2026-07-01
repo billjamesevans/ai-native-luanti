@@ -170,11 +170,11 @@ or touch family-server task state.
 
 `util/ai_native_operator_task_control_command_probe.py` launches a disposable `ai_runtime` world,
 seeds bounded command-probe tasks, calls the registered `/ai_runtime_operator_task_control`
-function with a compact receipt, and writes `ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`:
+function with a compact receipt, and writes `ai-runtime-operator-task-control-command-result.json`:
 
 ```sh
 python3 util/ai_native_operator_task_control_command_probe.py \
-  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json \
+  --output local/benchmarks/local-mac/2026-06-29/run/ai-runtime-operator-task-control-command-result.json \
   --generated-at 2026-06-29T00:00:00Z
 ```
 
@@ -184,7 +184,7 @@ promotion execution, no world mutation, no raw assets, no provider prompts, no f
 coordinates, and no family-server control. `util/ai_native_runtime_verify.py` records it separately
 from the disposable live queue probe as `operator_task_control_command_evidence`, including artifact
 path, output bytes, decision count, executed/rejected totals, command name, and world-mutation
-status. The result is bounded by `--operator-taREDACTED_KEY_FIXTURE`.
+status. The result is bounded by `--operator-task-control-command-result-max-bytes`.
 
 ## Product Use
 

@@ -1,0 +1,40 @@
+{
+  "schema_version": "openrealm.audit_manifest.v1",
+  "plan_id": "orplan_6b7bce3f2b40",
+  "title": "Glacier Alpine Biome",
+  "mod_name": "openrealm_glacier_biome",
+  "safety_ok": true,
+  "issues": [],
+  "budgets": {
+    "max_node_definitions": 32,
+    "max_craft_items": 32,
+    "max_tools": 16,
+    "max_recipes": 32,
+    "max_ores": 16,
+    "max_structures": 8,
+    "max_structure_nodes": 256,
+    "requires_preview": true,
+    "requires_approval": true,
+    "rollback_required": true,
+    "ai_direct_world_mutation_allowed": false
+  },
+  "ai_disclosure": {
+    "ai_assisted": true,
+    "assistant_name": "Nova",
+    "human_approval_required": true,
+    "direct_world_mutation_by_ai": false,
+    "generated_code_is_template_based": true
+  },
+  "provenance": {
+    "generator": "openrealm_creator_kernel",
+    "generator_version": "0.1.0",
+    "created_by": "local_operator",
+    "source": "prompt"
+  },
+  "mutation_policy": {
+    "preview_required": true,
+    "approval_required": true,
+    "rollback_required": true,
+    "ai_direct_world_mutation": false
+  }
+}

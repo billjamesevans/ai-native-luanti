@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrealm.dev/schemas/openrealm_plan.schema.json",
+  "title": "OpenRealm Plan",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "product",
+    "assistant",
+    "plan_id",
+    "plan_kind",
+    "title",
+    "source_prompt",
+    "mod_name",
+    "summary",
+    "safety_budget",
+    "ai_disclosure",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": "openrealm.plan.v1" },
+    "product": { "const": "OpenRealm" },
+    "assistant": { "const": "Nova" },
+    "plan_id": { "type": "string", "pattern": "^orplan_[a-f0-9]{12}$" },
+    "plan_kind": { "enum": ["structure", "ore_mod", "biome_recipe", "world_recipe"] },
+    "title": { "type": "string", "minLength": 1, "maxLength": 120 },
+    "source_prompt": { "type": "string", "minLength": 1, "maxLength": 2000 },
+    "created_at": { "type": "string" },
+    "mod_name": { "type": "string", "pattern": "^[a-z][a-z0-9_]{1,62}$" },
+    "summary": { "type": "string", "minLength": 1, "maxLength": 1000 },
+    "tags": { "type": "array", "items": { "type": "string" } },
+    "safety_budget": {
+      "type": "object",
+      "required": ["requires_preview", "requires_approval", "rollback_required", "ai_direct_world_mutation_allowed"],
+      "properties": {
+        "max_node_definitions": { "type": "integer", "minimum": 0, "maximum": 256 },
+        "max_structure_nodes": { "type": "integer", "minimum": 0, "maximum": 10000 },
+        "requires_preview": { "const": true },
+        "requires_approval": { "const": true },
+        "rollback_required": { "const": true },
+        "ai_direct_world_mutation_allowed": { "const": false }
+      }
+    },
+    "nodes": { "type": "array" },
+    "craft_items": { "type": "array" },
+    "tools": { "type": "array" },
+    "recipes": { "type": "array" },
+    "ores": { "type": "array" },
+    "structures": { "type": "array" },
+    "world_recipe": { "type": "object" },
+    "approval_steps": { "type": "array", "items": { "type": "string" } },
+    "ai_disclosure": {
+      "type": "object",
+      "required": ["ai_assisted", "human_approval_required", "direct_world_mutation_by_ai", "generated_code_is_template_based"],
+      "properties": {
+        "ai_assisted": { "const": true },
+        "human_approval_required": { "const": true },
+        "direct_world_mutation_by_ai": { "const": false },
+        "generated_code_is_template_based": { "const": true }
+      }
+    },
+    "provenance": { "type": "object" }
+  }
+}

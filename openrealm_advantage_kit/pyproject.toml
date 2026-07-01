@@ -1,0 +1,15 @@
+[project]
+name = "openrealm-advantage-kit"
+version = "0.1.0"
+description = "AI-native creator kernel prototype for OpenRealm."
+requires-python = ">=3.10"
+authors = [{name = "OpenRealm Prototype"}]
+license = {text = "MIT"}
+
+[project.scripts]
+openrealm-create = "openrealm_creator_kernel.cli:main"
+
+[tool.openrealm]
+assistant = "Nova"
+product = "OpenRealm"
+principles = ["safe", "open", "collaborative"]

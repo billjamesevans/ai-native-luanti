@@ -1,0 +1,139 @@
+{
+  "schema_version": "openrealm.plan.v1",
+  "product": "OpenRealm",
+  "assistant": "Nova",
+  "plan_id": "orplan_6b7bce3f2b40",
+  "plan_kind": "biome_recipe",
+  "title": "Glacier Alpine Biome",
+  "source_prompt": "Make this biome feel like Glacier National Park",
+  "created_at": "2026-07-01T04:37:46Z",
+  "mod_name": "openrealm_glacier_biome",
+  "summary": "Creates a data-first alpine biome recipe with nodes, mood, terrain guidance, quest hooks, and starter assets.",
+  "tags": [
+    "biome",
+    "recipe",
+    "glacier",
+    "template-generated",
+    "nova"
+  ],
+  "safety_budget": {
+    "max_node_definitions": 32,
+    "max_craft_items": 32,
+    "max_tools": 16,
+    "max_recipes": 32,
+    "max_ores": 16,
+    "max_structures": 8,
+    "max_structure_nodes": 256,
+    "requires_preview": true,
+    "requires_approval": true,
+    "rollback_required": true,
+    "ai_direct_world_mutation_allowed": false
+  },
+  "nodes": [
+    {
+      "name": "alpine_stone",
+      "description": "Alpine Stone",
+      "texture_hint": "cool gray mountain stone",
+      "groups": {
+        "cracky": 2,
+        "stone": 1
+      },
+      "light_source": 0,
+      "drawtype": "normal",
+      "paramtype": null,
+      "walkable": true
+    },
+    {
+      "name": "glacier_ice",
+      "description": "Glacier Ice",
+      "texture_hint": "pale blue translucent glacier ice",
+      "groups": {
+        "cracky": 3,
+        "ice": 1
+      },
+      "light_source": 0,
+      "drawtype": "glasslike",
+      "paramtype": "light",
+      "walkable": true
+    },
+    {
+      "name": "pine_needles",
+      "description": "Pine Needles",
+      "texture_hint": "deep green pine foliage",
+      "groups": {
+        "snappy": 3,
+        "leaves": 1
+      },
+      "light_source": 0,
+      "drawtype": "allfaces_optional",
+      "paramtype": "light",
+      "walkable": false
+    },
+    {
+      "name": "trail_marker",
+      "description": "Trail Marker",
+      "texture_hint": "small blue trail sign",
+      "groups": {
+        "choppy": 2
+      },
+      "light_source": 5,
+      "drawtype": "normal",
+      "paramtype": null,
+      "walkable": true
+    }
+  ],
+  "craft_items": [],
+  "tools": [],
+  "recipes": [],
+  "ores": [],
+  "structures": [],
+  "world_recipe": {
+    "recipe_kind": "biome_recipe",
+    "biome_name": "Glacier Alpine Biome",
+    "mood": "clean alpine, family-safe adventure, quiet lakes, bright peaks",
+    "terrain": [
+      "steep valleys",
+      "cold lakes",
+      "waterfalls",
+      "pine forest pockets",
+      "snowy ridges"
+    ],
+    "ambient_sound_plan": [
+      "wind through pines",
+      "distant water",
+      "soft birds"
+    ],
+    "structure_suggestions": [
+      "trailhead cabin",
+      "lake dock",
+      "lookout tower",
+      "stone bridge"
+    ],
+    "quest_hooks": [
+      "find three vista markers",
+      "repair the old bridge",
+      "light the lakeside trail"
+    ],
+    "safety_note": "This is a data recipe. Mapgen integration should remain template-based and approval-gated."
+  },
+  "approval_steps": [
+    "Review generated OpenRealm plan.",
+    "Inspect preview and node/write budget.",
+    "Install only in a disposable test world first.",
+    "Approve in-world command before mutation.",
+    "Use rollback command if result is not wanted."
+  ],
+  "ai_disclosure": {
+    "ai_assisted": true,
+    "assistant_name": "Nova",
+    "human_approval_required": true,
+    "direct_world_mutation_by_ai": false,
+    "generated_code_is_template_based": true
+  },
+  "provenance": {
+    "generator": "openrealm_creator_kernel",
+    "generator_version": "0.1.0",
+    "created_by": "local_operator",
+    "source": "prompt"
+  }
+}

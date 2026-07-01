@@ -71,7 +71,26 @@ See:
 - [Product roadmap](doc/product/roadmap.md)
 - [Canonical demo script](doc/product/demo-script.md)
 - [Golden prompts](doc/product/golden-prompts.md)
+- [Brand library and Advantage Kit](doc/product/brand-library.md)
 - [AI-native runtime](doc/ai-native-runtime/README.md)
+
+## OpenRealm Advantage Kit
+
+The repository now includes
+[`openrealm_advantage_kit/`](openrealm_advantage_kit/) as a prototype library
+for the OpenRealm transformation. It contains the current brand boards, Nova
+architecture diagrams, Creator Studio mockups, a deterministic prompt-to-plan
+kernel, a static studio prototype, schemas, generated examples, and a Luanti
+prototype mod.
+
+Use it as the product/architecture library for the next workstream:
+
+```bash
+cd openrealm_advantage_kit
+python3 -m unittest discover tests
+node --check studio/app.js
+python3 -m openrealm_creator_kernel.cli demo --out out/demo --clean
+```
 
 ## Safety Model
 

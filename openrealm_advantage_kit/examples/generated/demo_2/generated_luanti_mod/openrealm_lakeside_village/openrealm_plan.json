@@ -1,0 +1,1570 @@
+{
+  "schema_version": "openrealm.plan.v1",
+  "product": "OpenRealm",
+  "assistant": "Nova",
+  "plan_id": "orplan_f1368e67b5cb",
+  "plan_kind": "structure",
+  "title": "Cozy Lakeside Village",
+  "source_prompt": "Build a cozy lakeside village with floating lanterns",
+  "created_at": "2026-07-01T04:37:46Z",
+  "mod_name": "openrealm_lakeside_village",
+  "summary": "Creates a bounded starter cozy lakeside village with custom nodes, preview command, build command, and rollback metadata.",
+  "tags": [
+    "structure",
+    "preview",
+    "rollback",
+    "template-generated",
+    "nova"
+  ],
+  "safety_budget": {
+    "max_node_definitions": 32,
+    "max_craft_items": 32,
+    "max_tools": 16,
+    "max_recipes": 32,
+    "max_ores": 16,
+    "max_structures": 8,
+    "max_structure_nodes": 256,
+    "requires_preview": true,
+    "requires_approval": true,
+    "rollback_required": true,
+    "ai_direct_world_mutation_allowed": false
+  },
+  "nodes": [
+    {
+      "name": "realmwood",
+      "description": "OpenRealm Warm Wood",
+      "texture_hint": "warm stylized wood planks",
+      "groups": {
+        "choppy": 2,
+        "wood": 1
+      },
+      "light_source": 0,
+      "drawtype": "normal",
+      "paramtype": null,
+      "walkable": true
+    },
+    {
+      "name": "realmstone",
+      "description": "OpenRealm Smooth Stone",
+      "texture_hint": "soft blue gray stone block",
+      "groups": {
+        "cracky": 2,
+        "stone": 1
+      },
+      "light_source": 0,
+      "drawtype": "normal",
+      "paramtype": null,
+      "walkable": true
+    },
+    {
+      "name": "nova_lantern",
+      "description": "Nova Lantern",
+      "texture_hint": "floating cyan violet lantern",
+      "groups": {
+        "cracky": 1,
+        "light": 1
+      },
+      "light_source": 12,
+      "drawtype": "glasslike",
+      "paramtype": "light",
+      "walkable": false
+    },
+    {
+      "name": "soft_glass",
+      "description": "Soft Blue Glass",
+      "texture_hint": "pale blue glass",
+      "groups": {
+        "cracky": 3,
+        "glass": 1
+      },
+      "light_source": 2,
+      "drawtype": "glasslike",
+      "paramtype": "light",
+      "walkable": true
+    }
+  ],
+  "craft_items": [],
+  "tools": [],
+  "recipes": [],
+  "ores": [],
+  "structures": [
+    {
+      "name": "lakeside_village",
+      "description": "Template-generated Cozy Lakeside Village with previewable bounded placements.",
+      "placements": [
+        {
+          "x": -8,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -8,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -8,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -8,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -8,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -7,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -7,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -7,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -7,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -7,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -6,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -6,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -6,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -6,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -6,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -5,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -5,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -5,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -5,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -5,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -4,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -4,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -4,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -4,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -4,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -8,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -7,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -7,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -5,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -5,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 1,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 1,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 1,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 1,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 1,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 1,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -7,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -7,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -5,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -5,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 2,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 2,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 2,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 2,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 2,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 2,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -7,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -7,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -5,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -5,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 3,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 3,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 3,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 3,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 3,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 3,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:soft_glass"
+        },
+        {
+          "x": -6,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:soft_glass"
+        },
+        {
+          "x": -9,
+          "y": 4,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -8,
+          "y": 4,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -7,
+          "y": 4,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 4,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -5,
+          "y": 4,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -4,
+          "y": 4,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -3,
+          "y": 4,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -6,
+          "y": 5,
+          "z": 0,
+          "node": "openrealm_lakeside_village:nova_lantern"
+        },
+        {
+          "x": -2,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -2,
+          "y": 0,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -2,
+          "y": 0,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -2,
+          "y": 0,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -2,
+          "y": 0,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -1,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -1,
+          "y": 0,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -1,
+          "y": 0,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -1,
+          "y": 0,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -1,
+          "y": 0,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 0,
+          "y": 0,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 1,
+          "y": 0,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 2,
+          "y": 0,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": -2,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 1,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -1,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -1,
+          "y": 1,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 1,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 1,
+          "y": 1,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 1,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 1,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 1,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 1,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 2,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -1,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -1,
+          "y": 2,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 1,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 1,
+          "y": 2,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 2,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 2,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 2,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 2,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 3,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -1,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -1,
+          "y": 3,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 3,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 1,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 1,
+          "y": 3,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 3,
+          "z": 6,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 3,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 3,
+          "z": 3,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 3,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 3,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 3,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 3,
+          "z": 5,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:soft_glass"
+        },
+        {
+          "x": 0,
+          "y": 2,
+          "z": 6,
+          "node": "openrealm_lakeside_village:soft_glass"
+        },
+        {
+          "x": -3,
+          "y": 4,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -2,
+          "y": 4,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": -1,
+          "y": 4,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 4,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 1,
+          "y": 4,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 2,
+          "y": 4,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 3,
+          "y": 4,
+          "z": 4,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 0,
+          "y": 5,
+          "z": 4,
+          "node": "openrealm_lakeside_village:nova_lantern"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 4,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 5,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 6,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 7,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 7,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 7,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 7,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 7,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 8,
+          "y": 0,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmstone"
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 5,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 6,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 6,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 7,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 7,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 1,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 1,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 1,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 1,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 1,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 1,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 5,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 5,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 6,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 6,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 7,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 7,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 2,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 2,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 2,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 2,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 2,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 2,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 2,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 5,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 5,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 6,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 6,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 7,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 7,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 3,
+          "z": -2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 3,
+          "z": 2,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 3,
+          "z": -1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 3,
+          "z": 0,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 4,
+          "y": 3,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 8,
+          "y": 3,
+          "z": 1,
+          "node": "openrealm_lakeside_village:realmwood"
+        },
+        {
+          "x": 6,
+          "y": 2,
+          "z": -2,
+          "node": "openrealm_lakeside_village:soft_glass"
+        }
+      ],
+      "max_radius": 48
+    }
+  ],
+  "world_recipe": {
+    "style": "cozy",
+    "size": "small",
+    "features": [
+      "lakeside",
+      "village",
+      "lantern",
+      "floating"
+    ],
+    "recommended_demo_prompt": "Build a cozy lakeside village with floating lanterns"
+  },
+  "approval_steps": [
+    "Review generated OpenRealm plan.",
+    "Inspect preview and node/write budget.",
+    "Install only in a disposable test world first.",
+    "Approve in-world command before mutation.",
+    "Use rollback command if result is not wanted."
+  ],
+  "ai_disclosure": {
+    "ai_assisted": true,
+    "assistant_name": "Nova",
+    "human_approval_required": true,
+    "direct_world_mutation_by_ai": false,
+    "generated_code_is_template_based": true
+  },
+  "provenance": {
+    "generator": "openrealm_creator_kernel",
+    "generator_version": "0.1.0",
+    "created_by": "local_operator",
+    "source": "prompt"
+  }
+}

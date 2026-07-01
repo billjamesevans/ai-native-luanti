@@ -23,8 +23,8 @@ from ai_native_operator_task_control_live_probe import (  # noqa: E402
 
 
 ROOT = Path(__file__).resolve().parents[1]
-COMMAND_ARTIFACT_NAME = "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json"
-COMMAND_PROBE_STATUS_NAME = "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json"
+COMMAND_ARTIFACT_NAME = "ai-runtime-operator-task-control-command-result.json"
+COMMAND_PROBE_STATUS_NAME = "ai-runtime-operator-task-control-command-probe-result.json"
 PROBE_MOD_NAME = "ai_operator_task_control_command_probe"
 
 
@@ -250,7 +250,7 @@ def run_probe(args) -> int:
     server_bin = resolve_path(root, args.server_bin)
     output = resolve_path(root, args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
-    world_dir = output.parent / "operator-taREDACTED_KEY_FIXTURE"
+    world_dir = output.parent / "operator-task-control-command-world"
     write_probe_world(world_dir, args.generated_at, args.max_bytes)
 
     port = args.port or reserve_udp_port()

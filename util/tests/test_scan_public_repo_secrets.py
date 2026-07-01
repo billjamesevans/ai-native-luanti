@@ -9,7 +9,7 @@ from util.scan_public_repo_secrets import scan_text
 class TestPublicRepoSecretScan(unittest.TestCase):
     def test_task_control_words_do_not_match_openai_keys(self):
         findings = scan_text(
-            "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+            "ai-runtime-operator-task-control-command-result.json",
             source="test",
             path="fixture.txt",
         )

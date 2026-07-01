@@ -42,7 +42,7 @@ AGENT_PROMPT_EVAL_LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-result.j
 NOVA_AUTO_APPLY_LIVE_RESULT_NAME = "ai-runtime-nova-auto-apply-live-result.json"
 COMPAT_IMPORT_STAGING_PILOT_RESULT_NAME = "ai-runtime-compat-import-staging-pilot-result.json"
 OPERATOR_TASK_CONTROL_LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-result.json"
-OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json"
+OPERATOR_TASK_CONTROL_COMMAND_RESULT_NAME = "ai-runtime-operator-task-control-command-result.json"
 PRODUCT_PROFILE_HYGIENE_NAME = "ai-runtime-product-profile-hygiene.json"
 CLEAN_PROFILE_SUMMARY_NAME = "clean-profile-benchmark-summary.json"
 OPERATOR_STATUS_REQUIRED_SECTIONS = {
@@ -2144,25 +2144,25 @@ def parse_args(argv=None):
         help="Seconds to wait for the disposable compatibility import staging pilot.",
     )
     parser.add_argument(
-        "--operator-taREDACTED_KEY_FIXTURE",
+        "--operator-task-control-live-result-max-bytes",
         type=int,
         default=22000,
         help="Maximum byte budget for the operator task-control live probe artifact.",
     )
     parser.add_argument(
-        "--operator-taREDACTED_KEY_FIXTURE",
+        "--operator-task-control-live-timeout",
         type=float,
         default=20.0,
         help="Seconds to wait for the disposable operator task-control live probe.",
     )
     parser.add_argument(
-        "--operator-taREDACTED_KEY_FIXTURE",
+        "--operator-task-control-command-result-max-bytes",
         type=int,
         default=22000,
         help="Maximum byte budget for the operator task-control command result artifact.",
     )
     parser.add_argument(
-        "--operator-taREDACTED_KEY_FIXTURE",
+        "--operator-task-control-command-timeout",
         type=float,
         default=20.0,
         help="Seconds to wait for the disposable operator task-control command probe.",

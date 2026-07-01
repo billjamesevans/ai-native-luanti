@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "name": "OpenRealm Advantage Kit",
+  "purpose": "A working product and architecture starter kit for an AI-native, open-source voxel world creator.",
+  "core_advantage": "Prompt-to-plan-to-preview-to-approval-to-task-to-audit-to-rollback creation workflow.",
+  "product_name": "OpenRealm",
+  "assistant_name": "Nova",
+  "contents": {
+    "studio": "Dependency-free browser prototype for Creator Studio.",
+    "python_kernel": "Reusable deterministic planning kernel with tests and CLI.",
+    "luanti_mod": "Drop-in Luanti prototype for planning, approval, and undo.",
+    "schemas": "Build plan, world recipe, and audit event schemas.",
+    "docs": "Product thesis, Nova architecture, creator flow, integration plan, 30-day plan.",
+    "assets": "Brand, UI, architecture, roadmap, and key art images."
+  },
+  "safety_model": {
+    "direct_ai_world_mutation": false,
+    "preview_required": true,
+    "human_approval_required": true,
+    "audit_required": true,
+    "rollback_required": true
+  }
+}

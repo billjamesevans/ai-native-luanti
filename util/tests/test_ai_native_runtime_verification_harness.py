@@ -1774,7 +1774,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_command_result"],
-                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+                "local/benchmarks/local-mac/2026-06-28/verify-success/ai-runtime-operator-task-control-command-result.json",
             )
             self.assertEqual(manifest["product_profile_evidence"]["status"], "pass")
             self.assertEqual(manifest["product_profile_evidence"]["game_profile"], "ai_runtime")
@@ -2596,7 +2596,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_command_result"],
-                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+                "local/benchmarks/local-mac/2026-06-28/verify-clean-profile/ai-runtime-operator-task-control-command-result.json",
             )
             self.assertEqual(manifest["product_profile_evidence"]["status"], "pass")
             self.assertEqual(
@@ -2728,7 +2728,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["artifact_paths"]["operator_task_control_command_result"],
-                "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+                "local/benchmarks/local-mac/2026-06-28/verify-surrogate/ai-runtime-operator-task-control-command-result.json",
             )
             self.assertEqual(manifest["operator_status_evidence"]["source_kind"], "command_surrogate")
             self.assertFalse(manifest["operator_status_evidence"]["direct_command_execution"])
@@ -3631,7 +3631,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "ai-runtime-nova-auto-apply-live-result.json",
             "ai-runtime-compat-import-staging-pilot-result.json",
             "ai-runtime-operator-task-control-live-result.json",
-            "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json",
+            "ai-runtime-operator-task-control-command-result.json",
             "/ai_runtime_operator_status",
             "/ai_runtime_operator_task_control",
             "/ai_agent_eval",
@@ -3660,8 +3660,8 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "--nova-auto-apply-adapter-endpoint",
             "--compat-import-staging-pilot-result-max-bytes",
             "--compat-import-staging-pilot-timeout",
-            "--operator-taREDACTED_KEY_FIXTURE",
-            "--operator-taREDACTED_KEY_FIXTURE",
+            "--operator-task-control-live-result-max-bytes",
+            "--operator-task-control-command-result-max-bytes",
             "--operator-status-source surrogate",
             "--game-profile sample-synthetic",
             "disposable `ai_runtime` world",

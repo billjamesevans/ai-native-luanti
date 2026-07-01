@@ -14,6 +14,7 @@
 
 - Task 1 is complete in commit `3ea6f33e3`: the public README and product docs now define OpenRealm, Nova, Luminara, the creator loop, and the AI-native runtime safety model.
 - Task 3 is complete in commit `566585dbf`: the live prompt-eval artifact now emits the named `openrealm_creator_loop` golden-prompt suite, tracks the eleven-prompt backlog, enforces the four currently implemented runtime prompt cases, and makes `ai_native_agent_quality_gate` fail on golden prompt regressions.
+- The OpenRealm Advantage Kit is now the product/architecture library for the transformation: brand boards, Nova architecture diagrams, Creator Studio mockups, deterministic prompt-to-plan tooling, schemas, generated examples, and a Luanti creator prototype live under `openrealm_advantage_kit/`.
 - Task 2 remains the next behavior-expansion track for moving more backlog prompts from documented expectations into enforced runtime cases.
 
 ## File Structure

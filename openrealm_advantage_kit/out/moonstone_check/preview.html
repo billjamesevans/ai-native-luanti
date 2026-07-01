@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Moonstone Ore Pack - OpenRealm Preview</title>
+<style>
+:root { color-scheme: dark; --bg:#0e1017; --panel:#151a27; --text:#f6f7fa; --muted:#aeb6d0; --blue:#4ea8ff; --violet:#7a5cff; --teal:#2ed4b7; --green:#8be36b; --warn:#ffd166; }
+* { box-sizing: border-box; }
+body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: radial-gradient(circle at 20% 0%, #1d2852 0, transparent 34%), radial-gradient(circle at 80% 10%, #2b145c 0, transparent 26%), var(--bg); color:var(--text); }
+main { max-width: 1100px; margin: 0 auto; padding: 48px 24px; }
+.hero { display:grid; grid-template-columns: 1.3fr .7fr; gap:24px; align-items:stretch; }
+.card { background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025)); border:1px solid rgba(255,255,255,.12); border-radius:22px; padding:24px; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+h1 { font-size: clamp(36px, 7vw, 72px); line-height:.95; margin:0 0 16px; letter-spacing:-.06em; }
+h2 { margin:0 0 16px; }
+.pill { display:inline-flex; gap:8px; align-items:center; border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:8px 12px; color:var(--muted); margin: 4px; }
+.ok { color:var(--green); } .warn { color:var(--warn); } .blue { color:var(--blue); } .teal { color:var(--teal); } .violet { color:var(--violet); }
+.grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-top:24px; }
+.step { border-left:3px solid var(--teal); padding-left:14px; color:var(--muted); }
+pre { white-space: pre-wrap; overflow:auto; background:#080a10; border-radius:14px; padding:16px; border:1px solid rgba(255,255,255,.08); }
+table { width:100%; border-collapse:collapse; } td, th { text-align:left; border-bottom:1px solid rgba(255,255,255,.08); padding:10px; } th { color:var(--teal); }
+small { color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="card">
+      <div class="pill violet">OpenRealm Creator Preview</div>
+      <div class="pill teal">Nova assisted</div>
+      <h1>Moonstone Ore Pack</h1>
+      <p>Adds Moonstone ore, crystal, block, glowing sword, recipes, ore generation, and a tiny preview shrine.</p>
+      <p><small>Prompt: Add a new ore called moonstone that spawns below level -200 and crafts a glowing sword</small></p>
+    </div>
+    <div class="card">
+      <h2>Safety status</h2>
+      <p class="ok">PASS</p>
+      <ul><li>No validation issues.</li></ul>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>1. Prompt</h2><p class="step">Describe the world or mod.</p></div>
+    <div class="card"><h2>2. Plan</h2><p class="step">Nova produces a data-only recipe.</p></div>
+    <div class="card"><h2>3. Validate</h2><p class="step">OpenRealm checks budgets, names, and safety.</p></div>
+    <div class="card"><h2>4. Approve</h2><p class="step">Human review before install or mutation.</p></div>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Generated nodes</h2>
+    <table><thead><tr><th>Name</th><th>Description</th><th>Light</th></tr></thead><tbody><tr><td>moonstone_ore</td><td>Moonstone Ore</td><td>8</td></tr><tr><td>moonstone_block</td><td>Moonstone Block</td><td>10</td></tr></tbody></table>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Structures</h2>
+    <table><thead><tr><th>Name</th><th>Planned writes</th><th>Description</th></tr></thead><tbody><tr><td>moonstone_shrine</td><td>6</td><td>Tiny safe showcase shrine for Moonstone.</td></tr></tbody></table>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Approval checklist</h2>
+    <ol><li>Review generated OpenRealm plan.</li><li>Inspect preview and node/write budget.</li><li>Install only in a disposable test world first.</li><li>Approve in-world command before mutation.</li><li>Use rollback command if result is not wanted.</li></ol>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Plan JSON</h2>
+    <pre>{
+  &quot;schema_version&quot;: &quot;openrealm.plan.v1&quot;,
+  &quot;product&quot;: &quot;OpenRealm&quot;,
+  &quot;assistant&quot;: &quot;Nova&quot;,
+  &quot;plan_id&quot;: &quot;orplan_de3e999337af&quot;,
+  &quot;plan_kind&quot;: &quot;ore_mod&quot;,
+  &quot;title&quot;: &quot;Moonstone Ore Pack&quot;,
+  &quot;source_prompt&quot;: &quot;Add a new ore called moonstone that spawns below level -200 and crafts a glowing sword&quot;,
+  &quot;created_at&quot;: &quot;2026-07-01T04:37:47Z&quot;,
+  &quot;mod_name&quot;: &quot;openrealm_moonstone&quot;,
+  &quot;summary&quot;: &quot;Adds Moonstone ore, crystal, block, glowing sword, recipes, ore generation, and a tiny preview shrine.&quot;,
+  &quot;tags&quot;: [
+    &quot;ore&quot;,
+    &quot;tool&quot;,
+    &quot;recipe&quot;,
+    &quot;template-generated&quot;,
+    &quot;nova&quot;
+  ],
+  &quot;safety_budget&quot;: {
+    &quot;max_node_definitions&quot;: 32,
+    &quot;max_craft_items&quot;: 32,
+    &quot;max_tools&quot;: 16,
+    &quot;max_recipes&quot;: 32,
+    &quot;max_ores&quot;: 16,
+    &quot;max_structures&quot;: 8,
+    &quot;max_structure_nodes&quot;: 256,
+    &quot;requires_preview&quot;: true,
+    &quot;requires_approval&quot;: true,
+    &quot;rollback_required&quot;: true,
+    &quot;ai_direct_world_mutation_allowed&quot;: false
+  },
+  &quot;nodes&quot;: [
+    {
+      &quot;name&quot;: &quot;moonstone_ore&quot;,
+      &quot;description&quot;: &quot;Moonstone Ore&quot;,
+      &quot;texture_hint&quot;: &quot;deep violet stone with cyan crystal flecks&quot;,
+      &quot;groups&quot;: {
+        &quot;cracky&quot;: 2,
+        &quot;ore&quot;: 1
+      },
+      &quot;light_source&quot;: 8,
+      &quot;drawtype&quot;: &quot;normal&quot;,
+      &quot;paramtype&quot;: null,
+      &quot;walkable&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;moonstone_block&quot;,
+      &quot;description&quot;: &quot;Moonstone Block&quot;,
+      &quot;texture_hint&quot;: &quot;polished luminous moon crystal block&quot;,
+      &quot;groups&quot;: {
+        &quot;cracky&quot;: 1,
+        &quot;level&quot;: 2
+      },
+      &quot;light_source&quot;: 10,
+      &quot;drawtype&quot;: &quot;normal&quot;,
+      &quot;paramtype&quot;: null,
+      &quot;walkable&quot;: true
+    }
+  ],
+  &quot;craft_items&quot;: [
+    {
+      &quot;name&quot;: &quot;moonstone_crystal&quot;,
+      &quot;description&quot;: &quot;Moonstone Crystal&quot;,
+      &quot;inventory_image_hint&quot;: &quot;single glowing cyan violet crystal&quot;
+    }
+  ],
+  &quot;tools&quot;: [
+    {
+      &quot;name&quot;: &quot;moonstone_glowing_sword&quot;,
+      &quot;description&quot;: &quot;Moonstone Glowing Sword&quot;,
+      &quot;inventory_image_hint&quot;: &quot;short glowing sword with violet blade&quot;,
+      &quot;damage_groups&quot;: {
+        &quot;fleshy&quot;: 8
+      },
+      &quot;full_punch_interval&quot;: 0.7
+    }
+  ],
+  &quot;recipes&quot;: [
+    {
+      &quot;output&quot;: &quot;openrealm_moonstone:moonstone_block&quot;,
+      &quot;recipe&quot;: [
+        [
+          &quot;openrealm_moonstone:moonstone_crystal&quot;,
+          &quot;openrealm_moonstone:moonstone_crystal&quot;,
+          &quot;openrealm_moonstone:moonstone_crystal&quot;
+        ],
+        [
+          &quot;openrealm_moonstone:moonstone_crystal&quot;,
+          &quot;openrealm_moonstone:moonstone_crystal&quot;,
+          &quot;openrealm_moonstone:moonstone_crystal&quot;
+        ],
+        [
+          &quot;openrealm_moonstone:moonstone_crystal&quot;,
+          &quot;openrealm_moonstone:moonstone_crystal&quot;,
+          &quot;openrealm_moonstone:moonstone_crystal&quot;
+        ]
+      ]
+    },
+    {
+      &quot;output&quot;: &quot;openrealm_moonstone:moonstone_glowing_sword&quot;,
+      &quot;recipe&quot;: [
+        [
+          &quot;openrealm_moonstone:moonstone_crystal&quot;
+        ],
+        [
+          &quot;openrealm_moonstone:moonstone_crystal&quot;
+        ],
+        [
+          &quot;default:stick&quot;
+        ]
+      ]
+    }
+  ],
+  &quot;ores&quot;: [
+    {
+      &quot;ore&quot;: &quot;openrealm_moonstone:moonstone_ore&quot;,
+      &quot;wherein&quot;: &quot;default:stone&quot;,
+      &quot;clust_scarcity&quot;: 729,
+      &quot;clust_num_ores&quot;: 5,
+      &quot;clust_size&quot;: 3,
+      &quot;y_min&quot;: -31000,
+      &quot;y_max&quot;: -200
+    }
+  ],
+  &quot;structures&quot;: [
+    {
+      &quot;name&quot;: &quot;moonstone_shrine&quot;,
+      &quot;description&quot;: &quot;Tiny safe showcase shrine for Moonstone.&quot;,
+      &quot;placements&quot;: [
+        {
+          &quot;x&quot;: 0,
+          &quot;y&quot;: 0,
+          &quot;z&quot;: 0,
+          &quot;node&quot;: &quot;openrealm_moonstone:moonstone_block&quot;
+        },
+        {
+          &quot;x&quot;: 1,
+          &quot;y&quot;: 0,
+          &quot;z&quot;: 0,
+          &quot;node&quot;: &quot;openrealm_moonstone:moonstone_block&quot;
+        },
+        {
+          &quot;x&quot;: -1,
+          &quot;y&quot;: 0,
+          &quot;z&quot;: 0,
+          &quot;node&quot;: &quot;openrealm_moonstone:moonstone_block&quot;
+        },
+        {
+          &quot;x&quot;: 0,
+          &quot;y&quot;: 0,
+          &quot;z&quot;: 1,
+          &quot;node&quot;: &quot;openrealm_moonstone:moonstone_block&quot;
+        },
+        {
+          &quot;x&quot;: 0,
+          &quot;y&quot;: 0,
+          &quot;z&quot;: -1,
+          &quot;node&quot;: &quot;openrealm_moonstone:moonstone_block&quot;
+        },
+        {
+          &quot;x&quot;: 0,
+          &quot;y&quot;: 1,
+          &quot;z&quot;: 0,
+          &quot;node&quot;: &quot;openrealm_moonstone:moonstone_ore&quot;
+        }
+      ],
+      &quot;max_radius&quot;: 32
+    }
+  ],
+  &quot;world_recipe&quot;: {},
+  &quot;approval_steps&quot;: [
+    &quot;Review generated OpenRealm plan.&quot;,
+    &quot;Inspect preview and node/write budget.&quot;,
+    &quot;Install only in a disposable test world first.&quot;,
+    &quot;Approve in-world command before mutation.&quot;,
+    &quot;Use rollback command if result is not wanted.&quot;
+  ],
+  &quot;ai_disclosure&quot;: {
+    &quot;ai_assisted&quot;: true,
+    &quot;assistant_name&quot;: &quot;Nova&quot;,
+    &quot;human_approval_required&quot;: true,
+    &quot;direct_world_mutation_by_ai&quot;: false,
+    &quot;generated_code_is_template_based&quot;: true
+  },
+  &quot;provenance&quot;: {
+    &quot;generator&quot;: &quot;openrealm_creator_kernel&quot;,
+    &quot;generator_version&quot;: &quot;0.1.0&quot;,
+    &quot;created_by&quot;: &quot;local_operator&quot;,
+    &quot;source&quot;: &quot;prompt&quot;
+  }
+}</pre>
+  </section>
+</main>
+</body>
+</html>

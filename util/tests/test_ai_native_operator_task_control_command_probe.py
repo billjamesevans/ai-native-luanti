@@ -144,7 +144,7 @@ class AIOperatorTaskControlCommandProbeTests(unittest.TestCase):
             source = (world_dir / "worldmods" / probe.PROBE_MOD_NAME / "init.lua").read_text(
                 encoding="utf-8"
             )
-            self.assertIn("ai-runtime-operator-taREDACTED_KEY_FIXTURE.json", source)
+            self.assertIn("ai-runtime-operator-task-control-command-result.json", source)
             self.assertIn("core.registered_chatcommands.ai_runtime_operator_task_control", source)
             self.assertIn("/ai_runtime_operator_task_control", source)
             self.assertIn("receipt_json=", source)
@@ -240,7 +240,7 @@ class AIOperatorTaskControlCommandProbeTests(unittest.TestCase):
 
         for body in (readme, doc, smoke):
             self.assertIn("ai_native_operator_task_control_command_probe.py", body)
-            self.assertIn("ai-runtime-operator-taREDACTED_KEY_FIXTURE.json", body)
+            self.assertIn("ai-runtime-operator-task-control-command-result.json", body)
             self.assertIn("/ai_runtime_operator_task_control", body)
             self.assertIn("receipt-gated task-control command probe", body)
             self.assertIn("task cancel/retry only", body)

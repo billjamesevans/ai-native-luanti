@@ -159,7 +159,7 @@ against a disposable live `ai_runtime` queue probe and writes
 family server, no private world, no private assets, no provider prompts, and no model-network calls.
 The verifier then runs `util/ai_native_operator_task_control_command_probe.py` as a receipt-gated
 task-control command probe against the registered `/ai_runtime_operator_task_control` command and
-writes `ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`. That command probe uses the same
+writes `ai-runtime-operator-task-control-command-result.json`. That command probe uses the same
 temporary local-world boundary and exists to prove the operator command adapter separately from the
 disposable live queue probe.
 
@@ -189,10 +189,10 @@ stay public-safe, disposable-staging-only, approval-gated, rollback-backed, fami
 asset-copy-free, and bounded by `--compat-import-staging-pilot-result-max-bytes` and
 `--compat-import-staging-pilot-timeout`. The live task-control result must stay receipt-gated,
 disposable-live-queue-only, task cancel/retry only, no rollback execution, no import promotion execution,
-no world mutation, and bounded by `--operator-taREDACTED_KEY_FIXTURE`.
+no world mutation, and bounded by `--operator-task-control-live-result-max-bytes`.
 The task-control command result must stay receipt-gated, command-surface-only, task cancel/retry only,
 no rollback execution, no import promotion execution, no world mutation, and bounded by
-`--operator-taREDACTED_KEY_FIXTURE`.
+`--operator-task-control-command-result-max-bytes`.
 
 If the live command path is unavailable in a narrow utility-only lane, use
 `--operator-status-source surrogate` to write `ai-runtime-operator-status.json` with
@@ -234,7 +234,7 @@ directory keeps `benchmark-gate-manifest.json`, `ai-runtime-verification-manifes
 `ai-runtime-nova-auto-apply-live-result.json` and
 `ai-runtime-compat-import-staging-pilot-result.json` and
 `ai-runtime-operator-task-control-live-result.json` and
-`ai-runtime-operator-taREDACTED_KEY_FIXTURE.json`. It still requires no family server, no private
+`ai-runtime-operator-task-control-command-result.json`. It still requires no family server, no private
 world, no private assets, no provider prompts, and no model-network calls.
 
 The verifier validates `clean-profile-benchmark-summary.json` before the overall manifest can pass.

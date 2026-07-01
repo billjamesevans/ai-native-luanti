@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Glacier Alpine Biome - OpenRealm Preview</title>
+<style>
+:root { color-scheme: dark; --bg:#0e1017; --panel:#151a27; --text:#f6f7fa; --muted:#aeb6d0; --blue:#4ea8ff; --violet:#7a5cff; --teal:#2ed4b7; --green:#8be36b; --warn:#ffd166; }
+* { box-sizing: border-box; }
+body { margin:0; font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif; background: radial-gradient(circle at 20% 0%, #1d2852 0, transparent 34%), radial-gradient(circle at 80% 10%, #2b145c 0, transparent 26%), var(--bg); color:var(--text); }
+main { max-width: 1100px; margin: 0 auto; padding: 48px 24px; }
+.hero { display:grid; grid-template-columns: 1.3fr .7fr; gap:24px; align-items:stretch; }
+.card { background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.025)); border:1px solid rgba(255,255,255,.12); border-radius:22px; padding:24px; box-shadow: 0 24px 80px rgba(0,0,0,.35); }
+h1 { font-size: clamp(36px, 7vw, 72px); line-height:.95; margin:0 0 16px; letter-spacing:-.06em; }
+h2 { margin:0 0 16px; }
+.pill { display:inline-flex; gap:8px; align-items:center; border:1px solid rgba(255,255,255,.12); border-radius:999px; padding:8px 12px; color:var(--muted); margin: 4px; }
+.ok { color:var(--green); } .warn { color:var(--warn); } .blue { color:var(--blue); } .teal { color:var(--teal); } .violet { color:var(--violet); }
+.grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:16px; margin-top:24px; }
+.step { border-left:3px solid var(--teal); padding-left:14px; color:var(--muted); }
+pre { white-space: pre-wrap; overflow:auto; background:#080a10; border-radius:14px; padding:16px; border:1px solid rgba(255,255,255,.08); }
+table { width:100%; border-collapse:collapse; } td, th { text-align:left; border-bottom:1px solid rgba(255,255,255,.08); padding:10px; } th { color:var(--teal); }
+small { color:var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <section class="hero">
+    <div class="card">
+      <div class="pill violet">OpenRealm Creator Preview</div>
+      <div class="pill teal">Nova assisted</div>
+      <h1>Glacier Alpine Biome</h1>
+      <p>Creates a data-first alpine biome recipe with nodes, mood, terrain guidance, quest hooks, and starter assets.</p>
+      <p><small>Prompt: Make this biome feel like Glacier National Park</small></p>
+    </div>
+    <div class="card">
+      <h2>Safety status</h2>
+      <p class="ok">PASS</p>
+      <ul><li>No validation issues.</li></ul>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card"><h2>1. Prompt</h2><p class="step">Describe the world or mod.</p></div>
+    <div class="card"><h2>2. Plan</h2><p class="step">Nova produces a data-only recipe.</p></div>
+    <div class="card"><h2>3. Validate</h2><p class="step">OpenRealm checks budgets, names, and safety.</p></div>
+    <div class="card"><h2>4. Approve</h2><p class="step">Human review before install or mutation.</p></div>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Generated nodes</h2>
+    <table><thead><tr><th>Name</th><th>Description</th><th>Light</th></tr></thead><tbody><tr><td>alpine_stone</td><td>Alpine Stone</td><td>0</td></tr><tr><td>glacier_ice</td><td>Glacier Ice</td><td>0</td></tr><tr><td>pine_needles</td><td>Pine Needles</td><td>0</td></tr><tr><td>trail_marker</td><td>Trail Marker</td><td>5</td></tr></tbody></table>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Structures</h2>
+    <table><thead><tr><th>Name</th><th>Planned writes</th><th>Description</th></tr></thead><tbody><tr><td colspan='3'>No structures in this plan.</td></tr></tbody></table>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Approval checklist</h2>
+    <ol><li>Review generated OpenRealm plan.</li><li>Inspect preview and node/write budget.</li><li>Install only in a disposable test world first.</li><li>Approve in-world command before mutation.</li><li>Use rollback command if result is not wanted.</li></ol>
+  </section>
+
+  <section class="card" style="margin-top:24px">
+    <h2>Plan JSON</h2>
+    <pre>{
+  &quot;schema_version&quot;: &quot;openrealm.plan.v1&quot;,
+  &quot;product&quot;: &quot;OpenRealm&quot;,
+  &quot;assistant&quot;: &quot;Nova&quot;,
+  &quot;plan_id&quot;: &quot;orplan_6b7bce3f2b40&quot;,
+  &quot;plan_kind&quot;: &quot;biome_recipe&quot;,
+  &quot;title&quot;: &quot;Glacier Alpine Biome&quot;,
+  &quot;source_prompt&quot;: &quot;Make this biome feel like Glacier National Park&quot;,
+  &quot;created_at&quot;: &quot;2026-07-01T04:37:46Z&quot;,
+  &quot;mod_name&quot;: &quot;openrealm_glacier_biome&quot;,
+  &quot;summary&quot;: &quot;Creates a data-first alpine biome recipe with nodes, mood, terrain guidance, quest hooks, and starter assets.&quot;,
+  &quot;tags&quot;: [
+    &quot;biome&quot;,
+    &quot;recipe&quot;,
+    &quot;glacier&quot;,
+    &quot;template-generated&quot;,
+    &quot;nova&quot;
+  ],
+  &quot;safety_budget&quot;: {
+    &quot;max_node_definitions&quot;: 32,
+    &quot;max_craft_items&quot;: 32,
+    &quot;max_tools&quot;: 16,
+    &quot;max_recipes&quot;: 32,
+    &quot;max_ores&quot;: 16,
+    &quot;max_structures&quot;: 8,
+    &quot;max_structure_nodes&quot;: 256,
+    &quot;requires_preview&quot;: true,
+    &quot;requires_approval&quot;: true,
+    &quot;rollback_required&quot;: true,
+    &quot;ai_direct_world_mutation_allowed&quot;: false
+  },
+  &quot;nodes&quot;: [
+    {
+      &quot;name&quot;: &quot;alpine_stone&quot;,
+      &quot;description&quot;: &quot;Alpine Stone&quot;,
+      &quot;texture_hint&quot;: &quot;cool gray mountain stone&quot;,
+      &quot;groups&quot;: {
+        &quot;cracky&quot;: 2,
+        &quot;stone&quot;: 1
+      },
+      &quot;light_source&quot;: 0,
+      &quot;drawtype&quot;: &quot;normal&quot;,
+      &quot;paramtype&quot;: null,
+      &quot;walkable&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;glacier_ice&quot;,
+      &quot;description&quot;: &quot;Glacier Ice&quot;,
+      &quot;texture_hint&quot;: &quot;pale blue translucent glacier ice&quot;,
+      &quot;groups&quot;: {
+        &quot;cracky&quot;: 3,
+        &quot;ice&quot;: 1
+      },
+      &quot;light_source&quot;: 0,
+      &quot;drawtype&quot;: &quot;glasslike&quot;,
+      &quot;paramtype&quot;: &quot;light&quot;,
+      &quot;walkable&quot;: true
+    },
+    {
+      &quot;name&quot;: &quot;pine_needles&quot;,
+      &quot;description&quot;: &quot;Pine Needles&quot;,
+      &quot;texture_hint&quot;: &quot;deep green pine foliage&quot;,
+      &quot;groups&quot;: {
+        &quot;snappy&quot;: 3,
+        &quot;leaves&quot;: 1
+      },
+      &quot;light_source&quot;: 0,
+      &quot;drawtype&quot;: &quot;allfaces_optional&quot;,
+      &quot;paramtype&quot;: &quot;light&quot;,
+      &quot;walkable&quot;: false
+    },
+    {
+      &quot;name&quot;: &quot;trail_marker&quot;,
+      &quot;description&quot;: &quot;Trail Marker&quot;,
+      &quot;texture_hint&quot;: &quot;small blue trail sign&quot;,
+      &quot;groups&quot;: {
+        &quot;choppy&quot;: 2
+      },
+      &quot;light_source&quot;: 5,
+      &quot;drawtype&quot;: &quot;normal&quot;,
+      &quot;paramtype&quot;: null,
+      &quot;walkable&quot;: true
+    }
+  ],
+  &quot;craft_items&quot;: [],
+  &quot;tools&quot;: [],
+  &quot;recipes&quot;: [],
+  &quot;ores&quot;: [],
+  &quot;structures&quot;: [],
+  &quot;world_recipe&quot;: {
+    &quot;recipe_kind&quot;: &quot;biome_recipe&quot;,
+    &quot;biome_name&quot;: &quot;Glacier Alpine Biome&quot;,
+    &quot;mood&quot;: &quot;clean alpine, family-safe adventure, quiet lakes, bright peaks&quot;,
+    &quot;terrain&quot;: [
+      &quot;steep valleys&quot;,
+      &quot;cold lakes&quot;,
+      &quot;waterfalls&quot;,
+      &quot;pine forest pockets&quot;,
+      &quot;snowy ridges&quot;
+    ],
+    &quot;ambient_sound_plan&quot;: [
+      &quot;wind through pines&quot;,
+      &quot;distant water&quot;,
+      &quot;soft birds&quot;
+    ],
+    &quot;structure_suggestions&quot;: [
+      &quot;trailhead cabin&quot;,
+      &quot;lake dock&quot;,
+      &quot;lookout tower&quot;,
+      &quot;stone bridge&quot;
+    ],
+    &quot;quest_hooks&quot;: [
+      &quot;find three vista markers&quot;,
+      &quot;repair the old bridge&quot;,
+      &quot;light the lakeside trail&quot;
+    ],
+    &quot;safety_note&quot;: &quot;This is a data recipe. Mapgen integration should remain template-based and approval-gated.&quot;
+  },
+  &quot;approval_steps&quot;: [
+    &quot;Review generated OpenRealm plan.&quot;,
+    &quot;Inspect preview and node/write budget.&quot;,
+    &quot;Install only in a disposable test world first.&quot;,
+    &quot;Approve in-world command before mutation.&quot;,
+    &quot;Use rollback command if result is not wanted.&quot;
+  ],
+  &quot;ai_disclosure&quot;: {
+    &quot;ai_assisted&quot;: true,
+    &quot;assistant_name&quot;: &quot;Nova&quot;,
+    &quot;human_approval_required&quot;: true,
+    &quot;direct_world_mutation_by_ai&quot;: false,
+    &quot;generated_code_is_template_based&quot;: true
+  },
+  &quot;provenance&quot;: {
+    &quot;generator&quot;: &quot;openrealm_creator_kernel&quot;,
+    &quot;generator_version&quot;: &quot;0.1.0&quot;,
+    &quot;created_by&quot;: &quot;local_operator&quot;,
+    &quot;source&quot;: &quot;prompt&quot;
+  }
+}</pre>
+  </section>
+</main>
+</body>
+</html>

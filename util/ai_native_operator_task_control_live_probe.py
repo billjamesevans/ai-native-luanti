@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LIVE_ARTIFACT_NAME = "ai-runtime-operator-task-control-live-result.json"
-LIVE_RESULT_NAME = "ai-runtime-operator-taREDACTED_KEY_FIXTURE.json"
+LIVE_RESULT_NAME = "ai-runtime-operator-task-control-live-probe-result.json"
 PROBE_MOD_NAME = "ai_operator_task_control_live_probe"
 DEFAULT_MAX_BYTES = 22000
 
