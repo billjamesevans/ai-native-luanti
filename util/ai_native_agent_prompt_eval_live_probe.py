@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 LIVE_ARTIFACT_NAME = "ai-runtime-agent-prompt-eval-live-result.json"
 LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-probe-result.json"
 PROBE_MOD_NAME = "ai_agent_prompt_eval_live_probe"
-DEFAULT_MAX_BYTES = 28000
+DEFAULT_MAX_BYTES = 34000
 DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
 GOLDEN_PROMPT_SUITE = "openrealm_creator_loop"
 GOLDEN_PROMPT_BACKLOG_TOTAL = 11
@@ -26,6 +26,7 @@ ENFORCED_GOLDEN_PROMPT_CASE_IDS = (
     "fire_only_strict",
     "tnt_wall",
     "stone_bridge",
+    "small_cabin",
     "agentic_build_planner",
     "openrealm_village",
     "player_agent_loop",
@@ -156,6 +157,7 @@ def write_probe_world(
             "    build_kind = effective_reply.build_kind,",
             "    build_width = effective_reply.build_width,",
             "    build_depth = effective_reply.build_depth,",
+            "    build_height = effective_reply.build_height,",
             "    build_material_name = effective_reply.build_material_name,",
             "    planned_node_writes = effective_reply.planned_node_writes,",
             "    planner_mode = effective_reply.planner_mode,",
@@ -234,6 +236,7 @@ def write_probe_world(
             "      fire_only_strict = cases.fire_only_strict ~= nil,",
             "      tnt_wall = cases.tnt_wall ~= nil,",
             "      stone_bridge = cases.stone_bridge ~= nil,",
+            "      small_cabin = cases.small_cabin ~= nil,",
             "      agentic_build_planner = cases.agentic_build_planner ~= nil,",
             "      openrealm_village = cases.openrealm_village ~= nil,",
             "      player_agent_loop = cases.player_agent_loop ~= nil,",
@@ -310,6 +313,62 @@ def write_probe_world(
             "            },",
             "          },",
             "        }",
+            "      elseif prompt:find(\"small cabin\", 1, true) then",
+            "        response = {",
+            "          agentic_execution = true,",
+            "          selected_option_id = \"generated_prompt_shaped_cabin\",",
+            "          model_selected_option_id = \"generated_prompt_shaped_cabin\",",
+            "          tool_decision_source = \"agents_sdk_generated_tool_completion\",",
+            "          required_tool_calls = { \"recall_build_prompt_memory\", \"propose_build_option\", \"select_build_option\", \"plan_build_actions\" },",
+            "          missing_required_tool_calls = {},",
+            "          required_tool_calls_satisfied = true,",
+            "          tool_trace = {",
+            "            { tool_name = \"recall_build_prompt_memory\" },",
+            "            { tool_name = \"propose_build_option\" },",
+            "            { tool_name = \"select_build_option\" },",
+            "            { tool_name = \"plan_build_actions\" },",
+            "          },",
+            "          generated_build_option = {",
+            "            option_id = \"generated_prompt_shaped_cabin\",",
+            "            label = \"Generated prompt-shaped cabin\",",
+            "            reason = \"player asked for a compact cabin-like build\",",
+            "            build_kind = \"cabin\",",
+            "            build_width = 3,",
+            "            build_depth = 2,",
+            "            build_height = 2,",
+            "            build_material_name = \"wood\",",
+            "            planned_node_writes = 10,",
+            "          },",
+            "          build_action_plan = {",
+            "            status = \"ready\",",
+            "            selected_option_id = \"generated_prompt_shaped_cabin\",",
+            "            step_count = 10,",
+            "            world_mutation_authority = \"luanti\",",
+            "          },",
+            "          tool_decisions = {",
+            "            build_option = {",
+            "              selected_option_id = \"generated_prompt_shaped_cabin\",",
+            "              decision_source = \"agent_selected_generated_build_option\",",
+            "              generated_option = {",
+            "                option_id = \"generated_prompt_shaped_cabin\",",
+            "                label = \"Generated prompt-shaped cabin\",",
+            "                reason = \"player asked for a compact cabin-like build\",",
+            "                build_kind = \"cabin\",",
+            "                build_width = 3,",
+            "                build_depth = 2,",
+            "                build_height = 2,",
+            "                build_material_name = \"wood\",",
+            "                planned_node_writes = 10,",
+            "              },",
+            "            },",
+            "            build_action_plan = {",
+            "              status = \"ready\",",
+            "              selected_option_id = \"generated_prompt_shaped_cabin\",",
+            "              step_count = 10,",
+            "              world_mutation_authority = \"luanti\",",
+            "            },",
+            "          },",
+            "        }",
             "      end",
             "      done({",
             "        ok = true,",
@@ -360,6 +419,7 @@ def write_probe_world(
             "    \"fire_only_strict\",",
             "    \"tnt_wall\",",
             "    \"stone_bridge\",",
+            "    \"small_cabin\",",
             "    \"agentic_build_planner\",",
             "    \"openrealm_village\",",
             "    \"player_agent_loop\",",
@@ -413,6 +473,7 @@ def write_probe_world(
             "      fire_only_strict_checked = eval.case_ids.fire_only_strict == true,",
             "      tnt_wall_checked = eval.case_ids.tnt_wall == true,",
             "      stone_bridge_checked = eval.case_ids.stone_bridge == true,",
+            "      small_cabin_checked = eval.case_ids.small_cabin == true,",
             "      agentic_build_planner_checked = eval.case_ids.agentic_build_planner == true,",
             "      openrealm_village_checked = eval.case_ids.openrealm_village == true,",
             "      player_agent_loop_checked = eval.case_ids.player_agent_loop == true,",
@@ -654,9 +715,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         raise ValueError("agent prompt eval payload missing prompt_eval")
     if prompt_eval.get("status") != "pass" or prompt_eval.get("ok") is not True:
         raise ValueError("agent prompt eval did not pass")
-    if prompt_eval.get("cases_total") != 8:
+    if prompt_eval.get("cases_total") != 9:
         raise ValueError("agent prompt eval case count is invalid")
-    if prompt_eval.get("cases_passed") != 8 or prompt_eval.get("cases_failed") != 0:
+    if prompt_eval.get("cases_passed") != 9 or prompt_eval.get("cases_failed") != 0:
         raise ValueError("agent prompt eval cases did not all pass")
     case_ids = prompt_eval.get("case_ids") if isinstance(prompt_eval.get("case_ids"), dict) else {}
     for case_id in (
@@ -664,6 +725,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "fire_only_strict",
         "tnt_wall",
         "stone_bridge",
+        "small_cabin",
         "agentic_build_planner",
         "openrealm_village",
         "player_agent_loop",
@@ -689,6 +751,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         fire_only = case_map.get("fire_only_strict", {})
         tnt = case_map.get("tnt_wall", {})
         stone_bridge = case_map.get("stone_bridge", {})
+        small_cabin = case_map.get("small_cabin", {})
         planner = case_map.get("agentic_build_planner", {})
         openrealm = case_map.get("openrealm_village", {})
         player_loop = case_map.get("player_agent_loop", {})
@@ -741,6 +804,29 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             raise ValueError("agent prompt eval stone bridge generated candidate is invalid")
         if stone_bridge.get("generated_build_option_status") != "validated":
             raise ValueError("agent prompt eval stone bridge generated option was not validated")
+        if small_cabin.get("status") != "pass":
+            raise ValueError("agent prompt eval small cabin case is invalid")
+        if small_cabin.get("prompt") != "build a small cabin":
+            raise ValueError("agent prompt eval small cabin prompt is invalid")
+        if small_cabin.get("route") != "agentic_build_planner" \
+                and small_cabin.get("final_route") != "agentic_build_planner":
+            raise ValueError("agent prompt eval small cabin route is invalid")
+        if small_cabin.get("build_kind") != "cabin":
+            raise ValueError("agent prompt eval small cabin build kind is invalid")
+        if small_cabin.get("build_material_name") != "wood":
+            raise ValueError("agent prompt eval small cabin material is invalid")
+        if small_cabin.get("build_width") != 3 \
+                or small_cabin.get("build_depth") != 2 \
+                or small_cabin.get("build_height") != 2:
+            raise ValueError("agent prompt eval small cabin dimensions are invalid")
+        if small_cabin.get("planned_node_writes") != 10:
+            raise ValueError("agent prompt eval small cabin must plan exactly ten node writes")
+        if small_cabin.get("selected_candidate_id") != "generated_prompt_shaped_cabin":
+            raise ValueError("agent prompt eval small cabin selected candidate is invalid")
+        if small_cabin.get("generated_candidate_id") != "generated_prompt_shaped_cabin":
+            raise ValueError("agent prompt eval small cabin generated candidate is invalid")
+        if small_cabin.get("generated_build_option_status") != "validated":
+            raise ValueError("agent prompt eval small cabin generated option was not validated")
         if planner.get("status") != "pass":
             raise ValueError("agent prompt eval build planner case is invalid")
         if planner.get("route") != "agentic_build_planner" and planner.get("final_route") != "agentic_build_planner":
@@ -861,6 +947,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
                 {"propose_build_option"},
             )
             _require_agentic_tool_case(
+                small_cabin,
+                "small_cabin",
+                {"propose_build_option"},
+            )
+            _require_agentic_tool_case(
                 openrealm,
                 "openrealm_village",
                 {"propose_build_option"},
@@ -872,7 +963,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             )
 
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
-    if summary.get("cases_total") != 8 or summary.get("cases_passed") != 8:
+    if summary.get("cases_total") != 9 or summary.get("cases_passed") != 9:
         raise ValueError("agent prompt eval summary case counts are invalid")
     if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
         raise ValueError("agent prompt eval golden prompt suite is invalid")
@@ -895,6 +986,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "fire_only_strict_checked",
         "tnt_wall_checked",
         "stone_bridge_checked",
+        "small_cabin_checked",
         "agentic_build_planner_checked",
         "openrealm_village_checked",
         "player_agent_loop_checked",
@@ -944,6 +1036,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             "fire_only_strict",
             "tnt_wall",
             "stone_bridge",
+            "small_cabin",
             "agentic_build_planner",
             "openrealm_village",
             "player_agent_loop",
@@ -984,6 +1077,9 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
             None,
         ),
         "agent_prompt_eval_stone_bridge_candidate_id": "generated_bridge_platform",
+        "agent_prompt_eval_small_cabin_checked": True,
+        "agent_prompt_eval_small_cabin_planned_node_writes": 10,
+        "agent_prompt_eval_small_cabin_candidate_id": "generated_prompt_shaped_cabin",
         "agent_prompt_eval_agentic_build_planner_planned_node_writes": next(
             (
                 item.get("planned_node_writes")
@@ -1001,7 +1097,7 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_adapter_mode": runtime_context["adapter_mode"],
         "agent_prompt_eval_requires_model_network": runtime_context.get("requires_model_network") is True,
         "agent_prompt_eval_agentic_tool_cases": agentic_tool_cases,
-        "agent_prompt_eval_agentic_tool_cases_required": 7 if adapter_mode == "agents_sdk_sidecar" else 0,
+        "agent_prompt_eval_agentic_tool_cases_required": 8 if adapter_mode == "agents_sdk_sidecar" else 0,
         "agent_prompt_eval_world_mutation": False,
     }
 

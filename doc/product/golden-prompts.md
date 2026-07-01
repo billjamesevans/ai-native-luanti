@@ -5,8 +5,9 @@ Raspberry Pi fork test server before a public alpha cut.
 
 The full OpenRealm backlog currently contains eleven product prompts. The
 runtime gate enforces the implemented subset first: fire, strict fire-only, TNT
-wall, stone bridge generation, agentic build-planner selection, the OpenRealm
-village template, player-like multi-turn creator review, and model/tool routing.
+wall, stone bridge generation, small cabin generation, agentic build-planner
+selection, the OpenRealm village template, player-like multi-turn creator review,
+and model/tool routing.
 New prompts move from backlog to enforced only when the
 runtime can validate them with repeatable public-safe evidence.
 
@@ -15,7 +16,7 @@ runtime can validate them with repeatable public-safe evidence.
 | Build a campfire. | fire | fire-safe campfire nodes | 1-12 | required | required |
 | Build a fire and only a fire. | fire | fire-safe campfire nodes | 1-12 | required | required |
 | Build a stone bridge. | bridge/path | stone | 12-96 | required | required |
-| Build a small cabin. | cabin | wood/stone/glass | 80-600 | required | required |
+| Build a small cabin. | cabin | wood | 10 | required | required |
 | Build a path to that hill. | path | gravel/stone/wood | 8-200 | required | required |
 | Light this area. | lights | torch/lantern/glow node | 4-80 | required | required |
 | Repair this wall. | repair | matched nearby material | 1-200 | required | required |
@@ -41,13 +42,18 @@ runtime can validate them with repeatable public-safe evidence.
 
 - Suite: `openrealm_creator_loop`
 - Backlog total: `11`
-- Enforced runtime prompt cases: `7`
+- Enforced runtime prompt cases: `8`
 - Supporting model/tool route case: `1`
 - Stone bridge generation: `Build a stone bridge` must produce a
   tool-validated `generated_bridge_platform` option, preserve stone material,
   validate a bounded `6-8 x 2` platform shape, plan node writes equal to the
   bridge area, require approval, and expose `propose_build_option`/
   `select_build_option`/`plan_build_actions` evidence.
+- Small cabin generation: `Build a small cabin` must produce a tool-validated
+  `generated_prompt_shaped_cabin` option, preserve `wood` material, validate a
+  bounded `3 x 2 x 2` cabin shell, plan exactly `10` node writes, require
+  approval, and expose `propose_build_option`/`select_build_option`/
+  `plan_build_actions` evidence.
 - Player-loop option review: `Nova, options` returns selected and alternate
   pending build choices from runtime state, including an `openrealm.plan.v1`
   safety/preview contract for each executable option.

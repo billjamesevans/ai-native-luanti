@@ -385,6 +385,11 @@ core.register_node(":ai_runtime_test:tnt", {
 	groups = { tnt = 1 },
 })
 
+core.register_node(":ai_runtime_test:wood", {
+	description = "AI Runtime Test Wood",
+	groups = { choppy = 1 },
+})
+
 local function test_pos(x)
 	return { x = x, y = 32, z = 4100 }
 end
@@ -7187,6 +7192,14 @@ rawset(_G, "test_ai_agent_plugin_async_model_adapter_fallback", nil)
 rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	core.ai_agent_plugin.configure({
 		max_lights = 128,
+		cabin_node = "ai_runtime_test:wood",
+		house_node = "ai_runtime_test:wood",
+		build_material_nodes = {
+			fire = "ai_runtime_test:fire",
+			tnt = "ai_runtime_test:tnt",
+			stone = "ai_runtime_test:stone",
+			wood = "ai_runtime_test:wood",
+		},
 	})
 	local eval_reports = {}
 	local async_eval_done = {}
@@ -7213,24 +7226,27 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(queued == true)
 	assert(reason == "queued")
 	assert(#eval_reports == 0)
-	assert(#async_eval_done == 5)
+	assert(#async_eval_done == 6)
 	assert(async_eval_requests[1].public_prompt:find("build a stone bridge", 1, true) ~= nil)
 	assert(async_eval_requests[1].context.surface_id == "builder")
 	assert(async_eval_requests[1].context.selected_candidate_id == "platform")
-	assert(async_eval_requests[2].public_prompt:find("build a small shelter", 1, true) ~= nil)
+	assert(async_eval_requests[2].public_prompt:find("build a small cabin", 1, true) ~= nil)
 	assert(async_eval_requests[2].context.surface_id == "builder")
-	assert(async_eval_requests[2].context.selected_candidate_id == "platform")
-	assert(async_eval_requests[3].public_prompt:find(
-		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
+	assert(async_eval_requests[2].context.selected_candidate_id == "parsed_request")
+	assert(async_eval_requests[3].public_prompt:find("build a small shelter", 1, true) ~= nil)
 	assert(async_eval_requests[3].context.surface_id == "builder")
-	assert(async_eval_requests[3].context.selected_candidate_id
-		== "generated_openrealm_lakeside_village")
+	assert(async_eval_requests[3].context.selected_candidate_id == "platform")
 	assert(async_eval_requests[4].public_prompt:find(
 		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
 	assert(async_eval_requests[4].context.surface_id == "builder")
 	assert(async_eval_requests[4].context.selected_candidate_id
 		== "generated_openrealm_lakeside_village")
-	assert(async_eval_requests[5].public_prompt == "what can you plan with tools next?")
+	assert(async_eval_requests[5].public_prompt:find(
+		"Build a cozy lakeside village with floating lanterns", 1, true) ~= nil)
+	assert(async_eval_requests[5].context.surface_id == "builder")
+	assert(async_eval_requests[5].context.selected_candidate_id
+		== "generated_openrealm_lakeside_village")
+	assert(async_eval_requests[6].public_prompt == "what can you plan with tools next?")
 	async_eval_done[1]({
 		ok = true,
 		message = "eval async stone bridge response",
@@ -7298,6 +7314,73 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(#eval_reports == 0)
 	async_eval_done[2]({
 		ok = true,
+		message = "eval async small cabin response",
+		adapter_name = "mock-eval-small-cabin",
+		elapsed_us = 80000,
+		response = {
+			agentic_execution = true,
+			selected_option_id = "generated_prompt_shaped_cabin",
+			model_selected_option_id = "generated_prompt_shaped_cabin",
+			tool_decision_source = "agents_sdk_generated_tool_completion",
+			required_tool_calls = {
+				"recall_build_prompt_memory",
+				"propose_build_option",
+				"select_build_option",
+				"plan_build_actions",
+			},
+			missing_required_tool_calls = {},
+			required_tool_calls_satisfied = true,
+			tool_trace = {
+				{ tool_name = "recall_build_prompt_memory" },
+				{ tool_name = "propose_build_option" },
+				{ tool_name = "select_build_option" },
+				{ tool_name = "plan_build_actions" },
+			},
+			generated_build_option = {
+				option_id = "generated_prompt_shaped_cabin",
+				label = "Generated prompt-shaped cabin",
+				reason = "player asked for a compact cabin-like build",
+				build_kind = "cabin",
+				build_width = 3,
+				build_depth = 2,
+				build_height = 2,
+				build_material_name = "wood",
+				planned_node_writes = 10,
+			},
+			build_action_plan = {
+				status = "ready",
+				selected_option_id = "generated_prompt_shaped_cabin",
+				step_count = 10,
+				world_mutation_authority = "luanti",
+			},
+			tool_decisions = {
+				build_option = {
+					selected_option_id = "generated_prompt_shaped_cabin",
+					decision_source = "agent_selected_generated_build_option",
+					generated_option = {
+						option_id = "generated_prompt_shaped_cabin",
+						label = "Generated prompt-shaped cabin",
+						reason = "player asked for a compact cabin-like build",
+						build_kind = "cabin",
+						build_width = 3,
+						build_depth = 2,
+						build_height = 2,
+						build_material_name = "wood",
+						planned_node_writes = 10,
+					},
+				},
+				build_action_plan = {
+					status = "ready",
+					selected_option_id = "generated_prompt_shaped_cabin",
+					step_count = 10,
+					world_mutation_authority = "luanti",
+				},
+			},
+		},
+	})
+	assert(#eval_reports == 0)
+	async_eval_done[3]({
+		ok = true,
 		message = "eval async build planner response",
 		adapter_name = "mock-eval-build-planner",
 		elapsed_us = 80000,
@@ -7307,7 +7390,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[3]({
+	async_eval_done[4]({
 		ok = true,
 		message = "eval async OpenRealm village response",
 		adapter_name = "mock-eval-openrealm",
@@ -7352,7 +7435,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[4]({
+	async_eval_done[5]({
 		ok = true,
 		message = "eval async player-loop OpenRealm response",
 		adapter_name = "mock-eval-player-loop-openrealm",
@@ -7398,7 +7481,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 		},
 	})
 	assert(#eval_reports == 0)
-	async_eval_done[5]({
+	async_eval_done[6]({
 		ok = true,
 		message = "eval async adapter response",
 		adapter_name = "mock-eval-async",
@@ -7414,7 +7497,7 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_report.ok == true, core.write_json(eval_report))
 	assert(eval_report.status == "pass")
 	assert(eval_report.owner == "EvalTester")
-	assert(#eval_report.cases == 8)
+	assert(#eval_report.cases == 9)
 	local eval_cases = {}
 	for _, case_report in ipairs(eval_report.cases) do
 		eval_cases[case_report.case_id] = case_report
@@ -7465,6 +7548,24 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.stone_bridge.final_trace.response.status == "pending_approval")
 	assert(eval_cases.stone_bridge.cleanup.action == "discard_approval")
 	assert(eval_cases.stone_bridge.cleanup.status == "success")
+	assert(eval_cases.small_cabin.queued_status == "queued")
+	assert(eval_cases.small_cabin.initial_trace.route == "agentic_build_planner")
+	assert(eval_cases.small_cabin.final_status == "pending_approval")
+	assert(eval_cases.small_cabin.final_reply.selected_candidate_id
+		== "generated_prompt_shaped_cabin")
+	assert(eval_cases.small_cabin.final_reply.build_kind == "cabin")
+	assert(eval_cases.small_cabin.final_reply.build_material_name == "wood")
+	assert(eval_cases.small_cabin.final_reply.build_width == 3)
+	assert(eval_cases.small_cabin.final_reply.build_depth == 2)
+	assert(eval_cases.small_cabin.final_reply.build_height == 2)
+	assert(eval_cases.small_cabin.final_reply.planned_node_writes == 10)
+	assert(eval_cases.small_cabin.final_reply.generated_build_option_status
+		== "validated")
+	assert(eval_cases.small_cabin.final_reply.generated_candidate_id
+		== "generated_prompt_shaped_cabin")
+	assert(eval_cases.small_cabin.final_trace.response.status == "pending_approval")
+	assert(eval_cases.small_cabin.cleanup.action == "discard_approval")
+	assert(eval_cases.small_cabin.cleanup.status == "success")
 	assert(eval_cases.agentic_build_planner.queued_status == "queued")
 	assert(eval_cases.agentic_build_planner.initial_trace.route == "agentic_build_planner")
 	assert(eval_cases.agentic_build_planner.final_status == "pending_approval")
@@ -7526,8 +7627,8 @@ rawset(_G, "test_ai_agent_plugin_prompt_eval_surface", function()
 	assert(eval_cases.model.final_status == "success")
 	assert(eval_cases.model.final_trace.response.status == "success")
 	assert(eval_cases.model.final_trace.context.private_prompt == nil)
-	assert(eval_report.metrics.model_adapter_requests_delta == 5)
-	assert(eval_report.metrics.model_adapter_successes_delta == 5)
+	assert(eval_report.metrics.model_adapter_requests_delta == 6)
+	assert(eval_report.metrics.model_adapter_successes_delta == 6)
 	assert(eval_report.metrics.model_adapter_failures_delta == 0)
 	assert(eval_report.metrics.model_adapter_timeouts_delta == 0)
 	assert(eval_report.safety.audit_private_payload_retained == false)

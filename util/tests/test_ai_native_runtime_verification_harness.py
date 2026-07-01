@@ -711,8 +711,33 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             "cleanup_status": "success",
             "failure_count": 0,
         }
+        small_cabin_case = {
+            "case_id": "small_cabin",
+            "status": "pass",
+            "ok": True,
+            "prompt": "build a small cabin",
+            "action": "build",
+            "reply_status": "queued",
+            "final_status": "pending_approval",
+            "route": "agentic_build_planner",
+            "final_route": "agentic_build_planner",
+            "build_kind": "cabin",
+            "build_width": 3,
+            "build_depth": 2,
+            "build_height": 2,
+            "build_material_name": "wood",
+            "selected_candidate_id": "generated_prompt_shaped_cabin",
+            "generated_build_option_status": "validated",
+            "generated_candidate_id": "generated_prompt_shaped_cabin",
+            "candidate_count": 5,
+            "planned_node_writes": 10,
+            "cleanup_status": "success",
+            "failure_count": 0,
+        }
         payload["prompt_eval"]["cases"].insert(3, stone_bridge_case)
+        payload["prompt_eval"]["cases"].insert(4, small_cabin_case)
         payload["prompt_eval"]["case_ids"]["stone_bridge"] = True
+        payload["prompt_eval"]["case_ids"]["small_cabin"] = True
         payload["prompt_eval"]["cases_total"] = len(payload["prompt_eval"]["cases"])
         payload["prompt_eval"]["cases_passed"] = len(payload["prompt_eval"]["cases"])
         payload["prompt_eval"]["cases_failed"] = 0
@@ -720,7 +745,9 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
         payload["summary"]["cases_passed"] = payload["prompt_eval"]["cases_passed"]
         payload["summary"]["cases_failed"] = 0
         payload["summary"]["stone_bridge_checked"] = True
+        payload["summary"]["small_cabin_checked"] = True
         payload["summary"]["golden_prompt_case_ids"]["stone_bridge"] = True
+        payload["summary"]["golden_prompt_case_ids"]["small_cabin"] = True
         payload["summary"]["golden_prompts_total"] = len(
             payload["summary"]["golden_prompt_case_ids"]
         )
@@ -728,11 +755,17 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             payload["summary"]["golden_prompt_case_ids"]
         )
         payload["summary"]["golden_prompts_failed"] = 0
+        case_count = payload["prompt_eval"]["cases_total"]
+        payload["prompt_eval"]["metrics"]["model_adapter_requests_delta"] = case_count
+        payload["prompt_eval"]["metrics"]["model_adapter_successes_delta"] = case_count
+        payload["summary"]["model_adapter_requests"] = case_count
+        payload["summary"]["model_adapter_successes"] = case_count
         agentic_case_metadata = {
             "build_fire": ("fire", 4, 3),
             "fire_only_strict": ("fire", 4, 3),
             "tnt_wall": ("tnt_wall", 5, 4),
             "stone_bridge": ("generated_bridge_platform", 5, 12),
+            "small_cabin": ("generated_prompt_shaped_cabin", 5, 10),
             "agentic_build_planner": ("wall", 4, 4),
             "openrealm_village": (
                 "generated_openrealm_lakeside_village",
@@ -757,6 +790,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             case["candidate_count"] = candidate_count
             generated_openrealm = case_id in {
                 "stone_bridge",
+                "small_cabin",
                 "openrealm_village",
                 "player_agent_loop",
             }
@@ -781,10 +815,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             case["adapter_build_action_plan_step_count"] = step_count
             case["adapter_build_action_plan_world_mutation_authority"] = "luanti"
         if adapter_mode == "agents_sdk_sidecar":
-            payload["prompt_eval"]["metrics"]["model_adapter_requests_delta"] = 8
-            payload["prompt_eval"]["metrics"]["model_adapter_successes_delta"] = 8
-            payload["summary"]["model_adapter_requests"] = 8
-            payload["summary"]["model_adapter_successes"] = 8
+            payload["prompt_eval"]["metrics"]["model_adapter_requests_delta"] = case_count
+            payload["prompt_eval"]["metrics"]["model_adapter_successes_delta"] = case_count
+            payload["summary"]["model_adapter_requests"] = case_count
+            payload["summary"]["model_adapter_successes"] = case_count
         payload["bounds"]["output_bytes"] = len(json.dumps(payload, sort_keys=True).encode("utf-8"))
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
@@ -1637,6 +1671,15 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "stone bridge planned writes must match bridge area"):
                 probe.validate_live_result(bridge_underplanned)
 
+            cabin_underplanned = json.loads(json.dumps(payload))
+            cabin = next(
+                case for case in cabin_underplanned["prompt_eval"]["cases"]
+                if case["case_id"] == "small_cabin"
+            )
+            cabin["planned_node_writes"] = 9
+            with self.assertRaisesRegex(ValueError, "small cabin must plan exactly ten node writes"):
+                probe.validate_live_result(cabin_underplanned)
+
     def test_agent_prompt_eval_sidecar_validator_requires_tool_evidence(self):
         probe = load_agent_prompt_eval_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1645,11 +1688,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             payload = json.loads(artifact.read_text(encoding="utf-8"))
 
             evidence = probe.validate_live_result(payload)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 7)
-            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 7)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 8)
+            self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 8)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
             self.assertEqual(evidence["agent_prompt_eval_golden_prompt_backlog_total"], 11)
-            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 7)
+            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 8)
             self.assertEqual(evidence["agent_prompt_eval_golden_prompts_failed"], 0)
 
             generated_completion_source = json.loads(json.dumps(payload))
@@ -1675,7 +1718,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
 
             golden_regression = json.loads(json.dumps(payload))
             golden_regression["summary"]["golden_prompt_case_ids"]["fire_only_strict"] = False
-            golden_regression["summary"]["golden_prompts_passed"] = 6
+            golden_regression["summary"]["golden_prompts_passed"] = 7
             golden_regression["summary"]["golden_prompts_failed"] = 1
             with self.assertRaisesRegex(ValueError, "golden prompts did not all pass"):
                 probe.validate_live_result(golden_regression)
@@ -2291,7 +2334,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"]["agent_prompt_eval_cases"],
-                8,
+                9,
             )
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2316,6 +2359,11 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             self.assertTrue(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_openrealm_village_checked"
+                ]
+            )
+            self.assertTrue(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_small_cabin_checked"
                 ]
             )
             self.assertTrue(
@@ -2360,6 +2408,18 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_small_cabin_planned_node_writes"
+                ],
+                10,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_small_cabin_candidate_id"
+                ],
+                "generated_prompt_shaped_cabin",
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_openrealm_village_planned_node_writes"
                 ],
                 96,
@@ -2380,7 +2440,7 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_golden_prompts_total"
                 ],
-                7,
+                8,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
@@ -2398,13 +2458,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_requests"
                 ],
-                7,
+                9,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][
                     "agent_prompt_eval_model_adapter_successes"
                 ],
-                7,
+                9,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][

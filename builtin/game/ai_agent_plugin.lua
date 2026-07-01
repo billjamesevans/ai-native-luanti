@@ -7261,7 +7261,8 @@ function plugin.handle_command(name, param, context)
 	end
 	if (prompt:find("plan", 1, true) or prompt:find("preview", 1, true))
 			and prompt_has_build_surface(prompt) then
-		if agentic_build_planner_available() then
+		if agentic_build_planner_available()
+				or context.force_agentic_build_planner == true then
 			return handle_agentic_build_planner(name, raw_prompt, context,
 				"agentic_build_planner_first")
 		end
@@ -7332,7 +7333,8 @@ function plugin.handle_command(name, param, context)
 			followup_context, "player_agent_followup_refinement")
 	end
 	if prompt:find("build", 1, true) or prompt:find("marker", 1, true) then
-		if agentic_build_planner_available() then
+		if agentic_build_planner_available()
+				or context.force_agentic_build_planner == true then
 			return handle_agentic_build_planner(name, raw_prompt, context,
 				"agentic_build_planner_first")
 		end
@@ -7407,6 +7409,7 @@ local EVAL_DEFAULT_CASES = {
 	"fire_only_strict",
 	"tnt_wall",
 	"stone_bridge",
+	"small_cabin",
 	"agentic_build_planner",
 	"openrealm_village",
 	"player_agent_loop",
@@ -8156,6 +8159,8 @@ local function normalize_eval_case(value)
 		return "tnt_wall"
 	elseif value == "bridge" or value == "stonebridge" or value == "buildstonebridge" then
 		return "stone_bridge"
+	elseif value == "cabin" or value == "smallcabin" or value == "buildsmallcabin" then
+		return "small_cabin"
 	elseif value == "agentic" or value == "planner" or value == "buildplanner"
 			or value == "agenticbuildplanner" or value == "shelter" then
 		return "agentic_build_planner"
@@ -8377,6 +8382,23 @@ function plugin.run_prompt_eval(options, callback)
 				}
 				if run_agentic_build_eval_case(report, owner, "build a stone bridge",
 						context, async_case_done, case_id, expected) then
+					pending_async_count = pending_async_count + 1
+				end
+			elseif case_id == "small_cabin" then
+				local cabin_context = table.copy(context)
+				cabin_context.force_agentic_build_planner = true
+				local expected = {
+					route = "agentic_build_planner",
+					build_kind = "cabin",
+					build_material_name = "wood",
+					selected_candidate_id = "generated_prompt_shaped_cabin",
+					build_width = 3,
+					build_depth = 2,
+					build_height = 2,
+					planned_node_writes = 10,
+				}
+				if run_agentic_build_eval_case(report, owner, "build a small cabin",
+						cabin_context, async_case_done, case_id, expected) then
 					pending_async_count = pending_async_count + 1
 				end
 			elseif case_id == "agentic_build_planner" then

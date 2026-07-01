@@ -71,6 +71,47 @@ def stone_bridge_prompt_eval_case():
     }
 
 
+def small_cabin_prompt_eval_case():
+    return {
+        "case_id": "small_cabin",
+        "status": "pass",
+        "ok": True,
+        "prompt": "build a small cabin",
+        "route": "agentic_build_planner",
+        "final_route": "agentic_build_planner",
+        "build_kind": "cabin",
+        "build_width": 3,
+        "build_depth": 2,
+        "build_height": 2,
+        "build_material_name": "wood",
+        "planned_node_writes": 10,
+        "selected_candidate_id": "generated_prompt_shaped_cabin",
+        "adapter_selected_candidate_id": "generated_prompt_shaped_cabin",
+        "model_selected_candidate_id": "generated_prompt_shaped_cabin",
+        "generated_build_option_status": "validated",
+        "generated_candidate_id": "generated_prompt_shaped_cabin",
+        "candidate_count": 5,
+        "adapter_tool_decision_source": "agents_sdk_generated_tool_completion",
+        "adapter_required_tool_calls": [
+            "recall_build_prompt_memory",
+            "propose_build_option",
+            "select_build_option",
+            "plan_build_actions",
+        ],
+        "adapter_missing_required_tool_calls": [],
+        "adapter_required_tool_calls_satisfied": True,
+        "adapter_tool_trace_names": [
+            "recall_build_prompt_memory",
+            "propose_build_option",
+            "select_build_option",
+            "plan_build_actions",
+        ],
+        "adapter_build_action_plan_status": "ready",
+        "adapter_build_action_plan_step_count": 10,
+        "adapter_build_action_plan_world_mutation_authority": "luanti",
+    }
+
+
 def candidate_queue_payload(**overrides):
     payload = {
         "schema_version": 1,
@@ -103,8 +144,8 @@ def case_pack_payload(**overrides):
         "generated_at": "2026-06-30T18:00:00Z",
         "status": "ready",
         "summary": {
-            "cases_total": 7,
-            "ready_for_runtime_prompt_eval": 7,
+            "cases_total": 8,
+            "ready_for_runtime_prompt_eval": 8,
             "requires_maintainer_review_before_default_gate": True,
         },
         "cases": [],
@@ -126,8 +167,8 @@ def review_queue_payload(**overrides):
             "adapter_contract_failures_active": 0,
             "adapter_contract_failures_resolved": 1,
             "candidates_total": 9,
-            "case_pack_cases_total": 7,
-            "case_pack_unique_cases_total": 7,
+            "case_pack_cases_total": 8,
+            "case_pack_unique_cases_total": 8,
             "manual_review_required": 0,
             "operator_feedback_events_read": 61,
             "operator_labels_applied": 4,
@@ -135,7 +176,7 @@ def review_queue_payload(**overrides):
             "ready_for_prompt_eval": 9,
             "review_items_retained": 0,
             "review_items_total": 0,
-            "unique_ready_for_prompt_eval": 7,
+            "unique_ready_for_prompt_eval": 8,
             "verified_live_probe_cases_read": 30,
         },
         "action_items": [],
@@ -493,7 +534,9 @@ def live_prompt_eval_payload(**overrides):
     }
     prompt_eval = payload["prompt_eval"]
     prompt_eval["cases"].insert(3, stone_bridge_prompt_eval_case())
+    prompt_eval["cases"].insert(4, small_cabin_prompt_eval_case())
     prompt_eval["case_ids"]["stone_bridge"] = True
+    prompt_eval["case_ids"]["small_cabin"] = True
     prompt_eval["cases_total"] = len(prompt_eval["cases"])
     prompt_eval["cases_passed"] = len(prompt_eval["cases"])
     prompt_eval["cases_failed"] = 0
@@ -502,9 +545,11 @@ def live_prompt_eval_payload(**overrides):
     summary["cases_passed"] = prompt_eval["cases_passed"]
     summary["cases_failed"] = prompt_eval["cases_failed"]
     summary["stone_bridge_checked"] = True
+    summary["small_cabin_checked"] = True
     summary["model_adapter_requests"] = prompt_eval["cases_total"]
     summary["model_adapter_successes"] = prompt_eval["cases_passed"]
     summary["golden_prompt_case_ids"]["stone_bridge"] = True
+    summary["golden_prompt_case_ids"]["small_cabin"] = True
     summary["golden_prompts_total"] = len(summary["golden_prompt_case_ids"])
     summary["golden_prompts_passed"] = len(summary["golden_prompt_case_ids"])
     summary["golden_prompts_failed"] = 0
@@ -567,15 +612,15 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
-        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 8)
-        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 8)
+        self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 9)
+        self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 9)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_backlog_total"], 11)
-        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 7)
-        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 7)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 8)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 8)
         self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_failed"], 0)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 7)
-        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 7)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 8)
+        self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 8)
         self.assertTrue(
             report["summary"]["live_prompt_eval_player_agent_loop_review_traces_checked"]
         )
@@ -687,11 +732,12 @@ class AgentQualityGateTests(unittest.TestCase):
                     "fire_only_strict": False,
                     "tnt_wall": True,
                     "stone_bridge": True,
+                    "small_cabin": True,
                     "agentic_build_planner": True,
                     "openrealm_village": True,
                     "player_agent_loop": True,
                 },
-                "golden_prompts_passed": 6,
+                "golden_prompts_passed": 7,
                 "golden_prompts_failed": 1,
             }
         )

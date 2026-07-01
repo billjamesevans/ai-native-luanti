@@ -367,18 +367,23 @@ def finish_headless_players(args, run: dict, log_text: str) -> dict:
             continue
         status = proc.poll()
         if status is None:
-            proc.terminate()
             try:
                 status = proc.wait(timeout=args.headless_player_timeout)
             except subprocess.TimeoutExpired:
-                proc.kill()
+                proc.terminate()
                 try:
                     status = proc.wait(timeout=args.headless_player_timeout)
                 except subprocess.TimeoutExpired:
-                    status = -9
-                killed_any = True
+                    proc.kill()
+                    try:
+                        status = proc.wait(timeout=args.headless_player_timeout)
+                    except subprocess.TimeoutExpired:
+                        status = -9
+                    killed_any = True
+                else:
+                    terminated_any = True
             else:
-                terminated_any = True
+                pass
         exit_statuses.append(status)
         if status == 0:
             completed_count += 1
