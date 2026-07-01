@@ -69,7 +69,10 @@ in normal chat. Only explicitly addressed non-slash messages are consumed; norma
 player chat and all slash commands continue through Luanti's standard chat path.
 Natural-chat turns are recorded in the player-agent loop as `natural_chat`, so a
 follow-up like `Nova, only the fire, nothing else` can refine the prior Builder
-Agent goal instead of starting from a command-only blank slate.
+Agent goal instead of starting from a command-only blank slate. The runtime keeps
+the latest eight public-safe player-agent turns by default, with
+`max_player_loop_turns` configurable for server profiles that need a shorter or
+longer window.
 
 The plugin also registers `/ai_agent_eval` for operators with `server`
 privilege. It runs a bounded public-safe prompt evaluation covering `build a

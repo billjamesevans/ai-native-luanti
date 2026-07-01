@@ -43,7 +43,7 @@ local settings = {
 	max_defend_distance = 8,
 	agentic_build_planner_first = false,
 	auto_apply_build_approvals = false,
-	max_player_loop_turns = 4,
+	max_player_loop_turns = 8,
 	natural_chat_enabled = true,
 	natural_chat_aliases = { "nova", "bot", "aibot" },
 	capabilities = table.copy(default_capabilities),
@@ -371,7 +371,7 @@ function plugin._player_loop.public_turns(turns)
 	if type(turns) ~= "table" then
 		return copied
 	end
-	local max_turns = settings.max_player_loop_turns or 4
+	local max_turns = settings.max_player_loop_turns or 8
 	local start_index = math.max(1, #turns - max_turns + 1)
 	for index = start_index, #turns do
 		local turn = turns[index]
@@ -580,7 +580,7 @@ function plugin._player_loop.append_turn(name, role, text, surface_id, source)
 		source = source,
 		turn_us = trace_timestamp_us(),
 	}
-	while #loop.recent_turns > (settings.max_player_loop_turns or 4) do
+	while #loop.recent_turns > (settings.max_player_loop_turns or 8) do
 		table.remove(loop.recent_turns, 1)
 	end
 	loop.last_updated_us = trace_timestamp_us()
