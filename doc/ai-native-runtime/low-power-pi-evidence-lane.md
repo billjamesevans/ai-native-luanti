@@ -5,10 +5,10 @@ Status: alpha-hardening lane for the side-by-side `ai_runtime` test service.
 Latest post-deploy gate:
 
 - Date: 2026-07-01
-- Fork commit: `212900839`
-- Backup artifact label: `raspberrypi_luanti_20260701-004002.tgz`
+- Fork commit: `d375eeee7`
+- Backup artifact label: `raspberrypi_luanti_20260701-005652.tgz`
 - Backup SHA-256:
-  `6cd33caddbbfafe7db24f5521c4b3bb1f3cfe5706bc465472f6d85399e9d7599`
+  `1e1c565a9325650ef4fbdf0270b65512894e9b3613fd798d1739323eaf911b77`
 - Pi runtime test: `TestAIRuntime` passed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Agents SDK sidecar: active on loopback TCP `8766`.
@@ -16,7 +16,8 @@ Latest post-deploy gate:
   pilot `pass`; violations `0`; attention items `0`.
 - Game discovery: `ai_runtime`, `devtest`, and `openrealm_demo`.
 - Player-loop check: `Nova, options` returns pending build choices and the
-  selected candidate from runtime state without world mutation.
+  selected candidate from runtime state without world mutation. Each executable
+  option carries an `openrealm.plan.v1` safety/preview contract.
 
 This is post-deploy proof, not a retained soak manifest. Use the commands below
 for quick, one-hour, or overnight low-power evidence manifests.

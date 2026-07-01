@@ -39,7 +39,7 @@ Exit gate:
 Current Pi gate evidence:
 
 - 2026-07-01 side-by-side fork deploy advanced the Pi test lane to
-  `212900839`.
+  `d375eeee7`.
 - `TestAIRuntime` passed on the Pi before service restart.
 - family service stayed active on UDP `30000`.
 - fork test service restarted active on UDP `30001`.
@@ -50,6 +50,7 @@ Current Pi gate evidence:
   `devtest`.
 - `Nova, options` is now a player-loop review path for pending build choices
   and selected candidate reasoning without provider calls or world mutation.
+  Its executable candidates carry `openrealm.plan.v1` safety contracts.
 
 ## Phase 2: Luminara Creator Playground
 
