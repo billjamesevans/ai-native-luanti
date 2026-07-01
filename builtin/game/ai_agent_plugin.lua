@@ -8898,34 +8898,41 @@ function plugin._run_natural_chat_followup_eval_case(report, owner, context, asy
 	end
 
 	local seed_context = table.copy(context or {})
-	seed_context.suppress_chat_send = true
-	seed_context.on_agentic_build_planner_complete = function(final_reply, final_trace)
-		case_report.seed_completed_by_hook = true
-		start_followup(final_reply, final_trace)
-	end
-	local handled, seed_reply = plugin.handle_natural_chat_message(owner,
-		case_report.prompt, seed_context)
-	local seed_trace = seed_reply and seed_reply.trace_id
-		and trace_by_id(seed_reply.trace_id) or latest_request_trace()
-	case_report.seed_handled = handled == true
+	seed_context.build_kind = "fire"
+	seed_context.build_material_name = "fire"
+	seed_context.build_material_node =
+		resolve_build_material_node("fire", settings.fire_node)
+	local seed_trace = start_request_trace(owner, "build",
+		"deterministic_followup_seed", "build a fire", seed_context, {
+			surface_id = "builder",
+			player_turn_text = "build a fire",
+			player_turn_source = "natural_chat",
+		})
+	local seed_reply = create_build_pending_reply(owner, seed_context,
+		"Build plan is pending approval before mutation.", {
+			planner_mode = "deterministic_followup_seed",
+			selected_candidate_id = "fire",
+			selection_source = "deterministic_followup_seed",
+		})
+	finish_request_trace(seed_trace, seed_reply, {
+		input_surface = "natural_chat",
+		selected_intent = "fire",
+		build_material_node = seed_reply and seed_reply.build_material_node,
+	})
+	local seed_cleanup = plugin.handle_command(owner, "discard plan", {})
+	case_report.seed_handled = true
 	case_report.seed_initial_reply = compact_eval_reply(seed_reply)
 	case_report.seed_initial_trace = compact_eval_trace(seed_trace)
-	case_report.seed_trace_id = seed_reply and seed_reply.trace_id
-		or (seed_trace and seed_trace.trace_id)
+	case_report.seed_trace_id = seed_trace and seed_trace.trace_id
 	case_report.seed_queued_status = seed_reply and seed_reply.status
+	case_report.seed_cleanup = seed_cleanup and {
+		action = seed_cleanup.action,
+		status = seed_cleanup.status,
+		reason = seed_cleanup.reason,
+	} or nil
 	case_report.checks.seed_initial_queued = seed_reply
-		and (seed_reply.status == "queued"
-			or seed_reply.status == "pending_approval")
-	if seed_reply and seed_reply.status == "queued"
-			and not case_report.seed_completed_by_hook then
-		async_required = true
-		case_report.status = "queued"
-		return true
-	end
-	if not case_report.seed_completed_by_hook then
-		return start_followup(seed_reply, seed_trace) or async_required
-	end
-	return async_required
+		and seed_reply.status == "pending_approval"
+	return start_followup(seed_reply, seed_trace) or async_required
 end
 
 function plugin._run_natural_pending_edit_eval_case(report, owner, context)

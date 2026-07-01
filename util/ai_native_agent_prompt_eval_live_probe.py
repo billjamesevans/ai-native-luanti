@@ -270,7 +270,7 @@ def write_probe_world(
             "    followup_model_selected_candidate_id = followup_final_reply.model_selected_candidate_id,",
             "    followup_candidate_count = followup_final_reply.candidate_count,",
             "    material_prompt = case.material_prompt,",
-            "    seed_status = seed_reply.status,",
+            "    seed_status = seed_reply.status or case.seed_final_status,",
             "    seed_action = seed_reply.action,",
             "    seed_approval_id = seed_reply.approval_id,",
             "    seed_build_kind = seed_reply.build_kind,",
