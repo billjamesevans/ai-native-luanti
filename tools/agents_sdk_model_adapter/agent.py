@@ -68,6 +68,53 @@ FORBIDDEN_RESPONSE_KEYS = {
     "headers",
     "request_body",
 }
+GENERATED_BUILD_KINDS = {
+    "marker",
+    "platform",
+    "wall",
+    "fire",
+    "house",
+    "cabin",
+    "landmark",
+}
+GENERATED_BUILD_MATERIALS = {
+    "default",
+    "stone",
+    "tnt",
+    "fire",
+    "wood",
+    "gold",
+    "quartz",
+    "glass",
+    "diamond",
+    "glow",
+}
+GENERATED_SHAPE_REQUEST_WORDS = (
+    "tower",
+    "tall",
+    "bridge",
+    "road",
+    "path",
+    "walkway",
+    "shelter",
+    "house",
+    "home",
+    "cabin",
+    "hut",
+    "base",
+    "floor",
+    "room",
+    "landmark",
+    "monument",
+    "statue",
+    "amazing",
+    "awesome",
+    "epic",
+    "cool",
+    "creative",
+    "surprising",
+    "surprise",
+)
 
 _TOOL_TRACE: ContextVar[list[dict[str, Any]] | None] = ContextVar(
     "ai_native_luanti_agent_tool_trace",
@@ -502,19 +549,7 @@ def _build_site_request_class(player_request: str, candidates: list[dict[str, An
         return "single_fire"
     if isinstance(locked, dict) and locked.get("option_id") == "tnt_wall":
         return "tnt_wall"
-    if any(word in request for word in (
-        "tower",
-        "tall",
-        "bridge",
-        "road",
-        "path",
-        "walkway",
-        "shelter",
-        "house",
-        "base",
-        "floor",
-        "room",
-    )):
+    if any(word in request for word in GENERATED_SHAPE_REQUEST_WORDS):
         return "generated_shape"
     if "wall" in request:
         return "wall"
@@ -638,6 +673,101 @@ def _bounded_generated_dims(width: int, depth_or_height: int, budget: int) -> tu
     return width, depth_or_height
 
 
+def _shell_write_count(width: int, depth: int, height: int, budget: int) -> int:
+    width = max(1, int(width))
+    depth = max(1, int(depth))
+    height = max(1, int(height))
+    budget = max(1, int(budget))
+    floor_writes = width * depth
+    if floor_writes >= budget:
+        return floor_writes
+    if width > 1 and depth > 1:
+        corners = 4
+    elif width > 1 or depth > 1:
+        corners = 2
+    else:
+        corners = 1
+    return floor_writes + min(corners * max(0, height - 1), budget - floor_writes)
+
+
+def _landmark_write_count(width: int, depth: int, height: int, budget: int) -> int:
+    width = max(1, int(width))
+    depth = max(1, int(depth))
+    height = max(1, int(height))
+    budget = max(1, int(budget))
+    base_writes = width * depth
+    if base_writes >= budget:
+        return base_writes
+    return base_writes + min(height, budget - base_writes)
+
+
+def _bounded_shell_dims(
+    width: int,
+    depth: int,
+    height: int,
+    budget: int,
+) -> tuple[int, int, int, int]:
+    width = max(1, int(width))
+    depth = max(1, int(depth))
+    height = max(1, int(height))
+    budget = max(1, int(budget))
+    while _shell_write_count(width, depth, height, budget) > budget:
+        if width * depth > budget:
+            if width >= depth and width > 1:
+                width -= 1
+            elif depth > 1:
+                depth -= 1
+            else:
+                break
+        elif height > 1:
+            height -= 1
+        else:
+            break
+    return width, depth, height, _shell_write_count(width, depth, height, budget)
+
+
+def _bounded_landmark_dims(
+    width: int,
+    depth: int,
+    height: int,
+    budget: int,
+) -> tuple[int, int, int, int]:
+    width = max(1, int(width))
+    depth = max(1, int(depth))
+    height = max(1, int(height))
+    budget = max(1, int(budget))
+    while _landmark_write_count(width, depth, height, budget) > budget:
+        if width * depth > budget:
+            if width >= depth and width > 1:
+                width -= 1
+            elif depth > 1:
+                depth -= 1
+            else:
+                break
+        elif height > 1:
+            height -= 1
+        else:
+            break
+    return width, depth, height, _landmark_write_count(width, depth, height, budget)
+
+
+def _requested_material(request: str, default: str) -> str:
+    material_signals = (
+        ("tnt", ("tnt",)),
+        ("gold", ("gold",)),
+        ("quartz", ("quartz",)),
+        ("wood", ("wood", "wooden")),
+        ("glass", ("glass",)),
+        ("diamond", ("diamond",)),
+        ("glow", ("glow", "glowing", "glowstone")),
+        ("stone", ("stone",)),
+    )
+    for material, signals in material_signals:
+        if any(signal in request for signal in signals):
+            return material
+    return default
+
+
 def _first_prompt_int(pattern: str, request: str) -> int | None:
     match = re.search(pattern, request)
     if not match:
@@ -743,7 +873,7 @@ def _agent_authored_generated_option(
         )
 
     kind = str(build_kind or "").strip().lower()
-    if kind not in {"marker", "platform", "wall", "fire"}:
+    if kind not in GENERATED_BUILD_KINDS:
         return _generated_option_response(
             status="rejected",
             reason="generated_build_kind_unsupported",
@@ -755,7 +885,7 @@ def _agent_authored_generated_option(
     material = str(build_material_name or "default").strip().lower() or "default"
     if kind == "fire":
         material = "fire"
-    if material not in {"default", "stone", "tnt", "fire"}:
+    if material not in GENERATED_BUILD_MATERIALS:
         return _generated_option_response(
             status="rejected",
             reason="generated_build_material_unsupported",
@@ -809,10 +939,42 @@ def _agent_authored_generated_option(
         option["build_width"] = width
         option["build_height"] = height
         planned_writes = width * height
-    else:
+    elif kind == "fire":
         count = _positive_tool_int(build_count) or 1
         option["build_count"] = count
         planned_writes = count
+    elif kind in {"house", "cabin"}:
+        width = _positive_tool_int(build_width)
+        depth = _positive_tool_int(build_depth)
+        height = _positive_tool_int(build_height)
+        if width is None or depth is None or height is None:
+            return _generated_option_response(
+                status="rejected",
+                reason="generated_build_dimensions_missing",
+                generated_option=None,
+                candidate_count=len(candidates),
+                build_budget=budget,
+            )
+        option["build_width"] = width
+        option["build_depth"] = depth
+        option["build_height"] = height
+        planned_writes = _shell_write_count(width, depth, height, budget)
+    else:
+        width = _positive_tool_int(build_width)
+        depth = _positive_tool_int(build_depth)
+        height = _positive_tool_int(build_height)
+        if width is None or depth is None or height is None:
+            return _generated_option_response(
+                status="rejected",
+                reason="generated_build_dimensions_missing",
+                generated_option=None,
+                candidate_count=len(candidates),
+                build_budget=budget,
+            )
+        option["build_width"] = width
+        option["build_depth"] = depth
+        option["build_height"] = height
+        planned_writes = _landmark_write_count(width, depth, height, budget)
 
     if planned_writes < 1 or planned_writes > budget:
         return _generated_option_response(
@@ -893,7 +1055,60 @@ def propose_build_option_payload(
 
     option: dict[str, Any] | None = None
     requested_wall_dimensions = _requested_wall_dimensions(request)
-    if requested_wall_dimensions is not None:
+    if "house" in request or "home" in request:
+        width, depth, height, planned_writes = _bounded_shell_dims(3, 2, 3, budget)
+        material = _requested_material(request, "wood")
+        option = {
+            "option_id": "generated_prompt_shaped_house",
+            "label": "Generated prompt-shaped house",
+            "reason": "player asked for a house-like build with prompt material preserved",
+            "build_kind": "house",
+            "build_width": width,
+            "build_depth": depth,
+            "build_height": height,
+            "build_material_name": material,
+            "planned_node_writes": planned_writes,
+        }
+    elif "cabin" in request or "hut" in request:
+        width, depth, height, planned_writes = _bounded_shell_dims(3, 2, 2, budget)
+        material = _requested_material(request, "wood")
+        option = {
+            "option_id": "generated_prompt_shaped_cabin",
+            "label": "Generated prompt-shaped cabin",
+            "reason": "player asked for a compact cabin-like build",
+            "build_kind": "cabin",
+            "build_width": width,
+            "build_depth": depth,
+            "build_height": height,
+            "build_material_name": material,
+            "planned_node_writes": planned_writes,
+        }
+    elif any(word in request for word in (
+        "landmark",
+        "monument",
+        "statue",
+        "amazing",
+        "awesome",
+        "epic",
+        "cool",
+        "creative",
+        "surprising",
+        "surprise",
+    )):
+        width, depth, height, planned_writes = _bounded_landmark_dims(3, 3, 3, budget)
+        material = _requested_material(request, "quartz")
+        option = {
+            "option_id": "generated_creative_landmark",
+            "label": "Generated creative landmark",
+            "reason": "player asked for an open-ended creative build",
+            "build_kind": "landmark",
+            "build_width": width,
+            "build_depth": depth,
+            "build_height": height,
+            "build_material_name": material,
+            "planned_node_writes": planned_writes,
+        }
+    elif requested_wall_dimensions is not None:
         width, height = _bounded_generated_dims(
             requested_wall_dimensions[0],
             requested_wall_dimensions[1],
@@ -1071,19 +1286,7 @@ def _required_generated_option_for_request(
     request = str(player_request or "").lower()
     if _requested_wall_dimensions(request) is not None:
         return generated_options[0]
-    if any(word in request for word in (
-        "tower",
-        "tall",
-        "bridge",
-        "road",
-        "path",
-        "walkway",
-        "shelter",
-        "house",
-        "base",
-        "floor",
-        "room",
-    )):
+    if any(word in request for word in GENERATED_SHAPE_REQUEST_WORDS):
         return generated_options[0]
     return None
 
@@ -1117,6 +1320,12 @@ def select_build_option_payload(
     selected = next((item for item in candidates if item["option_id"] == selected_id), None)
     decision_source = "agent_selected_build_option"
     locked_option = _locked_build_option_for_request(player_request, candidates)
+    memory_selected = memory.get("selected_option_id")
+    reviewed_memory_selected = (
+        isinstance(memory_selected, str)
+        and memory_selected
+        and memory_selected == selected_id
+    )
 
     if selected is None and isinstance(generated_option, dict):
         selected = {
@@ -1168,6 +1377,7 @@ def select_build_option_payload(
     if (
         isinstance(required_generated_option, dict)
         and selected_id != required_generated_option.get("option_id")
+        and not reviewed_memory_selected
     ):
         return {
             "selected_option_id": None,
@@ -2086,6 +2296,10 @@ def build_agent(model: str | None = None) -> Any:
             "When you propose a custom "
             "bounded option, pass a generated option_id plus build_kind, "
             "material, dimensions, and reason through propose_build_option; "
+            "supported generated build_kind values are marker, platform, wall, "
+            "fire, house, cabin, and landmark; supported material names are "
+            "default, stone, tnt, fire, wood, gold, quartz, glass, diamond, "
+            "and glow. "
             "if reviewed prompt memory suggests a generated_ option, call "
             "propose_build_option in this run to materialize the generated "
             "option before selecting it; "

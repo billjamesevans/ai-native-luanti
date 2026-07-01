@@ -8,6 +8,9 @@ local settings = {
 	path_node = "default:stone",
 	fire_node = "fire:basic_flame",
 	wall_node = "default:stone",
+	house_node = "default:stone",
+	cabin_node = "default:wood",
+	landmark_node = "default:stone",
 	max_nodes_per_task = 32,
 	sample_limit = 8,
 }
@@ -44,6 +47,23 @@ local function add_placement(placements, pos, node_name)
 		pos = copy_pos(pos),
 		node_name = node_name,
 	}
+end
+
+local function placement_budget(options)
+	local budget = settings.max_nodes_per_task
+	if options and options.max_node_writes_per_step then
+		budget = math.min(budget,
+			positive_int(options.max_node_writes_per_step, budget))
+	end
+	return budget
+end
+
+local function add_placement_if_room(placements, pos, node_name, budget)
+	if #placements >= budget then
+		return false
+	end
+	add_placement(placements, pos, node_name)
+	return true
 end
 
 local function material_node(options, fallback_field)
@@ -165,6 +185,104 @@ local function wall_placements(origin, options)
 	return placements
 end
 
+local function corner_offsets(width, depth)
+	local corners = {
+		{ x = 0, z = 0 },
+		{ x = width - 1, z = 0 },
+		{ x = 0, z = depth - 1 },
+		{ x = width - 1, z = depth - 1 },
+	}
+	local unique = {}
+	local seen = {}
+	for _, corner in ipairs(corners) do
+		local key = corner.x .. ":" .. corner.z
+		if not seen[key] then
+			seen[key] = true
+			unique[#unique + 1] = corner
+		end
+	end
+	return unique
+end
+
+local function shell_placements(origin, options, fallback_field)
+	local placements = {}
+	local width = positive_int(options.width, 3)
+	local depth = positive_int(options.depth, 2)
+	local height = positive_int(options.height, 3)
+	local node_name = material_node(options, fallback_field)
+	local budget = placement_budget(options)
+	while width * depth > budget do
+		if width >= depth and width > 1 then
+			width = width - 1
+		elseif depth > 1 then
+			depth = depth - 1
+		else
+			break
+		end
+	end
+	for x = 0, width - 1 do
+		for z = 0, depth - 1 do
+			if not add_placement_if_room(placements,
+					offset_pos(origin, x, 0, z), node_name, budget) then
+				return placements
+			end
+		end
+	end
+	local corners = corner_offsets(width, depth)
+	for y = 1, height - 1 do
+		for _, corner in ipairs(corners) do
+			if not add_placement_if_room(placements,
+					offset_pos(origin, corner.x, y, corner.z), node_name, budget) then
+				return placements
+			end
+		end
+	end
+	return placements
+end
+
+local function house_placements(origin, options)
+	return shell_placements(origin, options, "house_node")
+end
+
+local function cabin_placements(origin, options)
+	return shell_placements(origin, options, "cabin_node")
+end
+
+local function landmark_placements(origin, options)
+	local placements = {}
+	local width = positive_int(options.width, 3)
+	local depth = positive_int(options.depth, 3)
+	local height = positive_int(options.height, 3)
+	local node_name = material_node(options, "landmark_node")
+	local budget = placement_budget(options)
+	while width * depth > budget do
+		if width >= depth and width > 1 then
+			width = width - 1
+		elseif depth > 1 then
+			depth = depth - 1
+		else
+			break
+		end
+	end
+	for x = 0, width - 1 do
+		for z = 0, depth - 1 do
+			if not add_placement_if_room(placements,
+					offset_pos(origin, x, 0, z), node_name, budget) then
+				return placements
+			end
+		end
+	end
+	local center_x = math.floor(width / 2)
+	local center_z = math.floor(depth / 2)
+	for y = 1, height do
+		if not add_placement_if_room(placements,
+				offset_pos(origin, center_x, y, center_z), node_name, budget) then
+			return placements
+		end
+	end
+	return placements
+end
+
 local placement_builders = {
 	lights = light_placements,
 	marker = marker_placements,
@@ -172,12 +290,15 @@ local placement_builders = {
 	path = path_placements,
 	fire = fire_placements,
 	wall = wall_placements,
+	house = house_placements,
+	cabin = cabin_placements,
+	landmark = landmark_placements,
 }
 
 local function build_plan_data(options, require_task_id)
 	assert(type(options) == "table", "Build task options must be a table")
 	assert(type(options.kind) == "string" and placement_builders[options.kind],
-		"Build task kind must be one of lights, marker, platform, path, fire, or wall")
+		"Build task kind must be one of lights, marker, platform, path, fire, wall, house, cabin, or landmark")
 	if require_task_id then
 		assert(type(options.task_id) == "string" and options.task_id ~= "", "Build task id is required")
 	end
@@ -197,6 +318,9 @@ function build_agent.configure(options)
 		"path_node",
 		"fire_node",
 		"wall_node",
+		"house_node",
+		"cabin_node",
+		"landmark_node",
 	}) do
 		if options[field] then
 			assert(type(options[field]) == "string" and options[field] ~= "",

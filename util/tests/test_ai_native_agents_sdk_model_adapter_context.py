@@ -82,6 +82,100 @@ class AgentsSdkModelAdapterContextTests(unittest.TestCase):
         )
         self.assertFalse(result["direct_world_mutation"])
 
+    def test_propose_build_option_creates_prompt_shaped_gold_house(self):
+        module = load_agent_module()
+
+        result = module.propose_build_option_payload(
+            "platform:platform:default:4|wall:wall:default:12",
+            "build a house out of gold",
+        )
+        option = result["generated_option"]
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(option["option_id"], "generated_prompt_shaped_house")
+        self.assertEqual(option["build_kind"], "house")
+        self.assertEqual(option["build_material_name"], "gold")
+        self.assertEqual(option["build_width"], 3)
+        self.assertEqual(option["build_depth"], 2)
+        self.assertEqual(option["build_height"], 3)
+        self.assertLessEqual(option["planned_node_writes"], result["build_budget"])
+        self.assertFalse(result["direct_world_mutation"])
+
+    def test_propose_build_option_creates_prompt_shaped_cabin(self):
+        module = load_agent_module()
+
+        result = module.propose_build_option_payload(
+            "platform:platform:default:4|wall:wall:default:12",
+            "build a small cabin here",
+        )
+        option = result["generated_option"]
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(option["option_id"], "generated_prompt_shaped_cabin")
+        self.assertEqual(option["build_kind"], "cabin")
+        self.assertEqual(option["build_material_name"], "wood")
+        self.assertLessEqual(option["planned_node_writes"], result["build_budget"])
+
+    def test_propose_build_option_creates_creative_landmark(self):
+        module = load_agent_module()
+
+        result = module.propose_build_option_payload(
+            "platform:platform:default:4|wall:wall:default:12",
+            "build something amazing",
+        )
+        option = result["generated_option"]
+
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(option["option_id"], "generated_creative_landmark")
+        self.assertEqual(option["build_kind"], "landmark")
+        self.assertEqual(option["build_material_name"], "quartz")
+        self.assertLessEqual(option["planned_node_writes"], result["build_budget"])
+
+    def test_local_build_contract_selects_prompt_shaped_house(self):
+        module = load_agent_module()
+        request = {
+            "schema_version": 1,
+            "request_kind": "ai_native_model_adapter_request",
+            "adapter_contract": "provider_neutral_v1",
+            "agent_id": "nova_agent:Unit:builder",
+            "owner": "Unit",
+            "public_prompt": "Player request: build a house out of gold",
+            "context": {
+                "surface_id": "builder",
+                "intent": "build_planning",
+                "capabilities": "world.read,http.llm",
+                "player_request": "build a house out of gold",
+                "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+            },
+        }
+
+        result = module._local_build_tool_contract_result(request, "unit_test")
+
+        self.assertIsNotNone(result)
+        trace_names = [entry["tool_name"] for entry in result["tool_trace"]]
+        self.assertEqual(
+            trace_names,
+            [
+                "inspect_build_site_context",
+                "recall_build_prompt_memory",
+                "propose_build_option",
+                "select_build_option",
+                "plan_build_actions",
+            ],
+        )
+        self.assertEqual(
+            result["tool_decisions"]["build_option"]["selected_option_id"],
+            "generated_prompt_shaped_house",
+        )
+        self.assertEqual(
+            result["tool_decisions"]["build_action_plan"]["build_kind"],
+            "house",
+        )
+        self.assertEqual(
+            result["tool_decisions"]["build_action_plan"]["build_material_name"],
+            "gold",
+        )
+
     def test_local_build_contract_trace_starts_with_context_inspection(self):
         module = load_agent_module()
         request = {

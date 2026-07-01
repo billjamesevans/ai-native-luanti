@@ -22,6 +22,9 @@ local settings = {
 	path_node = "default:stone",
 	fire_node = "fire:basic_flame",
 	wall_node = "default:stone",
+	house_node = "default:stone",
+	cabin_node = "default:wood",
+	landmark_node = "default:stone",
 	tnt_node = "tnt:tnt",
 	build_material_nodes = {},
 	agent_entity_name = "ai_demo_benchmark:helper",
@@ -511,6 +514,9 @@ local function configure_product_surfaces()
 			path_node = settings.path_node,
 			fire_node = settings.fire_node,
 			wall_node = settings.wall_node,
+			house_node = settings.house_node,
+			cabin_node = settings.cabin_node,
+			landmark_node = settings.landmark_node,
 			max_nodes_per_task = settings.max_lights,
 			sample_limit = settings.max_lights,
 		})
@@ -1073,6 +1079,15 @@ function plugin.configure(options)
 		if not options.wall_node then
 			settings.wall_node = options.marker_node
 		end
+		if not options.house_node then
+			settings.house_node = options.marker_node
+		end
+		if not options.cabin_node then
+			settings.cabin_node = options.marker_node
+		end
+		if not options.landmark_node then
+			settings.landmark_node = options.marker_node
+		end
 	end
 	if options.platform_node then
 		settings.platform_node = options.platform_node
@@ -1085,6 +1100,15 @@ function plugin.configure(options)
 	end
 	if options.wall_node then
 		settings.wall_node = options.wall_node
+	end
+	if options.house_node then
+		settings.house_node = options.house_node
+	end
+	if options.cabin_node then
+		settings.cabin_node = options.cabin_node
+	end
+	if options.landmark_node then
+		settings.landmark_node = options.landmark_node
 	end
 	if options.tnt_node then
 		settings.tnt_node = options.tnt_node
@@ -2417,6 +2441,37 @@ local function build_count_for(context)
 	return context.build_count or 1
 end
 
+local function bounded_shell_writes(width, depth, height, limit)
+	width = math.max(1, math.floor(width or 1))
+	depth = math.max(1, math.floor(depth or 1))
+	height = math.max(1, math.floor(height or 1))
+	limit = math.max(1, math.floor(limit or settings.max_lights))
+	local floor_writes = width * depth
+	if floor_writes >= limit then
+		return floor_writes
+	end
+	local corners = 1
+	if width > 1 and depth > 1 then
+		corners = 4
+	elseif width > 1 or depth > 1 then
+		corners = 2
+	end
+	return floor_writes + math.min(corners * math.max(0, height - 1),
+		limit - floor_writes)
+end
+
+local function bounded_landmark_writes(width, depth, height, limit)
+	width = math.max(1, math.floor(width or 1))
+	depth = math.max(1, math.floor(depth or 1))
+	height = math.max(1, math.floor(height or 1))
+	limit = math.max(1, math.floor(limit or settings.max_lights))
+	local base_writes = width * depth
+	if base_writes >= limit then
+		return base_writes
+	end
+	return base_writes + math.min(height, limit - base_writes)
+end
+
 local function node_is_registered(node_name)
 	return type(node_name) == "string"
 		and node_name ~= ""
@@ -2476,6 +2531,27 @@ local function parse_build_material_name(lower_prompt)
 	if lower_prompt:find("fire", 1, true) or lower_prompt:find("flame", 1, true) then
 		return "fire"
 	end
+	if lower_prompt:find("gold", 1, true) then
+		return "gold"
+	end
+	if lower_prompt:find("quartz", 1, true) then
+		return "quartz"
+	end
+	if lower_prompt:find("wood", 1, true) or lower_prompt:find("wooden", 1, true) then
+		return "wood"
+	end
+	if lower_prompt:find("glass", 1, true) then
+		return "glass"
+	end
+	if lower_prompt:find("diamond", 1, true) then
+		return "diamond"
+	end
+	if lower_prompt:find("glow", 1, true) or lower_prompt:find("light", 1, true) then
+		return "glow"
+	end
+	if lower_prompt:find("stone", 1, true) then
+		return "stone"
+	end
 	return nil
 end
 
@@ -2533,6 +2609,30 @@ local function build_options_for(name, context, task_id)
 		options.material_node = options.material_node or settings.fire_node
 		options.max_node_writes_per_step = options.max_node_writes_per_step
 			or math.min(options.count, settings.max_lights)
+	elseif kind == "house" or kind == "cabin" then
+		options.width = build_width_for(context)
+		options.depth = build_depth_for(context)
+		options.height = build_height_for(context)
+		if kind == "house" then
+			options.material_node = options.material_node or settings.house_node
+		else
+			options.material_node = options.material_node or settings.cabin_node
+		end
+		options.max_node_writes_per_step = options.max_node_writes_per_step
+			or math.min(
+				bounded_shell_writes(options.width, options.depth, options.height,
+					settings.max_lights),
+				settings.max_lights)
+	elseif kind == "landmark" then
+		options.width = build_width_for(context)
+		options.depth = build_depth_for(context)
+		options.height = build_height_for(context)
+		options.material_node = options.material_node or settings.landmark_node
+		options.max_node_writes_per_step = options.max_node_writes_per_step
+			or math.min(
+				bounded_landmark_writes(options.width, options.depth, options.height,
+					settings.max_lights),
+				settings.max_lights)
 	else
 		options.kind = "marker"
 		options.material_node = options.material_node or settings.marker_node
@@ -2545,7 +2645,56 @@ local function parse_build_options(raw_prompt, context)
 	local parsed = table.copy(context or {})
 	local lower = raw_prompt:lower()
 	local material_name = parse_build_material_name(lower)
-	if lower:find("wall", 1, true) then
+	if lower:find("house", 1, true) or lower:find("home", 1, true)
+			or lower:find("cabin", 1, true) or lower:find("hut", 1, true)
+			or lower:find("landmark", 1, true) or lower:find("monument", 1, true)
+			or lower:find("statue", 1, true) then
+		local kind = "house"
+		local fallback_node = settings.house_node
+		if lower:find("cabin", 1, true) or lower:find("hut", 1, true) then
+			kind = "cabin"
+			fallback_node = settings.cabin_node
+		elseif lower:find("landmark", 1, true)
+				or lower:find("monument", 1, true)
+				or lower:find("statue", 1, true) then
+			kind = "landmark"
+			fallback_node = settings.landmark_node
+		end
+		parsed.build_kind = kind
+		parsed.build_material_name = material_name
+		parsed.build_material_node = resolve_build_material_node(
+			material_name, fallback_node)
+		if material_name and not parsed.build_material_node then
+			return nil, "build_material_unavailable"
+		end
+		local width = parse_named_build_int(lower, "width")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+wide"))
+			or parse_named_build_int(lower, "wide")
+			or parse_build_positive_int(lower:match("(%d+)%s*x%s*%d+"))
+			or 3
+		local depth = parse_named_build_int(lower, "depth")
+			or parse_named_build_int(lower, "deep")
+			or parse_build_positive_int(lower:match("%d+%s*x%s*(%d+)"))
+			or (kind == "landmark" and 3 or 2)
+		local height = parse_named_build_int(lower, "height")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+high"))
+			or parse_named_build_int(lower, "high")
+			or parse_build_positive_int(lower:match("([%-%d]+)%s+tall"))
+			or parse_named_build_int(lower, "tall")
+			or 3
+		if not width or not depth or not height then
+			return nil, "invalid_build_dimensions"
+		end
+		local planned_writes = kind == "landmark"
+			and bounded_landmark_writes(width, depth, height, settings.max_lights)
+			or bounded_shell_writes(width, depth, height, settings.max_lights)
+		if planned_writes > settings.max_lights then
+			return nil, "build_shape_out_of_bounds"
+		end
+		parsed.build_width = width
+		parsed.build_depth = depth
+		parsed.build_height = height
+	elseif lower:find("wall", 1, true) then
 		parsed.build_kind = "wall"
 		parsed.build_material_name = material_name
 		parsed.build_material_node = resolve_build_material_node(
@@ -2857,6 +3006,14 @@ function plugin._planned_feedback_writes_for(context)
 	end
 	if kind == "fire" then
 		return build_count_for(context)
+	end
+	if kind == "house" or kind == "cabin" then
+		return bounded_shell_writes(build_width_for(context), build_depth_for(context),
+			build_height_for(context), settings.max_lights)
+	end
+	if kind == "landmark" then
+		return bounded_landmark_writes(build_width_for(context), build_depth_for(context),
+			build_height_for(context), settings.max_lights)
 	end
 	return 1
 end
@@ -3441,7 +3598,14 @@ local function select_agentic_build_candidate(candidates, lower_prompt, parsed_c
 				or lower_prompt:find("high", 1, true)
 				or lower_prompt:find("tall", 1, true)
 				or lower_prompt:match("%d+%s*[xX]%s*%d+")
-				or lower_prompt:match("%d+%s+fires?")) then
+				or lower_prompt:match("%d+%s+fires?")
+				or lower_prompt:find("house", 1, true)
+				or lower_prompt:find("home", 1, true)
+				or lower_prompt:find("cabin", 1, true)
+				or lower_prompt:find("hut", 1, true)
+				or lower_prompt:find("landmark", 1, true)
+				or lower_prompt:find("monument", 1, true)
+				or lower_prompt:find("statue", 1, true)) then
 		return parsed_candidate
 	end
 	local preferred = "platform"
@@ -3528,6 +3692,9 @@ local GENERATED_BUILD_KINDS = {
 	platform = true,
 	wall = true,
 	fire = true,
+	house = true,
+	cabin = true,
+	landmark = true,
 }
 
 local GENERATED_BUILD_MATERIALS = {
@@ -3535,6 +3702,12 @@ local GENERATED_BUILD_MATERIALS = {
 	stone = true,
 	tnt = true,
 	fire = true,
+	wood = true,
+	gold = true,
+	quartz = true,
+	glass = true,
+	diamond = true,
+	glow = true,
 }
 
 local function generated_positive_int(value)
@@ -3579,6 +3752,12 @@ local function generated_build_material(kind, material_name)
 		fallback_node = settings.wall_node
 	elseif kind == "fire" then
 		fallback_node = settings.fire_node
+	elseif kind == "house" then
+		fallback_node = settings.house_node
+	elseif kind == "cabin" then
+		fallback_node = settings.cabin_node
+	elseif kind == "landmark" then
+		fallback_node = settings.landmark_node
 	end
 	local node_name = resolve_build_material_node(material_name, fallback_node)
 	if material_name and not node_name then
@@ -3653,6 +3832,34 @@ local function append_generated_agentic_build_candidate(candidates, name,
 			return nil, "generated_build_shape_out_of_bounds"
 		end
 		fields.build_count = count
+	elseif kind == "house" or kind == "cabin" then
+		local width = generated_positive_int(option.build_width or option.width)
+		local depth = generated_positive_int(option.build_depth or option.depth)
+		local height = generated_positive_int(option.build_height or option.height)
+		if not width or not depth or not height then
+			return nil, "generated_build_dimensions_missing"
+		end
+		if bounded_shell_writes(width, depth, height, settings.max_lights)
+				> settings.max_lights then
+			return nil, "generated_build_shape_out_of_bounds"
+		end
+		fields.build_width = width
+		fields.build_depth = depth
+		fields.build_height = height
+	elseif kind == "landmark" then
+		local width = generated_positive_int(option.build_width or option.width)
+		local depth = generated_positive_int(option.build_depth or option.depth)
+		local height = generated_positive_int(option.build_height or option.height)
+		if not width or not depth or not height then
+			return nil, "generated_build_dimensions_missing"
+		end
+		if bounded_landmark_writes(width, depth, height, settings.max_lights)
+				> settings.max_lights then
+			return nil, "generated_build_shape_out_of_bounds"
+		end
+		fields.build_width = width
+		fields.build_depth = depth
+		fields.build_height = height
 	end
 	local candidate = append_agentic_build_candidate(candidates, name, base_context,
 		safe_generated_option_id(option.option_id),

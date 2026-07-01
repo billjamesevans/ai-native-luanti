@@ -39,10 +39,19 @@ core.ai_agent_plugin.configure({
 	path_node = "ai_runtime_base:cobble",
 	fire_node = "ai_runtime_base:fire",
 	wall_node = "ai_runtime_base:stone",
+	house_node = "ai_runtime_base:wood",
+	cabin_node = "ai_runtime_base:wood",
+	landmark_node = "ai_runtime_base:quartz",
 	tnt_node = "ai_runtime_base:tnt",
 	build_material_nodes = {
 		fire = "ai_runtime_base:fire",
 		tnt = "ai_runtime_base:tnt",
+		wood = "ai_runtime_base:wood",
+		gold = "ai_runtime_base:gold",
+		quartz = "ai_runtime_base:quartz",
+		glass = "ai_runtime_base:glass",
+		diamond = "ai_runtime_base:diamond",
+		glow = "ai_runtime_base:glow",
 	},
 	agent_entity_name = helper_entity_name,
 	repair_nodes = {},
@@ -114,6 +123,44 @@ core.register_node("ai_runtime_base:tnt", {
 	description = "AI Runtime TNT",
 	tiles = {texture},
 	groups = {cracky = 3, tnt = 1},
+})
+
+core.register_node("ai_runtime_base:wood", {
+	description = "AI Runtime Wood",
+	tiles = {texture},
+	groups = {choppy = 3},
+})
+
+core.register_node("ai_runtime_base:gold", {
+	description = "AI Runtime Gold",
+	tiles = {texture},
+	groups = {cracky = 2},
+})
+
+core.register_node("ai_runtime_base:quartz", {
+	description = "AI Runtime Quartz",
+	tiles = {texture},
+	groups = {cracky = 2},
+})
+
+core.register_node("ai_runtime_base:glass", {
+	description = "AI Runtime Glass",
+	tiles = {texture},
+	drawtype = "glasslike",
+	groups = {cracky = 3},
+})
+
+core.register_node("ai_runtime_base:diamond", {
+	description = "AI Runtime Diamond",
+	tiles = {texture},
+	groups = {cracky = 1},
+})
+
+core.register_node("ai_runtime_base:glow", {
+	description = "AI Runtime Glow",
+	tiles = {texture},
+	light_source = 12,
+	groups = {cracky = 2},
 })
 
 core.register_alias("mapgen_stone", "ai_runtime_base:stone")

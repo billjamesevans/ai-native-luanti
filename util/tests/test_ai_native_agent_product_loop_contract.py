@@ -138,6 +138,14 @@ class AgentProductLoopContractTests(unittest.TestCase):
             "generated_build_option_reason",
             "generated_candidate_id",
             "append_generated_agentic_build_candidate",
+            "bounded_shell_writes",
+            "bounded_landmark_writes",
+            "house = true",
+            "cabin = true",
+            "landmark = true",
+            "house_node = settings.house_node",
+            "cabin_node = settings.cabin_node",
+            "landmark_node = settings.landmark_node",
         ):
             self.assertIn(phrase, source)
         for forbidden in (
@@ -158,6 +166,36 @@ class AgentProductLoopContractTests(unittest.TestCase):
         self.assertIn('core.register_entity(":" .. helper_entity_name', source)
         self.assertIn("agent_entity_name = helper_entity_name", source)
         self.assertNotIn("ai_demo_benchmark:helper", source)
+
+    def test_build_agent_executes_prompt_shaped_generated_kinds(self):
+        source = (ROOT / "builtin" / "game" / "build_agent.lua").read_text(encoding="utf-8")
+        runtime = AI_RUNTIME_BASE.read_text(encoding="utf-8")
+
+        for phrase in (
+            "house_placements",
+            "cabin_placements",
+            "landmark_placements",
+            "house = house_placements",
+            "cabin = cabin_placements",
+            "landmark = landmark_placements",
+            "house_node",
+            "cabin_node",
+            "landmark_node",
+            "Build task kind must be one of lights, marker, platform, path, fire, wall, house, cabin, or landmark",
+        ):
+            self.assertIn(phrase, source)
+        for phrase in (
+            'house_node = "ai_runtime_base:wood"',
+            'cabin_node = "ai_runtime_base:wood"',
+            'landmark_node = "ai_runtime_base:quartz"',
+            'gold = "ai_runtime_base:gold"',
+            'quartz = "ai_runtime_base:quartz"',
+            'wood = "ai_runtime_base:wood"',
+            'core.register_node("ai_runtime_base:gold"',
+            'core.register_node("ai_runtime_base:quartz"',
+            'core.register_node("ai_runtime_base:wood"',
+        ):
+            self.assertIn(phrase, runtime)
 
 
 if __name__ == "__main__":
