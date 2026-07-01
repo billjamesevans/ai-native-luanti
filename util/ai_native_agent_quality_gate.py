@@ -278,6 +278,13 @@ def build_quality_gate(
             "details": "missing --live-prompt-eval artifact",
         })
     if live_prompt_eval:
+        live_prompt_summary_for_gate = _prompt_eval_summary(live_prompt_eval)
+        live_golden_failures = _int(live_prompt_summary_for_gate.get("golden_prompts_failed"))
+        if live_golden_failures:
+            violations.append({
+                "kind": "golden_prompt_regression",
+                "details": str(live_golden_failures),
+            })
         try:
             live_prompt_evidence = prompt_eval_live_probe.validate_live_result(live_prompt_eval)
         except ValueError as exc:
@@ -344,6 +351,27 @@ def build_quality_gate(
             "live_prompt_eval_cases_passed": _int(live_prompt_summary.get("cases_passed")),
             "live_prompt_eval_cases_failed": _int(live_prompt_summary.get("cases_failed")),
             "live_prompt_eval_model_adapter_requests": _int(live_prompt_summary.get("model_adapter_requests")),
+            "live_prompt_eval_golden_prompt_suite": bounded_text(
+                live_prompt_evidence.get("agent_prompt_eval_golden_prompt_suite")
+                or live_prompt_summary.get("golden_prompt_suite"),
+                80,
+            ),
+            "live_prompt_eval_golden_prompt_backlog_total": _int(
+                live_prompt_evidence.get("agent_prompt_eval_golden_prompt_backlog_total"),
+                _int(live_prompt_summary.get("golden_prompt_backlog_total")),
+            ),
+            "live_prompt_eval_golden_prompts_total": _int(
+                live_prompt_evidence.get("agent_prompt_eval_golden_prompts_total"),
+                _int(live_prompt_summary.get("golden_prompts_total")),
+            ),
+            "live_prompt_eval_golden_prompts_passed": _int(
+                live_prompt_evidence.get("agent_prompt_eval_golden_prompts_passed"),
+                _int(live_prompt_summary.get("golden_prompts_passed")),
+            ),
+            "live_prompt_eval_golden_prompts_failed": _int(
+                live_prompt_evidence.get("agent_prompt_eval_golden_prompts_failed"),
+                _int(live_prompt_summary.get("golden_prompts_failed")),
+            ),
             "live_prompt_eval_agentic_tool_cases": _int(
                 live_prompt_evidence.get("agent_prompt_eval_agentic_tool_cases")
             ),

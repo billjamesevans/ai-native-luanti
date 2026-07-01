@@ -19,6 +19,14 @@ LIVE_RESULT_NAME = "ai-runtime-agent-prompt-eval-live-probe-result.json"
 PROBE_MOD_NAME = "ai_agent_prompt_eval_live_probe"
 DEFAULT_MAX_BYTES = 22000
 DEFAULT_MODEL_PROMPT = "what can you plan with tools next?"
+GOLDEN_PROMPT_SUITE = "openrealm_creator_loop"
+GOLDEN_PROMPT_BACKLOG_TOTAL = 11
+ENFORCED_GOLDEN_PROMPT_CASE_IDS = (
+    "build_fire",
+    "fire_only_strict",
+    "tnt_wall",
+    "agentic_build_planner",
+)
 ACCEPTED_AGENTIC_TOOL_DECISION_SOURCES = {
     "agents_sdk_function_tool",
     "agents_sdk_repair_function_tool",
@@ -237,6 +245,23 @@ def write_probe_world(
             "",
             "local function write_payload(report, command_fire)",
             "  local eval = summarize_report(report)",
+            "  local report_cases = case_by_id(report)",
+            "  local golden_case_ids = {",
+            "    \"build_fire\",",
+            "    \"fire_only_strict\",",
+            "    \"tnt_wall\",",
+            "    \"agentic_build_planner\",",
+            "  }",
+            "  local golden_case_status = {}",
+            "  local golden_passed = 0",
+            "  for _, case_id in ipairs(golden_case_ids) do",
+            "    local case = report_cases[case_id] or {}",
+            "    local ok = case.ok == true and case.status == \"pass\"",
+            "    golden_case_status[case_id] = ok",
+            "    if ok then",
+            "      golden_passed = golden_passed + 1",
+            "    end",
+            "  end",
             "  local payload = {",
             "    schema_version = 1,",
             "    live_result_kind = \"ai_native_agent_prompt_eval_live_result\",",
@@ -274,6 +299,12 @@ def write_probe_world(
             "      model_adapter_successes = eval.metrics.model_adapter_successes_delta or 0,",
             "      model_adapter_failures = eval.metrics.model_adapter_failures_delta or 0,",
             "      model_adapter_timeouts = eval.metrics.model_adapter_timeouts_delta or 0,",
+            "      golden_prompt_suite = \"openrealm_creator_loop\",",
+            "      golden_prompt_backlog_total = 11,",
+            "      golden_prompt_case_ids = golden_case_status,",
+            "      golden_prompts_total = #golden_case_ids,",
+            "      golden_prompts_passed = golden_passed,",
+            "      golden_prompts_failed = #golden_case_ids - golden_passed,",
             "    },",
             "    safety = {",
             "      public_safe_output = true,",
@@ -539,6 +570,22 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
     summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
     if summary.get("cases_total") != 5 or summary.get("cases_passed") != 5:
         raise ValueError("agent prompt eval summary case counts are invalid")
+    if summary.get("golden_prompt_suite") != GOLDEN_PROMPT_SUITE:
+        raise ValueError("agent prompt eval golden prompt suite is invalid")
+    if summary.get("golden_prompt_backlog_total") != GOLDEN_PROMPT_BACKLOG_TOTAL:
+        raise ValueError("agent prompt eval golden prompt backlog total is invalid")
+    if summary.get("golden_prompts_total") != len(ENFORCED_GOLDEN_PROMPT_CASE_IDS):
+        raise ValueError("agent prompt eval golden prompt enforced count is invalid")
+    if summary.get("golden_prompts_passed") != len(ENFORCED_GOLDEN_PROMPT_CASE_IDS):
+        raise ValueError("agent prompt eval golden prompts did not all pass")
+    if summary.get("golden_prompts_failed") != 0:
+        raise ValueError("agent prompt eval golden prompt failures must be zero")
+    golden_case_ids = summary.get("golden_prompt_case_ids")
+    if not isinstance(golden_case_ids, dict):
+        raise ValueError("agent prompt eval golden prompt case ids are invalid")
+    for case_id in ENFORCED_GOLDEN_PROMPT_CASE_IDS:
+        if golden_case_ids.get(case_id) is not True:
+            raise ValueError(f"agent prompt eval missing golden prompt case {case_id}")
     for field in (
         "build_fire_checked",
         "fire_only_strict_checked",
@@ -600,6 +647,11 @@ def validate_live_result(payload: dict, max_bytes: int = DEFAULT_MAX_BYTES) -> d
         "agent_prompt_eval_tnt_wall_checked": True,
         "agent_prompt_eval_agentic_build_planner_checked": True,
         "agent_prompt_eval_model_checked": True,
+        "agent_prompt_eval_golden_prompt_suite": GOLDEN_PROMPT_SUITE,
+        "agent_prompt_eval_golden_prompt_backlog_total": GOLDEN_PROMPT_BACKLOG_TOTAL,
+        "agent_prompt_eval_golden_prompts_total": len(ENFORCED_GOLDEN_PROMPT_CASE_IDS),
+        "agent_prompt_eval_golden_prompts_passed": len(ENFORCED_GOLDEN_PROMPT_CASE_IDS),
+        "agent_prompt_eval_golden_prompts_failed": 0,
         "agent_prompt_eval_fire_planned_node_writes": 1,
         "agent_prompt_eval_fire_only_strict_planned_node_writes": 1,
         "agent_prompt_eval_tnt_wall_planned_node_writes": 12,

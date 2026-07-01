@@ -580,6 +580,17 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                 "model_adapter_successes": 2,
                 "model_adapter_failures": 0,
                 "model_adapter_timeouts": 0,
+                "golden_prompt_suite": "openrealm_creator_loop",
+                "golden_prompt_backlog_total": 11,
+                "golden_prompt_case_ids": {
+                    "build_fire": True,
+                    "fire_only_strict": True,
+                    "tnt_wall": True,
+                    "agentic_build_planner": True,
+                },
+                "golden_prompts_total": 4,
+                "golden_prompts_passed": 4,
+                "golden_prompts_failed": 0,
             },
             "safety": {
                 "public_safe_output": True,
@@ -1493,6 +1504,10 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             evidence = probe.validate_live_result(payload)
             self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases"], 4)
             self.assertEqual(evidence["agent_prompt_eval_agentic_tool_cases_required"], 4)
+            self.assertEqual(evidence["agent_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
+            self.assertEqual(evidence["agent_prompt_eval_golden_prompt_backlog_total"], 11)
+            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_total"], 4)
+            self.assertEqual(evidence["agent_prompt_eval_golden_prompts_failed"], 0)
 
             generated_completion_source = json.loads(json.dumps(payload))
             generated_completion_source["prompt_eval"]["cases"][3][
@@ -1514,6 +1529,13 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
             ] = "adapter_fallback_after_agent_missing_required_tool"
             with self.assertRaisesRegex(ValueError, "did not use an accepted agent tool contract"):
                 probe.validate_live_result(fallback_source)
+
+            golden_regression = json.loads(json.dumps(payload))
+            golden_regression["summary"]["golden_prompt_case_ids"]["fire_only_strict"] = False
+            golden_regression["summary"]["golden_prompts_passed"] = 3
+            golden_regression["summary"]["golden_prompts_failed"] = 1
+            with self.assertRaisesRegex(ValueError, "golden prompts did not all pass"):
+                probe.validate_live_result(golden_regression)
 
     def test_nova_auto_apply_validator_requires_exact_build_write_counts(self):
         probe = load_nova_auto_apply_module()
@@ -2140,6 +2162,24 @@ class AIRuntimeVerificationHarnessTests(unittest.TestCase):
                     "agent_prompt_eval_tnt_wall_planned_node_writes"
                 ],
                 12,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_golden_prompt_suite"
+                ],
+                "openrealm_creator_loop",
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_golden_prompts_total"
+                ],
+                4,
+            )
+            self.assertEqual(
+                manifest["agent_prompt_eval_live_evidence"][
+                    "agent_prompt_eval_golden_prompts_failed"
+                ],
+                0,
             )
             self.assertEqual(
                 manifest["agent_prompt_eval_live_evidence"][

@@ -3,6 +3,12 @@
 These prompts define the Creator Loop MVP. They must pass locally and on the
 Raspberry Pi fork test server before a public alpha cut.
 
+The full OpenRealm backlog currently contains eleven product prompts. The
+runtime gate enforces the implemented subset first: fire, strict fire-only, TNT
+wall, agentic build-planner selection, and model/tool routing. New prompts move
+from backlog to enforced only when the runtime can validate them with
+repeatable public-safe evidence.
+
 | Prompt | Expected Build | Material | Writes | Approval | Rollback |
 | --- | --- | --- | ---: | --- | --- |
 | Build a campfire. | fire | fire-safe campfire nodes | 1-12 | required | required |
@@ -27,3 +33,11 @@ Raspberry Pi fork test server before a public alpha cut.
 - Weak or wrong behavior must be logged into the request/response review queue
   for operator labeling.
 - Golden-prompt failures block public demo claims.
+
+## Current Enforcement
+
+- Suite: `openrealm_creator_loop`
+- Backlog total: `11`
+- Enforced runtime prompt cases: `4`
+- Supporting model/tool route case: `1`
+- Blocking gate: `python3 util/ai_native_agent_quality_gate.py ... --require-live-prompt-eval`

@@ -312,6 +312,17 @@ def live_prompt_eval_payload(**overrides):
             "model_adapter_successes": 5,
             "model_adapter_failures": 0,
             "model_adapter_timeouts": 0,
+            "golden_prompt_suite": "openrealm_creator_loop",
+            "golden_prompt_backlog_total": 11,
+            "golden_prompt_case_ids": {
+                "build_fire": True,
+                "fire_only_strict": True,
+                "tnt_wall": True,
+                "agentic_build_planner": True,
+            },
+            "golden_prompts_total": 4,
+            "golden_prompts_passed": 4,
+            "golden_prompts_failed": 0,
         },
         "safety": {
             "public_safe_output": True,
@@ -388,6 +399,11 @@ class AgentQualityGateTests(unittest.TestCase):
         self.assertEqual(report["summary"]["live_prompt_eval_status"], "pass")
         self.assertEqual(report["summary"]["live_prompt_eval_cases_total"], 5)
         self.assertEqual(report["summary"]["live_prompt_eval_model_adapter_requests"], 5)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_suite"], "openrealm_creator_loop")
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompt_backlog_total"], 11)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_total"], 4)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_passed"], 4)
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_failed"], 0)
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases"], 4)
         self.assertEqual(report["summary"]["live_prompt_eval_agentic_tool_cases_required"], 4)
 
@@ -486,6 +502,35 @@ class AgentQualityGateTests(unittest.TestCase):
 
         self.assertEqual(report["status"], "fail")
         self.assertTrue(any(item["kind"] == "live_prompt_eval_not_passing" for item in report["violations"]))
+
+    def test_live_prompt_eval_golden_regression_fails_gate(self):
+        module = load_quality_gate_module()
+
+        failed_live_eval = live_prompt_eval_payload(
+            summary={
+                **live_prompt_eval_payload()["summary"],
+                "golden_prompt_case_ids": {
+                    "build_fire": True,
+                    "fire_only_strict": False,
+                    "tnt_wall": True,
+                    "agentic_build_planner": True,
+                },
+                "golden_prompts_passed": 3,
+                "golden_prompts_failed": 1,
+            }
+        )
+        report = module.build_quality_gate(
+            candidate_queue=candidate_queue_payload(),
+            case_pack=case_pack_payload(),
+            review=review_queue_payload(),
+            adapter_eval=adapter_eval_payload(),
+            live_prompt_eval=failed_live_eval,
+            generated_at="2026-06-30T18:05:00Z",
+        )
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(report["summary"]["live_prompt_eval_golden_prompts_failed"], 1)
+        self.assertTrue(any(item["kind"] == "golden_prompt_regression" for item in report["violations"]))
 
     def test_compat_import_staging_pilot_pass_is_recorded(self):
         module = load_quality_gate_module()
