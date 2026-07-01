@@ -1251,6 +1251,136 @@ class AgentsSdkBridgeContractTests(unittest.TestCase):
             GENERATED_TOOL_TRACE_NAMES,
         )
 
+    def test_rejected_generated_selection_completes_validator_required_option(self):
+        spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
+        self.assertIsNotNone(spec)
+        module = importlib.util.module_from_spec(spec)
+        assert spec.loader is not None
+        spec.loader.exec_module(module)
+
+        request = module.sample_request()
+        request["public_prompt"] = "Player request: build something amazing"
+        request["context"] = {
+            "surface_id": "builder",
+            "intent": "build_planning",
+            "player_request": "build something amazing",
+            "candidate_summary": "platform:platform:default:4|wall:wall:default:12",
+        }
+
+        generated_platform = {
+            "option_id": "generated_amazing_03",
+            "build_kind": "platform",
+            "build_width": 3,
+            "build_depth": 3,
+            "build_material_name": "glow",
+            "planned_node_writes": 9,
+            "reason": "Small amazing glowing platform within bounds.",
+        }
+        required_landmark = {
+            "option_id": "generated_creative_landmark",
+            "build_kind": "landmark",
+            "build_width": 3,
+            "build_depth": 3,
+            "build_height": 3,
+            "build_material_name": "quartz",
+            "planned_node_writes": 12,
+            "reason": "Player asked for an open-ended creative build.",
+        }
+        rejected_selection = {
+            "selected_option_id": None,
+            "selection_status": "rejected",
+            "selection_reason": "Small platform fits the budget.",
+            "rejection_reason": "selection_violates_player_request_constraints",
+            "required_option_id": "generated_creative_landmark",
+            "required_option_reason": "player_request_requires_generated_option",
+            "candidate_count": 2,
+            "alternatives": ["platform", "wall", "generated_amazing_03"],
+            "decision_source": "agent_selection_rejected",
+            "generated_option_status": "ready",
+            "generated_option_reason": required_landmark["reason"],
+            "generated_option": required_landmark,
+            "direct_world_mutation": False,
+        }
+
+        old_sdk_ready = module._sdk_ready
+        old_run_sdk_agent = module._run_sdk_agent
+        calls = []
+
+        async def fake_run_sdk_agent(_request, model=None):
+            calls.append(_request)
+            return {
+                "final_output": "Use the small generated platform.",
+                "tool_trace": [
+                    {
+                        "tool_name": "inspect_build_site_context",
+                        "result": {
+                            "status": "ready",
+                            "request_class": "generated_shape",
+                            "required_next_tool": "propose_build_option",
+                            "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                    {"tool_name": "recall_build_prompt_memory", "result": {}},
+                    {
+                        "tool_name": "propose_build_option",
+                        "result": {
+                            "status": "ready",
+                            "generated_option": generated_platform,
+                            "direct_world_mutation": False,
+                        },
+                    },
+                    {
+                        "tool_name": "select_build_option",
+                        "args": {
+                            "selected_option_id": "generated_amazing_03",
+                            "player_request": "build something amazing",
+                        },
+                        "result": rejected_selection,
+                    },
+                ],
+                "tool_decisions": {
+                    "build_site_context": {
+                        "status": "ready",
+                        "request_class": "generated_shape",
+                        "required_next_tool": "propose_build_option",
+                        "required_tool_sequence": GENERATED_TOOL_TRACE_NAMES,
+                        "direct_world_mutation": False,
+                    },
+                    "build_option": rejected_selection,
+                },
+            }
+
+        try:
+            module._sdk_ready = lambda: True
+            module._run_sdk_agent = fake_run_sdk_agent
+            response = module.run_model_adapter_request(request)
+        finally:
+            module._sdk_ready = old_sdk_ready
+            module._run_sdk_agent = old_run_sdk_agent
+
+        self.assertEqual(len(calls), 1)
+        nested = response["response"]
+        self.assertEqual(nested["selected_option_id"], "generated_creative_landmark")
+        self.assertEqual(
+            nested["tool_decision_source"],
+            "agents_sdk_generated_tool_completion",
+        )
+        self.assertTrue(nested["agent_repair_attempted"])
+        self.assertTrue(nested["agent_repair_succeeded"])
+        self.assertEqual(nested["agent_repair_reason"], "agent_missing_required_tool")
+        self.assertEqual(nested["agent_tool_completion_reason"], "agent_missing_required_tool")
+        self.assertIsNone(nested["local_tool_contract_reason"])
+        self.assertEqual(nested["missing_required_tool_calls"], [])
+        self.assertEqual(
+            nested["build_action_plan"]["build_kind"],
+            "landmark",
+        )
+        self.assertEqual(
+            nested["build_action_plan"]["build_material_name"],
+            "quartz",
+        )
+
     def test_generated_select_before_propose_gets_agentic_repair(self):
         spec = importlib.util.spec_from_file_location("agents_sdk_agent", AGENT)
         self.assertIsNotNone(spec)

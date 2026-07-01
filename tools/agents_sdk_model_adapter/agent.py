@@ -2421,6 +2421,134 @@ def _generated_options_from_tool_trace(tool_trace: Any) -> list[dict[str, Any]]:
     return options
 
 
+def _validator_required_generated_options_from_tool_trace(tool_trace: Any) -> list[dict[str, Any]]:
+    options: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    if not isinstance(tool_trace, list):
+        return options
+    for entry in tool_trace:
+        if not isinstance(entry, dict) or entry.get("tool_name") != "select_build_option":
+            continue
+        result = entry.get("result")
+        if not isinstance(result, dict) or result.get("selection_status") != "rejected":
+            continue
+        required_id = result.get("required_option_id")
+        option = result.get("generated_option")
+        if not isinstance(required_id, str) or not required_id.startswith("generated_"):
+            continue
+        if not isinstance(option, dict):
+            continue
+        copied = dict(option)
+        copied["option_id"] = required_id
+        if required_id in seen:
+            continue
+        seen.add(required_id)
+        options.append(copied)
+    return options
+
+
+def _generated_option_id(option: Any) -> str:
+    if not isinstance(option, dict):
+        return ""
+    option_id = option.get("option_id")
+    if isinstance(option_id, str) and option_id.startswith("generated_"):
+        return option_id
+    return ""
+
+
+def _generated_completion_selected_option_id(
+    decisions: dict[str, Any],
+    tool_trace: Any,
+    generated_options: list[dict[str, Any]],
+) -> str:
+    selection = decisions.get("build_option") if isinstance(decisions, dict) else None
+    if isinstance(selection, dict):
+        selected = selection.get("selected_option_id")
+        if (
+            isinstance(selected, str)
+            and selected.startswith("generated_")
+            and selection.get("selection_status") != "rejected"
+        ):
+            return selected
+        required = selection.get("required_option_id")
+        if isinstance(required, str) and required.startswith("generated_"):
+            return required
+        option_id = _generated_option_id(selection.get("generated_option"))
+        if option_id:
+            return option_id
+
+    if isinstance(tool_trace, list):
+        for entry in reversed(tool_trace):
+            if not isinstance(entry, dict) or entry.get("tool_name") != "select_build_option":
+                continue
+            result = entry.get("result")
+            if isinstance(result, dict):
+                selected = result.get("selected_option_id")
+                if (
+                    isinstance(selected, str)
+                    and selected.startswith("generated_")
+                    and result.get("selection_status") != "rejected"
+                ):
+                    return selected
+                required = result.get("required_option_id")
+                if isinstance(required, str) and required.startswith("generated_"):
+                    return required
+                option_id = _generated_option_id(result.get("generated_option"))
+                if option_id:
+                    return option_id
+            args = entry.get("args")
+            if isinstance(args, dict):
+                selected = args.get("selected_option_id")
+                if isinstance(selected, str) and selected.startswith("generated_"):
+                    return selected
+
+    for option in reversed(generated_options):
+        option_id = _generated_option_id(option)
+        if option_id:
+            return option_id
+    return ""
+
+
+def _completed_propose_trace_entry_for_generated_option(
+    candidate_summary: str,
+    player_request: str,
+    option: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]] | None:
+    generated = propose_build_option_payload(
+        candidate_summary,
+        player_request,
+        str(option.get("option_id") or ""),
+        str(option.get("build_kind") or ""),
+        str(option.get("build_material_name") or ""),
+        int(option.get("build_width") or 0),
+        int(option.get("build_depth") or 0),
+        int(option.get("build_height") or 0),
+        int(option.get("build_count") or 0),
+        str(option.get("reason") or "validator required generated option"),
+        str(option.get("label") or ""),
+    )
+    generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
+    if not isinstance(generated_option, dict) or generated.get("status") != "ready":
+        return None
+    return generated_option, {
+        "tool_name": "propose_build_option",
+        "args": {
+            "candidate_summary": candidate_summary,
+            "player_request": player_request,
+            "option_id": generated_option.get("option_id"),
+            "build_kind": generated_option.get("build_kind"),
+            "build_material_name": generated_option.get("build_material_name"),
+            "build_width": generated_option.get("build_width"),
+            "build_depth": generated_option.get("build_depth"),
+            "build_height": generated_option.get("build_height"),
+            "build_count": generated_option.get("build_count"),
+            "reason": generated_option.get("reason"),
+            "label": generated_option.get("label"),
+        },
+        "result": _safe_log_value(generated),
+    }
+
+
 def _complete_generated_build_tool_sequence_from_trace(
     request: dict[str, Any],
     tool_trace: Any,
@@ -2449,6 +2577,22 @@ def _complete_generated_build_tool_sequence_from_trace(
 
     completed_trace = [dict(entry) for entry in tool_trace if isinstance(entry, dict)]
     generated_options = _generated_options_from_tool_trace(completed_trace)
+    generated_option_ids = {_generated_option_id(option) for option in generated_options}
+    for option in _validator_required_generated_options_from_tool_trace(completed_trace):
+        option_id = _generated_option_id(option)
+        if not option_id or option_id in generated_option_ids:
+            continue
+        proposed = _completed_propose_trace_entry_for_generated_option(
+            candidate_summary,
+            player_request,
+            option,
+        )
+        if proposed is None:
+            continue
+        generated_option, trace_entry = proposed
+        generated_options.append(generated_option)
+        generated_option_ids.add(option_id)
+        completed_trace.append(trace_entry)
     if not generated_options:
         generated = propose_build_option_payload(candidate_summary, player_request)
         generated_option = generated.get("generated_option") if isinstance(generated, dict) else None
@@ -2464,9 +2608,11 @@ def _complete_generated_build_tool_sequence_from_trace(
             "result": _safe_log_value(generated),
         })
     decisions = _tool_decisions_from_trace(completed_trace)
-    selected_option_id = _model_selected_option_id(decisions, completed_trace)
-    if not selected_option_id:
-        selected_option_id = str(generated_options[-1].get("option_id") or "")
+    selected_option_id = _generated_completion_selected_option_id(
+        decisions,
+        completed_trace,
+        generated_options,
+    )
     if not selected_option_id.startswith("generated_"):
         return None
 
