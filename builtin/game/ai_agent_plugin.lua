@@ -43,7 +43,7 @@ local settings = {
 	max_defend_distance = 8,
 	agentic_build_planner_first = false,
 	auto_apply_build_approvals = false,
-	max_player_loop_turns = 8,
+	max_player_loop_turns = 16,
 	natural_chat_enabled = true,
 	natural_chat_aliases = { "nova", "bot", "aibot" },
 	capabilities = table.copy(default_capabilities),
@@ -422,7 +422,7 @@ function plugin._player_loop.public_context_json(name)
 	if not ok or type(encoded) ~= "string" then
 		return nil
 	end
-	return bounded_trace_text(encoded, 1400)
+	return bounded_trace_text(encoded, 3200)
 end
 
 function plugin._player_loop.default_state()
@@ -808,6 +808,27 @@ function plugin.get_request_traces(options)
 	local start_index = #request_traces - limit + 1
 	for index = start_index, #request_traces do
 		result[#result + 1] = compact_trace_entry(request_traces[index])
+	end
+	return result
+end
+
+function plugin.player_request_traces(name, options)
+	name = normalize_player_name(name)
+	options = options or {}
+	local limit = options.limit or (settings.max_request_traces or 50)
+	limit = math.max(0, limit)
+	local traces = plugin.get_request_traces({
+		limit = settings.max_request_traces or 50,
+	})
+	local result = {}
+	for index = #traces, 1, -1 do
+		local trace = traces[index]
+		if trace.owner == name then
+			table.insert(result, 1, trace)
+			if #result >= limit then
+				break
+			end
+		end
 	end
 	return result
 end
@@ -1344,6 +1365,9 @@ local function format_command_reply(result)
 		end
 	elseif result.action == "request_traces" then
 		append(lines, "traces=" .. tostring(#(result.traces or {})))
+		if result.trace_scope then
+			append(lines, "scope=" .. tostring(result.trace_scope))
+		end
 		local summaries = {}
 		for _, trace in ipairs(result.traces or {}) do
 			local response = trace.response or {}
@@ -1353,6 +1377,61 @@ local function format_command_reply(result)
 		end
 		if #summaries > 0 then
 			append(lines, "recent=" .. join_limited(summaries, 5))
+		end
+		local latest = result.latest_diagnostic
+		if type(latest) == "table" then
+			if latest.prompt then
+				append(lines, "latest_prompt=" .. tostring(latest.prompt))
+			end
+			if latest.route then
+				append(lines, "latest_route=" .. tostring(latest.route))
+			end
+			if latest.response_status then
+				append(lines, "latest_status=" .. tostring(latest.response_status))
+			end
+			if latest.selected_candidate_id then
+				append(lines, "latest_selected_candidate="
+					.. tostring(latest.selected_candidate_id))
+			end
+			if latest.model_selected_candidate_id then
+				append(lines, "latest_model_selected_candidate="
+					.. tostring(latest.model_selected_candidate_id))
+			end
+			if latest.selection_source then
+				append(lines, "latest_selection_source="
+					.. tostring(latest.selection_source))
+			end
+			if latest.build_kind then
+				append(lines, "latest_build_kind=" .. tostring(latest.build_kind))
+			end
+			if latest.build_material_node then
+				append(lines, "latest_material="
+					.. tostring(latest.build_material_node))
+			end
+			if latest.planned_node_writes then
+				append(lines, "latest_planned_writes="
+					.. tostring(latest.planned_node_writes))
+			end
+			if latest.actual_node_writes ~= nil then
+				append(lines, "latest_actual_writes="
+					.. tostring(latest.actual_node_writes))
+			end
+			if type(latest.adapter_tool_trace_names) == "table"
+					and #latest.adapter_tool_trace_names > 0 then
+				append(lines, "latest_tools="
+					.. join_limited(latest.adapter_tool_trace_names, 8))
+			end
+			local review = latest.eval_review or {}
+			if review.request_trace_logged ~= nil then
+				append(lines, "latest_review=prompt_eval="
+					.. tostring(review.ready_for_prompt_eval and "ready" or "not_ready")
+					.. " adapter_contract="
+					.. tostring(review.ready_for_adapter_contract_eval
+						and "ready" or "not_needed")
+					.. " memory_refresh="
+					.. tostring(review.memory_refresh_required
+						and "required" or "not_required"))
+			end
 		end
 	elseif result.action == "rollback" then
 		if result.target_kind then
@@ -1402,6 +1481,102 @@ local function format_command_reply(result)
 end
 
 plugin.format_reply = format_command_reply
+
+function plugin.format_player_reply(result)
+	result = result or {}
+	local trace_suffix = result.trace_id and (" trace=" .. tostring(result.trace_id)) or ""
+	if result.action == "status" then
+		local state = result.state or {}
+		local loop = state.loop or {}
+		return "I am " .. tostring(loop.status or state.mode or "idle")
+			.. " and my next step is "
+			.. tostring(loop.next_action or "wait_for_player_intent") .. "."
+	end
+	if result.action == "request_traces" then
+		local latest = result.latest_diagnostic
+		if type(latest) == "table" then
+			local parts = {
+				"I found " .. tostring(#(result.traces or {}))
+					.. " of your recent Nova traces.",
+				"Latest: " .. tostring(latest.prompt or "unknown request"),
+			}
+			if latest.selected_candidate_id then
+				append(parts, "selected="
+					.. tostring(latest.selected_candidate_id))
+			end
+			if latest.model_selected_candidate_id
+					and latest.model_selected_candidate_id ~= latest.selected_candidate_id then
+				append(parts, "model_selected="
+					.. tostring(latest.model_selected_candidate_id))
+			end
+			if latest.actual_node_writes ~= nil then
+				append(parts, "writes=" .. tostring(latest.actual_node_writes))
+			elseif latest.planned_node_writes ~= nil then
+				append(parts, "planned_writes="
+					.. tostring(latest.planned_node_writes))
+			end
+			return table.concat(parts, " ")
+		end
+		return "I found " .. tostring(#(result.traces or {}))
+			.. " of your recent Nova traces."
+	end
+	if result.action == "last_command" then
+		local parts = {
+			"Last thing I did: "
+				.. tostring(result.prompt or result.action or "unknown request") .. ".",
+		}
+		if result.selected_candidate_id then
+			append(parts, "selected=" .. tostring(result.selected_candidate_id))
+		end
+		if result.model_selected_candidate_id
+				and result.model_selected_candidate_id ~= result.selected_candidate_id then
+			append(parts, "model_selected="
+				.. tostring(result.model_selected_candidate_id))
+		end
+		if result.actual_node_writes ~= nil then
+			append(parts, "writes=" .. tostring(result.actual_node_writes))
+		elseif result.planned_node_writes ~= nil then
+			append(parts, "planned_writes="
+				.. tostring(result.planned_node_writes))
+		end
+		if result.task_result_status then
+			append(parts, "task=" .. tostring(result.task_result_status))
+		end
+		return table.concat(parts, " ")
+	end
+	if result.status == "pending_approval" then
+		local build_kind = result.build_kind and tostring(result.build_kind) or "that"
+		local writes = result.planned_node_writes
+			and (" with " .. tostring(result.planned_node_writes) .. " node writes")
+			or ""
+		return "I planned " .. build_kind .. writes
+			.. ". Say `Nova, approve` to run it or `Nova, no` to discard it."
+			.. trace_suffix
+	end
+	if result.status == "queued" then
+		if result.action == "build_plan" then
+			return "I am planning that with the agent tools." .. trace_suffix
+		end
+		if result.action == "approve" then
+			return "I queued the approved "
+				.. tostring(result.approved_action or "task") .. "."
+				.. (result.task_id and (" task=" .. tostring(result.task_id)) or "")
+		end
+		return "I queued " .. tostring(result.action or "that") .. "."
+			.. (result.task_id and (" task=" .. tostring(result.task_id)) or trace_suffix)
+	end
+	if result.status == "blocked" then
+		local reason = result.reason and (" Reason: " .. tostring(result.reason) .. ".")
+			or ""
+		return "I could not complete that." .. reason
+			.. (result.message and (" " .. tostring(result.message)) or "")
+			.. trace_suffix
+	end
+	if result.status == "success" or result.status == "partial" then
+		return tostring(result.message or "Done.") .. trace_suffix
+	end
+	return tostring(result.message or "I handled that.") .. trace_suffix
+end
 
 function plugin.configure(options)
 	options = options or {}
@@ -4746,7 +4921,14 @@ local function handle_agentic_build_planner(name, raw_prompt, context, reason)
 			end
 		end
 		if returned_to_player and core.chat_send_player then
-			core.chat_send_player(name, plugin.format_reply(completed_reply))
+			local completed_text = context.natural_chat
+				and plugin.format_player_reply(completed_reply)
+				or plugin.format_reply(completed_reply)
+			if context.natural_chat then
+				plugin._player_loop.append_turn(name, "assistant",
+					completed_text, completed_reply.surface_id, "natural_chat")
+			end
+			core.chat_send_player(name, completed_text)
 		end
 	end
 	local queued, queue_reason = core.ai_model_ops.request_async(
@@ -5246,19 +5428,15 @@ local function handle_request_traces(name)
 	plugin.ensure_surface_agent(name, "guide")
 	return public_reply(name, "request_traces", "success", "Recent Nova request traces returned.", {
 		surface_id = "guide",
-		traces = plugin.get_request_traces({ limit = 25 }),
+		trace_scope = "player",
+		traces = plugin.player_request_traces(name, { limit = 25 }),
+		latest_diagnostic = plugin.get_last_command_diagnostic(name),
 	})
 end
 
 function plugin.latest_player_request_trace(name)
-	local traces = plugin.get_request_traces({ limit = settings.max_request_traces or 50 })
-	for index = #traces, 1, -1 do
-		local trace = traces[index]
-		if trace.owner == name then
-			return trace
-		end
-	end
-	return nil
+	local traces = plugin.player_request_traces(name, { limit = 1 })
+	return traces[1]
 end
 
 function plugin.compact_task_outcome(task)
@@ -6030,7 +6208,14 @@ local function handle_model(name, prompt, context)
 				end
 			end
 			if returned_to_player and core.chat_send_player then
-				core.chat_send_player(name, plugin.format_reply(completed_reply))
+				local completed_text = context.natural_chat
+					and plugin.format_player_reply(completed_reply)
+					or plugin.format_reply(completed_reply)
+				if context.natural_chat then
+					plugin._player_loop.append_turn(name, "assistant",
+						completed_text, completed_reply.surface_id, "natural_chat")
+				end
+				core.chat_send_player(name, completed_text)
 			end
 		end
 		local queued, reason = core.ai_model_ops.request_async(prompt, {
@@ -6325,8 +6510,12 @@ function plugin.handle_natural_chat_message(name, message, context)
 	chat_context.player_turn_text = prompt
 	chat_context.player_turn_source = "natural_chat"
 	local result = plugin.handle_command(name, prompt, chat_context)
+	local player_reply = plugin.format_player_reply(result)
+	result.player_reply = player_reply
+	plugin._player_loop.append_turn(name, "assistant", player_reply,
+		result.surface_id or chat_context.surface_id, "natural_chat")
 	if core.chat_send_player and chat_context.suppress_chat_send ~= true then
-		core.chat_send_player(name, plugin.format_reply(result))
+		core.chat_send_player(name, player_reply)
 	end
 	return true, result
 end

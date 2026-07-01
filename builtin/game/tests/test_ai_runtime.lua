@@ -4225,6 +4225,8 @@ assert(natural_fire.action == "build")
 assert(natural_fire.status == "pending_approval")
 assert(natural_fire.build_kind == "fire")
 assert(natural_fire.planned_node_writes == 1)
+assert(natural_fire.player_reply:find("I planned fire with 1 node writes", 1, true))
+assert(not natural_fire.player_reply:find("status=", 1, true))
 local natural_fire_trace = core.ai_agent_plugin.get_request_traces({ limit = 1 })[1]
 assert(natural_fire_trace.public_prompt == "build a fire")
 assert(natural_fire_trace.context.input_surface == "natural_chat")
@@ -4233,6 +4235,9 @@ assert(natural_fire_trace.context.player_turn_source == "natural_chat")
 local natural_fire_state = core.ai_agent_plugin.get_player_state("NaturalChat")
 assert(natural_fire_state.loop.recent_turns[1].text == "build a fire")
 assert(natural_fire_state.loop.recent_turns[1].source == "natural_chat")
+assert(natural_fire_state.loop.recent_turns[2].role == "assistant")
+assert(natural_fire_state.loop.recent_turns[2].source == "natural_chat")
+assert(natural_fire_state.loop.recent_turns[2].text:find("I planned fire", 1, true))
 
 local ignored = core.ai_agent_plugin.handle_natural_chat_message(
 	"NaturalChat", "I saw a nova star", {
@@ -5503,12 +5508,15 @@ assert(natural_followup_request.context.player_turn_source == "natural_chat")
 local natural_followup_loop =
 	core.parse_json(natural_followup_request.context.player_agent_loop)
 assert(natural_followup_loop.active_surface == "builder")
-assert(natural_followup_loop.recent_turn_count == 2)
-assert(#natural_followup_loop.recent_turns == 2)
+assert(natural_followup_loop.recent_turn_count == 3)
+assert(#natural_followup_loop.recent_turns == 3)
 assert(natural_followup_loop.recent_turns[1].text == "build a fire")
 assert(natural_followup_loop.recent_turns[1].source == "natural_chat")
-assert(natural_followup_loop.recent_turns[2].text == "only the fire, nothing else")
+assert(natural_followup_loop.recent_turns[2].role == "assistant")
 assert(natural_followup_loop.recent_turns[2].source == "natural_chat")
+assert(natural_followup_loop.recent_turns[2].text:find("I am planning that", 1, true))
+assert(natural_followup_loop.recent_turns[3].text == "only the fire, nothing else")
+assert(natural_followup_loop.recent_turns[3].source == "natural_chat")
 
 local agentic_first_fire_pos = test_pos(4255)
 set_test_node(agentic_first_fire_pos, { name = "air" })
@@ -6652,6 +6660,38 @@ rawset(_G, "test_ai_agent_plugin_last_command_diagnostic", function()
 		1, true))
 	assert(diagnostic_chat_text:find("review=source=nova_request_trace prompt_eval=ready",
 		1, true))
+
+	local logs_reply = core.ai_agent_plugin.handle_command("Diagnostic", "logs", {})
+	assert(logs_reply.ok == true)
+	assert(logs_reply.action == "request_traces")
+	assert(logs_reply.trace_scope == "player")
+	assert(#logs_reply.traces >= 1)
+	for _, trace in ipairs(logs_reply.traces) do
+		assert(trace.owner == "Diagnostic")
+	end
+	assert(logs_reply.latest_diagnostic.prompt == "build me a fire and only a fire")
+	assert(logs_reply.latest_diagnostic.selected_candidate_id == "fire")
+	assert(logs_reply.latest_diagnostic.model_selected_candidate_id == "platform")
+	local logs_chat_ok, logs_chat_text =
+		core.registered_chatcommands.nova.func("Diagnostic", "logs")
+	assert(logs_chat_ok == true)
+	assert(logs_chat_text:find("status=success action=request_traces", 1, true))
+	assert(logs_chat_text:find("scope=player", 1, true))
+	assert(logs_chat_text:find(
+		"latest_prompt=build me a fire and only a fire", 1, true))
+	assert(logs_chat_text:find("latest_selected_candidate=fire", 1, true))
+	assert(logs_chat_text:find("latest_model_selected_candidate=platform", 1, true))
+	assert(logs_chat_text:find("latest_actual_writes=1", 1, true))
+	assert(logs_chat_text:find(
+		"latest_tools=recall_build_prompt_memory, select_build_option, plan_build_actions",
+		1, true))
+
+	local player_logs_text = core.ai_agent_plugin.format_player_reply(logs_reply)
+	assert(player_logs_text:find("I found ", 1, true))
+	assert(player_logs_text:find("Latest: build me a fire and only a fire", 1, true))
+	assert(player_logs_text:find("selected=fire", 1, true))
+	assert(player_logs_text:find("model_selected=platform", 1, true))
+	assert(not player_logs_text:find("status=", 1, true))
 
 	local no_trace_reply = core.ai_agent_plugin.handle_command("NoTrace", "last", {})
 	assert(no_trace_reply.ok == false)

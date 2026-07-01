@@ -57,20 +57,22 @@ The plugin does not call raw `core.set_node`, `core.remove_node`, `core.bulk_set
 
 ## Public Commands
 
-The plugin registers three aliases:
+The plugin keeps slash commands as a compatibility and debug adapter:
 
 - `/bot <message>`
 - `/nova <message>`
 - `/aibot <message>`
 
-It also registers a natural addressed-chat surface. A player can type
+The product surface is natural addressed chat. A player can type
 `Nova, <message>`, `hey Nova <message>`, `bot, <message>`, or `aibot, <message>`
 in normal chat. Only explicitly addressed non-slash messages are consumed; normal
 player chat and all slash commands continue through Luanti's standard chat path.
 Natural-chat turns are recorded in the player-agent loop as `natural_chat`, so a
 follow-up like `Nova, only the fire, nothing else` can refine the prior Builder
-Agent goal instead of starting from a command-only blank slate. The runtime keeps
-the latest eight public-safe player-agent turns by default, with
+Agent goal instead of starting from a command-only blank slate. Natural chat also
+returns player-style replies and stores Nova's public-safe assistant response as
+part of the next agent context. The runtime keeps the latest sixteen public-safe
+player-agent turns by default, with
 `max_player_loop_turns` configurable for server profiles that need a shorter or
 longer window.
 
@@ -243,8 +245,11 @@ and uses `/ai_agents_sdk_adapter_probe_async` for live public-safe verification.
 Nova request traces are intentionally separate from provider payload retention.
 `core.ai_agent_plugin.get_request_traces({ limit = N })` and the chat-facing
 `traces` command keep bounded public prompt/response summaries for debugging bad
-agent behavior. They are meant to answer "why did Nova do that?" after a player
-command. The same bounded trace summaries are emitted to the Luanti action log
+agent behavior. Player-facing `traces`/`logs` output is scoped to that player's
+own traces and includes a compact latest-command diagnostic: selected build
+option, model-selected option, intent-constraint override, planned and actual
+writes, tool names, and review readiness. They are meant to answer "why did Nova
+do that?" after a player request. The same bounded trace summaries are emitted to the Luanti action log
 when requests queue or complete, without storing private prompts, raw API responses, credentials, or
 unbounded media data. Async model requests first record a queued trace with a
 trace id, then overwrite that same trace with the final bounded model response
