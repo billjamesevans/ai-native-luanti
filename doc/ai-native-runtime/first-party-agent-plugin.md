@@ -76,6 +76,14 @@ player-agent turns by default, with
 `max_player_loop_turns` configurable for server profiles that need a shorter or
 longer window.
 
+Queued task outcomes are also reviewed back into the player-agent loop. The
+plugin periodically checks player-owned tasks, records the first terminal result
+for each completed, blocked, failed, unsafe, or cancelled task, and stores a
+compact public-safe `last_task_review` plus an assistant `task_review` turn. That
+means the next agent-planner request can see what Nova actually did, including
+result status, node writes, rollback record id, and failure reason, without
+requiring the player to ask a separate slash command first.
+
 The plugin also registers `/ai_agent_eval` for operators with `server`
 privilege. It runs a bounded public-safe prompt evaluation covering `build a
 fire`, strict `build me a fire and only a fire`, `build a wall of tnt`, an

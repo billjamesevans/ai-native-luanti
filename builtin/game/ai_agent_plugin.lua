@@ -44,6 +44,8 @@ local settings = {
 	agentic_build_planner_first = false,
 	auto_apply_build_approvals = false,
 	max_player_loop_turns = 16,
+	player_loop_auto_review_enabled = true,
+	player_loop_review_interval = 1.0,
 	natural_chat_enabled = true,
 	natural_chat_aliases = { "nova", "bot", "aibot" },
 	capabilities = table.copy(default_capabilities),
@@ -324,6 +326,7 @@ local function compact_trace_context(context)
 end
 
 plugin._player_loop = {}
+plugin._player_loop.task_reviews = {}
 
 function plugin._player_loop.copy_observation(observation)
 	if type(observation) ~= "table" then
@@ -334,6 +337,13 @@ function plugin._player_loop.copy_observation(observation)
 		copied.anchor_pos = copy_pos(observation.anchor_pos)
 	end
 	return copied
+end
+
+function plugin._player_loop.copy_task_review(review)
+	if type(review) ~= "table" then
+		return nil
+	end
+	return table.copy(review)
 end
 
 function plugin._player_loop.copy_turns(turns)
@@ -400,6 +410,8 @@ function plugin._player_loop.public_snapshot(name)
 		last_trace_id = loop.last_trace_id,
 		last_task_id = loop.last_task_id,
 		last_result_status = loop.last_result_status,
+		last_task_review =
+			plugin._player_loop.copy_task_review(loop.last_task_review),
 		last_observation =
 			plugin._player_loop.public_observation(loop.last_observation),
 		recent_turns = plugin._player_loop.public_turns(loop.recent_turns),
@@ -434,6 +446,7 @@ function plugin._player_loop.default_state()
 		active_surface = nil,
 		next_action = "wait_for_player_intent",
 		last_observation = nil,
+		last_task_review = nil,
 		recent_turns = {},
 		last_trace_id = nil,
 		last_task_id = nil,
@@ -460,6 +473,8 @@ function plugin._player_loop.copy_state(state)
 		copied.loop = table.copy(state.loop)
 		copied.loop.last_observation =
 			plugin._player_loop.copy_observation(state.loop.last_observation)
+		copied.loop.last_task_review =
+			plugin._player_loop.copy_task_review(state.loop.last_task_review)
 		copied.loop.recent_turns =
 			plugin._player_loop.copy_turns(state.loop.recent_turns)
 	end
@@ -558,6 +573,10 @@ function plugin._player_loop.record(name, update)
 	end
 	if update.last_observation ~= nil then
 		loop.last_observation = plugin._player_loop.copy_observation(update.last_observation)
+	end
+	if update.last_task_review ~= nil then
+		loop.last_task_review =
+			plugin._player_loop.copy_task_review(update.last_task_review)
 	end
 	loop.last_updated_us = trace_timestamp_us()
 	player_states[name] = plugin._player_loop.copy_state(current)
@@ -1691,6 +1710,16 @@ function plugin.configure(options)
 			"Max player loop turns must be a positive number")
 		settings.max_player_loop_turns = math.floor(options.max_player_loop_turns)
 	end
+	if options.player_loop_auto_review_enabled ~= nil then
+		settings.player_loop_auto_review_enabled =
+			options.player_loop_auto_review_enabled == true
+	end
+	if options.player_loop_review_interval ~= nil then
+		assert(type(options.player_loop_review_interval) == "number"
+			and options.player_loop_review_interval >= 0,
+			"Player loop review interval must be a non-negative number")
+		settings.player_loop_review_interval = options.player_loop_review_interval
+	end
 	if options.natural_chat_enabled ~= nil then
 		settings.natural_chat_enabled = options.natural_chat_enabled == true
 	end
@@ -1855,6 +1884,140 @@ local function active_player_tasks(name)
 		end
 	end
 	return result
+end
+
+function plugin._player_loop.task_is_terminal(task)
+	if type(task) ~= "table" then
+		return false
+	end
+	return task.status == "completed"
+		or task.status == "blocked"
+		or task.status == "failed"
+		or task.status == "unsafe"
+		or task.status == "cancelled"
+end
+
+function plugin._player_loop.task_review_signature(task)
+	local result = type(task.last_result) == "table" and task.last_result or {}
+	return table.concat({
+		tostring(task.status or "unknown"),
+		tostring(result.status or ""),
+		tostring(result.reason or ""),
+		tostring(result.changed or ""),
+		tostring(result.skipped or ""),
+	}, "|")
+end
+
+function plugin._player_loop.compact_task_review(task)
+	local result = type(task.last_result) == "table" and task.last_result or {}
+	local metrics = type(result.metrics) == "table" and result.metrics or {}
+	return {
+		task_id = task.task_id,
+		task_label = task.label,
+		task_status = task.status,
+		result_status = result.status,
+		result_reason = result.reason,
+		operation = result.operation,
+		changed = result.changed,
+		examined = result.examined,
+		skipped = result.skipped,
+		actual_node_writes = metrics.node_writes or result.changed,
+		rollback_record_id = result.rollback_record_id,
+		reviewed_us = trace_timestamp_us(),
+	}
+end
+
+function plugin._player_loop.task_review_text(review)
+	if type(review) ~= "table" then
+		return nil
+	end
+	local text = "Task " .. tostring(review.task_label or review.task_id or "unknown")
+		.. " " .. tostring(review.task_status or "unknown")
+	if review.result_status then
+		text = text .. " with result " .. tostring(review.result_status)
+	end
+	if review.actual_node_writes ~= nil then
+		text = text .. " after " .. tostring(review.actual_node_writes)
+			.. " node writes"
+	end
+	if review.result_reason then
+		text = text .. " reason=" .. tostring(review.result_reason)
+	end
+	return bounded_trace_text(text, 240)
+end
+
+function plugin.review_player_agent_tasks(name, options)
+	name = normalize_player_name(name)
+	options = options or {}
+	plugin._player_loop.task_reviews[name] =
+		plugin._player_loop.task_reviews[name] or {}
+	local reviews = {}
+	for _, task_id in ipairs(player_task_ids[name] or {}) do
+		local task = core.get_ai_task(task_id)
+		if task and plugin._player_loop.task_is_terminal(task) then
+			local signature = plugin._player_loop.task_review_signature(task)
+			if options.force == true
+					or plugin._player_loop.task_reviews[name][task.task_id]
+						~= signature then
+				plugin._player_loop.task_reviews[name][task.task_id] = signature
+				reviews[#reviews + 1] =
+					plugin._player_loop.compact_task_review(task)
+			end
+		end
+	end
+	local latest = reviews[#reviews]
+	if latest then
+		local blocked = latest.task_status == "blocked"
+			or latest.task_status == "failed"
+			or latest.task_status == "unsafe"
+			or latest.task_status == "cancelled"
+		plugin._player_loop.record(name, {
+			status = latest.task_status,
+			phase = blocked and "blocked" or "reviewing_result",
+			next_action = blocked and "ask_player_or_replan" or "wait_for_player_intent",
+			last_task_id = latest.task_id,
+			last_result_status = latest.result_status or latest.task_status,
+			last_task_review = latest,
+		})
+		if options.append_turn ~= false then
+			plugin._player_loop.append_turn(name, "assistant",
+				plugin._player_loop.task_review_text(latest),
+				"task_review", "task_review")
+		end
+		if options.notify_player == true and core.chat_send_player then
+			local message = plugin._player_loop.task_review_text(latest)
+			if message then
+				core.chat_send_player(name, message)
+			end
+		end
+	end
+	return public_reply(name, "player_loop_review", "success",
+		latest and "Player-agent task review updated." or "No new task reviews.", {
+			surface_id = "guide",
+			review_count = #reviews,
+			reviews = reviews,
+			latest_review = latest,
+		})
+end
+
+function plugin.step_player_agent_loops(options)
+	options = options or {}
+	local reviewed_players = 0
+	local review_count = 0
+	for name in pairs(player_task_ids) do
+		local reply = plugin.review_player_agent_tasks(name, options)
+		if reply.review_count and reply.review_count > 0 then
+			reviewed_players = reviewed_players + 1
+			review_count = review_count + reply.review_count
+		end
+	end
+	return {
+		ok = true,
+		status = "success",
+		action = "player_loop_step",
+		reviewed_players = reviewed_players,
+		review_count = review_count,
+	}
 end
 
 local function player_task_by_id(name, requested_task_id)
@@ -7397,5 +7560,22 @@ register_command("aibot")
 if core.register_on_chat_message then
 	core.register_on_chat_message(function(name, message)
 		return plugin.handle_natural_chat_message(name, message)
+	end)
+end
+
+plugin._player_loop.globalstep_elapsed = 0
+if core.register_globalstep then
+	core.register_globalstep(function(dtime)
+		if settings.player_loop_auto_review_enabled ~= true then
+			return
+		end
+		plugin._player_loop.globalstep_elapsed =
+			(plugin._player_loop.globalstep_elapsed or 0) + (dtime or 0)
+		local interval = settings.player_loop_review_interval or 1.0
+		if plugin._player_loop.globalstep_elapsed < interval then
+			return
+		end
+		plugin._player_loop.globalstep_elapsed = 0
+		plugin.step_player_agent_loops()
 	end)
 end

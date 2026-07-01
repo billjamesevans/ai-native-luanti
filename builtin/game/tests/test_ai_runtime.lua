@@ -4954,6 +4954,30 @@ assert(completed_plugin_build.last_result.metrics.node_writes == 2)
 assert(completed_plugin_build.last_result.rollback_record_id ~= nil)
 assert(completed_plugin_build.last_result.rollback_storage_ref:find(
 	"rollback://product-loop/", 1, true))
+local task_review = core.ai_agent_plugin.review_player_agent_tasks("Wills")
+assert(task_review.ok == true)
+assert(task_review.action == "player_loop_review")
+assert(task_review.review_count >= 1)
+assert(task_review.latest_review.task_id == approved_build.task_id)
+assert(task_review.latest_review.task_status == "completed")
+assert(task_review.latest_review.result_status == "success")
+assert(task_review.latest_review.actual_node_writes == 2)
+local player_agent_loop_after_review = core.ai_agent_plugin.get_player_state("Wills").loop
+assert(player_agent_loop_after_review.status == "completed")
+assert(player_agent_loop_after_review.phase == "reviewing_result")
+assert(player_agent_loop_after_review.next_action == "wait_for_player_intent")
+assert(player_agent_loop_after_review.last_task_id == approved_build.task_id)
+assert(player_agent_loop_after_review.last_result_status == "success")
+assert(player_agent_loop_after_review.last_task_review.task_id == approved_build.task_id)
+assert(player_agent_loop_after_review.last_task_review.actual_node_writes == 2)
+local latest_review_turn =
+	player_agent_loop_after_review.recent_turns[#player_agent_loop_after_review.recent_turns]
+assert(latest_review_turn.role == "assistant")
+assert(latest_review_turn.source == "task_review")
+assert(latest_review_turn.text:find("Task build platform completed", 1, true))
+local duplicate_task_review =
+	core.ai_agent_plugin.review_player_agent_tasks("Wills")
+assert(duplicate_task_review.review_count == 0)
 
 local platform_build_pos = test_pos(4215)
 local platform_build_next = vector.add(platform_build_pos, { x = 1, y = 0, z = 0 })
