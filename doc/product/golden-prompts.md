@@ -28,6 +28,8 @@ repeatable public-safe evidence.
 - A prompt with "only" must not add unrelated structures.
 - A material constraint such as "TNT" must be preserved in the selected option
   when the node is available in the profile.
+- A player must be able to ask for pending build options without causing a model
+  call or world mutation.
 - The runtime must reject direct mutation without task, audit, and rollback
   metadata.
 - Weak or wrong behavior must be logged into the request/response review queue
@@ -40,4 +42,6 @@ repeatable public-safe evidence.
 - Backlog total: `11`
 - Enforced runtime prompt cases: `4`
 - Supporting model/tool route case: `1`
+- Player-loop option review: `Nova, options` returns selected and alternate
+  pending build choices from runtime state.
 - Blocking gate: `python3 util/ai_native_agent_quality_gate.py ... --require-live-prompt-eval`

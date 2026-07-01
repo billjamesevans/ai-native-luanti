@@ -995,6 +995,30 @@ local function pending_approval_summary(pending)
 	return table.concat(parts, " ")
 end
 
+function plugin._build_option_summary(option)
+	if type(option) ~= "table" then
+		return nil
+	end
+	local parts = {
+		"option=" .. tostring(option.option_id or "unknown"),
+	}
+	if option.build_kind then
+		append(parts, "kind=" .. tostring(option.build_kind))
+	end
+	if option.build_material_name then
+		append(parts, "material=" .. tostring(option.build_material_name))
+	elseif option.build_material_node then
+		append(parts, "material=" .. tostring(option.build_material_node))
+	end
+	if option.planned_node_writes then
+		append(parts, "writes=" .. tostring(option.planned_node_writes))
+	end
+	if option.reason then
+		append(parts, "reason=" .. bounded_trace_text(option.reason, 80))
+	end
+	return table.concat(parts, " ")
+end
+
 local function append_build_material_details(lines, result)
 	if result.build_height then
 		append(lines, "height=" .. tostring(result.build_height))
@@ -1220,6 +1244,19 @@ local function format_command_reply(result)
 		append(lines, pending or "pending=none")
 		if result.plan_status then
 			append(lines, "plan_status=" .. tostring(result.plan_status))
+		end
+	elseif result.action == "build_options" then
+		append_task_details(lines, result)
+		local pending = pending_approval_summary(result.pending_approval)
+		append(lines, pending or "pending=none")
+		if result.selected_candidate_id then
+			append(lines, "selected_candidate=" .. tostring(result.selected_candidate_id))
+		end
+		for _, option in ipairs(result.candidate_options or {}) do
+			local summary = plugin._build_option_summary(option)
+			if summary then
+				append(lines, summary)
+			end
 		end
 	elseif result.action == "edit_plan" then
 		append_task_details(lines, result)
@@ -1560,6 +1597,31 @@ function plugin.format_player_reply(result)
 		end
 		if result.task_result_status then
 			append(parts, "task=" .. tostring(result.task_result_status))
+		end
+		return table.concat(parts, " ")
+	end
+	if result.action == "build_options" then
+		local count = result.candidate_count or #(result.candidate_options or {})
+		local parts = {
+			"I have " .. tostring(count) .. " build options",
+		}
+		if result.selected_candidate_id then
+			append(parts, "selected " .. tostring(result.selected_candidate_id) .. ".")
+		else
+			append(parts, "for the pending plan.")
+		end
+		local option_text = {}
+		for _, option in ipairs(result.candidate_options or {}) do
+			local summary = plugin._build_option_summary(option)
+			if summary then
+				append(option_text, summary)
+			end
+			if #option_text >= 3 then
+				break
+			end
+		end
+		if #option_text > 0 then
+			append(parts, table.concat(option_text, " | "))
 		end
 		return table.concat(parts, " ")
 	end
@@ -6024,6 +6086,50 @@ local function handle_pending_plan(name)
 	})
 end
 
+function plugin.handle_build_options(name)
+	plugin.ensure_surface_agent(name, "guide")
+	local pending = player_pending_approvals[name]
+	if not pending then
+		return public_reply(name, "build_options", "blocked",
+			"No pending build options are available.", {
+				surface_id = "guide",
+				reason = "no_pending_approval",
+			})
+	end
+	if pending.action ~= "build" then
+		return public_reply(name, "build_options", "blocked",
+			"Pending approval is not a build plan.", {
+				surface_id = pending.surface_id or "guide",
+				reason = "pending_approval_not_build",
+				pending_action = pending.action,
+				pending_approval = compact_pending_approval(pending),
+			})
+	end
+	local options = table.copy(pending.candidate_options or {})
+	return public_reply(name, "build_options", "success",
+		"Pending build options returned without mutation.", {
+			surface_id = pending.surface_id or "builder",
+			no_world_mutation = true,
+			pending_approval = compact_pending_approval(pending),
+			approval_id = pending.approval_id,
+			pending_action = pending.action,
+			selected_candidate_id = pending.selected_candidate_id,
+			adapter_selected_candidate_id = pending.adapter_selected_candidate_id,
+			model_selected_candidate_id = pending.model_selected_candidate_id,
+			selection_source = pending.selection_source,
+			candidate_count = pending.candidate_count or #options,
+			candidate_options = options,
+			planner_mode = pending.planner_mode,
+			planned_node_writes = pending.planned_node_writes,
+			build_kind = pending.build_kind,
+			build_width = pending.build_width,
+			build_depth = pending.build_depth,
+			build_height = pending.build_height,
+			build_material_name = pending.build_material_name,
+			build_material_node = pending.build_material_node,
+		})
+end
+
 local function update_build_pending_plan(name, pending, raw_prompt)
 	local edited_context, reason = parse_build_edit_options(raw_prompt, pending.context)
 	if not edited_context then
@@ -6494,6 +6600,12 @@ function plugin.handle_command(name, param, context)
 	if prompt == "pending" or prompt == "pending plan"
 			or prompt == "plan" or prompt == "review plan" then
 		return handle_pending_plan(name)
+	end
+	if prompt == "options" or prompt == "choices"
+			or prompt == "build options" or prompt == "show options"
+			or prompt == "show choices" or prompt == "what are my options"
+			or prompt == "what options" then
+		return plugin.handle_build_options(name)
 	end
 	if prompt == "edit plan" or prompt:match("^edit%s+plan%s+.+$")
 			or prompt:match("^plan%s+edit%s+.+$")

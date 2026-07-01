@@ -1,5 +1,5 @@
 core.register_on_joinplayer(function(player)
 	local name = player:get_player_name()
 	core.chat_send_player(name, "Try: Nova, build a campfire.")
-	core.chat_send_player(name, "Then preview, approve, and undo the change.")
+	core.chat_send_player(name, "Ask: Nova, options. Then approve, undo, or refine the plan.")
 end)
