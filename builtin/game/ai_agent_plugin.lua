@@ -316,6 +316,159 @@ local function compact_trace_context(context)
 	}
 end
 
+plugin._player_loop = {}
+
+function plugin._player_loop.copy_observation(observation)
+	if type(observation) ~= "table" then
+		return nil
+	end
+	local copied = table.copy(observation)
+	if observation.anchor_pos then
+		copied.anchor_pos = copy_pos(observation.anchor_pos)
+	end
+	return copied
+end
+
+function plugin._player_loop.default_state()
+	return {
+		status = "idle",
+		phase = "idle",
+		iteration = 0,
+		active_goal = nil,
+		active_surface = nil,
+		next_action = "wait_for_player_intent",
+		last_observation = nil,
+		last_trace_id = nil,
+		last_task_id = nil,
+		last_result_status = nil,
+		last_updated_us = nil,
+	}
+end
+
+function plugin._player_loop.ensure_state(state)
+	state.loop = type(state.loop) == "table" and state.loop
+		or plugin._player_loop.default_state()
+	local defaults = plugin._player_loop.default_state()
+	for key, value in pairs(defaults) do
+		if state.loop[key] == nil then
+			state.loop[key] = value
+		end
+	end
+	return state.loop
+end
+
+function plugin._player_loop.copy_state(state)
+	local copied = table.copy(state or {})
+	if type(state) == "table" and type(state.loop) == "table" then
+		copied.loop = table.copy(state.loop)
+		copied.loop.last_observation =
+			plugin._player_loop.copy_observation(state.loop.last_observation)
+	end
+	plugin._player_loop.ensure_state(copied)
+	return copied
+end
+
+function plugin._player_loop.context_node_name(context)
+	context = context or {}
+	if not context.pos then
+		return nil
+	end
+	local get_node = context.get_node
+	if not get_node and context.use_core_perception then
+		get_node = core.get_node
+	end
+	if type(get_node) ~= "function" then
+		return nil
+	end
+	local ok, node = pcall(get_node, copy_pos(context.pos))
+	if ok and type(node) == "table" then
+		return node.name
+	end
+	return nil
+end
+
+function plugin._player_loop.compact_observation(context, extra)
+	context = context or {}
+	extra = extra or {}
+	local observation = {
+		observed_us = trace_timestamp_us(),
+		action = extra.action,
+		route = extra.route,
+		surface_id = extra.surface_id or context.surface_id,
+		prompt = bounded_trace_text(extra.prompt, 240),
+		world_id = context.world_id,
+		task_id = context.task_id,
+		agent_id = extra.agent_id,
+		anchor_pos_available = context.pos ~= nil,
+		anchor_node_name = plugin._player_loop.context_node_name(context),
+	}
+	if context.pos then
+		observation.anchor_pos = copy_pos(context.pos)
+	end
+	return observation
+end
+
+function plugin._player_loop.result_phase(result)
+	local status = result and result.status
+	if status == "pending_approval" then
+		return "awaiting_player_approval", "wait_for_player_approval"
+	end
+	if status == "queued" then
+		return "acting", "step_ai_task_queue"
+	end
+	if status == "blocked" then
+		return "blocked", "ask_player_or_replan"
+	end
+	if status == "success" or status == "partial" then
+		return "reviewing_result", "wait_for_player_intent"
+	end
+	return "idle", "wait_for_player_intent"
+end
+
+function plugin._player_loop.record(name, update)
+	update = update or {}
+	name = normalize_player_name(name)
+	local current = plugin._player_loop.copy_state(player_states[name] or { mode = "idle" })
+	local loop = plugin._player_loop.ensure_state(current)
+	if update.increment_iteration then
+		loop.iteration = (loop.iteration or 0) + 1
+	end
+	if update.status ~= nil then
+		loop.status = update.status
+	end
+	if update.phase ~= nil then
+		loop.phase = update.phase
+	end
+	if update.active_goal ~= nil then
+		loop.active_goal = bounded_trace_text(update.active_goal, 240)
+	end
+	if update.active_surface ~= nil then
+		loop.active_surface = update.active_surface
+	end
+	if update.next_action ~= nil then
+		loop.next_action = update.next_action
+	end
+	if update.last_trace_id ~= nil then
+		loop.last_trace_id = update.last_trace_id
+	end
+	if update.last_task_id ~= nil then
+		loop.last_task_id = update.last_task_id
+	end
+	if update.last_result_status ~= nil then
+		loop.last_result_status = update.last_result_status
+	end
+	if update.last_observation ~= nil then
+		loop.last_observation = plugin._player_loop.copy_observation(update.last_observation)
+	end
+	loop.last_updated_us = trace_timestamp_us()
+	player_states[name] = plugin._player_loop.copy_state(current)
+	return plugin.get_player_state(name)
+end
+
+function plugin.record_player_loop(name, update)
+	return plugin._player_loop.record(name, update)
+end
+
 local function compact_trace_entry(entry)
 	local result = table.copy(entry or {})
 	if entry and entry.request then
@@ -373,7 +526,8 @@ end
 
 local function start_request_trace(name, action, route, prompt, context, extra)
 	extra = extra or {}
-	return remember_request_trace({
+	local surface_id = extra.surface_id or (context and context.surface_id)
+	local trace = remember_request_trace({
 		owner = name,
 		agent_id = extra.agent_id or agent_id_for(name),
 		action = action,
@@ -387,6 +541,23 @@ local function start_request_trace(name, action, route, prompt, context, extra)
 			adapter_name = extra.adapter_name,
 		},
 	})
+	plugin._player_loop.record(name, {
+		status = "running",
+		phase = "observing",
+		active_goal = prompt,
+		active_surface = surface_id,
+		next_action = "reason_with_tools",
+		last_trace_id = trace.trace_id,
+		increment_iteration = true,
+		last_observation = plugin._player_loop.compact_observation(context, {
+			action = action,
+			route = route,
+			surface_id = surface_id,
+			prompt = prompt,
+			agent_id = trace.agent_id,
+		}),
+	})
+	return trace
 end
 
 local function finish_request_trace(trace, result, extra)
@@ -394,6 +565,9 @@ local function finish_request_trace(trace, result, extra)
 		return result
 	end
 	extra = extra or {}
+	if result and result.trace_id == nil then
+		result.trace_id = trace.trace_id
+	end
 	trace.completed_us = trace_timestamp_us()
 	trace.response = {
 		ok = result and result.ok or false,
@@ -473,6 +647,18 @@ local function finish_request_trace(trace, result, extra)
 	for key, value in pairs(extra) do
 		trace[key] = value
 	end
+	local phase, next_action = plugin._player_loop.result_phase(result)
+	plugin._player_loop.record(trace.owner, {
+		status = result and result.status or "unknown",
+		phase = phase,
+		active_goal = trace.public_prompt,
+		active_surface = (result and result.surface_id)
+			or (trace.request and trace.request.surface_id),
+		next_action = next_action,
+		last_trace_id = trace.trace_id,
+		last_task_id = result and result.task_id,
+		last_result_status = result and result.status,
+	})
 	log_request_trace(trace, "completed")
 	return result
 end
@@ -901,6 +1087,28 @@ local function format_command_reply(result)
 	elseif result.action == "status" then
 		local state = result.state or {}
 		append(lines, "mode=" .. tostring(state.mode or "unknown"))
+		local loop = state.loop or {}
+		append(lines, "loop=" .. tostring(loop.status or "unknown")
+			.. ":" .. tostring(loop.phase or "unknown"))
+		if loop.active_goal then
+			append(lines, "goal=" .. bounded_trace_text(loop.active_goal, 80))
+		end
+		if loop.active_surface then
+			append(lines, "surface=" .. tostring(loop.active_surface))
+		end
+		if loop.next_action then
+			append(lines, "next_action=" .. tostring(loop.next_action))
+		end
+		if loop.last_trace_id then
+			append(lines, "last_trace_id=" .. tostring(loop.last_trace_id))
+		end
+		if loop.last_task_id then
+			append(lines, "last_task_id=" .. tostring(loop.last_task_id))
+		end
+		if loop.last_observation and loop.last_observation.anchor_node_name then
+			append(lines, "observed_node="
+				.. tostring(loop.last_observation.anchor_node_name))
+		end
 		local metrics = result.metrics or {}
 		append(lines, "queue=" .. tostring(metrics.active_tasks or 0)
 			.. " queued=" .. tostring(metrics.tasks_queued or 0)
@@ -1274,15 +1482,22 @@ end
 function plugin.get_player_state(name)
 	name = normalize_player_name(name)
 	if not player_states[name] then
-		player_states[name] = {
+		player_states[name] = plugin._player_loop.copy_state({
 			mode = "idle",
-		}
+		})
 	end
-	return table.copy(player_states[name])
+	player_states[name] = plugin._player_loop.copy_state(player_states[name])
+	return plugin._player_loop.copy_state(player_states[name])
 end
 
 local function set_player_state(name, state)
-	player_states[name] = table.copy(state)
+	state = table.copy(state or {})
+	if state.loop == nil and player_states[name] and player_states[name].loop then
+		state.loop = table.copy(player_states[name].loop)
+		state.loop.last_observation =
+			plugin._player_loop.copy_observation(player_states[name].loop.last_observation)
+	end
+	player_states[name] = plugin._player_loop.copy_state(state)
 	return plugin.get_player_state(name)
 end
 
@@ -5510,6 +5725,14 @@ local function handle_approve(name, raw_prompt)
 	queued.action = "approve"
 	queued.approved_action = pending.action
 	queued.approval_id = pending.approval_id
+	plugin._player_loop.record(name, {
+		status = queued.status,
+		phase = "acting",
+		active_surface = queued.surface_id or pending.surface_id,
+		next_action = "step_ai_task_queue",
+		last_task_id = queued.task_id,
+		last_result_status = queued.status,
+	})
 	return queued
 end
 
