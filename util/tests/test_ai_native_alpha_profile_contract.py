@@ -21,7 +21,7 @@ class AlphaProfileContractTests(unittest.TestCase):
     def read_profile_text(self):
         chunks = []
         for path in sorted(PROFILE.rglob("*")):
-            if path.is_file():
+            if path.is_file() and path.suffix.lower() in {"", ".conf", ".lua", ".md", ".json"}:
                 chunks.append(path.read_text(encoding="utf-8"))
         return "\n".join(chunks)
 

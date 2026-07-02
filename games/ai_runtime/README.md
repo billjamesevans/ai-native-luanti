@@ -10,6 +10,13 @@ explicit dev/test settings before they load or register player-facing commands.
 
 The base mod also declares `capability_profile = "clean"` for the first-party agent capability policy. It grants bounded world, entity, task, and model-adapter capabilities, and excludes privileged operator/import/player-combat grants. It registers a tiny code-only `ai_runtime_base:helper` entity for normal `/nova follow` and `/nova come` playtesting, keeping the separate demo benchmark helper disabled by default.
 
+The profile includes a lightweight OpenRealm alpha UI layer: branded formspec
+styling, a small on-screen `/nova` prompt hint, and `/openrealm` or `/nova_ui`
+guide commands. Its public-safe material palette ships as small deterministic
+PNG textures so older Luanti clients do not fall back to unknown-texture
+checkerboards while Nova-built structures still read as stone, grass, leaves,
+wood, glass, gold, quartz, diamond, glow, fire, or TNT in game.
+
 The first-party plugin splits `/nova` behavior into Builder, Repair, Guide,
 Defender, and Importer role agents. In this clean profile, Builder, Repair,
 and Guide can receive only their relevant clean grants; Defender does not get
@@ -21,6 +28,13 @@ without requiring private content or a larger game package. The prompt-eval
 verifier treats these as exact behavior contracts: both fire prompts must
 preview exactly one node write, and the default TNT wall must preview exactly
 twelve node writes.
+The first-run guide intentionally starts with `/nova build only a fire` because
+it is a one-node, budget-safe prompt that cleanly demonstrates preview,
+approval, and rollback before players try larger structures.
+The base mod also aliases older disposable-world `basenodes:*` and
+`basetools:*` content into the OpenRealm material/tool set so existing
+disposable test worlds do not show unknown-node or unknown-item fallbacks after
+the profile refresh.
 Ambiguous build prompts such as `/nova build a small shelter` route through the
 agentic build planner, which presents bounded executable candidates, can ask the
 Agents SDK sidecar for guidance, and still requires approval before mutation.
