@@ -416,6 +416,7 @@ def summarize_adapter_record(record: dict[str, Any]) -> dict[str, Any]:
         ),
         "ok": response.get("ok"),
         "elapsed_ms": round((response.get("elapsed_us") or 0) / 1000, 1) if isinstance(response.get("elapsed_us"), int) else None,
+        "agent_model_timeout": bool(payload.get("agent_model_timeout")),
         "agentic_execution": payload.get("agentic_execution"),
         "tool_decision_source": payload.get("tool_decision_source"),
         "selected_option_id": selected_option_id,
@@ -427,6 +428,23 @@ def summarize_adapter_record(record: dict[str, Any]) -> dict[str, Any]:
         "tool_count": len(tools_enabled),
         "tools_enabled": [str(tool) for tool in tools_enabled[:12]],
     }
+
+
+def adapter_release_health(latest: dict[str, Any] | None) -> str:
+    if not latest:
+        return "unknown"
+    if latest.get("ok") is not True:
+        return "attention"
+    if latest.get("agent_model_timeout") is True:
+        return "attention"
+    if latest.get("direct_world_mutation") is True:
+        return "attention"
+    if latest.get("agentic_execution") is True:
+        if latest.get("required_tool_calls_satisfied") is not True:
+            return "attention"
+        if latest.get("world_mutation_authority") not in {None, "luanti"}:
+            return "attention"
+    return "pass"
 
 
 def adapter_log_status() -> dict[str, Any]:
@@ -451,6 +469,9 @@ def adapter_log_status() -> dict[str, Any]:
             "recent_timeouts": 0,
             "latest_ok": False,
             "current_health": "unknown",
+            "release_health": "unknown",
+            "recent_window_health": "unknown",
+            "history_health": "unknown",
             "latest": None,
             "recent_traces": [],
         }
@@ -496,6 +517,9 @@ def adapter_log_status() -> dict[str, Any]:
             "recent_timeouts": recent_timeouts,
             "latest_ok": bool(latest and latest.get("ok") is True),
             "current_health": "unknown",
+            "release_health": adapter_release_health(latest),
+            "recent_window_health": "unknown",
+            "history_health": "unknown",
             "latest": latest,
             "recent_traces": list(reversed(recent_traces)),
         }
@@ -503,6 +527,9 @@ def adapter_log_status() -> dict[str, Any]:
     recent_timeouts = sum(1 for record in recent if record["timeout"])
     recent_failures = len(recent) - recent_successes
     latest_ok = bool(latest and latest.get("ok") is True)
+    release_health = adapter_release_health(latest)
+    recent_window_health = "pass" if len(recent) > 0 and recent_failures == 0 and recent_timeouts == 0 else "attention"
+    history_health = "pass" if total > 0 and failures == 0 and timeouts == 0 else "attention"
     return {
         "present": True,
         "total_entries": total,
@@ -514,6 +541,9 @@ def adapter_log_status() -> dict[str, Any]:
         "recent_failures": recent_failures,
         "recent_timeouts": recent_timeouts,
         "latest_ok": latest_ok,
+        "release_health": release_health,
+        "recent_window_health": recent_window_health,
+        "history_health": history_health,
         "current_health": "pass" if latest_ok and recent_failures == 0 and recent_timeouts == 0 else "attention",
         "latest": latest,
         "recent_traces": list(reversed(recent_traces)),

@@ -55,6 +55,35 @@ def gate_payload(**overrides):
     return payload
 
 
+def adapter_record(*, ok=True, trace_id="nova_trace:1", selected_option_id="fire", direct_world_mutation=False):
+    return {
+        "created_at": "2026-07-02T12:00:00Z",
+        "request": {
+            "agent_id": "nova_agent:PromptEvalLive",
+            "task_id": f"ai-agent-build-planner:{trace_id}",
+        },
+        "response": {
+            "ok": ok,
+            "elapsed_us": 12000,
+            "response": {
+                "agentic_execution": True,
+                "tool_decision_source": "agents_sdk_function_tool",
+                "selected_option_id": selected_option_id,
+                "required_tool_calls_satisfied": True,
+                "web_search_available": True,
+                "world_mutation_authority": "luanti",
+                "source_trace_id": trace_id,
+                "build_action_plan": {
+                    "selected_option_id": selected_option_id,
+                    "planned_node_writes": 1,
+                    "direct_world_mutation": direct_world_mutation,
+                },
+                "tools_enabled": ["select_build_option", "plan_build_actions"],
+            },
+        },
+    }
+
+
 class OpenRealmStudioStatusTests(unittest.TestCase):
     def env_for(self, root, gate_path):
         missing = str(root / "missing.json")
@@ -106,6 +135,33 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
             self.assertNotIn("/Users/example/private", encoded)
             self.assertEqual(quality["status"], "fail")
             self.assertEqual(quality["live_review_gate_violations"], 1)
+
+    def test_adapter_release_health_separates_latest_trace_from_history(self):
+        server = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            log_path = root / "agents-sdk-model-adapter.jsonl"
+            log_path.write_text(
+                "\n".join([
+                    json.dumps(adapter_record(ok=False, trace_id="nova_trace:old")),
+                    json.dumps(adapter_record(ok=True, trace_id="nova_trace:new", selected_option_id="generated_village")),
+                ]) + "\n",
+                encoding="utf-8",
+            )
+
+            with mock.patch.dict(os.environ, {"OPENREALM_ADAPTER_LOG": str(log_path)}):
+                summary = server.adapter_log_status()
+
+            self.assertTrue(summary["present"])
+            self.assertEqual(summary["latest"]["source_trace_id"], "nova_trace:new")
+            self.assertEqual(summary["latest"]["selected_option_id"], "generated_village")
+            self.assertEqual(summary["latest_ok"], True)
+            self.assertEqual(summary["release_health"], "pass")
+            self.assertEqual(summary["recent_window_health"], "attention")
+            self.assertEqual(summary["history_health"], "attention")
+            self.assertEqual(summary["current_health"], "attention")
+            self.assertEqual(summary["recent_failures"], 1)
+            self.assertEqual(summary["failures"], 1)
 
 
 if __name__ == "__main__":

@@ -625,7 +625,7 @@ function renderLiveStatus(data) {
   const allActive = data?.services_all_active === true;
   const qualityStatus = quality.status || "unknown";
   const requestLogStatus = quality.request_log_gate_status || "unknown";
-  const adapterCurrentOk = adapter.current_health === "pass";
+  const adapterReleaseOk = adapter.release_health === "pass";
   const mutationAuthority = latest.world_mutation_authority || "luanti";
   const directMutation = latest.direct_world_mutation === true || data?.direct_world_mutation_by_ai === true;
 
@@ -662,16 +662,16 @@ function renderLiveStatus(data) {
 
   setText(
     el.adapterStatus,
-    adapter.present ? (adapterCurrentOk ? "Current pass" : "Needs review") : "No log"
+    adapter.present ? (adapterReleaseOk ? "Release pass" : "Needs review") : "No log"
   );
   setText(
     el.adapterDetail,
     latest.created_at || latest.selected_option_id
-      ? `${latest.selected_option_id || "no option"} · recent ${adapter.recent_successes || 0}/${adapter.recent_window_entries || 0} · history ${adapter.successes || 0}/${adapter.total_entries || 0}`
+      ? `${latest.selected_option_id || "no option"} · recent ${adapter.recent_successes || 0}/${adapter.recent_window_entries || 0} ok · history ${adapter.failures || 0} fails`
       : "No public-safe request summary yet"
   );
-  el.adapterStatus?.classList.toggle("status-ok", adapterCurrentOk);
-  el.adapterStatus?.classList.toggle("status-warn", !adapterCurrentOk);
+  el.adapterStatus?.classList.toggle("status-ok", adapterReleaseOk);
+  el.adapterStatus?.classList.toggle("status-warn", !adapterReleaseOk);
   renderAgentTrace(adapter.recent_traces);
 
   setText(el.latestPlanStatus, latest.selected_option_id || "No selected plan");

@@ -14,8 +14,10 @@ with public-safe service, fork, quality-gate, and Agents SDK adapter summaries.
 It does not expose raw prompts, provider messages, credentials, private paths,
 or world payloads. Adapter summaries separate current gate health from
 historical lifetime counts so old failed probes do not obscure a passing live
-release gate. Prompt-eval summaries expose only case IDs, pass counts, golden
-prompt coverage, and safety flags.
+release gate. `adapter_log.release_health` reports the newest public-safe trace,
+while `recent_window_health` and `history_health` keep rolling and lifetime
+failures visible for follow-up. Prompt-eval summaries expose only case IDs, pass
+counts, golden prompt coverage, and safety flags.
 
 Runtime-proof summaries expose only status and counts for rollback-backed Nova
 auto-apply probes and compatibility import staging rehearsals. They prove that
