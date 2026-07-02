@@ -29,7 +29,7 @@ status, trace ID, selected option, case hint, check counts, artifact key names,
 and safety flags. It rejects unsafe gate payloads and never exposes raw prompts,
 provider messages, credentials, private paths, violation details, or generated
 artifact paths. On the Pi, the default gate path is
-`/opt/ai-native-luanti/src/local/review-packets/live-review-gate/live_trace11-gate-result.json`.
+`/opt/ai-native-luanti/src/local/review-packets/live-review-gate/latest-gate-result.json`.
 
 The Agent trace panel displays the newest public-safe adapter summaries: selected
 option, tool-decision source, planned write count, required-tool status,
@@ -50,15 +50,16 @@ To turn a live or saved Studio trace into reviewed eval artifacts, run:
 python3 util/ai_native_agent_live_review_gate.py \
   --status-json local/status/openrealm-studio-status.json \
   --agents-sdk-log local/benchmarks/agents-sdk-model-adapter.jsonl \
-  --trace-id nova_trace:11 \
   --output-dir local/review-packets/live-review \
-  --gate-output local/review-packets/live-review/gate-result.json
+  --artifact-prefix latest \
+  --gate-output local/review-packets/live-review/latest-gate-result.json
 ```
 
 The gate writes the review packet, candidate queue, operator label, and
 prompt-memory case pack, then verifies artifact kinds, public-safety flags,
 label matching, candidate membership, and case-pack readiness. For manual
-handoff or debugging, the same flow can still be run in smaller steps:
+handoff or debugging, pass a specific `--trace-id nova_trace:...`, or run the
+same flow in smaller steps:
 
 ```bash
 python3 util/ai_native_agent_live_review_loop.py \

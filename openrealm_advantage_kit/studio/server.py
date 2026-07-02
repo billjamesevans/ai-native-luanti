@@ -68,7 +68,7 @@ PROMPT_EVAL_CASES = (
 )
 LIVE_REVIEW_GATE_KIND = "openrealm_live_review_gate_result"
 LIVE_REVIEW_GATE_DEFAULT = (
-    "/opt/ai-native-luanti/src/local/review-packets/live-review-gate/live_trace11-gate-result.json"
+    "/opt/ai-native-luanti/src/local/review-packets/live-review-gate/latest-gate-result.json"
 )
 
 
