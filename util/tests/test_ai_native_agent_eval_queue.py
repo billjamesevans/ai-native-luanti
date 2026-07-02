@@ -1633,6 +1633,40 @@ class AgentEvalQueueTests(unittest.TestCase):
             {"fire_only_strict", "generated_dimensioned_wall"},
         )
 
+    def test_deduped_agent_candidates_retain_trace_refs(self):
+        module = load_queue_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            entries = []
+            for index in range(3):
+                entry = agents_sdk_log_entry("build me a fire and only a fire")
+                entry["created_at"] = f"2026-06-30T12:00:{index:02d}Z"
+                entry["request"]["task_id"] = f"ai-agent-build-planner:nova_trace:{index + 10}"
+                entries.append(json.dumps(entry))
+            sidecar_log.write_text("\n".join(entries) + "\n", encoding="utf-8")
+
+            payload = module.build_eval_candidate_queue(
+                agents_sdk_logs=[sidecar_log],
+                generated_at="2026-06-30T12:30:00Z",
+                max_bytes=100000,
+            )
+
+        self.assertEqual(payload["source_summary"]["candidates_total"], 1)
+        fire = payload["candidates"][0]
+        self.assertEqual(fire["case_hint"], "fire_only_strict")
+        self.assertEqual(fire["task_id"], "ai-agent-build-planner:nova_trace:12")
+        refs = fire["source_trace_refs"]
+        self.assertEqual(len(refs), 3)
+        self.assertIn(
+            "ai-agent-build-planner:nova_trace:10",
+            {ref["task_id"] for ref in refs},
+        )
+        self.assertIn(
+            "ai-agent-build-planner:nova_trace:12",
+            {ref["task_id"] for ref in refs},
+        )
+
     def test_agents_sdk_candidate_extracts_embedded_player_request_from_wrapper_prompt(self):
         module = load_queue_module()
         entry = agents_sdk_log_entry(

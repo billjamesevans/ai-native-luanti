@@ -134,6 +134,30 @@ def studio_review_packet():
     }
 
 
+def generated_sidecar_entry(index):
+    option_id = f"generated_platform_{index}"
+    entry = sidecar_entry(
+        f"build generated platform {index}",
+        task_id=f"ai-agent-build-planner:nova_trace:g{index}",
+        selected_option_id=option_id,
+        build_kind="platform",
+        build_material_name="stone",
+        planned_node_writes=24,
+    )
+    nested = entry["response"]["response"]
+    nested["required_tool_calls_satisfied"] = True
+    nested["missing_required_tool_calls"] = []
+    nested["tool_trace"].append({"tool_name": "plan_build_actions"})
+    nested["tool_decisions"]["build_option"]["generated_option_status"] = "ready"
+    nested["tool_decisions"]["build_option"]["generated_option"] = {
+        "option_id": option_id,
+        "build_kind": "platform",
+        "build_material_name": "stone",
+        "planned_node_writes": 24,
+    }
+    return entry
+
+
 def operator_feedback_line(prompt="build a bridge"):
     payload = {
         "schema_version": 1,
@@ -433,6 +457,75 @@ class AgentFeedbackPacketTests(unittest.TestCase):
             self.assertEqual(labels["labels"][0]["expected"]["build_kind"], "fire")
             self.assertEqual(labels["labels"][0]["candidate_id"], queue["candidates"][0]["candidate_id"])
             self.assertEqual(pack["cases"][0]["case_hint"], "fire_only_strict")
+
+    def test_cli_keeps_studio_trace_candidate_under_small_output_budget(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            review_packet = root / "openrealm-agent-review-packet.json"
+            candidate_queue_output = root / "candidate-queue.json"
+            operator_label_output = root / "operator-labels.json"
+            case_pack_output = root / "case-pack.json"
+            entries = [generated_sidecar_entry(index) for index in range(14)]
+            entries.append(
+                sidecar_entry(
+                    "Previous builder goal: build a fire\nPlayer follow-up: only the fire, nothing else",
+                    task_id="ai-agent-build-planner:nova_trace:11",
+                    selected_option_id="fire",
+                    build_kind="fire",
+                    build_material_name="fire",
+                    planned_node_writes=1,
+                )
+            )
+            sidecar_log.write_text(
+                "\n".join(json.dumps(entry) for entry in entries) + "\n",
+                encoding="utf-8",
+            )
+            review_packet.write_text(json.dumps(studio_review_packet()) + "\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(FEEDBACK),
+                    "--root",
+                    str(root),
+                    "--agents-sdk-log",
+                    str(sidecar_log),
+                    "--studio-review-packet",
+                    str(review_packet),
+                    "--candidate-queue-output",
+                    str(candidate_queue_output),
+                    "--operator-label-output",
+                    str(operator_label_output),
+                    "--case-pack-output",
+                    str(case_pack_output),
+                    "--generated-at",
+                    "2026-07-02T13:00:00Z",
+                    "--max-candidate-queue-bytes",
+                    "12000",
+                ],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            summary = json.loads(completed.stdout)
+            queue = json.loads(candidate_queue_output.read_text(encoding="utf-8"))
+            labels = json.loads(operator_label_output.read_text(encoding="utf-8"))
+
+            self.assertEqual(summary["status"], "ready")
+            self.assertTrue(summary["operator_label_matched"])
+            self.assertEqual(summary["studio_review_packet_source_trace_id"], "nova_trace:11")
+            self.assertEqual(summary["operator_labels_applied"], 1)
+            self.assertTrue(
+                any(
+                    candidate.get("operator_label", {}).get("label_id") == labels["labels"][0]["label_id"]
+                    and candidate.get("case_hint") == "fire_only_strict"
+                    for candidate in queue["candidates"]
+                )
+            )
 
     def test_cli_rejects_private_studio_review_packet(self):
         with tempfile.TemporaryDirectory() as tmpdir:

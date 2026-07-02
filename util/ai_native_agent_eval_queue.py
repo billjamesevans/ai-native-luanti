@@ -23,6 +23,7 @@ VERIFIED_LIVE_RESULT_KIND = "ai_native_nova_auto_apply_live_result"
 PROMPT_EVAL_LIVE_RESULT_KIND = "ai_native_agent_prompt_eval_live_result"
 DEFAULT_MAX_BYTES = 32000
 DEFAULT_MAX_CANDIDATES = 50
+MAX_SOURCE_TRACE_REFS = 12
 PRIMARY_AGENT_TOOL_DECISION_SOURCE = "agents_sdk_function_tool"
 REPAIR_AGENT_TOOL_DECISION_SOURCE = "agents_sdk_repair_function_tool"
 GENERATED_AGENT_TOOL_COMPLETION_SOURCE = "agents_sdk_generated_tool_completion"
@@ -525,6 +526,74 @@ def stable_candidate_id(candidate: dict[str, Any]) -> str:
     }
     digest = hashlib.sha256(json.dumps(seed, sort_keys=True).encode("utf-8")).hexdigest()
     return f"agent-eval-candidate:{digest[:16]}"
+
+
+def candidate_source_trace_ref(candidate: dict[str, Any]) -> dict[str, Any] | None:
+    task_id = safe_scalar(candidate.get("task_id"), 180)
+    trace_id = safe_scalar(candidate.get("trace_id"), 180)
+    observed = candidate.get("observed") if isinstance(candidate.get("observed"), dict) else {}
+    selected = safe_scalar(
+        observed.get("selected_option_id")
+        or observed.get("selected_candidate_id")
+        or observed.get("build_option_selected_option_id")
+        or observed.get("build_action_plan_selected_option_id")
+        or observed.get("generated_option_id"),
+        180,
+    )
+    if task_id is None and trace_id is None and selected is None:
+        return None
+    ref = {
+        "observed_at": safe_scalar(candidate.get("observed_at"), 80),
+        "task_id": task_id,
+        "trace_id": trace_id,
+        "selected_option_id": selected,
+    }
+    return {key: value for key, value in ref.items() if value is not None}
+
+
+def _source_trace_ref_key(ref: dict[str, Any]) -> tuple[str, str, str, str]:
+    return (
+        str(ref.get("task_id") or ""),
+        str(ref.get("trace_id") or ""),
+        str(ref.get("selected_option_id") or ""),
+        str(ref.get("observed_at") or ""),
+    )
+
+
+def source_trace_refs_for(candidate: dict[str, Any]) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    existing = candidate.get("source_trace_refs")
+    if isinstance(existing, list):
+        for ref in existing:
+            if not isinstance(ref, dict):
+                continue
+            safe_ref = {
+                key: safe_scalar(ref.get(key), 180)
+                for key in ("observed_at", "task_id", "trace_id", "selected_option_id")
+                if ref.get(key) is not None
+            }
+            if safe_ref:
+                refs.append(safe_ref)
+    current = candidate_source_trace_ref(candidate)
+    if current:
+        refs.append(current)
+    deduped: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for ref in refs:
+        deduped[_source_trace_ref_key(ref)] = ref
+    ordered = sorted(deduped.values(), key=lambda item: str(item.get("observed_at") or ""), reverse=True)
+    return ordered[:MAX_SOURCE_TRACE_REFS]
+
+
+def merge_source_trace_refs(target: dict[str, Any], *sources: dict[str, Any]) -> None:
+    merged: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+    for candidate in (target, *sources):
+        for ref in source_trace_refs_for(candidate):
+            merged[_source_trace_ref_key(ref)] = ref
+    refs = sorted(merged.values(), key=lambda item: str(item.get("observed_at") or ""), reverse=True)
+    if len(refs) > 1:
+        target["source_trace_refs"] = refs[:MAX_SOURCE_TRACE_REFS]
+    else:
+        target.pop("source_trace_refs", None)
 
 
 def expected_outcome_for(prompt: str, candidate: dict[str, Any]) -> dict[str, Any]:
@@ -1892,29 +1961,32 @@ def _dedupe_candidates(candidates: list[dict[str, Any]]) -> list[dict[str, Any]]
             continue
         previous = seen[key]
         if str(candidate.get("observed_at") or "") > str(previous.get("observed_at") or ""):
+            merge_source_trace_refs(candidate, previous)
             seen[key] = candidate
+        else:
+            merge_source_trace_refs(previous, candidate)
     return [seen[key] for key in order]
 
 
 def _candidate_learning_rank(candidate: dict[str, Any]) -> int:
     if candidate.get("ready_for_adapter_contract_eval") is True:
         return 0
-    if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
+    if isinstance(candidate.get("operator_label"), dict):
         return 1
-    if candidate.get("source_kind") == REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND:
+    if candidate.get("source_kind") == "nova_agent_sidecar_request_response":
         return 2
-    if isinstance(candidate.get("adapter_contract_resolution"), dict):
+    if candidate.get("source_kind") == REQUEST_RESPONSE_LOG_GATE_SOURCE_KIND:
         return 3
+    if isinstance(candidate.get("adapter_contract_resolution"), dict):
+        return 4
     expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
     selected = expected.get("selected_candidate_id")
     if (
         str(candidate.get("case_hint") or "").startswith("generated_")
         or (isinstance(selected, str) and selected.startswith("generated_"))
     ):
-        return 4
-    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 5
-    if isinstance(candidate.get("operator_label"), dict):
+    if candidate.get("source_kind") == VERIFIED_LIVE_PROBE_KIND:
         return 6
     if candidate.get("ready_for_prompt_eval") is True:
         return 7

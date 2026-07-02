@@ -130,6 +130,23 @@ def _studio_candidate_match_score(
         score += 20
     if agent_id and candidate.get("agent_id") == agent_id:
         score += 5
+    refs = candidate.get("source_trace_refs") if isinstance(candidate.get("source_trace_refs"), list) else []
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        ref_score = 0
+        ref_task_id = text_or_none(ref.get("task_id"))
+        ref_trace_id = text_or_none(ref.get("trace_id"))
+        ref_selected = text_or_none(ref.get("selected_option_id"))
+        if task_id and ref_task_id == task_id:
+            ref_score += 100
+        if source_trace_id and ref_trace_id == source_trace_id:
+            ref_score += 90
+        if source_trace_id and ref_task_id and source_trace_id in ref_task_id:
+            ref_score += 80
+        if selected_option_id and ref_selected == selected_option_id:
+            ref_score += 20
+        score = max(score, ref_score)
     return score
 
 
@@ -262,13 +279,16 @@ def build_feedback_packet(
     max_case_pack_bytes: int,
     studio_review_packet: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    initial_max_bytes = max(1000, max_candidate_queue_bytes)
+    if studio_review_packet is not None:
+        initial_max_bytes = max(initial_max_bytes, 256000)
     initial_queue = eval_queue.build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs,
         nova_agent_logs=nova_agent_logs,
         action_logs=action_logs,
         generated_at=generated_at,
         max_candidates=max(0, max_candidates),
-        max_bytes=max(1000, max_candidate_queue_bytes),
+        max_bytes=initial_max_bytes,
     )
     studio_summary: dict[str, Any] = {}
     if studio_review_packet is not None:
