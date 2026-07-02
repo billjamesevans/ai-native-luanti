@@ -353,6 +353,12 @@ def field_text(values: dict[str, str], key: str, default: str = "unknown") -> st
     return sanitize_text(value)
 
 
+def bounded_text_list(value, *, max_items: int = 10, max_chars: int = 240) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [sanitize_text(str(item))[:max_chars] for item in value[:max_items]]
+
+
 def soak_target_config(args) -> dict:
     config = dict(SOAK_TARGETS[args.soak_target])
     if args.soak_min_duration_seconds is not None:
@@ -631,8 +637,11 @@ def build_soak_evidence(args, remote_manifests: list[dict], elapsed_seconds: flo
     passed = 0
     for index, remote_manifest in enumerate(remote_manifests, start=1):
         evidence = runtime_evidence(remote_manifest)
+        clean = remote_manifest.get("clean_profile_evidence") or {}
+        artifact_paths = remote_manifest.get("artifact_paths") or {}
         sample = {
             "iteration": index,
+            "remote_generated_at": sanitize_text(remote_manifest.get("generated_at", "")),
             "remote_manifest_status": evidence["remote_manifest_status"],
             "clean_profile_status": evidence["clean_profile_status"],
             "server_step_workload_status": evidence["server_step_workload_status"],
@@ -647,6 +656,11 @@ def build_soak_evidence(args, remote_manifests: list[dict], elapsed_seconds: flo
             "actionable_warning_count": evidence["actionable_warning_count"],
             "server_log_error_count": evidence["server_log_error_count"],
             "failure_count": evidence["failure_count"],
+            "failure_reasons": bounded_text_list(remote_manifest.get("failure_reasons")),
+            "clean_profile_failure_reasons": bounded_text_list(clean.get("failure_reasons")),
+            "artifact_keys": sorted(str(key)[:80] for key in artifact_paths.keys())[:20]
+            if isinstance(artifact_paths, dict)
+            else [],
         }
         samples.append(sample)
         if remote_manifest.get("overall_status") == "pass":

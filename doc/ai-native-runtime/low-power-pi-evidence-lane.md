@@ -86,6 +86,27 @@ Latest retained overnight soak manifest:
   `raspberrypi_luanti_20260701-182811.tgz`
   (`9a0f27c2a7652dc668a7582775c61082614f7d36993b742dbaa3294359f7a39d`).
 
+Latest retained one-hour soak attempt:
+
+- Date: 2026-07-02
+- Fork commit: `03c342b3c`
+- Path:
+  `local/benchmarks/low-power-server/2026-07-02/03c342b3c/pi-low-power-evidence.json`
+- Target: `one-hour`; elapsed `4263.844` seconds; duration met.
+- Iterations: `12/13` passed, `1` failed.
+- Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
+- Studio/Nova status: quality gate `pass`, live review gate `pass`, prompt
+  eval `pass`, Agents SDK adapter release health `pass`, runtime proofs `pass`.
+- Runtime evidence: final sample product profile `pass`, clean profile `pass`,
+  headless client load `pass` with 2 attempted/connected/completed synthetic
+  players, scale gate `pass`, and compatibility import staging pilot `pass`.
+- Failure: sample 10 reported `server_log_error_count = 2`, causing
+  `server_log_error_budget_exceeded`; the one-hour manifest is retained as a
+  failed attempt, not a promotion artifact.
+- Follow-up: repeated soak manifests now retain bounded per-sample failure
+  reason codes and artifact keys so the next failure is diagnosable without raw
+  logs or private data in the public-safe manifest.
+
 The post-deploy gate above is not itself a soak manifest; the retained
 overnight manifest is recorded separately. Use the commands below for quick,
 one-hour, or overnight low-power evidence manifests.
@@ -180,6 +201,12 @@ python3 util/ai_native_low_power_pi_evidence.py \
 The manifest fails with `soak_target_duration_not_met` if the declared target
 does not run long enough. The quick target is for post-deploy proof only; v0.3
 promotion requires the one-hour target before the overnight lane is meaningful.
+
+Repeated soak samples retain bounded per-sample diagnostics: sample index,
+remote generated time, pass/fail status, resource counts, sanitized failure
+reason codes, clean-profile failure reason codes, and artifact keys. Raw logs
+are not copied into the public-safe manifest; use the retained artifact keys to
+inspect local-only logs when a sample fails.
 
 ## Safety Boundary
 

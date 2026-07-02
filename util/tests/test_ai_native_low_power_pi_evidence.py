@@ -392,6 +392,14 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             manifest["soak_evidence"]["resource_budgets"]["max_fork_restarts"],
             0,
         )
+        self.assertEqual(
+            manifest["soak_evidence"]["samples"][0]["failure_reasons"],
+            [],
+        )
+        self.assertIn(
+            "clean_profile_summary",
+            manifest["soak_evidence"]["samples"][0]["artifact_keys"],
+        )
         self.assertEqual(manifest["soak_evidence"]["target"]["name"], "quick")
         self.assertTrue(manifest["soak_evidence"]["target"]["duration_met"])
         self.assertEqual(manifest["soak_evidence"]["target"]["next_target"], "one-hour")
@@ -762,6 +770,14 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertEqual(manifest["overall_status"], "fail")
         self.assertIn("remote_low_power_verifier_not_pass", manifest["failure_reasons"])
         self.assertIn("remote_low_power_verifier_command_failed", manifest["failure_reasons"])
+        self.assertEqual(
+            manifest["soak_evidence"]["samples"][0]["failure_reasons"],
+            ["branch_benchmark_gate exited with status 1"],
+        )
+        self.assertIn(
+            "benchmark_gate_manifest",
+            manifest["soak_evidence"]["samples"][0]["artifact_keys"],
+        )
         self.assertNotIn("product_profile_hygiene_not_pass", manifest["failure_reasons"])
         self.assertNotIn("clean_profile_evidence_not_pass", manifest["failure_reasons"])
         self.assertIn(
