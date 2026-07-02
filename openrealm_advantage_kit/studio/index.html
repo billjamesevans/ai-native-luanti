@@ -234,6 +234,32 @@
         </section>
         <section class="glass">
           <div class="section-heading compact">
+            <h3>Review packet</h3>
+            <button id="export-review-packet" type="button" disabled>Export JSON</button>
+          </div>
+          <div class="review-form">
+            <label>
+              <span>Case</span>
+              <input id="review-case-hint" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>Kind</span>
+              <input id="review-build-kind" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>Material</span>
+              <input id="review-material-name" type="text" autocomplete="off" />
+            </label>
+            <label>
+              <span>Writes</span>
+              <input id="review-planned-writes" type="number" min="0" step="1" />
+            </label>
+          </div>
+          <textarea id="review-command" class="review-command" rows="4" readonly></textarea>
+          <pre id="review-packet" class="recipe review-packet"></pre>
+        </section>
+        <section class="glass">
+          <div class="section-heading compact">
             <h3>Audit log</h3>
           </div>
           <div id="audit" class="audit"></div>

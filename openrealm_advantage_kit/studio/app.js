@@ -20,7 +20,11 @@ const state = {
   world: new Map(),
   pendingPlan: null,
   audit: [],
-  rollbackStack: []
+  rollbackStack: [],
+  liveTraces: [],
+  selectedTraceIndex: 0,
+  selectedTraceKey: null,
+  reviewPacket: null
 };
 
 const el = {
@@ -37,6 +41,13 @@ const el = {
   metrics: document.getElementById("metrics"),
   audit: document.getElementById("audit"),
   agentTrace: document.getElementById("agent-trace"),
+  reviewPacket: document.getElementById("review-packet"),
+  reviewCommand: document.getElementById("review-command"),
+  reviewCaseHint: document.getElementById("review-case-hint"),
+  reviewBuildKind: document.getElementById("review-build-kind"),
+  reviewMaterialName: document.getElementById("review-material-name"),
+  reviewPlannedWrites: document.getElementById("review-planned-writes"),
+  exportReviewPacket: document.getElementById("export-review-packet"),
   recipe: document.getElementById("recipe"),
   risk: document.getElementById("risk"),
   canvas: document.getElementById("world"),
@@ -394,6 +405,148 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
+function slug(value, fallback="operator_labeled") {
+  const text = safeText(value, fallback)
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return text || fallback;
+}
+
+function selectedTraceId(trace) {
+  const explicit = safeText(trace?.source_trace_id, "");
+  if (explicit) return explicit;
+  const match = safeText(trace?.task_id, "").match(/nova_trace:[A-Za-z0-9_.-]+/);
+  return match ? match[0] : "";
+}
+
+function traceKey(trace) {
+  return [
+    selectedTraceId(trace),
+    trace?.task_id || "",
+    trace?.created_at || "",
+    trace?.selected_option_id || ""
+  ].join("|");
+}
+
+function inferReviewDefaults(trace) {
+  const selected = safeText(trace?.selected_option_id, "operator_labeled_build");
+  const normalized = selected.toLowerCase();
+  let buildKind = "build";
+  let material = "stone";
+  let caseHint = slug(selected);
+  if (normalized.includes("fire")) {
+    buildKind = "fire";
+    material = "fire";
+    caseHint = "fire_only_strict";
+  } else if (normalized.includes("tnt")) {
+    buildKind = "wall";
+    material = "tnt";
+    caseHint = "tnt_wall";
+  } else if (normalized.includes("path")) {
+    buildKind = "path";
+    material = "stone";
+    caseHint = "path_to_hill";
+  } else if (normalized.includes("bridge") || normalized.includes("platform")) {
+    buildKind = "platform";
+    material = "stone";
+  } else if (normalized.includes("cabin") || normalized.includes("house") || normalized.includes("shelter")) {
+    buildKind = "cabin";
+    material = "wood";
+  } else if (normalized.includes("village")) {
+    buildKind = "village";
+    material = "wood";
+  }
+  return {
+    caseHint,
+    buildKind,
+    material,
+    plannedWrites: Math.max(0, Number(trace?.planned_node_writes || 0))
+  };
+}
+
+function hydrateReviewFields(trace) {
+  const defaults = inferReviewDefaults(trace);
+  if (el.reviewCaseHint) el.reviewCaseHint.value = defaults.caseHint;
+  if (el.reviewBuildKind) el.reviewBuildKind.value = defaults.buildKind;
+  if (el.reviewMaterialName) el.reviewMaterialName.value = defaults.material;
+  if (el.reviewPlannedWrites) el.reviewPlannedWrites.value = String(defaults.plannedWrites);
+}
+
+function currentReviewExpected(trace) {
+  const fallback = inferReviewDefaults(trace);
+  const writes = Number.parseInt(el.reviewPlannedWrites?.value || String(fallback.plannedWrites), 10);
+  return {
+    action: "build",
+    build_kind: slug(el.reviewBuildKind?.value || fallback.buildKind, fallback.buildKind),
+    build_material_name: slug(el.reviewMaterialName?.value || fallback.material, fallback.material),
+    planned_node_writes: Number.isFinite(writes) && writes >= 0 ? writes : fallback.plannedWrites,
+    route: "agentic_build_planner",
+    selected_candidate_id: safeText(trace?.selected_option_id, fallback.caseHint),
+    danger_refusal_allowed: false,
+    forbidden_extra_structure: true
+  };
+}
+
+function buildReviewCommand(trace, expected, caseHint) {
+  const traceId = selectedTraceId(trace);
+  const target = traceId ? `trace=${traceId}` : "last";
+  const pieces = [
+    target,
+    `case=${slug(caseHint)}`,
+    `build_kind=${expected.build_kind}`,
+    `material=${expected.build_material_name}`,
+    `planned_writes=${expected.planned_node_writes}`,
+    `route=${expected.route}`,
+    `selected_candidate=${slug(expected.selected_candidate_id, "selected_candidate")}`,
+    "danger_refusal_allowed=false",
+    "forbidden_extra_structure=true"
+  ];
+  return `/ai_agent_feedback ${pieces.join("; ")}`;
+}
+
+function renderReviewPacket() {
+  const trace = state.liveTraces[state.selectedTraceIndex];
+  if (!trace) {
+    state.reviewPacket = null;
+    if (el.reviewPacket) el.reviewPacket.textContent = "";
+    if (el.reviewCommand) el.reviewCommand.value = "";
+    if (el.exportReviewPacket) el.exportReviewPacket.disabled = true;
+    return;
+  }
+  const caseHint = slug(el.reviewCaseHint?.value || inferReviewDefaults(trace).caseHint);
+  const expected = currentReviewExpected(trace);
+  const command = buildReviewCommand(trace, expected, caseHint);
+  state.reviewPacket = {
+    schema_version: 1,
+    artifact_kind: "openrealm_studio_agent_review_packet",
+    generated_at: new Date().toISOString(),
+    source: {
+      source: "openrealm_studio",
+      source_trace_id: selectedTraceId(trace) || null,
+      task_id: trace.task_id || null,
+      agent_id: trace.agent_id || null,
+      selected_option_id: trace.selected_option_id || null,
+      tool_decision_source: trace.tool_decision_source || null,
+      web_search_available: trace.web_search_available === true,
+      world_mutation_authority: trace.world_mutation_authority || null,
+      public_safe_trace_summary: true
+    },
+    operator_feedback_command: command,
+    expected,
+    safety: {
+      public_safe_output: true,
+      no_world_mutation: true,
+      no_raw_assets: true,
+      no_provider_prompts: true,
+      no_family_world_coordinates: true
+    }
+  };
+  if (el.reviewPacket) el.reviewPacket.textContent = JSON.stringify(state.reviewPacket, null, 2);
+  if (el.reviewCommand) el.reviewCommand.value = command;
+  if (el.exportReviewPacket) el.exportReviewPacket.disabled = false;
+}
+
 function compactDate(value) {
   if (!value) return "no timestamp";
   const date = new Date(value);
@@ -416,10 +569,21 @@ function formatServiceDetail(services) {
 function renderAgentTrace(traces) {
   if (!el.agentTrace) return;
   if (!Array.isArray(traces) || traces.length === 0) {
+    state.liveTraces = [];
+    state.selectedTraceIndex = 0;
+    state.selectedTraceKey = null;
     el.agentTrace.innerHTML = `<div class="trace-empty">No public-safe agent traces loaded.</div>`;
+    renderReviewPacket();
     return;
   }
-  el.agentTrace.innerHTML = traces.slice(0, 6).map(trace => {
+  state.liveTraces = traces.slice(0, 6);
+  if (state.selectedTraceIndex >= state.liveTraces.length) state.selectedTraceIndex = 0;
+  const selectedKey = traceKey(state.liveTraces[state.selectedTraceIndex]);
+  if (state.selectedTraceKey !== selectedKey) {
+    state.selectedTraceKey = selectedKey;
+    hydrateReviewFields(state.liveTraces[state.selectedTraceIndex]);
+  }
+  el.agentTrace.innerHTML = state.liveTraces.map((trace, index) => {
     const ok = trace.ok === true;
     const tools = Array.isArray(trace.tools_enabled) ? trace.tools_enabled.slice(0, 6) : [];
     const toolList = tools.length
@@ -430,8 +594,9 @@ function renderAgentTrace(traces) {
     const required = trace.required_tool_calls_satisfied === true ? "tools satisfied" : "tools missing";
     const search = trace.web_search_available === true ? "web search" : "no web search";
     const authority = trace.world_mutation_authority || "unknown authority";
+    const selected = index === state.selectedTraceIndex;
     return `
-      <article class="trace-item">
+      <article class="trace-item${selected ? " selected" : ""}">
         <div class="trace-head">
           <strong>${escapeHtml(trace.selected_option_id || "No selected option")}</strong>
           <span class="${ok ? "status-ok" : "status-warn"}">${ok ? "ok" : "review"}</span>
@@ -439,9 +604,11 @@ function renderAgentTrace(traces) {
         <div class="trace-meta">${escapeHtml(trace.tool_decision_source || "unknown source")} · ${writes} writes · ${escapeHtml(elapsed)}</div>
         <div class="trace-meta">${escapeHtml(required)} · ${escapeHtml(search)} · ${escapeHtml(authority)}</div>
         <div class="tool-row">${toolList}</div>
+        <button class="trace-review" type="button" data-trace-index="${index}">${selected ? "Selected" : "Review"}</button>
       </article>
     `;
   }).join("");
+  renderReviewPacket();
 }
 
 function renderLiveStatus(data) {
@@ -684,6 +851,25 @@ el.approve.addEventListener("click", approvePlan);
 el.undo.addEventListener("click", undo);
 el.exportJson.addEventListener("click", () => state.pendingPlan && exportBlob("openrealm_world_recipe.json", JSON.stringify(state.pendingPlan, null, 2)));
 el.exportLua.addEventListener("click", () => state.pendingPlan && exportBlob("openrealm_generated_mod_init.lua", luaForPlan(state.pendingPlan), "text/plain"));
+el.agentTrace?.addEventListener("click", event => {
+  const button = event.target.closest(".trace-review");
+  if (!button) return;
+  const index = Number.parseInt(button.dataset.traceIndex || "0", 10);
+  if (!Number.isFinite(index) || !state.liveTraces[index]) return;
+  state.selectedTraceIndex = index;
+  state.selectedTraceKey = null;
+  renderAgentTrace(state.liveTraces);
+});
+[
+  el.reviewCaseHint,
+  el.reviewBuildKind,
+  el.reviewMaterialName,
+  el.reviewPlannedWrites
+].forEach(input => input?.addEventListener("input", renderReviewPacket));
+el.exportReviewPacket?.addEventListener("click", () => {
+  if (!state.reviewPacket) return;
+  exportBlob("openrealm_agent_review_packet.json", JSON.stringify(state.reviewPacket, null, 2));
+});
 
 state.pendingPlan = createPlan(el.prompt.value);
 log("studio.ready", "Local Nova planner loaded. Generate a plan, preview it, approve it, and undo it.");

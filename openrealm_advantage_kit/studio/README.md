@@ -29,6 +29,13 @@ web-search availability, mutation authority, and a bounded tool-name list. It
 does not display raw player prompts, model messages, provider prompts, secrets,
 private paths, coordinates, or world payloads.
 
+The Review packet panel turns a selected trace summary into a public-safe
+operator-feedback handoff. It generates the matching `/ai_agent_feedback
+trace=...` command plus an exportable JSON packet with expected build kind,
+material, planned writes, selected candidate, and safety flags. The packet is
+designed to feed the existing `util/ai_native_agent_feedback_packet.py` /
+prompt-memory refresh loop without exposing raw prompts or provider messages.
+
 This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 
 1. Prompt Nova.

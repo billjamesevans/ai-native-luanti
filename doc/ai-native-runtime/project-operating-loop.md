@@ -147,6 +147,14 @@ public-safe reviewed event for the latest request trace without mutating the
 world. The feedback packet can then consume that event directly from the Luanti
 action log:
 
+The Pi-hosted OpenRealm Studio can also prepare this handoff from its public-safe
+Agent trace panel. Select a trace, review the expected case/kind/material/write
+fields, then use the generated `/ai_agent_feedback trace=...` command or export
+the JSON review packet. The Studio packet intentionally contains only the
+summarized trace id, selected option, expected build behavior, and safety flags;
+the server logs remain the source of truth for the subsequent feedback-packet
+refresh.
+
 ```bash
 python3 util/ai_native_agent_feedback_packet.py \
   --agents-sdk-log local/logs/agents-sdk-model-adapter.jsonl \

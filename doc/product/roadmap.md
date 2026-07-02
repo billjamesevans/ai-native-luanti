@@ -92,6 +92,11 @@ Current Pi gate evidence:
   authority, and tool names only; raw prompts, model/provider messages,
   credentials, private paths, coordinates, and world payloads stay out of the
   public surface.
+- the Studio now turns a selected public-safe trace into a Review packet:
+  editable expected case/kind/material/write fields, an `/ai_agent_feedback
+  trace=...` command, and exportable JSON. This connects the visible Nova trace
+  surface to the existing reviewed prompt-memory improvement loop while keeping
+  raw prompts and provider messages out of the UI payload.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,

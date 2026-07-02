@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 from collections import deque
 from datetime import datetime, timezone
@@ -25,6 +26,7 @@ SERVICE_SPECS = {
 
 RECENT_ADAPTER_WINDOW = 50
 RECENT_TRACE_LIMIT = 6
+TRACE_ID_RE = re.compile(r"nova_trace:[A-Za-z0-9_.-]+")
 PROMPT_EVAL_CASES = (
     ("build_fire", "Fire"),
     ("fire_only_strict", "Fire only"),
@@ -107,6 +109,13 @@ def first_bool(*values: Any) -> bool | None:
         if isinstance(value, bool):
             return value
     return None
+
+
+def trace_id_from_task_id(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    match = TRACE_ID_RE.search(value)
+    return match.group(0) if match else None
 
 
 def service_status() -> dict[str, Any]:
@@ -254,6 +263,13 @@ def summarize_adapter_record(record: dict[str, Any]) -> dict[str, Any]:
         "created_at": record.get("created_at"),
         "agent_id": request.get("agent_id"),
         "task_id": request.get("task_id"),
+        "source_trace_id": first_text(
+            payload.get("source_trace_id"),
+            payload.get("trace_id"),
+            request.get("source_trace_id"),
+            request.get("trace_id"),
+            trace_id_from_task_id(request.get("task_id")),
+        ),
         "ok": response.get("ok"),
         "elapsed_ms": round((response.get("elapsed_us") or 0) / 1000, 1) if isinstance(response.get("elapsed_us"), int) else None,
         "agentic_execution": payload.get("agentic_execution"),

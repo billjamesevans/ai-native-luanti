@@ -50,13 +50,27 @@ body::before {
 
 button,
 select,
-textarea {
+textarea,
+input {
   font: inherit;
 }
 
 button,
 select {
   min-height: 40px;
+}
+
+input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  color: var(--text);
+  background: #0d1528;
+  border-radius: 12px;
+  padding: 9px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  outline: none;
 }
 
 button {
@@ -357,10 +371,13 @@ select {
 }
 
 .status-card span {
+  display: block;
+  max-width: 100%;
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
   overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .status-ok {
@@ -769,6 +786,11 @@ canvas {
   align-items: start;
 }
 
+.trace-item.selected {
+  border-color: rgba(46, 212, 183, 0.42);
+  background: rgba(46, 212, 183, 0.055);
+}
+
 .trace-head strong {
   min-width: 0;
   color: var(--text);
@@ -805,6 +827,51 @@ canvas {
   font-size: 10px;
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+
+.trace-review {
+  min-height: 32px;
+  margin-top: 9px;
+  padding: 7px 10px;
+  border-radius: 10px;
+}
+
+.review-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+.review-form label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.review-form span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.review-command {
+  width: 100%;
+  min-height: 96px;
+  margin-bottom: 10px;
+  padding: 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: #d7def8;
+  background: rgba(0, 0, 0, 0.24);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.review-packet {
+  max-height: 260px;
 }
 
 .recipe {
@@ -906,6 +973,7 @@ canvas {
 
   .prompt-controls,
   .metrics,
+  .review-form,
   .world-strip {
     grid-template-columns: 1fr;
   }
