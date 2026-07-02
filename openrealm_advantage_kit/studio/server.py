@@ -8,6 +8,8 @@ import json
 import os
 import re
 import subprocess
+import urllib.error
+import urllib.request
 from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
@@ -26,6 +28,10 @@ SERVICE_SPECS = {
 
 RECENT_ADAPTER_WINDOW = 50
 RECENT_TRACE_LIMIT = 6
+MAX_STUDIO_POST_BYTES = 48_000
+MAX_STUDIO_PROMPT_BYTES = 1_000
+MAX_STUDIO_FIELD_BYTES = 400
+STUDIO_ADAPTER_ENDPOINT_DEFAULT = "http://127.0.0.1:8766/v1/model-adapter"
 TRACE_ID_RE = re.compile(r"nova_trace:[A-Za-z0-9_.-]+")
 PRIVATE_PATTERNS = (
     re.compile(r"/Users/[^\s\"']+"),
@@ -72,6 +78,13 @@ LIVE_REVIEW_GATE_DEFAULT = (
 )
 
 
+class ApiError(Exception):
+    def __init__(self, status: HTTPStatus, reason: str) -> None:
+        super().__init__(reason)
+        self.status = status
+        self.reason = reason
+
+
 def count_passed_refusal_gates(refusal_gates: dict[str, Any]) -> tuple[int, int]:
     if not isinstance(refusal_gates, dict):
         return 0, 0
@@ -104,6 +117,14 @@ def run_text(args: list[str], timeout: float = 2.0) -> str | None:
     return result.stdout.strip()
 
 
+def bounded_text(value: Any, max_bytes: int = MAX_STUDIO_FIELD_BYTES) -> str:
+    text = str(value or "").strip()
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
 def read_json(path: Path) -> dict[str, Any] | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -115,6 +136,11 @@ def read_json(path: Path) -> dict[str, Any] | None:
 def has_private_content(value: Any) -> bool:
     raw = json.dumps(value, sort_keys=True) if not isinstance(value, str) else value
     return any(pattern.search(raw) for pattern in PRIVATE_PATTERNS)
+
+
+def reject_private_payload(value: Any, reason: str = "unsafe_public_payload") -> None:
+    if has_private_content(value) or has_forbidden_key(value):
+        raise ApiError(HTTPStatus.BAD_REQUEST, reason)
 
 
 def has_forbidden_key(value: Any) -> bool:
@@ -651,6 +677,283 @@ def build_status_payload() -> dict[str, Any]:
     }
 
 
+def clamp_int(value: Any, default: int = 0, minimum: int = 0, maximum: int = 10_000) -> int:
+    if isinstance(value, bool):
+        return default
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, number))
+
+
+def studio_submission_log_path() -> Path:
+    configured = os.environ.get("OPENREALM_STUDIO_SUBMISSION_LOG")
+    if configured:
+        return Path(configured)
+    repo = env_path("OPENREALM_REPO_ROOT", "/opt/ai-native-luanti/src")
+    base = repo.parent if repo.name == "src" else repo
+    return base / "logs" / "openrealm-studio-operator-submissions.jsonl"
+
+
+def studio_adapter_endpoint() -> str:
+    endpoint = os.environ.get("OPENREALM_MODEL_ADAPTER_ENDPOINT", STUDIO_ADAPTER_ENDPOINT_DEFAULT)
+    parsed = urlparse(endpoint)
+    if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost"}:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "adapter_endpoint_must_be_loopback")
+    return endpoint
+
+
+def plan_action_count(plan: dict[str, Any]) -> int:
+    for key in ("action_count", "node_writes", "planned_node_writes"):
+        value = plan.get(key)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return clamp_int(value, maximum=10_000)
+    actions = plan.get("actions")
+    if isinstance(actions, list):
+        return clamp_int(len(actions), maximum=10_000)
+    return 0
+
+
+def selected_candidate_for_prompt(public_prompt: str) -> str:
+    prompt = public_prompt.lower()
+    if (
+        "only a fire" in prompt
+        or (
+            ("build a fire" in prompt or "build me a fire" in prompt)
+            and "tnt" not in prompt
+            and "wall" not in prompt
+        )
+    ):
+        return "fire"
+    if "tnt" in prompt and "wall" in prompt:
+        return "tnt_wall"
+    return "studio_preview"
+
+
+def studio_candidate_summary(public_prompt: str, plan: dict[str, Any]) -> str:
+    writes = max(1, plan_action_count(plan))
+    entries = [
+        ("fire", "fire", "fire", 1),
+        ("tnt_wall", "wall", "tnt", 36),
+        ("studio_preview", "openrealm_structure", "openrealm_template", writes),
+    ]
+    return "|".join(f"{option}:{kind}:{material}:{count}" for option, kind, material, count in entries)
+
+
+def compact_public_plan(plan: Any) -> dict[str, Any]:
+    if not isinstance(plan, dict):
+        return {}
+    safety = plan.get("safety") if isinstance(plan.get("safety"), dict) else {}
+    return {
+        "plan_id": bounded_text(plan.get("plan_id"), 120),
+        "summary": bounded_text(plan.get("summary"), 240),
+        "features": [bounded_text(item, 80) for item in plan.get("features", [])[:12]]
+            if isinstance(plan.get("features"), list) else [],
+        "materials": [bounded_text(item, 80) for item in plan.get("materials", [])[:16]]
+            if isinstance(plan.get("materials"), list) else [],
+        "node_writes": plan_action_count(plan),
+        "safety": {
+            "status": bounded_text(safety.get("status"), 80),
+            "risk": bounded_text(safety.get("risk"), 80),
+            "requires_approval": safety.get("requires_approval") is True,
+            "rollback_policy": bounded_text(safety.get("rollback_policy"), 80),
+        },
+    }
+
+
+def build_studio_model_adapter_request(payload: dict[str, Any], generated_at: str | None = None) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_json_payload")
+    reject_private_payload(payload)
+    public_prompt = bounded_text(payload.get("public_prompt") or payload.get("prompt"), MAX_STUDIO_PROMPT_BYTES)
+    if not public_prompt:
+        raise ApiError(HTTPStatus.BAD_REQUEST, "public_prompt_required")
+    plan = compact_public_plan(payload.get("plan"))
+    reject_private_payload({"public_prompt": public_prompt, "plan": plan})
+    selected_candidate = selected_candidate_for_prompt(public_prompt)
+    candidate_summary = studio_candidate_summary(public_prompt, plan)
+    generated_at = generated_at or utc_now()
+    task_seed = re.sub(r"[^A-Za-z0-9_.:-]+", "-", plan.get("plan_id") or "adhoc").strip("-")[:80]
+    return {
+        "schema_version": 1,
+        "request_kind": "ai_native_model_adapter_request",
+        "adapter_contract": "provider_neutral_v1",
+        "agent_id": "nova_agent:OpenRealmStudio",
+        "owner": "openrealm_studio_operator",
+        "task_id": f"openrealm-studio:nova-plan:{generated_at}:{task_seed}",
+        "public_prompt": public_prompt,
+        "context": {
+            "intent": "build_planning",
+            "surface_id": "openrealm_studio",
+            "capabilities": "http.llm,import.assets,world.place,world.remove,world.batch",
+            "planner_reason": "studio_operator_submit",
+            "player_request": public_prompt,
+            "candidate_summary": candidate_summary,
+            "selected_candidate_id": selected_candidate,
+            "studio_plan_id": plan.get("plan_id") or "",
+            "studio_plan_summary": plan.get("summary") or "",
+            "studio_plan_node_writes": plan.get("node_writes") or 0,
+            "studio_plan_risk": plan.get("safety", {}).get("risk") or "",
+            "world_context": json.dumps({
+                "surface_id": "openrealm_studio",
+                "preview_source": "browser_openrealm_studio",
+                "node_writes": plan.get("node_writes"),
+                "safety_status": plan.get("safety", {}).get("status"),
+                "risk": plan.get("safety", {}).get("risk"),
+            }, sort_keys=True),
+            "player_agent_loop": json.dumps({
+                "status": "operator_submitted",
+                "phase": "preview_to_agent_plan",
+                "active_surface": "openrealm_studio",
+                "active_goal": "turn public prompt into Luanti-authoritative preview/approval/task plan",
+                "next_action": "return build_action_plan without direct world mutation",
+            }, sort_keys=True),
+        },
+        "safety": {
+            "public_safe_request": True,
+            "private_input_retained": False,
+            "no_provider_credentials": True,
+            "no_raw_media_payloads": True,
+        },
+        "bounds": {
+            "max_response_bytes": 4000,
+            "max_context_keys": 16,
+        },
+    }
+
+
+def http_post_json(url: str, payload: dict[str, Any], timeout_seconds: float = 60.0) -> tuple[int, dict[str, Any]]:
+    body = json.dumps(payload, sort_keys=True).encode("utf-8")
+    request = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+            raw = response.read(256_000)
+            data = json.loads(raw.decode("utf-8"))
+            return int(response.status), data if isinstance(data, dict) else {}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read(64_000)
+        try:
+            data = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            data = {"ok": False, "reason": "adapter_http_error"}
+        return int(exc.code), data if isinstance(data, dict) else {"ok": False, "reason": "adapter_http_error"}
+    except (OSError, TimeoutError, json.JSONDecodeError) as exc:
+        raise ApiError(HTTPStatus.BAD_GATEWAY, f"adapter_unavailable:{type(exc).__name__}") from exc
+
+
+def summarize_studio_adapter_response(response: dict[str, Any]) -> dict[str, Any]:
+    payload = response.get("response") if isinstance(response.get("response"), dict) else {}
+    plan = payload.get("build_action_plan") if isinstance(payload.get("build_action_plan"), dict) else {}
+    tool_trace = payload.get("tool_trace") if isinstance(payload.get("tool_trace"), list) else []
+    summary = {
+        "ok": response.get("ok") is True,
+        "message": bounded_text(response.get("message"), 240),
+        "reason": bounded_text(response.get("reason"), 160),
+        "agentic_execution": payload.get("agentic_execution") is True,
+        "tool_decision_source": bounded_text(payload.get("tool_decision_source"), 160),
+        "selected_option_id": bounded_text(
+            payload.get("selected_option_id")
+            or plan.get("selected_option_id"),
+            160,
+        ),
+        "planned_node_writes": first_int(plan.get("planned_node_writes")),
+        "build_kind": bounded_text(plan.get("build_kind"), 120),
+        "build_material_name": bounded_text(plan.get("build_material_name"), 120),
+        "required_tool_calls_satisfied": payload.get("required_tool_calls_satisfied") is True,
+        "missing_required_tool_calls": [
+            bounded_text(item, 80)
+            for item in payload.get("missing_required_tool_calls", [])[:12]
+        ] if isinstance(payload.get("missing_required_tool_calls"), list) else [],
+        "web_search_available": payload.get("web_search_available") is True,
+        "world_mutation_authority": bounded_text(payload.get("world_mutation_authority"), 120),
+        "direct_world_mutation": plan.get("direct_world_mutation") is True,
+        "plan_status": bounded_text(plan.get("status"), 80),
+        "plan_kind": bounded_text(plan.get("plan_kind"), 120),
+        "plan_step_count": first_int(plan.get("step_count")),
+        "tool_trace_names": [
+            bounded_text(entry.get("tool_name"), 80)
+            for entry in tool_trace[:12]
+            if isinstance(entry, dict)
+        ],
+    }
+    reject_private_payload(summary, "unsafe_adapter_summary")
+    return summary
+
+
+def write_studio_submission_log(entry: dict[str, Any]) -> bool:
+    reject_private_payload(entry, "unsafe_submission_log")
+    path = studio_submission_log_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, sort_keys=True) + "\n")
+        return True
+    except OSError:
+        return False
+
+
+def submit_studio_nova_plan(payload: dict[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
+    generated_at = utc_now()
+    request_payload = build_studio_model_adapter_request(payload, generated_at=generated_at)
+    endpoint = studio_adapter_endpoint()
+    status, adapter_response = http_post_json(endpoint, request_payload)
+    adapter_summary = summarize_studio_adapter_response(adapter_response)
+    submission = {
+        "schema_version": 1,
+        "event_kind": "openrealm_studio_nova_plan_submission",
+        "created_at": generated_at,
+        "public_safe": True,
+        "live_bridge": True,
+        "direct_world_mutation": False,
+        "model_adapter_endpoint": "loopback",
+        "request": {
+            "agent_id": request_payload["agent_id"],
+            "owner": request_payload["owner"],
+            "task_id": request_payload["task_id"],
+            "public_prompt": request_payload["public_prompt"],
+            "context": {
+                "intent": request_payload["context"]["intent"],
+                "surface_id": request_payload["context"]["surface_id"],
+                "candidate_summary": request_payload["context"]["candidate_summary"],
+                "selected_candidate_id": request_payload["context"]["selected_candidate_id"],
+                "studio_plan_id": request_payload["context"].get("studio_plan_id"),
+                "studio_plan_node_writes": request_payload["context"].get("studio_plan_node_writes"),
+            },
+            "safety": request_payload["safety"],
+            "bounds": request_payload["bounds"],
+        },
+        "adapter_http_status": status,
+        "adapter": adapter_summary,
+        "runtime_handoff": {
+            "status": "ready_for_luanti_preview_approval_task"
+                if adapter_summary["ok"] and adapter_summary["plan_status"] == "ready"
+                else "needs_operator_review",
+            "world_mutation_authority": "luanti",
+            "requires_preview": True,
+            "requires_approval": True,
+            "requires_rollback": True,
+        },
+    }
+    logged = write_studio_submission_log(submission)
+    response_status = HTTPStatus.OK if status < 400 and adapter_summary["ok"] else HTTPStatus.BAD_GATEWAY
+    return response_status, {
+        "schema_version": 1,
+        "event_kind": "openrealm_studio_nova_plan_submission_result",
+        "generated_at": generated_at,
+        "public_safe": True,
+        "live_bridge": True,
+        "direct_world_mutation": False,
+        "logged": logged,
+        "submission": submission,
+    }
+
+
 class OpenRealmStudioHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args: Any, directory: str | None = None, **kwargs: Any) -> None:
         super().__init__(*args, directory=directory, **kwargs)
@@ -670,9 +973,38 @@ class OpenRealmStudioHandler(SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
-    def write_json(self, payload: dict[str, Any]) -> None:
+    def do_POST(self) -> None:
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/nova/plan":
+            self.write_json({"ok": False, "reason": "not_found"}, status=HTTPStatus.NOT_FOUND)
+            return
+        try:
+            payload = self.read_json_body()
+            status, response = submit_studio_nova_plan(payload)
+            self.write_json(response, status=status)
+        except ApiError as exc:
+            self.write_json({"ok": False, "reason": exc.reason}, status=exc.status)
+
+    def read_json_body(self) -> dict[str, Any]:
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_content_length") from exc
+        if length <= 0:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "empty_request_body")
+        if length > MAX_STUDIO_POST_BYTES:
+            raise ApiError(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request_too_large")
+        try:
+            payload = json.loads(self.rfile.read(length).decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_json") from exc
+        if not isinstance(payload, dict):
+            raise ApiError(HTTPStatus.BAD_REQUEST, "invalid_json_payload")
+        return payload
+
+    def write_json(self, payload: dict[str, Any], status: HTTPStatus = HTTPStatus.OK) -> None:
         body = json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")
-        self.send_response(HTTPStatus.OK)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()

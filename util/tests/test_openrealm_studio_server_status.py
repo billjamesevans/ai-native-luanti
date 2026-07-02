@@ -163,6 +163,118 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
             self.assertEqual(summary["recent_failures"], 1)
             self.assertEqual(summary["failures"], 1)
 
+    def test_studio_submission_builds_public_safe_model_adapter_request(self):
+        server = load_module()
+        payload = {
+            "public_prompt": "build a wall of tnt",
+            "plan": {
+                "plan_id": "plan:studio",
+                "summary": "bounded tnt wall preview",
+                "features": ["tnt"],
+                "materials": ["tnt:tnt"],
+                "node_writes": 36,
+                "safety": {
+                    "status": "ready",
+                    "risk": "medium",
+                    "requires_approval": True,
+                    "rollback_policy": "snapshot",
+                },
+            },
+        }
+
+        request = server.build_studio_model_adapter_request(payload, generated_at="2026-07-02T12:00:00Z")
+
+        self.assertEqual(request["request_kind"], "ai_native_model_adapter_request")
+        self.assertEqual(request["adapter_contract"], "provider_neutral_v1")
+        self.assertEqual(request["agent_id"], "nova_agent:OpenRealmStudio")
+        self.assertEqual(request["context"]["intent"], "build_planning")
+        self.assertEqual(request["context"]["selected_candidate_id"], "tnt_wall")
+        self.assertIn("tnt_wall:wall:tnt:36", request["context"]["candidate_summary"])
+        self.assertTrue(request["safety"]["public_safe_request"])
+        self.assertFalse(request["safety"]["private_input_retained"])
+        self.assertNotIn("/Users/", json.dumps(request))
+        self.assertNotIn("OPENAI_API_KEY", json.dumps(request))
+
+    def test_studio_submission_rejects_private_payload(self):
+        server = load_module()
+
+        with self.assertRaises(server.ApiError) as raised:
+            server.build_studio_model_adapter_request({
+                "public_prompt": "load /Users/bill/private build",
+                "plan": {"node_writes": 1},
+            })
+
+        self.assertEqual(raised.exception.status, server.HTTPStatus.BAD_REQUEST)
+
+    def test_studio_submission_calls_loopback_adapter_and_logs_summary(self):
+        server = load_module()
+        adapter_response = {
+            "ok": True,
+            "message": "Live public-safe guidance.",
+            "response": {
+                "agentic_execution": True,
+                "tool_decision_source": "agents_sdk_function_tool",
+                "selected_option_id": "fire",
+                "required_tool_calls_satisfied": True,
+                "web_search_available": True,
+                "world_mutation_authority": "luanti",
+                "missing_required_tool_calls": [],
+                "tool_trace": [
+                    {"tool_name": "inspect_build_site_context"},
+                    {"tool_name": "recall_build_prompt_memory"},
+                    {"tool_name": "select_build_option"},
+                    {"tool_name": "plan_build_actions"},
+                ],
+                "build_action_plan": {
+                    "status": "ready",
+                    "selected_option_id": "fire",
+                    "build_kind": "fire",
+                    "build_material_name": "fire",
+                    "planned_node_writes": 1,
+                    "plan_kind": "luanti_build_action_plan_v1",
+                    "step_count": 4,
+                    "direct_world_mutation": False,
+                    "world_mutation_authority": "luanti",
+                },
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            log_path = pathlib.Path(tmpdir) / "studio-submissions.jsonl"
+
+            with mock.patch.dict(os.environ, {
+                    "OPENREALM_MODEL_ADAPTER_ENDPOINT": "http://127.0.0.1:8766/v1/model-adapter",
+                    "OPENREALM_STUDIO_SUBMISSION_LOG": str(log_path),
+            }), mock.patch.object(server, "http_post_json", return_value=(200, adapter_response)) as post:
+                status, result = server.submit_studio_nova_plan({
+                    "public_prompt": "build me a fire and only a fire",
+                    "plan": {
+                        "plan_id": "plan:fire",
+                        "summary": "fire only",
+                        "node_writes": 1,
+                        "safety": {"status": "ready", "risk": "low", "requires_approval": True},
+                    },
+                })
+
+            self.assertEqual(status, server.HTTPStatus.OK)
+            self.assertTrue(result["logged"])
+            post.assert_called_once()
+            submitted = post.call_args.args[1]
+            self.assertEqual(submitted["context"]["selected_candidate_id"], "fire")
+            self.assertTrue(log_path.exists())
+            logged = json.loads(log_path.read_text(encoding="utf-8").strip())
+            encoded = json.dumps(logged)
+            self.assertEqual(logged["runtime_handoff"]["status"], "ready_for_luanti_preview_approval_task")
+            self.assertEqual(logged["adapter"]["selected_option_id"], "fire")
+            self.assertEqual(logged["adapter"]["tool_trace_names"], [
+                "inspect_build_site_context",
+                "recall_build_prompt_memory",
+                "select_build_option",
+                "plan_build_actions",
+            ])
+            self.assertNotIn("raw_provider", encoded)
+            self.assertNotIn("OPENAI_API_KEY", encoded)
+
 
 if __name__ == "__main__":
     unittest.main()

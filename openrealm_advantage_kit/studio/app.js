@@ -24,7 +24,10 @@ const state = {
   liveTraces: [],
   selectedTraceIndex: 0,
   selectedTraceKey: null,
-  reviewPacket: null
+  reviewPacket: null,
+  liveBridge: false,
+  liveSubmitting: false,
+  liveSubmission: null
 };
 
 const el = {
@@ -67,7 +70,8 @@ const el = {
   evalStatus: document.getElementById("eval-status"),
   evalDetail: document.getElementById("eval-detail"),
   runtimeProofsStatus: document.getElementById("runtime-proofs-status"),
-  runtimeProofsDetail: document.getElementById("runtime-proofs-detail")
+  runtimeProofsDetail: document.getElementById("runtime-proofs-detail"),
+  liveSubmitStatus: document.getElementById("live-submit-status")
 };
 
 function hashText(text) {
@@ -354,7 +358,10 @@ function render() {
 
 function updateUI() {
   const plan = state.pendingPlan;
-  el.approve.disabled = !(plan && plan.safety.status === "ready");
+  el.approve.disabled = state.liveSubmitting || !(plan && plan.safety.status === "ready");
+  el.approve.textContent = state.liveBridge
+    ? (state.liveSubmitting ? "Submitting..." : "Submit to Nova")
+    : "Apply local preview";
   el.exportJson.disabled = !plan;
   el.exportLua.disabled = !plan;
   el.undo.disabled = state.rollbackStack.length === 0;
@@ -386,6 +393,27 @@ function updateUI() {
 function log(event, message) {
   state.audit.unshift({event, message, time: new Date().toLocaleTimeString()});
   el.audit.innerHTML = state.audit.slice(0, 8).map(a => `<div class="audit-item"><strong>${a.event}</strong> ${a.time}<br>${a.message}</div>`).join("");
+}
+
+function updateLiveSubmitStatus(kind, title, detail) {
+  if (!el.liveSubmitStatus) return;
+  el.liveSubmitStatus.classList.remove("ok", "warn");
+  if (kind) el.liveSubmitStatus.classList.add(kind);
+  el.liveSubmitStatus.innerHTML = `<strong>${escapeHtml(title)}</strong><span>${escapeHtml(detail)}</span>`;
+}
+
+function publicPlanForSubmit(plan) {
+  const grouped = {};
+  for (const action of plan.actions || []) grouped[action.reason] = (grouped[action.reason] || 0) + 1;
+  return {
+    plan_id: plan.plan_id,
+    summary: plan.summary,
+    features: plan.features,
+    materials: plan.materials,
+    node_writes: plan.actions.length,
+    action_reasons: grouped,
+    safety: plan.safety
+  };
 }
 
 function safeText(value, fallback="unknown") {
@@ -614,6 +642,7 @@ function renderAgentTrace(traces) {
 }
 
 function renderLiveStatus(data) {
+  state.liveBridge = true;
   const fork = data?.fork || {};
   const services = data?.services || {};
   const quality = data?.quality_gate || {};
@@ -709,9 +738,20 @@ function renderLiveStatus(data) {
   );
   el.runtimeProofsStatus?.classList.toggle("status-ok", runtimeProofsPass);
   el.runtimeProofsStatus?.classList.toggle("status-warn", !runtimeProofsPass);
+  if (!state.liveSubmission && !state.liveSubmitting) {
+    updateLiveSubmitStatus(
+      allActive ? "ok" : "warn",
+      allActive ? "Nova handoff ready" : "Nova handoff needs attention",
+      allActive
+        ? "Preview submissions call the live Agents SDK bridge and return a Luanti approval/task plan."
+        : "Check service health before submitting a plan."
+    );
+  }
+  updateUI();
 }
 
 function renderLiveStatusUnavailable() {
+  state.liveBridge = false;
   setText(el.runtimeState, "Local static mode");
   setText(el.operatorState, "Local");
   setText(el.servicesStatus, "Offline");
@@ -729,6 +769,14 @@ function renderLiveStatusUnavailable() {
   setText(el.runtimeProofsStatus, "Unavailable");
   setText(el.runtimeProofsDetail, "No rollback proof summary loaded");
   renderAgentTrace([]);
+  if (!state.liveSubmission && !state.liveSubmitting) {
+    updateLiveSubmitStatus(
+      "warn",
+      "Local preview mode",
+      "Serve with studio/server.py to submit plans to Nova."
+    );
+  }
+  updateUI();
 }
 
 async function loadLiveStatus() {
@@ -745,6 +793,60 @@ async function loadLiveStatus() {
   } catch {
     renderLiveStatusUnavailable();
   }
+}
+
+async function submitPlanToNova() {
+  const plan = state.pendingPlan;
+  if (!plan || plan.safety.status !== "ready" || state.liveSubmitting) return;
+  state.liveSubmitting = true;
+  updateUI();
+  updateLiveSubmitStatus("warn", "Submitting to Nova", "Calling the live Agents SDK bridge...");
+  try {
+    const response = await fetch("/api/nova/plan", {
+      method: "POST",
+      cache: "no-store",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        public_prompt: el.prompt.value,
+        plan: publicPlanForSubmit(plan)
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.public_safe !== true) {
+      throw new Error(payload?.reason || `submit ${response.status}`);
+    }
+    const submission = payload.submission || {};
+    const adapter = submission.adapter || {};
+    const handoff = submission.runtime_handoff || {};
+    state.liveSubmission = payload;
+    plan.approval.status = "submitted_to_nova";
+    const selected = adapter.selected_option_id || "no option";
+    const writes = adapter.planned_node_writes ?? 0;
+    const source = adapter.tool_decision_source || "unknown source";
+    const status = handoff.status || "needs_operator_review";
+    updateLiveSubmitStatus(
+      status === "ready_for_luanti_preview_approval_task" ? "ok" : "warn",
+      `Nova selected ${selected}`,
+      `${writes} writes · ${source} · ${status}`
+    );
+    log("nova.submitted", `Nova returned ${selected} through ${source}. ${status}.`);
+    await loadLiveStatus();
+  } catch (error) {
+    state.liveSubmission = null;
+    updateLiveSubmitStatus("warn", "Nova submit failed", error.message || String(error));
+    log("nova.submit_failed", error.message || String(error));
+  } finally {
+    state.liveSubmitting = false;
+    updateUI();
+  }
+}
+
+function handleApprove() {
+  if (state.liveBridge) {
+    submitPlanToNova();
+    return;
+  }
+  approvePlan();
 }
 
 function approvePlan() {
@@ -863,10 +965,18 @@ minetest.register_chatcommand("openrealm_generated_build", {
 el.preset.addEventListener("change", () => { el.prompt.value = el.preset.value; });
 el.generate.addEventListener("click", () => {
   state.pendingPlan = createPlan(el.prompt.value);
+  state.liveSubmission = null;
   log("plan.created", state.pendingPlan.summary);
+  updateLiveSubmitStatus(
+    state.liveBridge ? "ok" : "warn",
+    state.liveBridge ? "Nova handoff ready" : "Local preview mode",
+    state.liveBridge
+      ? "Submit this preview to the live agent bridge for a Luanti task handoff."
+      : "Serve with studio/server.py to submit plans to Nova."
+  );
   updateUI();
 });
-el.approve.addEventListener("click", approvePlan);
+el.approve.addEventListener("click", handleApprove);
 el.undo.addEventListener("click", undo);
 el.exportJson.addEventListener("click", () => state.pendingPlan && exportBlob("openrealm_world_recipe.json", JSON.stringify(state.pendingPlan, null, 2)));
 el.exportLua.addEventListener("click", () => state.pendingPlan && exportBlob("openrealm_generated_mod_init.lua", luaForPlan(state.pendingPlan), "text/plain"));

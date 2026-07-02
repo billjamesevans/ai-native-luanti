@@ -165,3 +165,5 @@ client/mod_storage.sqlite
 /local/
 /local/benchmarks/
 /local/logs/
+/output/
+/.playwright-cli/

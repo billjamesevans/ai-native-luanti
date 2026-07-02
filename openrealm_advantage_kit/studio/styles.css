@@ -681,6 +681,39 @@ canvas {
   margin-top: 12px;
 }
 
+.live-submit-status {
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(78, 168, 255, 0.2);
+  border-radius: 13px;
+  background: rgba(78, 168, 255, 0.07);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.live-submit-status strong {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.live-submit-status span {
+  display: block;
+}
+
+.live-submit-status.ok {
+  border-color: rgba(46, 212, 183, 0.34);
+  background: rgba(46, 212, 183, 0.08);
+}
+
+.live-submit-status.warn {
+  border-color: rgba(255, 209, 102, 0.32);
+  background: rgba(255, 209, 102, 0.08);
+}
+
 .metrics {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
