@@ -5363,6 +5363,73 @@ local completed_tnt_wall = core.get_ai_task(approved_tnt_wall.task_id)
 assert(completed_tnt_wall.status == "completed")
 assert(completed_tnt_wall.last_result.metrics.node_writes == 12)
 
+local studio_fire_pos = test_pos(4235)
+set_test_node(studio_fire_pos, { name = "air" })
+local studio_fire_handoff = {
+	schema_version = 1,
+	artifact_kind = "openrealm_studio_runtime_handoff_v1",
+	status = "ready_for_luanti_preview_approval_task",
+	handoff_id = "openrealm-studio-runtime-handoff:test-fire",
+	luanti_task_handoff = {
+		queue_contract = "core.queue_ai_task",
+		handoff_queued = false,
+		selected_option_id = "fire",
+		build_kind = "fire",
+		build_material_name = "fire",
+		build_material_node = "ai_runtime_test:fire",
+		planned_node_writes = 1,
+		preview_required = true,
+		approval_required = true,
+		rollback_required = true,
+		audit_required = true,
+		execute_after_approval_only = true,
+		world_mutation_authority = "luanti",
+		direct_world_mutation = false,
+	},
+	safety = {
+		public_safe_output = true,
+		no_provider_prompts = true,
+		no_raw_assets = true,
+		no_family_world_coordinates = true,
+		direct_world_mutation = false,
+		world_mutation_authority = "luanti",
+	},
+}
+local studio_fire = core.ai_agent_plugin.consume_studio_runtime_handoff(
+	"StudioOperator", studio_fire_handoff, {
+		pos = studio_fire_pos,
+		world_id = "product-loop-world",
+		get_node = get_test_node,
+		set_node = set_test_node,
+	})
+assert(studio_fire.ok == true)
+assert(studio_fire.action == "build")
+assert(studio_fire.status == "pending_approval")
+assert(studio_fire.planner_mode == "studio_runtime_handoff")
+assert(studio_fire.selected_candidate_id == "fire")
+assert(studio_fire.studio_handoff_id == "openrealm-studio-runtime-handoff:test-fire")
+assert(studio_fire.queue_contract == "core.queue_ai_task")
+assert(studio_fire.handoff_queued == false)
+assert(studio_fire.world_mutation_authority == "luanti")
+assert(studio_fire.direct_world_mutation == false)
+assert(studio_fire.build_kind == "fire")
+assert(studio_fire.build_material_name == "fire")
+assert(studio_fire.build_material_node == "ai_runtime_test:fire")
+assert(studio_fire.planned_node_writes == 1)
+assert(get_test_node(studio_fire_pos).name == "air")
+local approved_studio_fire = core.ai_agent_plugin.handle_command(
+	"StudioOperator", "approve build", {})
+assert(approved_studio_fire.ok == true)
+assert(approved_studio_fire.action == "approve")
+assert(approved_studio_fire.approved_action == "build")
+assert(approved_studio_fire.status == "queued")
+core.step_ai_tasks()
+assert(get_test_node(studio_fire_pos).name == "ai_runtime_test:fire")
+local completed_studio_fire = core.get_ai_task(approved_studio_fire.task_id)
+assert(completed_studio_fire.status == "completed")
+assert(completed_studio_fire.last_result.metrics.node_writes == 1)
+assert(completed_studio_fire.last_result.rollback_record_id ~= nil)
+
 core.ai_agent_plugin.configure({ auto_apply_build_approvals = true })
 local auto_fire_pos = test_pos(4238)
 set_test_node(auto_fire_pos, { name = "air" })

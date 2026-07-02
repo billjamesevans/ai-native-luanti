@@ -84,6 +84,7 @@ local PRODUCT_SURFACES = {
 			"core.build_agent.plan",
 			"core.build_agent.define_task",
 			"core.ai_import_ops.define_structure_apply_task",
+			"core.ai_agent_plugin.consume_studio_runtime_handoff",
 		},
 		mutation_policy = "preview_then_approval_rollback_backed",
 	},
@@ -2240,6 +2241,17 @@ local function compact_pending_approval(pending)
 		generated_candidate_id = pending.generated_candidate_id,
 		agentic_tool_success_required =
 			pending.agentic_tool_success_required,
+		studio_handoff_id = pending.studio_handoff_id,
+		queue_contract = pending.queue_contract,
+		handoff_queued = pending.handoff_queued,
+		runtime_handoff_status = pending.runtime_handoff_status,
+		world_mutation_authority = pending.world_mutation_authority,
+		direct_world_mutation = pending.direct_world_mutation,
+		preview_required = pending.preview_required,
+		approval_required = pending.approval_required,
+		rollback_required = pending.rollback_required,
+		audit_required = pending.audit_required,
+		execute_after_approval_only = pending.execute_after_approval_only,
 		repair_radius = pending.repair_radius,
 		sample_limit = pending.sample_limit,
 	}
@@ -2313,6 +2325,17 @@ local function remember_pending_approval(name, action, plan, context, extra)
 		generated_candidate_id = extra.generated_candidate_id,
 		agentic_tool_success_required =
 			extra.agentic_tool_success_required,
+		studio_handoff_id = extra.studio_handoff_id,
+		queue_contract = extra.queue_contract,
+		handoff_queued = extra.handoff_queued,
+		runtime_handoff_status = extra.runtime_handoff_status,
+		world_mutation_authority = extra.world_mutation_authority,
+		direct_world_mutation = extra.direct_world_mutation,
+		preview_required = extra.preview_required,
+		approval_required = extra.approval_required,
+		rollback_required = extra.rollback_required,
+		audit_required = extra.audit_required,
+		execute_after_approval_only = extra.execute_after_approval_only,
 		repair_radius = extra.repair_radius,
 		sample_limit = extra.sample_limit,
 	}
@@ -4554,6 +4577,17 @@ function plugin.auto_apply_build_pending_reply(name, pending, result, plan)
 	queued.generated_candidate_id = pending.generated_candidate_id
 	queued.agentic_tool_success_required =
 		pending.agentic_tool_success_required
+	queued.studio_handoff_id = pending.studio_handoff_id
+	queued.queue_contract = pending.queue_contract
+	queued.handoff_queued = true
+	queued.runtime_handoff_status = pending.runtime_handoff_status
+	queued.world_mutation_authority = pending.world_mutation_authority
+	queued.direct_world_mutation = pending.direct_world_mutation
+	queued.preview_required = pending.preview_required
+	queued.approval_required = pending.approval_required
+	queued.rollback_required = pending.rollback_required
+	queued.audit_required = pending.audit_required
+	queued.execute_after_approval_only = pending.execute_after_approval_only
 	return queued
 end
 
@@ -4619,6 +4653,17 @@ local function create_build_pending_reply(name, context, message, extra)
 		generated_candidate_id = extra.generated_candidate_id,
 		agentic_tool_success_required =
 			extra.agentic_tool_success_required,
+		studio_handoff_id = extra.studio_handoff_id,
+		queue_contract = extra.queue_contract,
+		handoff_queued = extra.handoff_queued,
+		runtime_handoff_status = extra.runtime_handoff_status,
+		world_mutation_authority = extra.world_mutation_authority,
+		direct_world_mutation = extra.direct_world_mutation,
+		preview_required = extra.preview_required,
+		approval_required = extra.approval_required,
+		rollback_required = extra.rollback_required,
+		audit_required = extra.audit_required,
+		execute_after_approval_only = extra.execute_after_approval_only,
 		})
 	local reply = public_reply(name, "build", "pending_approval",
 		message or "Build plan is pending approval before mutation.", {
@@ -4686,6 +4731,17 @@ local function create_build_pending_reply(name, context, message, extra)
 			generated_candidate_id = extra.generated_candidate_id,
 			agentic_tool_success_required =
 				extra.agentic_tool_success_required,
+			studio_handoff_id = extra.studio_handoff_id,
+			queue_contract = extra.queue_contract,
+			handoff_queued = extra.handoff_queued,
+			runtime_handoff_status = extra.runtime_handoff_status,
+			world_mutation_authority = extra.world_mutation_authority,
+			direct_world_mutation = extra.direct_world_mutation,
+			preview_required = extra.preview_required,
+			approval_required = extra.approval_required,
+			rollback_required = extra.rollback_required,
+			audit_required = extra.audit_required,
+			execute_after_approval_only = extra.execute_after_approval_only,
 			planner_model_status = extra.planner_model_status,
 			planner_model_reason = extra.planner_model_reason,
 			planner_guidance = extra.planner_guidance,
@@ -4707,6 +4763,140 @@ end
 local function handle_build(name, context)
 	local reply = create_build_pending_reply(name, context,
 		"Build plan is pending approval before mutation.")
+	return reply
+end
+
+function plugin._validate_studio_runtime_handoff(handoff)
+	if type(handoff) ~= "table" then
+		return nil, "invalid_studio_handoff"
+	end
+	if handoff.artifact_kind ~= "openrealm_studio_runtime_handoff_v1" then
+		return nil, "unsupported_studio_handoff_artifact"
+	end
+	if handoff.status ~= "ready_for_luanti_preview_approval_task" then
+		return nil, "studio_handoff_not_ready"
+	end
+	local task_handoff = handoff.luanti_task_handoff
+	if type(task_handoff) ~= "table" then
+		return nil, "missing_luanti_task_handoff"
+	end
+	if task_handoff.queue_contract ~= "core.queue_ai_task" then
+		return nil, "unsupported_queue_contract"
+	end
+	if task_handoff.handoff_queued ~= false then
+		return nil, "studio_handoff_already_queued"
+	end
+	if task_handoff.preview_required ~= true
+			or task_handoff.approval_required ~= true
+			or task_handoff.rollback_required ~= true
+			or task_handoff.audit_required ~= true then
+		return nil, "missing_runtime_gate"
+	end
+	if task_handoff.execute_after_approval_only ~= true then
+		return nil, "approval_gate_not_enforced"
+	end
+	if task_handoff.world_mutation_authority ~= "luanti"
+			or task_handoff.direct_world_mutation ~= false then
+		return nil, "invalid_world_mutation_authority"
+	end
+	local safety = handoff.safety
+	if type(safety) ~= "table" then
+		return nil, "missing_studio_safety_contract"
+	end
+	if safety.public_safe_output ~= true
+			or safety.no_provider_prompts ~= true
+			or safety.no_raw_assets ~= true
+			or safety.no_family_world_coordinates ~= true then
+		return nil, "studio_handoff_not_public_safe"
+	end
+	if safety.world_mutation_authority ~= "luanti"
+			or safety.direct_world_mutation ~= false then
+		return nil, "invalid_studio_safety_authority"
+	end
+	return task_handoff, nil
+end
+
+function plugin._studio_handoff_build_context(task_handoff, base_context)
+	local context = table.copy(base_context or {})
+	local selected_option_id = tostring(task_handoff.selected_option_id
+		or task_handoff.option_id or task_handoff.build_kind or "")
+	local build_kind = tostring(task_handoff.build_kind or "")
+	local planned_node_writes = tonumber(task_handoff.planned_node_writes)
+	if selected_option_id == "fire" or build_kind == "fire" then
+		context.build_kind = "fire"
+		context.build_material_name = "fire"
+		context.build_material_node = task_handoff.build_material_node
+			or resolve_build_material_node("fire", settings.fire_node)
+		context.build_count = 1
+		context.max_node_writes_per_step = math.min(planned_node_writes or 1,
+			settings.max_lights)
+	elseif selected_option_id == "tnt_wall"
+			or (build_kind == "wall"
+				and tostring(task_handoff.build_material_name or "") == "tnt") then
+		context.build_kind = "wall"
+		context.build_material_name = "tnt"
+		context.build_material_node = task_handoff.build_material_node
+			or resolve_build_material_node("tnt", settings.tnt_node)
+		context.build_width = tonumber(task_handoff.build_width) or 4
+		context.build_height = tonumber(task_handoff.build_height) or 3
+		context.max_node_writes_per_step =
+			math.min(context.build_width * context.build_height, settings.max_lights)
+	else
+		return nil, "unsupported_studio_build_option"
+	end
+	if not context.build_material_node or context.build_material_node == "" then
+		return nil, "build_material_unavailable"
+	end
+	context.player_request_source = "openrealm_studio_runtime_handoff"
+	context.studio_handoff_selected_option_id = selected_option_id
+	return context, nil
+end
+
+function plugin.consume_studio_runtime_handoff(name, handoff, context)
+	local task_handoff, reason = plugin._validate_studio_runtime_handoff(handoff)
+	if not task_handoff then
+		return public_reply(name, "studio_runtime_handoff", "blocked",
+			"Studio handoff was rejected before any world mutation.", {
+				reason = reason,
+				no_world_mutation = true,
+				direct_world_mutation = false,
+				world_mutation_authority = "luanti",
+			})
+	end
+	local build_context, context_reason =
+		plugin._studio_handoff_build_context(task_handoff, context)
+	if not build_context then
+		return public_reply(name, "studio_runtime_handoff", "blocked",
+			"Studio handoff build option is not executable yet.", {
+				reason = context_reason,
+				no_world_mutation = true,
+				direct_world_mutation = false,
+				world_mutation_authority = "luanti",
+			})
+	end
+	local extra = {
+		planner_mode = "studio_runtime_handoff",
+		selected_candidate_id = task_handoff.selected_option_id
+			or task_handoff.option_id or build_context.studio_handoff_selected_option_id,
+		build_option_decision_source = "openrealm_studio",
+		agentic_tool_success_required = true,
+		studio_handoff_id = handoff.handoff_id,
+		queue_contract = task_handoff.queue_contract,
+		handoff_queued = false,
+		runtime_handoff_status = handoff.status,
+		world_mutation_authority = "luanti",
+		direct_world_mutation = false,
+		preview_required = true,
+		approval_required = true,
+		rollback_required = true,
+		audit_required = true,
+		execute_after_approval_only = true,
+	}
+	local previous_auto_apply = settings.auto_apply_build_approvals
+	settings.auto_apply_build_approvals = false
+	local reply = create_build_pending_reply(name, build_context,
+		"Studio handoff is pending approval before mutation.", extra)
+	settings.auto_apply_build_approvals = previous_auto_apply
 	return reply
 end
 
@@ -6384,12 +6574,13 @@ local function handle_audit(name, requested_task_id)
 		target_kind = "task"
 		target_id = task.task_id
 	end
+	local audit_limit = filter and 250 or 50
 	return public_reply(name, "audit", "success", "Recent agent audit events returned.", {
 		surface_id = "guide",
 		task_id = target_kind == "task" and target_id or nil,
 		target_kind = target_kind,
 		target_id = target_id,
-		audit_events = audit_events_for(name, 50, filter),
+		audit_events = audit_events_for(name, audit_limit, filter),
 	})
 end
 
@@ -7529,6 +7720,17 @@ local function handle_approve(name, raw_prompt)
 	queued.action = "approve"
 	queued.approved_action = pending.action
 	queued.approval_id = pending.approval_id
+	queued.studio_handoff_id = pending.studio_handoff_id
+	queued.queue_contract = pending.queue_contract
+	queued.handoff_queued = pending.queue_contract == "core.queue_ai_task" or nil
+	queued.runtime_handoff_status = pending.runtime_handoff_status
+	queued.world_mutation_authority = pending.world_mutation_authority
+	queued.direct_world_mutation = pending.direct_world_mutation
+	queued.preview_required = pending.preview_required
+	queued.approval_required = pending.approval_required
+	queued.rollback_required = pending.rollback_required
+	queued.audit_required = pending.audit_required
+	queued.execute_after_approval_only = pending.execute_after_approval_only
 	plugin._player_loop.record(name, {
 		status = queued.status,
 		phase = "acting",
