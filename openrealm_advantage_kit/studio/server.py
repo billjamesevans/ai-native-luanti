@@ -27,6 +27,31 @@ SERVICE_SPECS = {
 RECENT_ADAPTER_WINDOW = 50
 RECENT_TRACE_LIMIT = 6
 TRACE_ID_RE = re.compile(r"nova_trace:[A-Za-z0-9_.-]+")
+PRIVATE_PATTERNS = (
+    re.compile(r"/Users/[^\s\"']+"),
+    re.compile(r"\bminecraftpi(?:\.home)?\b", re.I),
+    re.compile(r"\b192\.168(?:\.\d{1,3}){2}\b"),
+    re.compile(r"\bspacebase|themepark|showcase100|disneyland100\b", re.I),
+    re.compile(r"(?<![A-Za-z0-9_-])sk-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"\bOPENAI_API_KEY\b"),
+    re.compile(r"\bprivate_prompt\b"),
+    re.compile(r"\basset_payload\b"),
+    re.compile(r"\bapi_key\b", re.I),
+)
+FORBIDDEN_KEYS = {
+    "api_key",
+    "asset_payload",
+    "credentials",
+    "headers",
+    "private_payload",
+    "private_prompt",
+    "provider_credentials",
+    "provider_headers",
+    "raw_asset_payload",
+    "raw_provider_request",
+    "raw_provider_response",
+    "request_body",
+}
 PROMPT_EVAL_CASES = (
     ("build_fire", "Fire"),
     ("fire_only_strict", "Fire only"),
@@ -40,6 +65,10 @@ PROMPT_EVAL_CASES = (
     ("natural_chat_followup", "Follow-up"),
     ("natural_pending_edit", "Pending edit"),
     ("model", "Model adapter"),
+)
+LIVE_REVIEW_GATE_KIND = "openrealm_live_review_gate_result"
+LIVE_REVIEW_GATE_DEFAULT = (
+    "/opt/ai-native-luanti/src/local/review-packets/live-review-gate/live_trace11-gate-result.json"
 )
 
 
@@ -81,6 +110,23 @@ def read_json(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def has_private_content(value: Any) -> bool:
+    raw = json.dumps(value, sort_keys=True) if not isinstance(value, str) else value
+    return any(pattern.search(raw) for pattern in PRIVATE_PATTERNS)
+
+
+def has_forbidden_key(value: Any) -> bool:
+    if isinstance(value, dict):
+        for key, child in value.items():
+            if isinstance(key, str) and key in FORBIDDEN_KEYS:
+                return True
+            if has_forbidden_key(child):
+                return True
+    if isinstance(value, list):
+        return any(has_forbidden_key(child) for child in value)
+    return False
 
 
 def int_or_none(value: Any) -> int | None:
@@ -149,25 +195,123 @@ def fork_status() -> dict[str, Any]:
     }
 
 
-def quality_gate_status() -> dict[str, Any]:
+def live_review_gate_status() -> dict[str, Any]:
+    path = env_path("OPENREALM_LIVE_REVIEW_GATE", LIVE_REVIEW_GATE_DEFAULT)
+    if not path.exists():
+        return {
+            "present": False,
+            "status": None,
+            "current_health": "unknown",
+            "checks_passed": 0,
+            "checks_total": 0,
+            "violations_total": 0,
+            "public_safe_output": None,
+            "unsafe_payload_rejected": False,
+        }
+
+    payload = read_json(path)
+    if not payload:
+        return {
+            "present": True,
+            "status": "invalid",
+            "current_health": "fail",
+            "checks_passed": 0,
+            "checks_total": 0,
+            "violations_total": 1,
+            "public_safe_output": False,
+            "unsafe_payload_rejected": True,
+        }
+
+    unsafe_payload = has_private_content(payload) or has_forbidden_key(payload)
+    checks = payload.get("checks") if isinstance(payload.get("checks"), dict) else {}
+    violations = payload.get("violations") if isinstance(payload.get("violations"), list) else []
+    summary = payload.get("summary") if isinstance(payload.get("summary"), dict) else {}
+    artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), dict) else {}
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
+    checks_total = len(checks)
+    checks_passed = sum(1 for value in checks.values() if value is True)
+    violations_total = len(violations)
+    artifact_kind_ok = payload.get("artifact_kind") == LIVE_REVIEW_GATE_KIND
+    public_safe_output = first_bool(safety.get("public_safe_output"))
+    status = first_text(payload.get("status"))
+    current_health = (
+        "pass"
+        if artifact_kind_ok
+        and status == "pass"
+        and checks_total > 0
+        and checks_passed == checks_total
+        and violations_total == 0
+        and public_safe_output is True
+        and not unsafe_payload
+        else "fail"
+    )
+
+    return {
+        "present": True,
+        "status": status or "unknown",
+        "current_health": current_health,
+        "source_trace_id": first_text(payload.get("source_trace_id"), summary.get("source_trace_id")),
+        "selected_option_id": first_text(payload.get("selected_option_id"), summary.get("selected_option_id")),
+        "case_hint": first_text(payload.get("case_hint"), summary.get("case_hint")),
+        "checks_passed": checks_passed,
+        "checks_total": checks_total,
+        "violations_total": violations_total,
+        "artifact_count": len(artifacts),
+        "artifact_keys": sorted(str(key)[:80] for key in artifacts.keys())[:8],
+        "operator_label_matched": first_bool(summary.get("operator_label_matched")),
+        "operator_labels_applied": first_int(summary.get("operator_labels_applied")),
+        "candidate_queue_status": first_text(summary.get("candidate_queue_status")),
+        "case_pack_status": first_text(summary.get("case_pack_status")),
+        "cases_total": first_int(summary.get("cases_total")),
+        "public_safe_output": public_safe_output is True and not unsafe_payload,
+        "unsafe_payload_rejected": unsafe_payload,
+        "safety": {
+            "no_world_mutation": first_bool(safety.get("no_world_mutation")),
+            "no_raw_assets": first_bool(safety.get("no_raw_assets")),
+            "no_provider_prompts": first_bool(safety.get("no_provider_prompts")),
+            "no_family_world_coordinates": first_bool(safety.get("no_family_world_coordinates")),
+        },
+    }
+
+
+def quality_gate_status(live_review_gate: dict[str, Any] | None = None) -> dict[str, Any]:
     quality = read_json(env_path("OPENREALM_QUALITY_GATE", "/opt/ai-native-luanti/memory/ai-agent-quality-gate.json")) or {}
     prompt_eval = read_json(env_path("OPENREALM_PROMPT_EVAL", "/opt/ai-native-luanti/logs/live-probes/ai-agent-prompt-eval-live-latest.json")) or {}
     request_gate = read_json(env_path("OPENREALM_REQUEST_LOG_GATE", "/opt/ai-native-luanti/memory/ai-agent-request-response-log-gate.json")) or {}
     quality_summary = quality.get("summary") if isinstance(quality.get("summary"), dict) else {}
     prompt_summary = prompt_eval.get("summary") if isinstance(prompt_eval.get("summary"), dict) else {}
     request_summary = request_gate.get("summary") if isinstance(request_gate.get("summary"), dict) else {}
+    live_review_gate = live_review_gate or live_review_gate_status()
+    live_review_present = live_review_gate.get("present") is True
+    live_review_health = live_review_gate.get("current_health")
+    status = first_text(quality.get("status"))
+    if live_review_present and live_review_health != "pass":
+        status = "fail"
+    elif not status and live_review_present:
+        status = first_text(live_review_gate.get("status"))
+    attention_total = first_int(quality_summary.get("attention_total"))
+    violations_total = first_int(quality_summary.get("violations_total"))
+    if live_review_present and live_review_health != "pass":
+        attention_total = (attention_total or 0) + 1
+    if live_review_present:
+        violations_total = (violations_total or 0) + (first_int(live_review_gate.get("violations_total")) or 0)
     return {
-        "status": quality.get("status"),
+        "status": status,
         "generated_at": quality.get("generated_at"),
         "live_prompt_eval_status": quality_summary.get("live_prompt_eval_status") or prompt_eval.get("status"),
         "compat_import_staging_pilot_status": quality_summary.get("compat_import_staging_pilot_status"),
-        "violations_total": quality_summary.get("violations_total"),
-        "attention_total": quality_summary.get("attention_total"),
+        "violations_total": violations_total,
+        "attention_total": attention_total,
         "prompt_eval_passed": prompt_summary.get("passed_cases") or prompt_eval.get("passed_cases"),
         "prompt_eval_total": prompt_summary.get("total_cases") or prompt_eval.get("total_cases"),
         "request_log_gate_status": request_gate.get("status"),
         "request_log_checked_cases": request_summary.get("checked_cases"),
         "request_log_violations": request_summary.get("violations_total"),
+        "live_review_gate_status": live_review_gate.get("status"),
+        "live_review_gate_health": live_review_health,
+        "live_review_gate_checks_passed": live_review_gate.get("checks_passed"),
+        "live_review_gate_checks_total": live_review_gate.get("checks_total"),
+        "live_review_gate_violations": live_review_gate.get("violations_total"),
     }
 
 
@@ -459,6 +603,7 @@ def runtime_proofs_status() -> dict[str, Any]:
 
 def build_status_payload() -> dict[str, Any]:
     services = service_status()
+    live_review_gate = live_review_gate_status()
     return {
         "schema_version": 1,
         "generated_at": utc_now(),
@@ -468,10 +613,11 @@ def build_status_payload() -> dict[str, Any]:
         "services": services,
         "services_all_active": all(service["active"] for service in services.values()),
         "fork": fork_status(),
-        "quality_gate": quality_gate_status(),
+        "quality_gate": quality_gate_status(live_review_gate),
         "prompt_eval": prompt_eval_status(),
         "adapter_log": adapter_log_status(),
         "runtime_proofs": runtime_proofs_status(),
+        "live_review_gate": live_review_gate,
     }
 
 

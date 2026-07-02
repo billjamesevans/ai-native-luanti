@@ -23,6 +23,14 @@ world mutation goes through Luanti runtime tasks, rollback records exist, and
 compatibility import stays in disposable/staging worlds without exposing raw
 prompts, private coordinates, provider messages, or copied assets.
 
+Live-review gate summaries expose the newest Nova review-loop result when
+`OPENREALM_LIVE_REVIEW_GATE` points at a gate JSON file. The bridge only emits
+status, trace ID, selected option, case hint, check counts, artifact key names,
+and safety flags. It rejects unsafe gate payloads and never exposes raw prompts,
+provider messages, credentials, private paths, violation details, or generated
+artifact paths. On the Pi, the default gate path is
+`/opt/ai-native-luanti/src/local/review-packets/live-review-gate/live_trace11-gate-result.json`.
+
 The Agent trace panel displays the newest public-safe adapter summaries: selected
 option, tool-decision source, planned write count, required-tool status,
 web-search availability, mutation authority, and a bounded tool-name list. It

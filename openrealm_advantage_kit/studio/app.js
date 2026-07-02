@@ -58,6 +58,8 @@ const el = {
   servicesDetail: document.getElementById("services-detail"),
   qualityStatus: document.getElementById("quality-status"),
   qualityDetail: document.getElementById("quality-detail"),
+  liveReviewStatus: document.getElementById("live-review-status"),
+  liveReviewDetail: document.getElementById("live-review-detail"),
   adapterStatus: document.getElementById("adapter-status"),
   adapterDetail: document.getElementById("adapter-detail"),
   latestPlanStatus: document.getElementById("latest-plan-status"),
@@ -615,6 +617,7 @@ function renderLiveStatus(data) {
   const fork = data?.fork || {};
   const services = data?.services || {};
   const quality = data?.quality_gate || {};
+  const liveReview = data?.live_review_gate || {};
   const promptEval = data?.prompt_eval || {};
   const adapter = data?.adapter_log || {};
   const runtimeProofs = data?.runtime_proofs || {};
@@ -638,10 +641,24 @@ function renderLiveStatus(data) {
   setText(el.qualityStatus, qualityStatus);
   setText(
     el.qualityDetail,
-    `gate ${quality.live_prompt_eval_status || "unknown"} · log ${requestLogStatus} · ${compactDate(quality.generated_at)}`
+    `gate ${quality.live_prompt_eval_status || "unknown"} · review ${quality.live_review_gate_health || "unknown"} · log ${requestLogStatus}`
   );
   el.qualityStatus?.classList.toggle("status-ok", qualityStatus === "pass");
   el.qualityStatus?.classList.toggle("status-warn", qualityStatus !== "pass");
+
+  const liveReviewPass = liveReview.current_health === "pass";
+  setText(
+    el.liveReviewStatus,
+    liveReview.present ? (liveReviewPass ? "Review pass" : "Needs review") : "No review"
+  );
+  setText(
+    el.liveReviewDetail,
+    liveReview.present
+      ? `${liveReview.source_trace_id || "no trace"} · ${liveReview.checks_passed || 0}/${liveReview.checks_total || 0} checks · ${liveReview.case_hint || "no case"}`
+      : "Run the live review gate for the latest Nova trace"
+  );
+  el.liveReviewStatus?.classList.toggle("status-ok", liveReviewPass);
+  el.liveReviewStatus?.classList.toggle("status-warn", !liveReviewPass);
 
   setText(
     el.adapterStatus,
@@ -701,6 +718,8 @@ function renderLiveStatusUnavailable() {
   setText(el.servicesDetail, "Serve with studio/server.py for Pi telemetry");
   setText(el.qualityStatus, "Unavailable");
   setText(el.qualityDetail, "No live bridge response");
+  setText(el.liveReviewStatus, "Unavailable");
+  setText(el.liveReviewDetail, "No live review summary loaded");
   setText(el.adapterStatus, "Unavailable");
   setText(el.adapterDetail, "No Agents SDK summary loaded");
   setText(el.latestPlanStatus, "Local planner");
