@@ -39,15 +39,21 @@ prompt-memory refresh loop without exposing raw prompts or provider messages.
 To turn an exported Studio packet into reviewed eval artifacts, run:
 
 ```bash
+python3 util/ai_native_agent_studio_review_packet.py \
+  --status-json local/status/openrealm-studio-status.json \
+  --trace-id nova_trace:11 \
+  --output local/review-packets/openrealm_agent_review_packet.json
+
 python3 util/ai_native_agent_feedback_packet.py \
   --agents-sdk-log local/benchmarks/agents-sdk-model-adapter.jsonl \
   --studio-review-packet local/review-packets/openrealm_agent_review_packet.json
 ```
 
-The tool resolves the selected trace to the matching candidate id, writes the
-candidate queue, operator label, and prompt-memory case pack, and rejects packets
-that include private paths, provider payloads, credentials, raw assets, or
-family-world details.
+The first tool can create the same public-safe review packet from a saved
+`/api/status` response without opening the browser. The second tool resolves the
+selected trace to the matching candidate id, writes the candidate queue, operator
+label, and prompt-memory case pack, and rejects packets that include private
+paths, provider payloads, credentials, raw assets, or family-world details.
 
 This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 
