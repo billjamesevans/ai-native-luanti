@@ -24,6 +24,20 @@ SERVICE_SPECS = {
 }
 
 RECENT_ADAPTER_WINDOW = 50
+PROMPT_EVAL_CASES = (
+    ("build_fire", "Fire"),
+    ("fire_only_strict", "Fire only"),
+    ("tnt_wall", "TNT wall"),
+    ("stone_bridge", "Stone bridge"),
+    ("small_cabin", "Cabin"),
+    ("path_to_hill", "Path"),
+    ("agentic_build_planner", "Agentic planner"),
+    ("openrealm_village", "OpenRealm village"),
+    ("player_agent_loop", "Player loop"),
+    ("natural_chat_followup", "Follow-up"),
+    ("natural_pending_edit", "Pending edit"),
+    ("model", "Model adapter"),
+)
 
 
 def utc_now() -> str:
@@ -50,6 +64,34 @@ def read_json(path: Path) -> dict[str, Any] | None:
     except (OSError, json.JSONDecodeError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def int_or_none(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    return value if isinstance(value, int) else None
+
+
+def first_int(*values: Any) -> int | None:
+    for value in values:
+        candidate = int_or_none(value)
+        if candidate is not None:
+            return candidate
+    return None
+
+
+def first_text(*values: Any) -> str | None:
+    for value in values:
+        if isinstance(value, str) and value:
+            return value[:120]
+    return None
+
+
+def first_bool(*values: Any) -> bool | None:
+    for value in values:
+        if isinstance(value, bool):
+            return value
+    return None
 
 
 def service_status() -> dict[str, Any]:
@@ -85,7 +127,7 @@ def fork_status() -> dict[str, Any]:
 
 def quality_gate_status() -> dict[str, Any]:
     quality = read_json(env_path("OPENREALM_QUALITY_GATE", "/opt/ai-native-luanti/memory/ai-agent-quality-gate.json")) or {}
-    prompt_eval = read_json(env_path("OPENREALM_PROMPT_EVAL", "/opt/ai-native-luanti/memory/ai-agent-prompt-eval-live-latest.json")) or {}
+    prompt_eval = read_json(env_path("OPENREALM_PROMPT_EVAL", "/opt/ai-native-luanti/logs/live-probes/ai-agent-prompt-eval-live-latest.json")) or {}
     request_gate = read_json(env_path("OPENREALM_REQUEST_LOG_GATE", "/opt/ai-native-luanti/memory/ai-agent-request-response-log-gate.json")) or {}
     quality_summary = quality.get("summary") if isinstance(quality.get("summary"), dict) else {}
     prompt_summary = prompt_eval.get("summary") if isinstance(prompt_eval.get("summary"), dict) else {}
@@ -102,6 +144,76 @@ def quality_gate_status() -> dict[str, Any]:
         "request_log_gate_status": request_gate.get("status"),
         "request_log_checked_cases": request_summary.get("checked_cases"),
         "request_log_violations": request_summary.get("violations_total"),
+    }
+
+
+def prompt_eval_status() -> dict[str, Any]:
+    quality = read_json(env_path("OPENREALM_QUALITY_GATE", "/opt/ai-native-luanti/memory/ai-agent-quality-gate.json")) or {}
+    prompt_eval = read_json(env_path("OPENREALM_PROMPT_EVAL", "/opt/ai-native-luanti/logs/live-probes/ai-agent-prompt-eval-live-latest.json")) or {}
+    quality_summary = quality.get("summary") if isinstance(quality.get("summary"), dict) else {}
+    summary = prompt_eval.get("summary") if isinstance(prompt_eval.get("summary"), dict) else {}
+    eval_payload = prompt_eval.get("prompt_eval") if isinstance(prompt_eval.get("prompt_eval"), dict) else {}
+    eval_case_ids = eval_payload.get("case_ids") if isinstance(eval_payload.get("case_ids"), dict) else {}
+    golden_case_ids = summary.get("golden_prompt_case_ids") if isinstance(summary.get("golden_prompt_case_ids"), dict) else {}
+    safety = prompt_eval.get("safety") if isinstance(prompt_eval.get("safety"), dict) else {}
+
+    cases_total = first_int(summary.get("cases_total"), eval_payload.get("cases_total"), quality_summary.get("live_prompt_eval_cases_total"))
+    cases_passed = first_int(summary.get("cases_passed"), eval_payload.get("cases_passed"), quality_summary.get("live_prompt_eval_cases_passed"))
+    cases_failed = first_int(summary.get("cases_failed"), eval_payload.get("cases_failed"), quality_summary.get("live_prompt_eval_cases_failed"))
+    golden_total = first_int(summary.get("golden_prompts_total"), quality_summary.get("live_prompt_eval_golden_prompts_total"))
+    golden_passed = first_int(summary.get("golden_prompts_passed"), quality_summary.get("live_prompt_eval_golden_prompts_passed"))
+    golden_failed = first_int(summary.get("golden_prompts_failed"), quality_summary.get("live_prompt_eval_golden_prompts_failed"))
+    status = first_text(eval_payload.get("status"), quality_summary.get("live_prompt_eval_status"))
+    no_world_mutation = first_bool(safety.get("no_world_mutation"), quality.get("safety", {}).get("no_world_mutation") if isinstance(quality.get("safety"), dict) else None)
+    public_safe = first_bool(safety.get("public_safe_output"), quality.get("safety", {}).get("public_safe_output") if isinstance(quality.get("safety"), dict) else None)
+    no_provider_prompts = first_bool(safety.get("no_provider_prompts"), quality.get("safety", {}).get("no_provider_prompts") if isinstance(quality.get("safety"), dict) else None)
+    current_health = (
+        "pass"
+        if status == "pass"
+        and cases_failed == 0
+        and golden_failed == 0
+        and no_world_mutation is True
+        and public_safe is True
+        and no_provider_prompts is True
+        else "attention"
+    )
+
+    return {
+        "present": bool(prompt_eval),
+        "status": status,
+        "current_health": current_health,
+        "generated_at": prompt_eval.get("generated_at"),
+        "cases_total": cases_total,
+        "cases_passed": cases_passed,
+        "cases_failed": cases_failed,
+        "golden_prompt_suite": first_text(summary.get("golden_prompt_suite"), quality_summary.get("live_prompt_eval_golden_prompt_suite")),
+        "golden_prompt_backlog_total": first_int(summary.get("golden_prompt_backlog_total"), quality_summary.get("live_prompt_eval_golden_prompt_backlog_total")),
+        "golden_prompts_total": golden_total,
+        "golden_prompts_passed": golden_passed,
+        "golden_prompts_failed": golden_failed,
+        "model_adapter_requests": first_int(summary.get("model_adapter_requests"), quality_summary.get("live_prompt_eval_model_adapter_requests")),
+        "model_adapter_successes": first_int(summary.get("model_adapter_successes")),
+        "model_adapter_failures": first_int(summary.get("model_adapter_failures")),
+        "model_adapter_timeouts": first_int(summary.get("model_adapter_timeouts")),
+        "agentic_tool_cases": first_int(quality_summary.get("live_prompt_eval_agentic_tool_cases")),
+        "agentic_tool_cases_required": first_int(quality_summary.get("live_prompt_eval_agentic_tool_cases_required")),
+        "coverage": [
+            {
+                "case_id": case_id,
+                "label": label,
+                "passed": bool(eval_case_ids.get(case_id) is True or golden_case_ids.get(case_id) is True),
+                "golden": case_id in golden_case_ids,
+            }
+            for case_id, label in PROMPT_EVAL_CASES
+        ],
+        "safety": {
+            "public_safe_output": public_safe,
+            "no_world_mutation": no_world_mutation,
+            "no_provider_prompts": no_provider_prompts,
+            "no_family_world_coordinates": first_bool(safety.get("no_family_world_coordinates")),
+            "no_raw_assets": first_bool(safety.get("no_raw_assets")),
+            "read_only_prompt_eval": first_bool(safety.get("read_only_prompt_eval")),
+        },
     }
 
 
@@ -240,6 +352,7 @@ def build_status_payload() -> dict[str, Any]:
         "services_all_active": all(service["active"] for service in services.values()),
         "fork": fork_status(),
         "quality_gate": quality_gate_status(),
+        "prompt_eval": prompt_eval_status(),
         "adapter_log": adapter_log_status(),
     }
 

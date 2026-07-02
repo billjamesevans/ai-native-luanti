@@ -76,8 +76,10 @@ Current Pi gate evidence:
   bridge. `GET /api/status` exposes a public-safe live summary of family/fork/UI
   service health, fork commit/version, quality-gate status, and Agents SDK
   adapter aggregate activity. Current adapter health is separated from lifetime
-  historical counts, and the payload intentionally excludes raw prompts,
-  provider messages, credentials, private paths, and world payloads.
+  historical counts. Prompt-eval coverage exposes only case IDs, pass counts,
+  golden-prompt coverage, and public-safe safety flags. The payload
+  intentionally excludes raw prompts, provider messages, credentials, private
+  paths, and world payloads.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,

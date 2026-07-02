@@ -49,7 +49,9 @@ const el = {
   adapterStatus: document.getElementById("adapter-status"),
   adapterDetail: document.getElementById("adapter-detail"),
   latestPlanStatus: document.getElementById("latest-plan-status"),
-  latestPlanDetail: document.getElementById("latest-plan-detail")
+  latestPlanDetail: document.getElementById("latest-plan-detail"),
+  evalStatus: document.getElementById("eval-status"),
+  evalDetail: document.getElementById("eval-detail")
 };
 
 function hashText(text) {
@@ -403,6 +405,7 @@ function renderLiveStatus(data) {
   const fork = data?.fork || {};
   const services = data?.services || {};
   const quality = data?.quality_gate || {};
+  const promptEval = data?.prompt_eval || {};
   const adapter = data?.adapter_log || {};
   const latest = adapter.latest || {};
   const allActive = data?.services_all_active === true;
@@ -447,6 +450,20 @@ function renderLiveStatus(data) {
     el.latestPlanDetail,
     `authority=${mutationAuthority} · direct mutation=${directMutation ? "true" : "false"}`
   );
+
+  const evalPass = promptEval.current_health === "pass";
+  setText(
+    el.evalStatus,
+    promptEval.present ? `${promptEval.cases_passed || 0}/${promptEval.cases_total || 0} cases` : "No eval"
+  );
+  setText(
+    el.evalDetail,
+    promptEval.present
+      ? `${promptEval.golden_prompts_passed || 0}/${promptEval.golden_prompts_total || 0} golden · agentic ${promptEval.agentic_tool_cases || 0}/${promptEval.agentic_tool_cases_required || 0} · no mutation ${promptEval.safety?.no_world_mutation === true ? "yes" : "unknown"}`
+      : "No public-safe eval summary loaded"
+  );
+  el.evalStatus?.classList.toggle("status-ok", evalPass);
+  el.evalStatus?.classList.toggle("status-warn", !evalPass);
 }
 
 function renderLiveStatusUnavailable() {
@@ -460,6 +477,8 @@ function renderLiveStatusUnavailable() {
   setText(el.adapterDetail, "No Agents SDK summary loaded");
   setText(el.latestPlanStatus, "Local planner");
   setText(el.latestPlanDetail, "Browser-only preview and export mode");
+  setText(el.evalStatus, "Unavailable");
+  setText(el.evalDetail, "No live golden prompt summary loaded");
 }
 
 async function loadLiveStatus() {

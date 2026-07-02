@@ -14,7 +14,8 @@ with public-safe service, fork, quality-gate, and Agents SDK adapter summaries.
 It does not expose raw prompts, provider messages, credentials, private paths,
 or world payloads. Adapter summaries separate current gate health from
 historical lifetime counts so old failed probes do not obscure a passing live
-release gate.
+release gate. Prompt-eval summaries expose only case IDs, pass counts, golden
+prompt coverage, and safety flags.
 
 This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 
