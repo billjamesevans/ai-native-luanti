@@ -241,10 +241,14 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             log_path = pathlib.Path(tmpdir) / "studio-submissions.jsonl"
+            handoff_log_path = pathlib.Path(tmpdir) / "studio-runtime-handoffs.jsonl"
+            handoff_latest_path = pathlib.Path(tmpdir) / "studio-runtime-handoff-latest.json"
 
             with mock.patch.dict(os.environ, {
                     "OPENREALM_MODEL_ADAPTER_ENDPOINT": "http://127.0.0.1:8766/v1/model-adapter",
                     "OPENREALM_STUDIO_SUBMISSION_LOG": str(log_path),
+                    "OPENREALM_STUDIO_RUNTIME_HANDOFF_LOG": str(handoff_log_path),
+                    "OPENREALM_STUDIO_RUNTIME_HANDOFF_LATEST": str(handoff_latest_path),
             }), mock.patch.object(server, "http_post_json", return_value=(200, adapter_response)) as post:
                 status, result = server.submit_studio_nova_plan({
                     "public_prompt": "build me a fire and only a fire",
@@ -255,13 +259,16 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
                         "safety": {"status": "ready", "risk": "low", "requires_approval": True},
                     },
                 })
+                handoff_status = server.studio_handoff_status()
 
             self.assertEqual(status, server.HTTPStatus.OK)
             self.assertTrue(result["ok"])
             self.assertTrue(result["logged"])
+            self.assertTrue(result["runtime_handoff_written"])
             self.assertEqual(result["adapter_http_status"], 200)
             self.assertEqual(result["runtime_handoff_status"], "ready_for_luanti_preview_approval_task")
             self.assertEqual(result["runtime_handoff"]["status"], "ready_for_luanti_preview_approval_task")
+            self.assertIn("openrealm-studio-runtime-handoff:", result["runtime_handoff"]["artifact_ref"])
             self.assertEqual(result["world_mutation_authority"], "luanti")
             self.assertFalse(result["direct_world_mutation"])
             self.assertEqual(result["summary"]["selected_option_id"], "fire")
@@ -270,14 +277,39 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
             self.assertTrue(result["summary"]["agentic_execution"])
             self.assertTrue(result["summary"]["required_tool_calls_satisfied"])
             self.assertFalse(result["summary"]["direct_world_mutation"])
+            handoff = result["runtime_handoff_artifact"]
+            self.assertEqual(handoff["status"], "ready_for_luanti_preview_approval_task")
+            self.assertEqual(handoff["queue_contract"], "core.queue_ai_task")
+            self.assertFalse(handoff["handoff_queued"])
+            self.assertEqual(handoff["selected_option_id"], "fire")
+            self.assertEqual(handoff["planned_node_writes"], 1)
+            self.assertTrue(handoff["preview_required"])
+            self.assertTrue(handoff["approval_required"])
+            self.assertTrue(handoff["rollback_required"])
+            self.assertTrue(handoff["audit_required"])
+            self.assertTrue(handoff["execute_after_approval_only"])
+            self.assertEqual(handoff["world_mutation_authority"], "luanti")
+            self.assertFalse(handoff["direct_world_mutation"])
+            self.assertEqual(handoff_status["current_health"], "pass")
+            self.assertEqual(handoff_status["latest"]["queue_contract"], "core.queue_ai_task")
             post.assert_called_once()
             submitted = post.call_args.args[1]
             self.assertEqual(submitted["context"]["selected_candidate_id"], "fire")
             self.assertTrue(log_path.exists())
+            self.assertTrue(handoff_log_path.exists())
+            self.assertTrue(handoff_latest_path.exists())
             logged = json.loads(log_path.read_text(encoding="utf-8").strip())
+            handoff_logged = json.loads(handoff_log_path.read_text(encoding="utf-8").strip())
+            handoff_latest = json.loads(handoff_latest_path.read_text(encoding="utf-8").strip())
             encoded = json.dumps(logged)
+            handoff_encoded = json.dumps(handoff_logged)
             self.assertEqual(logged["runtime_handoff"]["status"], "ready_for_luanti_preview_approval_task")
+            self.assertTrue(logged["runtime_handoff"]["handoff_written"])
             self.assertEqual(logged["adapter"]["selected_option_id"], "fire")
+            self.assertEqual(handoff_logged["artifact_kind"], "openrealm_studio_runtime_handoff_v1")
+            self.assertEqual(handoff_logged["luanti_task_handoff"]["queue_contract"], "core.queue_ai_task")
+            self.assertEqual(handoff_logged["luanti_task_handoff"]["selected_option_id"], "fire")
+            self.assertEqual(handoff_latest["handoff_id"], handoff_logged["handoff_id"])
             self.assertEqual(logged["adapter"]["tool_trace_names"], [
                 "inspect_build_site_context",
                 "recall_build_prompt_memory",
@@ -286,6 +318,9 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
             ])
             self.assertNotIn("raw_provider", encoded)
             self.assertNotIn("OPENAI_API_KEY", encoded)
+            self.assertNotIn("raw_provider", handoff_encoded)
+            self.assertNotIn("OPENAI_API_KEY", handoff_encoded)
+            self.assertNotIn("/Users/", handoff_encoded)
 
 
 if __name__ == "__main__":

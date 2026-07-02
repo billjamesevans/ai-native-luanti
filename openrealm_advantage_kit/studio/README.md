@@ -25,6 +25,15 @@ world mutation goes through Luanti runtime tasks, rollback records exist, and
 compatibility import stays in disposable/staging worlds without exposing raw
 prompts, private coordinates, provider messages, or copied assets.
 
+Live Studio submissions also write a durable public-safe runtime handoff
+artifact. The append-only log defaults to
+`logs/openrealm-studio-runtime-handoffs.jsonl`, and the latest compact artifact
+defaults to `logs/openrealm-studio-runtime-handoff-latest.json`. Each artifact
+names the selected option, planned writes, required preview/approval/audit/
+rollback gates, `core.queue_ai_task` queue contract, and Luanti mutation
+authority. The handoff is not execution; it is the package the runtime can turn
+into a preview and approval-gated queued task.
+
 Live-review gate summaries expose the newest Nova review-loop result when
 `OPENREALM_LIVE_REVIEW_GATE` points at a gate JSON file. The bridge only emits
 status, trace ID, selected option, case hint, check counts, artifact key names,

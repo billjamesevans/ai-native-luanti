@@ -674,6 +674,7 @@ def build_status_payload() -> dict[str, Any]:
         "adapter_log": adapter_log_status(),
         "runtime_proofs": runtime_proofs_status(),
         "live_review_gate": live_review_gate,
+        "studio_handoff": studio_handoff_status(),
     }
 
 
@@ -694,6 +695,24 @@ def studio_submission_log_path() -> Path:
     repo = env_path("OPENREALM_REPO_ROOT", "/opt/ai-native-luanti/src")
     base = repo.parent if repo.name == "src" else repo
     return base / "logs" / "openrealm-studio-operator-submissions.jsonl"
+
+
+def studio_runtime_handoff_log_path() -> Path:
+    configured = os.environ.get("OPENREALM_STUDIO_RUNTIME_HANDOFF_LOG")
+    if configured:
+        return Path(configured)
+    repo = env_path("OPENREALM_REPO_ROOT", "/opt/ai-native-luanti/src")
+    base = repo.parent if repo.name == "src" else repo
+    return base / "logs" / "openrealm-studio-runtime-handoffs.jsonl"
+
+
+def studio_runtime_handoff_latest_path() -> Path:
+    configured = os.environ.get("OPENREALM_STUDIO_RUNTIME_HANDOFF_LATEST")
+    if configured:
+        return Path(configured)
+    repo = env_path("OPENREALM_REPO_ROOT", "/opt/ai-native-luanti/src")
+    base = repo.parent if repo.name == "src" else repo
+    return base / "logs" / "openrealm-studio-runtime-handoff-latest.json"
 
 
 def studio_adapter_endpoint() -> str:
@@ -898,6 +917,185 @@ def write_studio_submission_log(entry: dict[str, Any]) -> bool:
         return False
 
 
+def runtime_handoff_id(submission: dict[str, Any], generated_at: str) -> str:
+    adapter = submission.get("adapter") if isinstance(submission.get("adapter"), dict) else {}
+    request = submission.get("request") if isinstance(submission.get("request"), dict) else {}
+    context = request.get("context") if isinstance(request.get("context"), dict) else {}
+    seed = "-".join([
+        str(context.get("studio_plan_id") or "adhoc"),
+        str(adapter.get("selected_option_id") or "no-option"),
+        generated_at,
+    ])
+    cleaned = re.sub(r"[^A-Za-z0-9_.:-]+", "-", seed).strip("-")[:120] or "adhoc"
+    return f"openrealm-studio-runtime-handoff:{cleaned}"
+
+
+def build_studio_runtime_handoff(submission: dict[str, Any], generated_at: str) -> dict[str, Any]:
+    request = submission.get("request") if isinstance(submission.get("request"), dict) else {}
+    context = request.get("context") if isinstance(request.get("context"), dict) else {}
+    adapter = submission.get("adapter") if isinstance(submission.get("adapter"), dict) else {}
+    runtime_handoff = (
+        submission.get("runtime_handoff")
+        if isinstance(submission.get("runtime_handoff"), dict)
+        else {}
+    )
+    selected_option_id = bounded_text(adapter.get("selected_option_id") or context.get("selected_candidate_id"), 120)
+    planned_node_writes = first_int(adapter.get("planned_node_writes")) or 0
+    handoff_id = runtime_handoff_id(submission, generated_at)
+    luanti_task_id = re.sub(r"[^A-Za-z0-9_.:-]+", "-", handoff_id).strip("-")
+    artifact = {
+        "schema_version": 1,
+        "artifact_kind": "openrealm_studio_runtime_handoff_v1",
+        "created_at": generated_at,
+        "handoff_id": handoff_id,
+        "artifact_ref": f"openrealm-studio-runtime-handoff:{handoff_id}",
+        "status": runtime_handoff.get("status") or "needs_operator_review",
+        "source": {
+            "surface_id": "openrealm_studio",
+            "model_adapter_endpoint": "loopback",
+            "agent_id": request.get("agent_id"),
+            "owner": request.get("owner"),
+            "source_task_id": request.get("task_id"),
+            "public_prompt": request.get("public_prompt"),
+            "selected_candidate_id": context.get("selected_candidate_id"),
+            "candidate_summary": context.get("candidate_summary"),
+            "studio_plan_id": context.get("studio_plan_id"),
+            "studio_plan_node_writes": context.get("studio_plan_node_writes"),
+        },
+        "adapter_summary": adapter,
+        "luanti_task_handoff": {
+            "queue_contract": "core.queue_ai_task",
+            "handoff_queued": False,
+            "task_id": f"openrealm-studio:runtime-task:{luanti_task_id}",
+            "label": f"OpenRealm Studio preview: {selected_option_id or 'review'}",
+            "operation_label": "openrealm.studio.preview_approval",
+            "selected_option_id": selected_option_id,
+            "build_kind": adapter.get("build_kind"),
+            "build_material_name": adapter.get("build_material_name"),
+            "planned_node_writes": planned_node_writes,
+            "plan_kind": adapter.get("plan_kind"),
+            "plan_step_count": adapter.get("plan_step_count"),
+            "required_capabilities": ["world.read", "world.place", "world.batch"],
+            "preview_required": True,
+            "approval_required": True,
+            "rollback_required": True,
+            "audit_required": True,
+            "execute_after_approval_only": True,
+            "world_mutation_authority": "luanti",
+            "direct_world_mutation": False,
+            "next_runtime_action": "create_luanti_preview_then_queue_after_operator_approval",
+        },
+        "safety": {
+            "public_safe_output": True,
+            "private_input_retained": False,
+            "no_provider_credentials": True,
+            "no_provider_prompts": True,
+            "no_raw_assets": True,
+            "no_family_world_coordinates": True,
+            "direct_world_mutation": False,
+            "world_mutation_authority": "luanti",
+        },
+    }
+    reject_private_payload(artifact, "unsafe_runtime_handoff")
+    return artifact
+
+
+def write_studio_runtime_handoff(handoff: dict[str, Any]) -> bool:
+    reject_private_payload(handoff, "unsafe_runtime_handoff")
+    log_path = studio_runtime_handoff_log_path()
+    latest_path = studio_runtime_handoff_latest_path()
+    try:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        latest_path.parent.mkdir(parents=True, exist_ok=True)
+        encoded = json.dumps(handoff, sort_keys=True)
+        with log_path.open("a", encoding="utf-8") as handle:
+            handle.write(encoded + "\n")
+        latest_path.write_text(encoded + "\n", encoding="utf-8")
+        return True
+    except OSError:
+        return False
+
+
+def summarize_studio_runtime_handoff(handoff: dict[str, Any]) -> dict[str, Any]:
+    reject_private_payload(handoff, "unsafe_runtime_handoff")
+    task_handoff = handoff.get("luanti_task_handoff") if isinstance(handoff.get("luanti_task_handoff"), dict) else {}
+    safety = handoff.get("safety") if isinstance(handoff.get("safety"), dict) else {}
+    return {
+        "present": True,
+        "created_at": handoff.get("created_at"),
+        "handoff_id": bounded_text(handoff.get("handoff_id"), 160),
+        "artifact_ref": bounded_text(handoff.get("artifact_ref"), 180),
+        "status": bounded_text(handoff.get("status"), 120),
+        "queue_contract": bounded_text(task_handoff.get("queue_contract"), 80),
+        "task_id": bounded_text(task_handoff.get("task_id"), 180),
+        "handoff_queued": task_handoff.get("handoff_queued") is True,
+        "selected_option_id": bounded_text(task_handoff.get("selected_option_id"), 120),
+        "build_kind": bounded_text(task_handoff.get("build_kind"), 80),
+        "build_material_name": bounded_text(task_handoff.get("build_material_name"), 80),
+        "planned_node_writes": first_int(task_handoff.get("planned_node_writes")),
+        "preview_required": task_handoff.get("preview_required") is True,
+        "approval_required": task_handoff.get("approval_required") is True,
+        "rollback_required": task_handoff.get("rollback_required") is True,
+        "audit_required": task_handoff.get("audit_required") is True,
+        "execute_after_approval_only": task_handoff.get("execute_after_approval_only") is True,
+        "world_mutation_authority": bounded_text(task_handoff.get("world_mutation_authority"), 80),
+        "direct_world_mutation": task_handoff.get("direct_world_mutation") is True,
+        "public_safe_output": safety.get("public_safe_output") is True,
+        "no_provider_prompts": safety.get("no_provider_prompts") is True,
+        "no_family_world_coordinates": safety.get("no_family_world_coordinates") is True,
+    }
+
+
+def studio_handoff_status() -> dict[str, Any]:
+    path = studio_runtime_handoff_latest_path()
+    if not path.exists():
+        return {
+            "present": False,
+            "status": "none",
+            "current_health": "unknown",
+            "latest": None,
+        }
+    payload = read_json(path)
+    if not isinstance(payload, dict):
+        return {
+            "present": True,
+            "status": "invalid",
+            "current_health": "fail",
+            "latest": None,
+        }
+    try:
+        latest = summarize_studio_runtime_handoff(payload)
+    except ApiError:
+        return {
+            "present": True,
+            "status": "unsafe",
+            "current_health": "fail",
+            "latest": None,
+        }
+    current_health = (
+        "pass"
+        if latest["status"] == "ready_for_luanti_preview_approval_task"
+        and latest["queue_contract"] == "core.queue_ai_task"
+        and latest["preview_required"]
+        and latest["approval_required"]
+        and latest["rollback_required"]
+        and latest["audit_required"]
+        and latest["execute_after_approval_only"]
+        and latest["world_mutation_authority"] == "luanti"
+        and latest["direct_world_mutation"] is False
+        and latest["public_safe_output"]
+        and latest["no_provider_prompts"]
+        and latest["no_family_world_coordinates"]
+        else "attention"
+    )
+    return {
+        "present": True,
+        "status": latest["status"],
+        "current_health": current_health,
+        "latest": latest,
+    }
+
+
 def submit_studio_nova_plan(payload: dict[str, Any]) -> tuple[HTTPStatus, dict[str, Any]]:
     generated_at = utc_now()
     request_payload = build_studio_model_adapter_request(payload, generated_at=generated_at)
@@ -940,6 +1138,11 @@ def submit_studio_nova_plan(payload: dict[str, Any]) -> tuple[HTTPStatus, dict[s
             "requires_rollback": True,
         },
     }
+    runtime_handoff_artifact = build_studio_runtime_handoff(submission, generated_at)
+    handoff_written = write_studio_runtime_handoff(runtime_handoff_artifact)
+    submission["runtime_handoff"]["handoff_id"] = runtime_handoff_artifact["handoff_id"]
+    submission["runtime_handoff"]["artifact_ref"] = runtime_handoff_artifact["artifact_ref"]
+    submission["runtime_handoff"]["handoff_written"] = handoff_written
     logged = write_studio_submission_log(submission)
     response_status = HTTPStatus.OK if status < 400 and adapter_summary["ok"] else HTTPStatus.BAD_GATEWAY
     result_ok = response_status == HTTPStatus.OK
@@ -956,6 +1159,8 @@ def submit_studio_nova_plan(payload: dict[str, Any]) -> tuple[HTTPStatus, dict[s
         "summary": adapter_summary,
         "runtime_handoff": submission["runtime_handoff"],
         "runtime_handoff_status": submission["runtime_handoff"]["status"],
+        "runtime_handoff_artifact": summarize_studio_runtime_handoff(runtime_handoff_artifact),
+        "runtime_handoff_written": handoff_written,
         "world_mutation_authority": submission["runtime_handoff"]["world_mutation_authority"],
         "submission": submission,
     }

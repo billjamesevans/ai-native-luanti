@@ -650,6 +650,8 @@ function renderLiveStatus(data) {
   const promptEval = data?.prompt_eval || {};
   const adapter = data?.adapter_log || {};
   const runtimeProofs = data?.runtime_proofs || {};
+  const studioHandoff = data?.studio_handoff || {};
+  const latestHandoff = studioHandoff.latest || {};
   const latest = adapter.latest || {};
   const allActive = data?.services_all_active === true;
   const qualityStatus = quality.status || "unknown";
@@ -703,10 +705,14 @@ function renderLiveStatus(data) {
   el.adapterStatus?.classList.toggle("status-warn", !adapterReleaseOk);
   renderAgentTrace(adapter.recent_traces);
 
-  setText(el.latestPlanStatus, latest.selected_option_id || "No selected plan");
+  const latestPlanOption = latestHandoff.selected_option_id || latest.selected_option_id;
+  const latestPlanWrites = latestHandoff.planned_node_writes ?? latest.planned_node_writes ?? 0;
+  setText(el.latestPlanStatus, latestPlanOption || "No selected plan");
   setText(
     el.latestPlanDetail,
-    `authority=${mutationAuthority} · direct mutation=${directMutation ? "true" : "false"}`
+    studioHandoff.present
+      ? `${studioHandoff.status || "handoff"} · ${latestPlanWrites} writes · queued=${latestHandoff.handoff_queued === true ? "true" : "false"}`
+      : `authority=${mutationAuthority} · direct mutation=${directMutation ? "true" : "false"}`
   );
 
   const evalPass = promptEval.current_health === "pass";
@@ -818,6 +824,7 @@ async function submitPlanToNova() {
     const submission = payload.submission || {};
     const adapter = payload.summary || submission.adapter || {};
     const handoff = payload.runtime_handoff || submission.runtime_handoff || {};
+    const handoffArtifact = payload.runtime_handoff_artifact || {};
     state.liveSubmission = payload;
     plan.approval.status = "submitted_to_nova";
     const selected = adapter.selected_option_id || "no option";
@@ -827,7 +834,7 @@ async function submitPlanToNova() {
     updateLiveSubmitStatus(
       status === "ready_for_luanti_preview_approval_task" ? "ok" : "warn",
       `Nova selected ${selected}`,
-      `${writes} writes · ${source} · ${status}`
+      `${writes} writes · ${source} · ${status} · ${handoffArtifact.queue_contract || "handoff"}`
     );
     log("nova.submitted", `Nova returned ${selected} through ${source}. ${status}.`);
     await loadLiveStatus();
