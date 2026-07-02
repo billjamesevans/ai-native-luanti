@@ -75,8 +75,9 @@ Current Pi gate evidence:
 - the Pi-hosted Studio now runs through the bundled `studio/server.py` telemetry
   bridge. `GET /api/status` exposes a public-safe live summary of family/fork/UI
   service health, fork commit/version, quality-gate status, and Agents SDK
-  adapter aggregate activity. It intentionally excludes raw prompts, provider
-  messages, credentials, private paths, and world payloads.
+  adapter aggregate activity. Current adapter health is separated from lifetime
+  historical counts, and the payload intentionally excludes raw prompts,
+  provider messages, credentials, private paths, and world payloads.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,

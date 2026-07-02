@@ -12,7 +12,9 @@ python3 studio/server.py --root . --host 127.0.0.1 --port 8788
 Then open `http://127.0.0.1:8788/studio/`. The bridge exposes `/api/status`
 with public-safe service, fork, quality-gate, and Agents SDK adapter summaries.
 It does not expose raw prompts, provider messages, credentials, private paths,
-or world payloads.
+or world payloads. Adapter summaries separate current gate health from
+historical lifetime counts so old failed probes do not obscure a passing live
+release gate.
 
 This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 

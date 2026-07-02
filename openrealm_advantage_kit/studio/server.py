@@ -7,6 +7,7 @@ import argparse
 import json
 import os
 import subprocess
+from collections import deque
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +22,8 @@ SERVICE_SPECS = {
     "adapter": {"unit": "ai-native-luanti-agents-sdk-adapter.service", "port": 8766},
     "studio": {"unit": "openrealm-studio-ui.service", "port": 8788},
 }
+
+RECENT_ADAPTER_WINDOW = 50
 
 
 def utc_now() -> str:
@@ -146,6 +149,7 @@ def adapter_log_status() -> dict[str, Any]:
     failures = 0
     timeouts = 0
     latest: dict[str, Any] | None = None
+    recent: deque[dict[str, Any]] = deque(maxlen=RECENT_ADAPTER_WINDOW)
     if not path.exists():
         return {
             "present": False,
@@ -153,6 +157,12 @@ def adapter_log_status() -> dict[str, Any]:
             "successes": 0,
             "failures": 0,
             "timeouts": 0,
+            "recent_window_entries": 0,
+            "recent_successes": 0,
+            "recent_failures": 0,
+            "recent_timeouts": 0,
+            "latest_ok": False,
+            "current_health": "unknown",
             "latest": None,
         }
     try:
@@ -175,22 +185,45 @@ def adapter_log_status() -> dict[str, Any]:
                     failures += 1
                 if payload.get("agent_model_timeout"):
                     timeouts += 1
+                recent.append({
+                    "ok": response.get("ok") is True,
+                    "timeout": bool(payload.get("agent_model_timeout")),
+                })
                 latest = summarize_adapter_record(record)
     except OSError:
+        recent_successes = sum(1 for record in recent if record["ok"])
+        recent_timeouts = sum(1 for record in recent if record["timeout"])
+        recent_failures = len(recent) - recent_successes
         return {
             "present": False,
             "total_entries": total,
             "successes": successes,
             "failures": failures,
             "timeouts": timeouts,
+            "recent_window_entries": len(recent),
+            "recent_successes": recent_successes,
+            "recent_failures": recent_failures,
+            "recent_timeouts": recent_timeouts,
+            "latest_ok": bool(latest and latest.get("ok") is True),
+            "current_health": "unknown",
             "latest": latest,
         }
+    recent_successes = sum(1 for record in recent if record["ok"])
+    recent_timeouts = sum(1 for record in recent if record["timeout"])
+    recent_failures = len(recent) - recent_successes
+    latest_ok = bool(latest and latest.get("ok") is True)
     return {
         "present": True,
         "total_entries": total,
         "successes": successes,
         "failures": failures,
         "timeouts": timeouts,
+        "recent_window_entries": len(recent),
+        "recent_successes": recent_successes,
+        "recent_failures": recent_failures,
+        "recent_timeouts": recent_timeouts,
+        "latest_ok": latest_ok,
+        "current_health": "pass" if latest_ok and recent_failures == 0 and recent_timeouts == 0 else "attention",
         "latest": latest,
     }
 

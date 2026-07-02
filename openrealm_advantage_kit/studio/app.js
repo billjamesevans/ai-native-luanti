@@ -407,6 +407,8 @@ function renderLiveStatus(data) {
   const latest = adapter.latest || {};
   const allActive = data?.services_all_active === true;
   const qualityStatus = quality.status || "unknown";
+  const requestLogStatus = quality.request_log_gate_status || "unknown";
+  const adapterCurrentOk = adapter.present && latest.ok === true && qualityStatus === "pass" && requestLogStatus === "pass";
   const mutationAuthority = latest.world_mutation_authority || "luanti";
   const directMutation = latest.direct_world_mutation === true || data?.direct_world_mutation_by_ai === true;
 
@@ -422,23 +424,23 @@ function renderLiveStatus(data) {
   setText(el.qualityStatus, qualityStatus);
   setText(
     el.qualityDetail,
-    `gate ${quality.live_prompt_eval_status || "unknown"} · log ${quality.request_log_gate_status || "unknown"} · ${compactDate(quality.generated_at)}`
+    `gate ${quality.live_prompt_eval_status || "unknown"} · log ${requestLogStatus} · ${compactDate(quality.generated_at)}`
   );
   el.qualityStatus?.classList.toggle("status-ok", qualityStatus === "pass");
   el.qualityStatus?.classList.toggle("status-warn", qualityStatus !== "pass");
 
   setText(
     el.adapterStatus,
-    adapter.present ? `${adapter.successes || 0} successes / ${adapter.failures || 0} failures` : "No log"
+    adapter.present ? (adapterCurrentOk ? "Current pass" : "Needs review") : "No log"
   );
   setText(
     el.adapterDetail,
-    latest.created_at
-      ? `${latest.selected_option_id || "no option"} · ${latest.planned_node_writes || 0} writes · ${latest.tool_count || 0} tools`
+    latest.created_at || latest.selected_option_id
+      ? `${latest.selected_option_id || "no option"} · recent ${adapter.recent_successes || 0}/${adapter.recent_window_entries || 0} · history ${adapter.successes || 0}/${adapter.total_entries || 0}`
       : "No public-safe request summary yet"
   );
-  el.adapterStatus?.classList.toggle("status-ok", adapter.present && (adapter.failures || 0) === 0);
-  el.adapterStatus?.classList.toggle("status-warn", !adapter.present || (adapter.failures || 0) > 0);
+  el.adapterStatus?.classList.toggle("status-ok", adapterCurrentOk);
+  el.adapterStatus?.classList.toggle("status-warn", !adapterCurrentOk);
 
   setText(el.latestPlanStatus, latest.selected_option_id || "No selected plan");
   setText(
