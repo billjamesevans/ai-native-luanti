@@ -23,6 +23,12 @@ world mutation goes through Luanti runtime tasks, rollback records exist, and
 compatibility import stays in disposable/staging worlds without exposing raw
 prompts, private coordinates, provider messages, or copied assets.
 
+The Agent trace panel displays the newest public-safe adapter summaries: selected
+option, tool-decision source, planned write count, required-tool status,
+web-search availability, mutation authority, and a bounded tool-name list. It
+does not display raw player prompts, model messages, provider prompts, secrets,
+private paths, coordinates, or world payloads.
+
 This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 
 1. Prompt Nova.

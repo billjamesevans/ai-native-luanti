@@ -85,6 +85,13 @@ Current Pi gate evidence:
   compatibility import staging proof using only counts, statuses, safety flags,
   and rollback evidence. It does not expose raw prompts, provider messages,
   copied assets, private coordinates, or live family-world mutation data.
+- the Pi-hosted Studio now shows a bounded Agent trace panel from
+  `/api/status`, so the newest Nova decisions are inspectable without opening
+  server logs. The trace exposes selected option ids, tool-decision source,
+  planned writes, required-tool status, web-search availability, mutation
+  authority, and tool names only; raw prompts, model/provider messages,
+  credentials, private paths, coordinates, and world payloads stay out of the
+  public surface.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,

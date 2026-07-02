@@ -36,6 +36,7 @@ const el = {
   planList: document.getElementById("plan-list"),
   metrics: document.getElementById("metrics"),
   audit: document.getElementById("audit"),
+  agentTrace: document.getElementById("agent-trace"),
   recipe: document.getElementById("recipe"),
   risk: document.getElementById("risk"),
   canvas: document.getElementById("world"),
@@ -384,6 +385,15 @@ function setText(target, value, fallback="unknown") {
   target.textContent = safeText(value, fallback);
 }
 
+function escapeHtml(value) {
+  return safeText(value, "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
 function compactDate(value) {
   if (!value) return "no timestamp";
   const date = new Date(value);
@@ -403,6 +413,37 @@ function formatServiceDetail(services) {
     .join(" · ");
 }
 
+function renderAgentTrace(traces) {
+  if (!el.agentTrace) return;
+  if (!Array.isArray(traces) || traces.length === 0) {
+    el.agentTrace.innerHTML = `<div class="trace-empty">No public-safe agent traces loaded.</div>`;
+    return;
+  }
+  el.agentTrace.innerHTML = traces.slice(0, 6).map(trace => {
+    const ok = trace.ok === true;
+    const tools = Array.isArray(trace.tools_enabled) ? trace.tools_enabled.slice(0, 6) : [];
+    const toolList = tools.length
+      ? tools.map(tool => `<span>${escapeHtml(tool)}</span>`).join("")
+      : "<span>no tools listed</span>";
+    const writes = trace.planned_node_writes ?? 0;
+    const elapsed = trace.elapsed_ms ? `${trace.elapsed_ms}ms` : "no timing";
+    const required = trace.required_tool_calls_satisfied === true ? "tools satisfied" : "tools missing";
+    const search = trace.web_search_available === true ? "web search" : "no web search";
+    const authority = trace.world_mutation_authority || "unknown authority";
+    return `
+      <article class="trace-item">
+        <div class="trace-head">
+          <strong>${escapeHtml(trace.selected_option_id || "No selected option")}</strong>
+          <span class="${ok ? "status-ok" : "status-warn"}">${ok ? "ok" : "review"}</span>
+        </div>
+        <div class="trace-meta">${escapeHtml(trace.tool_decision_source || "unknown source")} · ${writes} writes · ${escapeHtml(elapsed)}</div>
+        <div class="trace-meta">${escapeHtml(required)} · ${escapeHtml(search)} · ${escapeHtml(authority)}</div>
+        <div class="tool-row">${toolList}</div>
+      </article>
+    `;
+  }).join("");
+}
+
 function renderLiveStatus(data) {
   const fork = data?.fork || {};
   const services = data?.services || {};
@@ -414,7 +455,7 @@ function renderLiveStatus(data) {
   const allActive = data?.services_all_active === true;
   const qualityStatus = quality.status || "unknown";
   const requestLogStatus = quality.request_log_gate_status || "unknown";
-  const adapterCurrentOk = adapter.present && latest.ok === true && qualityStatus === "pass" && requestLogStatus === "pass";
+  const adapterCurrentOk = adapter.current_health === "pass";
   const mutationAuthority = latest.world_mutation_authority || "luanti";
   const directMutation = latest.direct_world_mutation === true || data?.direct_world_mutation_by_ai === true;
 
@@ -447,6 +488,7 @@ function renderLiveStatus(data) {
   );
   el.adapterStatus?.classList.toggle("status-ok", adapterCurrentOk);
   el.adapterStatus?.classList.toggle("status-warn", !adapterCurrentOk);
+  renderAgentTrace(adapter.recent_traces);
 
   setText(el.latestPlanStatus, latest.selected_option_id || "No selected plan");
   setText(
@@ -500,6 +542,7 @@ function renderLiveStatusUnavailable() {
   setText(el.evalDetail, "No live golden prompt summary loaded");
   setText(el.runtimeProofsStatus, "Unavailable");
   setText(el.runtimeProofsDetail, "No rollback proof summary loaded");
+  renderAgentTrace([]);
 }
 
 async function loadLiveStatus() {

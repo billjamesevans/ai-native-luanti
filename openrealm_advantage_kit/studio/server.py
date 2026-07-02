@@ -24,6 +24,7 @@ SERVICE_SPECS = {
 }
 
 RECENT_ADAPTER_WINDOW = 50
+RECENT_TRACE_LIMIT = 6
 PROMPT_EVAL_CASES = (
     ("build_fire", "Fire"),
     ("fire_only_strict", "Fire only"),
@@ -276,6 +277,7 @@ def adapter_log_status() -> dict[str, Any]:
     timeouts = 0
     latest: dict[str, Any] | None = None
     recent: deque[dict[str, Any]] = deque(maxlen=RECENT_ADAPTER_WINDOW)
+    recent_traces: deque[dict[str, Any]] = deque(maxlen=RECENT_TRACE_LIMIT)
     if not path.exists():
         return {
             "present": False,
@@ -290,6 +292,7 @@ def adapter_log_status() -> dict[str, Any]:
             "latest_ok": False,
             "current_health": "unknown",
             "latest": None,
+            "recent_traces": [],
         }
     try:
         with path.open("r", encoding="utf-8") as handle:
@@ -316,6 +319,7 @@ def adapter_log_status() -> dict[str, Any]:
                     "timeout": bool(payload.get("agent_model_timeout")),
                 })
                 latest = summarize_adapter_record(record)
+                recent_traces.append(latest)
     except OSError:
         recent_successes = sum(1 for record in recent if record["ok"])
         recent_timeouts = sum(1 for record in recent if record["timeout"])
@@ -333,6 +337,7 @@ def adapter_log_status() -> dict[str, Any]:
             "latest_ok": bool(latest and latest.get("ok") is True),
             "current_health": "unknown",
             "latest": latest,
+            "recent_traces": list(reversed(recent_traces)),
         }
     recent_successes = sum(1 for record in recent if record["ok"])
     recent_timeouts = sum(1 for record in recent if record["timeout"])
@@ -351,6 +356,7 @@ def adapter_log_status() -> dict[str, Any]:
         "latest_ok": latest_ok,
         "current_health": "pass" if latest_ok and recent_failures == 0 and recent_timeouts == 0 else "attention",
         "latest": latest,
+        "recent_traces": list(reversed(recent_traces)),
     }
 
 
