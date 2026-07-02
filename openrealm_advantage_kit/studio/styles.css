@@ -335,6 +335,42 @@ select {
   background: var(--danger);
 }
 
+.live-status-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-card {
+  min-height: 118px;
+  padding: 16px;
+  display: grid;
+  align-content: start;
+  gap: 7px;
+}
+
+.status-card strong {
+  display: block;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.status-card span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.status-ok {
+  color: var(--green);
+}
+
+.status-warn {
+  color: var(--yellow);
+}
+
 .hero-grid {
   display: grid;
   grid-template-columns: minmax(330px, 1.05fr) minmax(280px, 0.86fr) minmax(300px, 0.95fr);
@@ -739,7 +775,8 @@ canvas {
 @media (max-width: 1220px) {
   .hero-grid,
   .studio-grid,
-  .bottom-grid {
+  .bottom-grid,
+  .live-status-grid {
     grid-template-columns: 1fr;
   }
 
@@ -781,6 +818,7 @@ canvas {
   .hero-grid,
   .studio-grid,
   .bottom-grid,
+  .live-status-grid,
   .world-strip,
   .creator-panel,
   .assistant-panel,

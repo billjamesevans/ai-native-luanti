@@ -3,7 +3,18 @@
 Open `index.html` in a browser, or serve the parent `openrealm_advantage_kit`
 directory and visit `/studio/`.
 
-This prototype is dependency-free and runs entirely offline. It demonstrates the product loop:
+For live Pi telemetry, serve the Studio through the bundled bridge:
+
+```bash
+python3 studio/server.py --root . --host 127.0.0.1 --port 8788
+```
+
+Then open `http://127.0.0.1:8788/studio/`. The bridge exposes `/api/status`
+with public-safe service, fork, quality-gate, and Agents SDK adapter summaries.
+It does not expose raw prompts, provider messages, credentials, private paths,
+or world payloads.
+
+This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 
 1. Prompt Nova.
 2. Generate a deterministic safe plan.

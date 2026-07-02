@@ -31,8 +31,8 @@
 
       <section class="sidebar-card">
         <p class="label">Pi proving ground</p>
-        <strong>907b393b5</strong>
-        <span>Overnight evidence running</span>
+        <strong id="runtime-commit">907b393b5</strong>
+        <span id="runtime-state">Checking live bridge...</span>
       </section>
 
       <button class="settings-button" type="button"><span class="nav-icon settings"></span>Settings</button>
@@ -50,10 +50,33 @@
           <div class="avatar" aria-hidden="true"></div>
           <div>
             <strong>RealmCrafter</strong>
-            <span>Online</span>
+            <span id="operator-state">Checking runtime</span>
           </div>
         </div>
       </header>
+
+      <section class="live-status-grid" aria-label="Live OpenRealm runtime status">
+        <article class="status-card glass">
+          <p class="label">Services</p>
+          <strong id="services-status">Checking</strong>
+          <span id="services-detail">Waiting for live bridge</span>
+        </article>
+        <article class="status-card glass">
+          <p class="label">Quality Gate</p>
+          <strong id="quality-status">Checking</strong>
+          <span id="quality-detail">Waiting for agent gate</span>
+        </article>
+        <article class="status-card glass">
+          <p class="label">Agents SDK</p>
+          <strong id="adapter-status">Checking</strong>
+          <span id="adapter-detail">Waiting for request log</span>
+        </article>
+        <article class="status-card glass">
+          <p class="label">Latest Plan</p>
+          <strong id="latest-plan-status">Checking</strong>
+          <span id="latest-plan-detail">No live trace loaded</span>
+        </article>
+      </section>
 
       <section class="hero-grid">
         <section class="creator-panel glass">

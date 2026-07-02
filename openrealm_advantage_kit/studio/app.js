@@ -38,7 +38,18 @@ const el = {
   audit: document.getElementById("audit"),
   recipe: document.getElementById("recipe"),
   risk: document.getElementById("risk"),
-  canvas: document.getElementById("world")
+  canvas: document.getElementById("world"),
+  runtimeCommit: document.getElementById("runtime-commit"),
+  runtimeState: document.getElementById("runtime-state"),
+  operatorState: document.getElementById("operator-state"),
+  servicesStatus: document.getElementById("services-status"),
+  servicesDetail: document.getElementById("services-detail"),
+  qualityStatus: document.getElementById("quality-status"),
+  qualityDetail: document.getElementById("quality-detail"),
+  adapterStatus: document.getElementById("adapter-status"),
+  adapterDetail: document.getElementById("adapter-detail"),
+  latestPlanStatus: document.getElementById("latest-plan-status"),
+  latestPlanDetail: document.getElementById("latest-plan-detail")
 };
 
 function hashText(text) {
@@ -359,6 +370,112 @@ function log(event, message) {
   el.audit.innerHTML = state.audit.slice(0, 8).map(a => `<div class="audit-item"><strong>${a.event}</strong> ${a.time}<br>${a.message}</div>`).join("");
 }
 
+function safeText(value, fallback="unknown") {
+  if (value === null || value === undefined || value === "") return fallback;
+  return String(value);
+}
+
+function setText(target, value, fallback="unknown") {
+  if (!target) return;
+  target.textContent = safeText(value, fallback);
+}
+
+function compactDate(value) {
+  if (!value) return "no timestamp";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return safeText(value);
+  return date.toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function formatServiceDetail(services) {
+  if (!services || typeof services !== "object") return "No service data";
+  return ["family", "fork", "adapter", "studio"]
+    .map(name => `${name} ${services[name]?.status || "unknown"}`)
+    .join(" · ");
+}
+
+function renderLiveStatus(data) {
+  const fork = data?.fork || {};
+  const services = data?.services || {};
+  const quality = data?.quality_gate || {};
+  const adapter = data?.adapter_log || {};
+  const latest = adapter.latest || {};
+  const allActive = data?.services_all_active === true;
+  const qualityStatus = quality.status || "unknown";
+  const mutationAuthority = latest.world_mutation_authority || "luanti";
+  const directMutation = latest.direct_world_mutation === true || data?.direct_world_mutation_by_ai === true;
+
+  setText(el.runtimeCommit, fork.commit || "local");
+  setText(el.runtimeState, allActive ? "Live: services active" : "Live: attention needed");
+  setText(el.operatorState, data?.live_bridge ? "Live bridge" : "Local");
+
+  setText(el.servicesStatus, allActive ? "All active" : "Attention");
+  setText(el.servicesDetail, formatServiceDetail(services));
+  el.servicesStatus?.classList.toggle("status-ok", allActive);
+  el.servicesStatus?.classList.toggle("status-warn", !allActive);
+
+  setText(el.qualityStatus, qualityStatus);
+  setText(
+    el.qualityDetail,
+    `gate ${quality.live_prompt_eval_status || "unknown"} · log ${quality.request_log_gate_status || "unknown"} · ${compactDate(quality.generated_at)}`
+  );
+  el.qualityStatus?.classList.toggle("status-ok", qualityStatus === "pass");
+  el.qualityStatus?.classList.toggle("status-warn", qualityStatus !== "pass");
+
+  setText(
+    el.adapterStatus,
+    adapter.present ? `${adapter.successes || 0} successes / ${adapter.failures || 0} failures` : "No log"
+  );
+  setText(
+    el.adapterDetail,
+    latest.created_at
+      ? `${latest.selected_option_id || "no option"} · ${latest.planned_node_writes || 0} writes · ${latest.tool_count || 0} tools`
+      : "No public-safe request summary yet"
+  );
+  el.adapterStatus?.classList.toggle("status-ok", adapter.present && (adapter.failures || 0) === 0);
+  el.adapterStatus?.classList.toggle("status-warn", !adapter.present || (adapter.failures || 0) > 0);
+
+  setText(el.latestPlanStatus, latest.selected_option_id || "No selected plan");
+  setText(
+    el.latestPlanDetail,
+    `authority=${mutationAuthority} · direct mutation=${directMutation ? "true" : "false"}`
+  );
+}
+
+function renderLiveStatusUnavailable() {
+  setText(el.runtimeState, "Local static mode");
+  setText(el.operatorState, "Local");
+  setText(el.servicesStatus, "Offline");
+  setText(el.servicesDetail, "Serve with studio/server.py for Pi telemetry");
+  setText(el.qualityStatus, "Unavailable");
+  setText(el.qualityDetail, "No live bridge response");
+  setText(el.adapterStatus, "Unavailable");
+  setText(el.adapterDetail, "No Agents SDK summary loaded");
+  setText(el.latestPlanStatus, "Local planner");
+  setText(el.latestPlanDetail, "Browser-only preview and export mode");
+}
+
+async function loadLiveStatus() {
+  if (window.location.protocol === "file:") {
+    renderLiveStatusUnavailable();
+    return;
+  }
+  try {
+    const response = await fetch("/api/status", {cache: "no-store"});
+    if (!response.ok) throw new Error(`status ${response.status}`);
+    const data = await response.json();
+    if (data?.public_safe !== true || data?.live_bridge !== true) throw new Error("unsafe status payload");
+    renderLiveStatus(data);
+  } catch {
+    renderLiveStatusUnavailable();
+  }
+}
+
 function approvePlan() {
   const plan = state.pendingPlan;
   if (!plan || plan.safety.status !== "ready") return;
@@ -486,3 +603,5 @@ el.exportLua.addEventListener("click", () => state.pendingPlan && exportBlob("op
 state.pendingPlan = createPlan(el.prompt.value);
 log("studio.ready", "Local Nova planner loaded. Generate a plan, preview it, approve it, and undo it.");
 updateUI();
+loadLiveStatus();
+window.setInterval(loadLiveStatus, 30000);
