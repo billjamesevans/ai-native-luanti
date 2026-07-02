@@ -105,7 +105,8 @@ python3 util/ai_native_low_power_pi_evidence.py \
 The command creates a temporary null-video client config on the remote checkout,
 runs the remote low-power verifier with a `bin/luanti` headless-client command
 and `--require-headless-player-probe`, reads its machine-readable manifest,
-verifies the side-by-side service boundary, and writes:
+verifies the side-by-side service boundary, reads the loopback OpenRealm Studio
+`/api/status` summary, and writes:
 
 ```text
 local/benchmarks/low-power-server/<date>/<commit>/pi-low-power-evidence.json
@@ -117,8 +118,22 @@ clean-profile workload status, `headless_client_load` player-load probe status,
 at least two attempted/connected synthetic players, join-log latency proxy evidence,
 `ai_runtime_scale_gate` status,
 compatibility import staging-pilot status, ranked follow-up issue seeds, soak
-target duration evidence, and the expected port split: family server on UDP
-`30000`, fork test service on UDP `30001`.
+target duration evidence, OpenRealm Studio/Nova health, and the expected port
+split: family server on UDP `30000`, fork test service on UDP `30001`.
+
+The Studio/Nova section is intentionally bounded. It retains public-safe status
+booleans, pass/fail health, golden-prompt counts, live-review counts, latest
+adapter release health, tool-use booleans, web-search availability, planned node
+write counts, and runtime proof health. It does not retain raw request logs,
+provider prompts, credentials, private paths, copied assets, or family-world
+coordinates.
+
+The manifest fails if Studio status is unavailable, not public-safe, reports
+inactive live services, disables the live bridge, allows direct AI world
+mutation, or reports non-passing quality, live review, prompt-eval, adapter
+release, or runtime-proof health. Historical adapter failures may remain visible
+as counts; promotion uses `adapter_log.release_health` so a repaired latest
+Agents SDK trace can pass without hiding prior evidence.
 
 ## Soak Targets
 
@@ -171,7 +186,8 @@ promotion requires the one-hour target before the overnight lane is meaningful.
 The evidence manifest must not retain the SSH target, remote checkout path,
 private hostnames, private IPs, provider prompts, copied assets, family-world
 content, or showcase names. It records only public-safe service roles, ports,
-status booleans, logical artifact paths, and sanitized verifier summaries.
+status booleans, logical artifact paths, sanitized verifier summaries, and
+bounded Studio/Nova health summaries.
 
 This command does not deploy, restart, or mutate services. It starts only a
 disposable verifier server and disposable synthetic client processes on the Pi

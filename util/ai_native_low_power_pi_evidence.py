@@ -195,6 +195,8 @@ def remote_service_command(args) -> str:
             f"fork_commit=$(git -C {shlex.quote(args.remote_repo)} rev-parse --short HEAD 2>/dev/null || true)",
             f"fork_restart_count=$(systemctl show {shlex.quote(args.fork_service)} -p NRestarts --value 2>/dev/null || true)",
             f"fork_active_enter_timestamp=$(systemctl show {shlex.quote(args.fork_service)} -p ActiveEnterTimestamp --value 2>/dev/null || true)",
+            f"studio_status_url={shlex.quote(args.studio_status_url)}",
+            f"studio_status_timeout={shlex.quote(str(args.studio_status_timeout))}",
             'printf "family_service_active=%s\\n" "$family_status"',
             'printf "fork_service_active=%s\\n" "$fork_status"',
             'printf "family_udp_listening=%s\\n" "$family_udp"',
@@ -203,6 +205,101 @@ def remote_service_command(args) -> str:
             'printf "fork_commit=%s\\n" "$fork_commit"',
             'printf "fork_restart_count=%s\\n" "${fork_restart_count:-unknown}"',
             'printf "fork_active_enter_timestamp=%s\\n" "${fork_active_enter_timestamp:-unknown}"',
+            "python3 - \"$studio_status_url\" \"$studio_status_timeout\" <<'PY'",
+            "import json",
+            "import sys",
+            "import urllib.request",
+            "",
+            "url = sys.argv[1]",
+            "timeout = float(sys.argv[2])",
+            "",
+            "def value_at(payload, *path):",
+            "    current = payload",
+            "    for key in path:",
+            "        if not isinstance(current, dict):",
+            "            return None",
+            "        current = current.get(key)",
+            "    return current",
+            "",
+            "def emit(key, value):",
+            "    if isinstance(value, bool):",
+            "        value = 'true' if value else 'false'",
+            "    elif value is None:",
+            "        value = ''",
+            "    print(f'studio_{key}={value}')",
+            "",
+            "try:",
+            "    with urllib.request.urlopen(url, timeout=timeout) as response:",
+            "        status = json.load(response)",
+            "except Exception:",
+            "    emit('status_present', False)",
+            "    emit('status_health', 'unavailable')",
+            "else:",
+            "    emit('status_present', isinstance(status, dict))",
+            "    emit('status_health', 'available')",
+            "    emit('schema_version', value_at(status, 'schema_version'))",
+            "    emit('public_safe', value_at(status, 'public_safe'))",
+            "    emit('live_bridge', value_at(status, 'live_bridge'))",
+            "    emit('direct_world_mutation_by_ai', value_at(status, 'direct_world_mutation_by_ai'))",
+            "    emit('services_all_active', value_at(status, 'services_all_active'))",
+            "    emit('quality_gate_status', value_at(status, 'quality_gate', 'status'))",
+            "    emit('quality_gate_attention_total', value_at(status, 'quality_gate', 'attention_total'))",
+            "    emit('quality_gate_violations_total', value_at(status, 'quality_gate', 'violations_total'))",
+            "    emit('quality_gate_live_prompt_eval_status', value_at(status, 'quality_gate', 'live_prompt_eval_status'))",
+            "    emit('quality_gate_live_review_gate_health', value_at(status, 'quality_gate', 'live_review_gate_health'))",
+            "    emit('live_review_gate_status', value_at(status, 'live_review_gate', 'status'))",
+            "    emit('live_review_gate_health', value_at(status, 'live_review_gate', 'current_health'))",
+            "    emit('live_review_gate_source_trace_id', value_at(status, 'live_review_gate', 'source_trace_id'))",
+            "    emit('live_review_gate_selected_option_id', value_at(status, 'live_review_gate', 'selected_option_id'))",
+            "    emit('live_review_gate_checks_passed', value_at(status, 'live_review_gate', 'checks_passed'))",
+            "    emit('live_review_gate_checks_total', value_at(status, 'live_review_gate', 'checks_total'))",
+            "    emit('live_review_gate_violations_total', value_at(status, 'live_review_gate', 'violations_total'))",
+            "    emit('live_review_gate_public_safe_output', value_at(status, 'live_review_gate', 'public_safe_output'))",
+            "    emit('live_review_gate_unsafe_payload_rejected', value_at(status, 'live_review_gate', 'unsafe_payload_rejected'))",
+            "    emit('live_review_gate_no_world_mutation', value_at(status, 'live_review_gate', 'safety', 'no_world_mutation'))",
+            "    emit('live_review_gate_no_raw_assets', value_at(status, 'live_review_gate', 'safety', 'no_raw_assets'))",
+            "    emit('live_review_gate_no_provider_prompts', value_at(status, 'live_review_gate', 'safety', 'no_provider_prompts'))",
+            "    emit('live_review_gate_no_family_world_coordinates', value_at(status, 'live_review_gate', 'safety', 'no_family_world_coordinates'))",
+            "    emit('prompt_eval_health', value_at(status, 'prompt_eval', 'current_health'))",
+            "    emit('prompt_eval_status', value_at(status, 'prompt_eval', 'status'))",
+            "    emit('prompt_eval_cases_total', value_at(status, 'prompt_eval', 'cases_total'))",
+            "    emit('prompt_eval_cases_passed', value_at(status, 'prompt_eval', 'cases_passed'))",
+            "    emit('prompt_eval_cases_failed', value_at(status, 'prompt_eval', 'cases_failed'))",
+            "    emit('prompt_eval_golden_prompts_total', value_at(status, 'prompt_eval', 'golden_prompts_total'))",
+            "    emit('prompt_eval_golden_prompts_passed', value_at(status, 'prompt_eval', 'golden_prompts_passed'))",
+            "    emit('prompt_eval_golden_prompts_failed', value_at(status, 'prompt_eval', 'golden_prompts_failed'))",
+            "    emit('prompt_eval_agentic_tool_cases', value_at(status, 'prompt_eval', 'agentic_tool_cases'))",
+            "    emit('prompt_eval_agentic_tool_cases_required', value_at(status, 'prompt_eval', 'agentic_tool_cases_required'))",
+            "    emit('adapter_present', value_at(status, 'adapter_log', 'present'))",
+            "    emit('adapter_release_health', value_at(status, 'adapter_log', 'release_health'))",
+            "    emit('adapter_current_health', value_at(status, 'adapter_log', 'current_health'))",
+            "    emit('adapter_recent_window_health', value_at(status, 'adapter_log', 'recent_window_health'))",
+            "    emit('adapter_history_health', value_at(status, 'adapter_log', 'history_health'))",
+            "    emit('adapter_latest_ok', value_at(status, 'adapter_log', 'latest_ok'))",
+            "    emit('adapter_recent_window_entries', value_at(status, 'adapter_log', 'recent_window_entries'))",
+            "    emit('adapter_recent_successes', value_at(status, 'adapter_log', 'recent_successes'))",
+            "    emit('adapter_recent_failures', value_at(status, 'adapter_log', 'recent_failures'))",
+            "    emit('adapter_recent_timeouts', value_at(status, 'adapter_log', 'recent_timeouts'))",
+            "    emit('adapter_failures', value_at(status, 'adapter_log', 'failures'))",
+            "    emit('adapter_timeouts', value_at(status, 'adapter_log', 'timeouts'))",
+            "    emit('adapter_latest_source_trace_id', value_at(status, 'adapter_log', 'latest', 'source_trace_id'))",
+            "    emit('adapter_latest_selected_option_id', value_at(status, 'adapter_log', 'latest', 'selected_option_id'))",
+            "    emit('adapter_latest_tool_count', value_at(status, 'adapter_log', 'latest', 'tool_count'))",
+            "    emit('adapter_latest_planned_node_writes', value_at(status, 'adapter_log', 'latest', 'planned_node_writes'))",
+            "    emit('adapter_latest_web_search_available', value_at(status, 'adapter_log', 'latest', 'web_search_available'))",
+            "    emit('adapter_latest_agentic_execution', value_at(status, 'adapter_log', 'latest', 'agentic_execution'))",
+            "    emit('adapter_latest_required_tool_calls_satisfied', value_at(status, 'adapter_log', 'latest', 'required_tool_calls_satisfied'))",
+            "    emit('adapter_latest_world_mutation_authority', value_at(status, 'adapter_log', 'latest', 'world_mutation_authority'))",
+            "    emit('adapter_latest_direct_world_mutation', value_at(status, 'adapter_log', 'latest', 'direct_world_mutation'))",
+            "    emit('runtime_proofs_health', value_at(status, 'runtime_proofs', 'current_health'))",
+            "    emit('runtime_proofs_nova_status', value_at(status, 'runtime_proofs', 'nova_auto_apply', 'status'))",
+            "    emit('runtime_proofs_nova_cases_total', value_at(status, 'runtime_proofs', 'nova_auto_apply', 'cases_total'))",
+            "    emit('runtime_proofs_nova_cases_passed', value_at(status, 'runtime_proofs', 'nova_auto_apply', 'cases_passed'))",
+            "    emit('runtime_proofs_nova_cases_failed', value_at(status, 'runtime_proofs', 'nova_auto_apply', 'cases_failed'))",
+            "    emit('runtime_proofs_compat_status', value_at(status, 'runtime_proofs', 'compat_import', 'status'))",
+            "    emit('runtime_proofs_compat_refusal_gates_passed', value_at(status, 'runtime_proofs', 'compat_import', 'refusal_gates_passed'))",
+            "    emit('runtime_proofs_compat_refusal_gates_total', value_at(status, 'runtime_proofs', 'compat_import', 'refusal_gates_total'))",
+            "PY",
         ]
     )
 
@@ -235,6 +332,25 @@ def integer(value):
     if parsed is None:
         return None
     return int(parsed)
+
+
+def boolean(value):
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes"}:
+            return True
+        if normalized in {"false", "0", "no"}:
+            return False
+    return None
+
+
+def field_text(values: dict[str, str], key: str, default: str = "unknown") -> str:
+    value = values.get(key)
+    if value in {None, ""}:
+        return default
+    return sanitize_text(value)
 
 
 def soak_target_config(args) -> dict:
@@ -340,6 +456,164 @@ def runtime_evidence(remote_manifest: dict) -> dict:
         "compat_import_mapblock_churn": compat.get("compat_import_mapblock_churn"),
         "compat_import_refusal_gates": compat.get("compat_import_refusal_gates"),
         "failure_count": len(remote_manifest.get("failure_reasons") or []),
+    }
+
+
+def studio_status_evidence(service_values: dict[str, str]) -> dict:
+    return {
+        "present": boolean(service_values.get("studio_status_present")) is True,
+        "health": field_text(service_values, "studio_status_health"),
+        "schema_version": integer(service_values.get("studio_schema_version")),
+        "public_safe": boolean(service_values.get("studio_public_safe")),
+        "live_bridge": boolean(service_values.get("studio_live_bridge")),
+        "direct_world_mutation_by_ai": boolean(
+            service_values.get("studio_direct_world_mutation_by_ai")
+        ),
+        "services_all_active": boolean(service_values.get("studio_services_all_active")),
+        "quality_gate": {
+            "status": field_text(service_values, "studio_quality_gate_status"),
+            "attention_total": integer(service_values.get("studio_quality_gate_attention_total")),
+            "violations_total": integer(service_values.get("studio_quality_gate_violations_total")),
+            "live_prompt_eval_status": field_text(
+                service_values,
+                "studio_quality_gate_live_prompt_eval_status",
+            ),
+            "live_review_gate_health": field_text(
+                service_values,
+                "studio_quality_gate_live_review_gate_health",
+            ),
+        },
+        "live_review_gate": {
+            "status": field_text(service_values, "studio_live_review_gate_status"),
+            "current_health": field_text(service_values, "studio_live_review_gate_health"),
+            "source_trace_id": field_text(
+                service_values,
+                "studio_live_review_gate_source_trace_id",
+                default="",
+            ),
+            "selected_option_id": field_text(
+                service_values,
+                "studio_live_review_gate_selected_option_id",
+                default="",
+            ),
+            "checks_passed": integer(service_values.get("studio_live_review_gate_checks_passed")),
+            "checks_total": integer(service_values.get("studio_live_review_gate_checks_total")),
+            "violations_total": integer(
+                service_values.get("studio_live_review_gate_violations_total")
+            ),
+            "public_safe_output": boolean(
+                service_values.get("studio_live_review_gate_public_safe_output")
+            ),
+            "unsafe_payload_rejected": boolean(
+                service_values.get("studio_live_review_gate_unsafe_payload_rejected")
+            ),
+            "no_world_mutation": boolean(
+                service_values.get("studio_live_review_gate_no_world_mutation")
+            ),
+            "no_raw_assets": boolean(service_values.get("studio_live_review_gate_no_raw_assets")),
+            "no_provider_prompts": boolean(
+                service_values.get("studio_live_review_gate_no_provider_prompts")
+            ),
+            "no_family_world_coordinates": boolean(
+                service_values.get("studio_live_review_gate_no_family_world_coordinates")
+            ),
+        },
+        "prompt_eval": {
+            "current_health": field_text(service_values, "studio_prompt_eval_health"),
+            "status": field_text(service_values, "studio_prompt_eval_status"),
+            "cases_total": integer(service_values.get("studio_prompt_eval_cases_total")),
+            "cases_passed": integer(service_values.get("studio_prompt_eval_cases_passed")),
+            "cases_failed": integer(service_values.get("studio_prompt_eval_cases_failed")),
+            "golden_prompts_total": integer(
+                service_values.get("studio_prompt_eval_golden_prompts_total")
+            ),
+            "golden_prompts_passed": integer(
+                service_values.get("studio_prompt_eval_golden_prompts_passed")
+            ),
+            "golden_prompts_failed": integer(
+                service_values.get("studio_prompt_eval_golden_prompts_failed")
+            ),
+            "agentic_tool_cases": integer(
+                service_values.get("studio_prompt_eval_agentic_tool_cases")
+            ),
+            "agentic_tool_cases_required": integer(
+                service_values.get("studio_prompt_eval_agentic_tool_cases_required")
+            ),
+        },
+        "adapter_log": {
+            "present": boolean(service_values.get("studio_adapter_present")),
+            "release_health": field_text(service_values, "studio_adapter_release_health"),
+            "current_health": field_text(service_values, "studio_adapter_current_health"),
+            "recent_window_health": field_text(
+                service_values,
+                "studio_adapter_recent_window_health",
+            ),
+            "history_health": field_text(service_values, "studio_adapter_history_health"),
+            "latest_ok": boolean(service_values.get("studio_adapter_latest_ok")),
+            "recent_window_entries": integer(
+                service_values.get("studio_adapter_recent_window_entries")
+            ),
+            "recent_successes": integer(service_values.get("studio_adapter_recent_successes")),
+            "recent_failures": integer(service_values.get("studio_adapter_recent_failures")),
+            "recent_timeouts": integer(service_values.get("studio_adapter_recent_timeouts")),
+            "failures": integer(service_values.get("studio_adapter_failures")),
+            "timeouts": integer(service_values.get("studio_adapter_timeouts")),
+            "latest": {
+                "source_trace_id": field_text(
+                    service_values,
+                    "studio_adapter_latest_source_trace_id",
+                    default="",
+                ),
+                "selected_option_id": field_text(
+                    service_values,
+                    "studio_adapter_latest_selected_option_id",
+                    default="",
+                ),
+                "tool_count": integer(service_values.get("studio_adapter_latest_tool_count")),
+                "planned_node_writes": integer(
+                    service_values.get("studio_adapter_latest_planned_node_writes")
+                ),
+                "web_search_available": boolean(
+                    service_values.get("studio_adapter_latest_web_search_available")
+                ),
+                "agentic_execution": boolean(
+                    service_values.get("studio_adapter_latest_agentic_execution")
+                ),
+                "required_tool_calls_satisfied": boolean(
+                    service_values.get("studio_adapter_latest_required_tool_calls_satisfied")
+                ),
+                "world_mutation_authority": field_text(
+                    service_values,
+                    "studio_adapter_latest_world_mutation_authority",
+                ),
+                "direct_world_mutation": boolean(
+                    service_values.get("studio_adapter_latest_direct_world_mutation")
+                ),
+            },
+        },
+        "runtime_proofs": {
+            "current_health": field_text(service_values, "studio_runtime_proofs_health"),
+            "nova_status": field_text(service_values, "studio_runtime_proofs_nova_status"),
+            "nova_cases_total": integer(
+                service_values.get("studio_runtime_proofs_nova_cases_total")
+            ),
+            "nova_cases_passed": integer(
+                service_values.get("studio_runtime_proofs_nova_cases_passed")
+            ),
+            "nova_cases_failed": integer(
+                service_values.get("studio_runtime_proofs_nova_cases_failed")
+            ),
+            "compat_status": field_text(
+                service_values,
+                "studio_runtime_proofs_compat_status",
+            ),
+            "compat_refusal_gates_passed": integer(
+                service_values.get("studio_runtime_proofs_compat_refusal_gates_passed")
+            ),
+            "compat_refusal_gates_total": integer(
+                service_values.get("studio_runtime_proofs_compat_refusal_gates_total")
+            ),
+        },
     }
 
 
@@ -499,6 +773,56 @@ def ranked_follow_up_issues(failures: list[str]) -> list[dict]:
             "Compatibility staging pilot failed during Pi evidence run",
             "Keep compatibility apply expansion gated until the pilot passes.",
         ),
+        "studio_status_unavailable": (
+            "P1",
+            "OpenRealm Studio status was unavailable during Pi evidence capture",
+            "Restore the Studio UI service or its loopback /api/status endpoint before promotion.",
+        ),
+        "studio_status_not_public_safe": (
+            "P0",
+            "OpenRealm Studio status was not public-safe",
+            "Block promotion until the Studio status payload excludes private paths, prompts, credentials, and copied assets.",
+        ),
+        "studio_services_not_all_active": (
+            "P1",
+            "OpenRealm Studio reported an inactive live service",
+            "Check the family, fork, adapter, and Studio services before the next evidence run.",
+        ),
+        "studio_live_bridge_not_available": (
+            "P1",
+            "OpenRealm Studio live bridge was not available",
+            "Restore the live telemetry bridge so the UI proves current runtime state.",
+        ),
+        "studio_direct_world_mutation_enabled": (
+            "P0",
+            "Studio status allowed direct AI world mutation",
+            "Keep AI output behind preview, approval, task execution, audit, and rollback.",
+        ),
+        "studio_quality_gate_not_pass": (
+            "P1",
+            "OpenRealm quality gate did not pass",
+            "Review the quality gate artifact and fix violations before promotion.",
+        ),
+        "studio_live_review_gate_not_pass": (
+            "P1",
+            "OpenRealm live review gate did not pass",
+            "Rerun or repair the latest public-safe live review packet and approval gate.",
+        ),
+        "studio_prompt_eval_not_pass": (
+            "P1",
+            "OpenRealm prompt evaluation did not pass",
+            "Fix the Nova golden prompt or live prompt-eval regression before promotion.",
+        ),
+        "studio_adapter_release_not_pass": (
+            "P1",
+            "Agents SDK adapter release health did not pass",
+            "Repair the latest adapter trace so Nova uses tool-backed agentic execution without direct world mutation.",
+        ),
+        "studio_runtime_proofs_not_pass": (
+            "P1",
+            "Runtime proof bundle did not pass",
+            "Refresh Nova apply/rollback and compatibility staging proofs before promotion.",
+        ),
     }
     ranked = []
     for reason in failures:
@@ -567,6 +891,7 @@ def build_manifest(
             },
         },
         "runtime_verification_evidence": runtime_evidence(remote_manifest),
+        "studio_status_evidence": studio_status_evidence(service_values),
         "soak_evidence": soak_evidence,
         "backup_evidence": backup_evidence(args),
         "run_context": {
@@ -655,6 +980,28 @@ def build_manifest(
     fork_commit = manifest["service_boundary"]["fork_test_service"]["commit"]
     if fork_commit not in {"", "unknown"} and commit not in {"", "unknown"} and fork_commit != commit:
         failures.append("fork_commit_mismatch")
+
+    studio = manifest["studio_status_evidence"]
+    if studio["present"] is not True:
+        failures.append("studio_status_unavailable")
+    if studio["public_safe"] is not True:
+        failures.append("studio_status_not_public_safe")
+    if studio["services_all_active"] is not True:
+        failures.append("studio_services_not_all_active")
+    if studio["live_bridge"] is not True:
+        failures.append("studio_live_bridge_not_available")
+    if studio["direct_world_mutation_by_ai"] is not False:
+        failures.append("studio_direct_world_mutation_enabled")
+    if studio["quality_gate"]["status"] != "pass":
+        failures.append("studio_quality_gate_not_pass")
+    if studio["live_review_gate"]["current_health"] != "pass":
+        failures.append("studio_live_review_gate_not_pass")
+    if studio["prompt_eval"]["current_health"] != "pass":
+        failures.append("studio_prompt_eval_not_pass")
+    if studio["adapter_log"]["release_health"] != "pass":
+        failures.append("studio_adapter_release_not_pass")
+    if studio["runtime_proofs"]["current_health"] != "pass":
+        failures.append("studio_runtime_proofs_not_pass")
 
     maxima = soak_evidence["resource_maxima"]
     if number(maxima.get("avg_process_cpu_percent")) is None:
@@ -771,6 +1118,8 @@ def parse_args(argv=None):
     parser.add_argument("--remote-server-bin", default="/opt/ai-native-luanti/src/bin/luantiserver")
     parser.add_argument("--remote-client-bin", default="bin/luanti")
     parser.add_argument("--remote-client-config-prefix", default="/tmp/ai-native-headless-client.XXXXXX")
+    parser.add_argument("--studio-status-url", default="http://127.0.0.1:8788/api/status")
+    parser.add_argument("--studio-status-timeout", type=float, default=4.0)
     parser.add_argument("--family-service", default="luanti-family.service")
     parser.add_argument("--fork-service", default="ai-native-luanti-test.service")
     parser.add_argument("--family-port", type=int, default=30000)

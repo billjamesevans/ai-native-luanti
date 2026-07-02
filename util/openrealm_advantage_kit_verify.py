@@ -168,6 +168,10 @@ PRIVATE_BOUNDARY_PATTERNS = (
     "192.168.",
 )
 
+PRIVATE_BOUNDARY_GUARD_BLOCKS = {
+    "openrealm_advantage_kit/studio/server.py": "PRIVATE_PATTERNS = (",
+}
+
 SKIP_TEXT_EXTS = {
     ".png",
     ".jpg",
@@ -212,6 +216,34 @@ def text_files(root: pathlib.Path) -> list[pathlib.Path]:
             continue
         files.append(path)
     return sorted(files)
+
+
+def private_boundary_matches(root: pathlib.Path) -> list[dict]:
+    matches = []
+    for path in text_files(root):
+        rel = path.relative_to(root).as_posix()
+        guard_start = PRIVATE_BOUNDARY_GUARD_BLOCKS.get(rel)
+        in_guard_block = False
+        for line_number, line in enumerate(
+            path.read_text(encoding="utf-8", errors="ignore").splitlines(),
+            start=1,
+        ):
+            stripped = line.strip()
+            if guard_start and stripped.startswith(guard_start):
+                in_guard_block = True
+                continue
+            if in_guard_block:
+                if stripped == ")":
+                    in_guard_block = False
+                continue
+            for pattern in PRIVATE_BOUNDARY_PATTERNS:
+                if pattern in line:
+                    matches.append({
+                        "path": rel,
+                        "line": line_number,
+                        "pattern": pattern,
+                    })
+    return matches
 
 
 def run_command(command: list[str], *, cwd: pathlib.Path) -> dict:
@@ -380,15 +412,7 @@ def build_report(
                 "forbidden_phrases": forbidden,
             })
 
-    private_matches = []
-    for path in text_files(root):
-        body = path.read_text(encoding="utf-8", errors="ignore")
-        for pattern in PRIVATE_BOUNDARY_PATTERNS:
-            if pattern in body:
-                private_matches.append({
-                    "path": path.relative_to(root).as_posix(),
-                    "pattern": pattern,
-                })
+    private_matches = private_boundary_matches(root)
     if private_matches:
         violations.append({
             "kind": "private_boundary_pattern_in_kit",

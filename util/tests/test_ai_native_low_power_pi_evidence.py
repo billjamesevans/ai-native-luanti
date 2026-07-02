@@ -124,8 +124,76 @@ class FakeRunner:
                 "fork_active_enter_timestamp=Mon 2026-06-29 10:00:00 UTC",
                 "raw_private_path=/opt/ai-native-luanti/src/bin/luantiserver",
                 "raw_private_target=minecraftpi.home 192.168.230.60",
-            ]
+            ] + self.default_studio_status_lines()
         )
+
+    def default_studio_status_lines(self):
+        return [
+            "studio_status_present=true",
+            "studio_status_health=available",
+            "studio_schema_version=1",
+            "studio_public_safe=true",
+            "studio_live_bridge=true",
+            "studio_direct_world_mutation_by_ai=false",
+            "studio_services_all_active=true",
+            "studio_quality_gate_status=pass",
+            "studio_quality_gate_attention_total=0",
+            "studio_quality_gate_violations_total=0",
+            "studio_quality_gate_live_prompt_eval_status=pass",
+            "studio_quality_gate_live_review_gate_health=pass",
+            "studio_live_review_gate_status=pass",
+            "studio_live_review_gate_health=pass",
+            "studio_live_review_gate_source_trace_id=nova_trace:11",
+            "studio_live_review_gate_selected_option_id=fire",
+            "studio_live_review_gate_checks_passed=3",
+            "studio_live_review_gate_checks_total=3",
+            "studio_live_review_gate_violations_total=0",
+            "studio_live_review_gate_public_safe_output=true",
+            "studio_live_review_gate_unsafe_payload_rejected=false",
+            "studio_live_review_gate_no_world_mutation=true",
+            "studio_live_review_gate_no_raw_assets=true",
+            "studio_live_review_gate_no_provider_prompts=true",
+            "studio_live_review_gate_no_family_world_coordinates=true",
+            "studio_prompt_eval_health=pass",
+            "studio_prompt_eval_status=pass",
+            "studio_prompt_eval_cases_total=12",
+            "studio_prompt_eval_cases_passed=12",
+            "studio_prompt_eval_cases_failed=0",
+            "studio_prompt_eval_golden_prompts_total=9",
+            "studio_prompt_eval_golden_prompts_passed=9",
+            "studio_prompt_eval_golden_prompts_failed=0",
+            "studio_prompt_eval_agentic_tool_cases=10",
+            "studio_prompt_eval_agentic_tool_cases_required=10",
+            "studio_adapter_present=true",
+            "studio_adapter_release_health=pass",
+            "studio_adapter_current_health=attention",
+            "studio_adapter_recent_window_health=attention",
+            "studio_adapter_history_health=attention",
+            "studio_adapter_latest_ok=true",
+            "studio_adapter_recent_window_entries=50",
+            "studio_adapter_recent_successes=49",
+            "studio_adapter_recent_failures=1",
+            "studio_adapter_recent_timeouts=0",
+            "studio_adapter_failures=29",
+            "studio_adapter_timeouts=35",
+            "studio_adapter_latest_source_trace_id=nova_trace:9",
+            "studio_adapter_latest_selected_option_id=generated_openrealm_lakeside_village",
+            "studio_adapter_latest_tool_count=9",
+            "studio_adapter_latest_planned_node_writes=96",
+            "studio_adapter_latest_web_search_available=true",
+            "studio_adapter_latest_agentic_execution=true",
+            "studio_adapter_latest_required_tool_calls_satisfied=true",
+            "studio_adapter_latest_world_mutation_authority=luanti",
+            "studio_adapter_latest_direct_world_mutation=false",
+            "studio_runtime_proofs_health=pass",
+            "studio_runtime_proofs_nova_status=pass",
+            "studio_runtime_proofs_nova_cases_total=3",
+            "studio_runtime_proofs_nova_cases_passed=3",
+            "studio_runtime_proofs_nova_cases_failed=0",
+            "studio_runtime_proofs_compat_status=pass",
+            "studio_runtime_proofs_compat_refusal_gates_passed=4",
+            "studio_runtime_proofs_compat_refusal_gates_total=4",
+        ]
 
     def __call__(self, command, *, timeout=None):
         self.calls.append(command)
@@ -272,6 +340,42 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertEqual(
             manifest["runtime_verification_evidence"]["max_rss_mb"],
             192.0,
+        )
+        self.assertTrue(manifest["studio_status_evidence"]["present"])
+        self.assertTrue(manifest["studio_status_evidence"]["public_safe"])
+        self.assertTrue(manifest["studio_status_evidence"]["services_all_active"])
+        self.assertFalse(manifest["studio_status_evidence"]["direct_world_mutation_by_ai"])
+        self.assertEqual(manifest["studio_status_evidence"]["quality_gate"]["status"], "pass")
+        self.assertEqual(
+            manifest["studio_status_evidence"]["live_review_gate"]["current_health"],
+            "pass",
+        )
+        self.assertEqual(
+            manifest["studio_status_evidence"]["live_review_gate"]["selected_option_id"],
+            "fire",
+        )
+        self.assertEqual(
+            manifest["studio_status_evidence"]["prompt_eval"]["cases_passed"],
+            12,
+        )
+        self.assertEqual(
+            manifest["studio_status_evidence"]["prompt_eval"]["golden_prompts_passed"],
+            9,
+        )
+        self.assertEqual(
+            manifest["studio_status_evidence"]["adapter_log"]["release_health"],
+            "pass",
+        )
+        self.assertEqual(
+            manifest["studio_status_evidence"]["adapter_log"]["latest"]["selected_option_id"],
+            "generated_openrealm_lakeside_village",
+        )
+        self.assertTrue(
+            manifest["studio_status_evidence"]["adapter_log"]["latest"]["web_search_available"],
+        )
+        self.assertEqual(
+            manifest["studio_status_evidence"]["runtime_proofs"]["current_health"],
+            "pass",
         )
         self.assertEqual(manifest["soak_evidence"]["iterations_requested"], 1)
         self.assertEqual(manifest["soak_evidence"]["iterations_completed"], 1)
@@ -440,7 +544,7 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
                     "fork_udp_listening=false",
                     "fork_version=Luanti 5.17.0-dev-26eb426dc (Linux)",
                     "fork_commit=26eb426dc",
-                ]
+                ] + FakeRunner(module).default_studio_status_lines()
             )
             fake_runner = FakeRunner(module, service_output=service_output)
 
@@ -475,7 +579,7 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
                 "fork_commit=26eb426dc",
                 "fork_restart_count=2",
                 "fork_active_enter_timestamp=Mon 2026-06-29 10:00:00 UTC",
-            ]
+            ] + FakeRunner(module).default_studio_status_lines()
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             args = module.parse_args(
@@ -535,6 +639,47 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertEqual(
             manifest["ranked_follow_up_issue_seeds"][0]["source_failure"],
             "fork_restart_budget_exceeded",
+        )
+        self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
+
+    def test_manifest_fails_when_studio_live_review_gate_is_not_passing(self):
+        module = load_module()
+        service_lines = FakeRunner(module).default_service_output().splitlines()
+        service_output = "\n".join(
+            "studio_live_review_gate_health=fail"
+            if line == "studio_live_review_gate_health=pass"
+            else line
+            for line in service_lines
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                ]
+            )
+            fake_runner = FakeRunner(module, service_output=service_output)
+
+            exit_code, _, manifest = module.run(
+                args,
+                runner=fake_runner,
+                now_fn=lambda: "2026-06-29T10:00:00Z",
+            )
+
+        self.assertEqual(exit_code, 2)
+        self.assertEqual(manifest["studio_status_evidence"]["live_review_gate"]["current_health"], "fail")
+        self.assertIn("studio_live_review_gate_not_pass", manifest["failure_reasons"])
+        self.assertEqual(
+            manifest["ranked_follow_up_issue_seeds"][0]["source_failure"],
+            "studio_live_review_gate_not_pass",
         )
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
 

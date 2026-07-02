@@ -69,6 +69,27 @@ class OpenRealmAdvantageKitVerifierTests(unittest.TestCase):
         self.assertEqual(report["test_result"]["status"], "pass")
         self.assertEqual(report["js_check_result"]["status"], "pass")
 
+    def test_private_boundary_scan_allows_guard_patterns_only(self):
+        verifier = load_verifier_module()
+
+        self.assertEqual(verifier.private_boundary_matches(ROOT), [])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            docs = root / "openrealm_advantage_kit" / "docs"
+            docs.mkdir(parents=True)
+            (docs / "leak.md").write_text("Do not publish themepark notes.\n", encoding="utf-8")
+
+            matches = verifier.private_boundary_matches(root)
+
+        self.assertEqual(matches, [
+            {
+                "path": "openrealm_advantage_kit/docs/leak.md",
+                "line": 1,
+                "pattern": "themepark",
+            }
+        ])
+
     def test_cli_writes_machine_readable_report(self):
         verifier = load_verifier_module()
         with tempfile.TemporaryDirectory() as tmpdir:
