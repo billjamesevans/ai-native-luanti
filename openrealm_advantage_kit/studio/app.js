@@ -27,7 +27,11 @@ const state = {
   reviewPacket: null,
   liveBridge: false,
   liveSubmitting: false,
-  liveSubmission: null
+  liveApproving: false,
+  liveSubmission: null,
+  liveApproval: null,
+  latestHandoff: null,
+  latestHandoffApproval: null
 };
 
 const el = {
@@ -35,6 +39,7 @@ const el = {
   preset: document.getElementById("preset"),
   generate: document.getElementById("generate"),
   approve: document.getElementById("approve"),
+  approveHandoff: document.getElementById("approve-handoff"),
   undo: document.getElementById("undo"),
   exportJson: document.getElementById("export-json"),
   exportLua: document.getElementById("export-lua"),
@@ -362,6 +367,14 @@ function updateUI() {
   el.approve.textContent = state.liveBridge
     ? (state.liveSubmitting ? "Submitting..." : "Submit to Nova")
     : "Apply local preview";
+  const handoffReady = state.latestHandoff
+    && state.latestHandoff.status === "ready_for_luanti_preview_approval_task"
+    && state.latestHandoff.queue_contract === "core.queue_ai_task"
+    && state.latestHandoff.handoff_queued !== true;
+  if (el.approveHandoff) {
+    el.approveHandoff.disabled = state.liveApproving || !state.liveBridge || !handoffReady;
+    el.approveHandoff.textContent = state.liveApproving ? "Approving..." : "Approve handoff";
+  }
   el.exportJson.disabled = !plan;
   el.exportLua.disabled = !plan;
   el.undo.disabled = state.rollbackStack.length === 0;
@@ -651,8 +664,12 @@ function renderLiveStatus(data) {
   const adapter = data?.adapter_log || {};
   const runtimeProofs = data?.runtime_proofs || {};
   const studioHandoff = data?.studio_handoff || {};
+  const studioApproval = data?.studio_handoff_approval || {};
   const latestHandoff = studioHandoff.latest || {};
+  const latestApproval = studioApproval.latest || {};
   const latest = adapter.latest || {};
+  state.latestHandoff = latestHandoff;
+  state.latestHandoffApproval = latestApproval;
   const allActive = data?.services_all_active === true;
   const qualityStatus = quality.status || "unknown";
   const requestLogStatus = quality.request_log_gate_status || "unknown";
@@ -707,11 +724,14 @@ function renderLiveStatus(data) {
 
   const latestPlanOption = latestHandoff.selected_option_id || latest.selected_option_id;
   const latestPlanWrites = latestHandoff.planned_node_writes ?? latest.planned_node_writes ?? 0;
+  const approvalDetail = studioApproval.present
+    ? ` · approval=${latestApproval.runtime_queue_status || studioApproval.status || "recorded"}`
+    : "";
   setText(el.latestPlanStatus, latestPlanOption || "No selected plan");
   setText(
     el.latestPlanDetail,
     studioHandoff.present
-      ? `${studioHandoff.status || "handoff"} · ${latestPlanWrites} writes · queued=${latestHandoff.handoff_queued === true ? "true" : "false"}`
+      ? `${studioHandoff.status || "handoff"} · ${latestPlanWrites} writes · queued=${latestHandoff.handoff_queued === true ? "true" : "false"}${approvalDetail}`
       : `authority=${mutationAuthority} · direct mutation=${directMutation ? "true" : "false"}`
   );
 
@@ -758,6 +778,8 @@ function renderLiveStatus(data) {
 
 function renderLiveStatusUnavailable() {
   state.liveBridge = false;
+  state.latestHandoff = null;
+  state.latestHandoffApproval = null;
   setText(el.runtimeState, "Local static mode");
   setText(el.operatorState, "Local");
   setText(el.servicesStatus, "Offline");
@@ -844,6 +866,45 @@ async function submitPlanToNova() {
     log("nova.submit_failed", error.message || String(error));
   } finally {
     state.liveSubmitting = false;
+    updateUI();
+  }
+}
+
+async function approveLatestHandoff() {
+  if (!state.liveBridge || state.liveApproving || !state.latestHandoff) return;
+  state.liveApproving = true;
+  updateUI();
+  updateLiveSubmitStatus("warn", "Approving handoff", "Writing approval receipt for Luanti runtime...");
+  try {
+    const response = await fetch("/api/studio/handoff/approve", {
+      method: "POST",
+      cache: "no-store",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        handoff_id: state.latestHandoff.handoff_id,
+        decision_status: "approved",
+        operator_id: "operator:openrealm_studio"
+      })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.public_safe !== true || payload?.ok !== true) {
+      throw new Error(payload?.reason || `approve ${response.status}`);
+    }
+    state.liveApproval = payload;
+    const receipt = payload.approval_summary || payload.approval_receipt || {};
+    updateLiveSubmitStatus(
+      "ok",
+      "Handoff approved",
+      `${receipt.selected_option_id || "selected build"} · ${receipt.runtime_queue_status || payload.runtime_queue_status} · ${payload.world_mutation_authority || "luanti"}`
+    );
+    log("handoff.approved", `${receipt.selected_option_id || "build"} approved for Luanti runtime consumption.`);
+    await loadLiveStatus();
+  } catch (error) {
+    state.liveApproval = null;
+    updateLiveSubmitStatus("warn", "Handoff approval failed", error.message || String(error));
+    log("handoff.approval_failed", error.message || String(error));
+  } finally {
+    state.liveApproving = false;
     updateUI();
   }
 }
@@ -973,6 +1034,7 @@ el.preset.addEventListener("change", () => { el.prompt.value = el.preset.value; 
 el.generate.addEventListener("click", () => {
   state.pendingPlan = createPlan(el.prompt.value);
   state.liveSubmission = null;
+  state.liveApproval = null;
   log("plan.created", state.pendingPlan.summary);
   updateLiveSubmitStatus(
     state.liveBridge ? "ok" : "warn",
@@ -984,6 +1046,7 @@ el.generate.addEventListener("click", () => {
   updateUI();
 });
 el.approve.addEventListener("click", handleApprove);
+el.approveHandoff?.addEventListener("click", approveLatestHandoff);
 el.undo.addEventListener("click", undo);
 el.exportJson.addEventListener("click", () => state.pendingPlan && exportBlob("openrealm_world_recipe.json", JSON.stringify(state.pendingPlan, null, 2)));
 el.exportLua.addEventListener("click", () => state.pendingPlan && exportBlob("openrealm_generated_mod_init.lua", luaForPlan(state.pendingPlan), "text/plain"));

@@ -94,6 +94,17 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
             "OPENREALM_REQUEST_LOG_GATE": missing,
         }
 
+    def test_studio_ui_exposes_handoff_approval_control(self):
+        index = (ROOT / "openrealm_advantage_kit" / "studio" / "index.html").read_text(
+            encoding="utf-8")
+        app = (ROOT / "openrealm_advantage_kit" / "studio" / "app.js").read_text(
+            encoding="utf-8")
+
+        self.assertIn('id="approve-handoff"', index)
+        self.assertIn("/api/studio/handoff/approve", app)
+        self.assertIn("studio_handoff_approval", app)
+        self.assertIn("approveLatestHandoff", app)
+
     def test_live_review_gate_summary_is_public_safe(self):
         server = load_module()
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -321,6 +332,119 @@ class OpenRealmStudioStatusTests(unittest.TestCase):
             self.assertNotIn("raw_provider", handoff_encoded)
             self.assertNotIn("OPENAI_API_KEY", handoff_encoded)
             self.assertNotIn("/Users/", handoff_encoded)
+
+    def test_studio_handoff_approval_writes_public_safe_luanti_queue_receipt(self):
+        server = load_module()
+        submission = {
+            "schema_version": 1,
+            "event_kind": "openrealm_studio_nova_plan_submission",
+            "created_at": "2026-07-02T18:20:00Z",
+            "public_safe": True,
+            "live_bridge": True,
+            "direct_world_mutation": False,
+            "model_adapter_endpoint": "loopback",
+            "request": {
+                "agent_id": "nova_agent:OpenRealmStudio",
+                "owner": "openrealm_studio_operator",
+                "task_id": "openrealm-studio:nova-plan:test",
+                "public_prompt": "Build only a fire",
+                "context": {
+                    "intent": "build_planning",
+                    "surface_id": "openrealm_studio",
+                    "candidate_summary": "fire:fire:fire:1",
+                    "selected_candidate_id": "fire",
+                    "studio_plan_id": "plan:approve-fire",
+                    "studio_plan_node_writes": 1,
+                },
+                "safety": {"public_safe_request": True},
+                "bounds": {"max_response_bytes": 4000},
+            },
+            "adapter_http_status": 200,
+            "adapter": {
+                "ok": True,
+                "agentic_execution": True,
+                "selected_option_id": "fire",
+                "build_kind": "fire",
+                "build_material_name": "fire",
+                "planned_node_writes": 1,
+                "plan_status": "ready",
+                "plan_kind": "luanti_build_action_plan_v1",
+                "plan_step_count": 4,
+                "required_tool_calls_satisfied": True,
+                "tool_trace_names": [
+                    "inspect_build_site_context",
+                    "recall_build_prompt_memory",
+                    "select_build_option",
+                    "plan_build_actions",
+                ],
+                "direct_world_mutation": False,
+                "world_mutation_authority": "luanti",
+            },
+            "runtime_handoff": {
+                "status": "ready_for_luanti_preview_approval_task",
+                "world_mutation_authority": "luanti",
+                "requires_preview": True,
+                "requires_approval": True,
+                "requires_rollback": True,
+            },
+        }
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            handoff_log_path = root / "studio-runtime-handoffs.jsonl"
+            handoff_latest_path = root / "studio-runtime-handoff-latest.json"
+            approval_log_path = root / "studio-runtime-handoff-approvals.jsonl"
+            approval_latest_path = root / "studio-runtime-handoff-approval-latest.json"
+
+            with mock.patch.dict(os.environ, {
+                    "OPENREALM_STUDIO_RUNTIME_HANDOFF_LOG": str(handoff_log_path),
+                    "OPENREALM_STUDIO_RUNTIME_HANDOFF_LATEST": str(handoff_latest_path),
+                    "OPENREALM_STUDIO_RUNTIME_HANDOFF_APPROVAL_LOG": str(approval_log_path),
+                    "OPENREALM_STUDIO_RUNTIME_HANDOFF_APPROVAL_LATEST": str(approval_latest_path),
+            }):
+                handoff = server.build_studio_runtime_handoff(
+                    submission, "2026-07-02T18:20:00Z")
+                self.assertTrue(server.write_studio_runtime_handoff(handoff))
+
+                status, result = server.approve_latest_studio_runtime_handoff({
+                    "operator_id": "operator:studio",
+                    "decision_status": "approved",
+                }, generated_at="2026-07-02T18:21:00Z")
+                approval_status = server.studio_handoff_approval_status()
+                latest_handoff = json.loads(handoff_latest_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(status, server.HTTPStatus.OK)
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["event_kind"], "openrealm_studio_runtime_handoff_approval_result")
+            self.assertTrue(result["approval_written"])
+            self.assertEqual(result["runtime_queue_status"], "approved_waiting_for_luanti_consumer")
+            self.assertEqual(result["world_mutation_authority"], "luanti")
+            self.assertFalse(result["direct_world_mutation"])
+            self.assertEqual(result["approval_receipt"]["receipt_kind"],
+                "openrealm_studio_runtime_handoff_approval_receipt")
+            self.assertEqual(result["approval_receipt"]["handoff_id"], handoff["handoff_id"])
+            self.assertEqual(result["approval_receipt"]["queue_contract"], "core.queue_ai_task")
+            self.assertEqual(result["approval_receipt"]["decision_status"], "approved")
+            self.assertFalse(result["approval_receipt"]["handoff_queued"])
+            self.assertTrue(result["approval_receipt"]["preview_required"])
+            self.assertTrue(result["approval_receipt"]["approval_required"])
+            self.assertTrue(result["approval_receipt"]["rollback_required"])
+            self.assertTrue(result["approval_receipt"]["audit_required"])
+            self.assertEqual(result["approval_receipt"]["next_runtime_action"],
+                "consume_studio_runtime_handoff")
+            self.assertEqual(approval_status["current_health"], "pass")
+            self.assertEqual(approval_status["latest"]["handoff_id"], handoff["handoff_id"])
+            self.assertEqual(approval_status["latest"]["runtime_queue_status"],
+                "approved_waiting_for_luanti_consumer")
+            self.assertFalse(latest_handoff["luanti_task_handoff"]["handoff_queued"])
+            encoded = json.dumps(result)
+            approval_encoded = approval_log_path.read_text(encoding="utf-8")
+            self.assertNotIn("OPENAI_API_KEY", encoded)
+            self.assertNotIn("/Users/", encoded)
+            self.assertNotIn("raw_provider", encoded)
+            self.assertNotIn("OPENAI_API_KEY", approval_encoded)
+            self.assertNotIn("/Users/", approval_encoded)
+            self.assertNotIn("raw_provider", approval_encoded)
 
 
 if __name__ == "__main__":
