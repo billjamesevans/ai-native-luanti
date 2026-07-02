@@ -59,13 +59,13 @@ Current Pi gate evidence:
   `9/9`, with `11` model-adapter requests, `11` successes, `0` failures, and
   `0` timeouts. The current live-probe prompt-eval artifact was generated at
   `2026-07-01T23:32:41Z`.
-- quick low-power Pi evidence passed for `907b393b5` at
+- promoted one-hour low-power Pi evidence passed for `907b393b5` at
   `local/benchmarks/low-power-server/2026-07-01/907b393b5/pi-low-power-evidence.json`;
-  target `quick`, elapsed `59.56` seconds, `1/1` iterations passed, service
-  split intact, 2/2 headless synthetic players connected/completed, compatibility
-  import staging pilot `pass`, average CPU `57.134%`, max interval CPU
-  `113.396%`, max RSS `70.641 MB`, actionable warnings `0`, server log errors
-  `0`, and failure count `0`.
+  target `one-hour`, elapsed `4254.735` seconds, duration met, `13/13`
+  iterations passed, service split intact, 2/2 headless synthetic players
+  connected/completed, compatibility import staging pilot `pass`, average CPU
+  max `84.261%`, max interval CPU `113.667%`, max RSS `77.781 MB`,
+  actionable warnings `0`, server log errors `0`, and failure count `0`.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,

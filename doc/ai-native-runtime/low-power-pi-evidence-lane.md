@@ -66,40 +66,25 @@ Latest post-deploy gate:
   `propose_build_option`, `select_build_option`, and `plan_build_actions` in
   the Agents SDK tool trace.
 
-Latest retained quick soak manifest:
+Latest retained one-hour soak manifest:
 
 - Date: 2026-07-01
 - Fork commit: `907b393b5`
 - Path:
   `local/benchmarks/low-power-server/2026-07-01/907b393b5/pi-low-power-evidence.json`
-- Target: `quick`; elapsed `59.56` seconds; duration met.
-- Iterations: `1/1` passed, `0` failed.
+- Target: `one-hour`; elapsed `4254.735` seconds; duration met.
+- Iterations: `13/13` passed, `0` failed.
 - Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
 - Runtime verification: product profile `pass`, clean profile `pass`, headless
   client load `pass` with 2 attempted/connected/completed synthetic players,
   scale gate `pass`, server-step workload `pass` with 29 completed samples, and
   compatibility import staging pilot `pass`.
-- Resource maxima: average CPU `57.134%`, interval CPU `113.396%`, RSS
-  `70.641 MB`, actionable warnings `0`, server log errors `0`, failure count
+- Resource maxima: average CPU `84.261%`, interval CPU `113.667%`, RSS
+  `77.781 MB`, actionable warnings `0`, server log errors `0`, failure count
   `0`.
 - Backup artifact:
   `raspberrypi_luanti_20260701-182811.tgz`
   (`9a0f27c2a7652dc668a7582775c61082614f7d36993b742dbaa3294359f7a39d`).
-
-Latest retained one-hour soak manifest:
-
-- Date: 2026-07-01
-- Fork commit: `73deb2807`
-- Path:
-  `local/benchmarks/low-power-server/2026-07-01/73deb2807/pi-low-power-evidence.json`
-- Target: `one-hour`; elapsed `4192.233` seconds; duration met.
-- Iterations: `13/13` passed, `0` failed.
-- Service boundary: family active on UDP `30000`; fork active on UDP `30001`.
-- Resource maxima: average CPU `84.313%`, interval CPU `113.699%`, RSS
-  `79.594 MB`, actionable warnings `0`, server log errors `0`.
-- Backup artifact:
-  `raspberrypi_luanti_20260701-073328.tgz`
-  (`6e153072b4a4451a6850b6b1e4260c3aceebf18e68031372bc072404bf83e147`).
 
 The post-deploy gate above is not itself a soak manifest; the retained
 one-hour manifest is recorded separately. Use the commands below for quick,
