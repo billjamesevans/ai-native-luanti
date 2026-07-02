@@ -257,9 +257,18 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
             fake_runner = FakeRunner(module)
 
             exit_code, output_path, manifest = module.run(args, runner=fake_runner, now_fn=lambda: "2026-06-29T10:00:00Z")
+            attempt_copy = pathlib.Path(tmpdir).parent / manifest["artifact_paths"]["attempt_copy"]
+            attempt_copy_exists = attempt_copy.is_file()
+            attempt_copy_name = attempt_copy.name
 
         self.assertEqual(exit_code, 0)
         self.assertTrue(output_path.name.endswith("pi-low-power-evidence.json"))
+        self.assertIn("artifact_paths", manifest)
+        self.assertIn("latest", manifest["artifact_paths"])
+        self.assertIn("attempt_copy", manifest["artifact_paths"])
+        self.assertTrue(attempt_copy_exists)
+        self.assertNotEqual(attempt_copy_name, output_path.name)
+        self.assertIn("quick", attempt_copy_name)
         self.assertEqual(manifest["schema_version"], 1)
         self.assertEqual(manifest["evidence_kind"], "ai_native_low_power_pi_evidence")
         self.assertEqual(manifest["overall_status"], "pass")
@@ -405,6 +414,38 @@ class LowPowerPiEvidenceTests(unittest.TestCase):
         self.assertEqual(manifest["soak_evidence"]["target"]["next_target"], "one-hour")
         self.assertEqual(manifest["ranked_follow_up_issue_seeds"], [])
         self.assertEqual(manifest["failure_reasons"], [])
+        self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
+
+    def test_attempt_copy_can_be_disabled_for_latest_only_runs(self):
+        module = load_module()
+        with tempfile.TemporaryDirectory() as tmpdir:
+            args = module.parse_args(
+                [
+                    "--ssh-target",
+                    "bill@minecraftpi.home",
+                    "--output-root",
+                    tmpdir,
+                    "--date",
+                    "2026-06-29",
+                    "--confirm-backup-first",
+                    "--backup-sha256",
+                    "73b521f2ee21274f37f1a5a6ab1840a1b9b3e2d39430461af5831a13210e7628",
+                    "--no-retain-attempt-copy",
+                ]
+            )
+            fake_runner = FakeRunner(module)
+
+            exit_code, output_path, manifest = module.run(
+                args,
+                runner=fake_runner,
+                now_fn=lambda: "2026-06-29T10:00:00Z",
+            )
+            output_exists = output_path.is_file()
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(output_exists)
+        self.assertIn("latest", manifest["artifact_paths"])
+        self.assertNotIn("attempt_copy", manifest["artifact_paths"])
         self.assertNotRegex(json.dumps(manifest, sort_keys=True), PRIVATE_PATTERNS)
 
     def test_remote_verifier_requires_headless_player_probe(self):

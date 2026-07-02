@@ -142,6 +142,11 @@ compatibility import staging-pilot status, ranked follow-up issue seeds, soak
 target duration evidence, OpenRealm Studio/Nova health, and the expected port
 split: family server on UDP `30000`, fork test service on UDP `30001`.
 
+Each run updates the stable latest path, `pi-low-power-evidence.json`, and also
+retains an immutable attempt copy named with the generated timestamp and soak
+target. This keeps failed one-hour or overnight attempts auditable even when a
+later rerun on the same date and commit passes.
+
 The Studio/Nova section is intentionally bounded. It retains public-safe status
 booleans, pass/fail health, golden-prompt counts, live-review counts, latest
 adapter release health, tool-use booleans, web-search availability, planned node

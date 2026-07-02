@@ -393,6 +393,18 @@ def output_path(args, commit: str) -> Path:
     return Path(args.output_root) / "low-power-server" / path_part(args.date) / path_part(commit) / EVIDENCE_NAME
 
 
+def attempt_output_path(args, commit: str, manifest: dict) -> Path:
+    generated_at = path_part(str(manifest.get("generated_at", "unknown")))
+    target = path_part(str((manifest.get("soak_evidence") or {}).get("target", {}).get("name", "unknown")))
+    return (
+        Path(args.output_root)
+        / "low-power-server"
+        / path_part(args.date)
+        / path_part(commit)
+        / f"pi-low-power-evidence-{generated_at}-{target}.json"
+    )
+
+
 def backup_evidence(args) -> dict:
     label = Path(args.backup_artifact_label).name if args.backup_artifact_label else None
     return {
@@ -1118,6 +1130,15 @@ def run(args, *, runner=run_subprocess, now_fn=utc_now, monotonic_fn=time.monoto
         manifest["overall_status"] = "fail"
 
     path = output_path(args, manifest["luanti_commit"])
+    manifest["artifact_paths"] = {
+        "latest": sanitize_text(str(path.relative_to(Path(args.output_root).parent))),
+    }
+    if args.retain_attempt_copy:
+        attempt_path = attempt_output_path(args, manifest["luanti_commit"], manifest)
+        manifest["artifact_paths"]["attempt_copy"] = sanitize_text(
+            str(attempt_path.relative_to(Path(args.output_root).parent))
+        )
+        write_json(attempt_path, manifest)
     write_json(path, manifest)
     return (0 if manifest["overall_status"] == "pass" else 2), path, manifest
 
@@ -1167,6 +1188,12 @@ def parse_args(argv=None):
     parser.add_argument("--confirm-backup-first", action="store_true")
     parser.add_argument("--backup-artifact-label", help="Backup archive basename or label from the preceding deploy.")
     parser.add_argument("--backup-sha256", help="SHA256 of the preceding backup archive.")
+    parser.add_argument(
+        "--no-retain-attempt-copy",
+        action="store_false",
+        dest="retain_attempt_copy",
+        help="Do not write an immutable attempt copy beside the latest manifest.",
+    )
     parser.add_argument("--ssh-connect-timeout", type=int, default=10)
     parser.add_argument("--ssh-timeout", type=int, default=60)
     parser.add_argument("--remote-verify-timeout", type=int, default=600)
