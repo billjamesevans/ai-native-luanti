@@ -816,8 +816,8 @@ async function submitPlanToNova() {
       throw new Error(payload?.reason || `submit ${response.status}`);
     }
     const submission = payload.submission || {};
-    const adapter = submission.adapter || {};
-    const handoff = submission.runtime_handoff || {};
+    const adapter = payload.summary || submission.adapter || {};
+    const handoff = payload.runtime_handoff || submission.runtime_handoff || {};
     state.liveSubmission = payload;
     plan.approval.status = "submitted_to_nova";
     const selected = adapter.selected_option_id || "no option";

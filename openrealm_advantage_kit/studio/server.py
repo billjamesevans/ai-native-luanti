@@ -942,14 +942,21 @@ def submit_studio_nova_plan(payload: dict[str, Any]) -> tuple[HTTPStatus, dict[s
     }
     logged = write_studio_submission_log(submission)
     response_status = HTTPStatus.OK if status < 400 and adapter_summary["ok"] else HTTPStatus.BAD_GATEWAY
+    result_ok = response_status == HTTPStatus.OK
     return response_status, {
         "schema_version": 1,
         "event_kind": "openrealm_studio_nova_plan_submission_result",
         "generated_at": generated_at,
+        "ok": result_ok,
         "public_safe": True,
         "live_bridge": True,
         "direct_world_mutation": False,
         "logged": logged,
+        "adapter_http_status": status,
+        "summary": adapter_summary,
+        "runtime_handoff": submission["runtime_handoff"],
+        "runtime_handoff_status": submission["runtime_handoff"]["status"],
+        "world_mutation_authority": submission["runtime_handoff"]["world_mutation_authority"],
         "submission": submission,
     }
 
