@@ -18,7 +18,15 @@ def load_feedback_module():
     return module
 
 
-def sidecar_entry(prompt="build a bridge"):
+def sidecar_entry(
+    prompt="build a bridge",
+    *,
+    task_id="ai-agent-eval:model",
+    selected_option_id="generated_bridge_platform",
+    build_kind="platform",
+    build_material_name="stone",
+    planned_node_writes=12,
+):
     return {
         "schema_version": 1,
         "event_kind": "ai_native_agents_sdk_request_response",
@@ -29,13 +37,16 @@ def sidecar_entry(prompt="build a bridge"):
             "adapter_contract": "provider_neutral_v1",
             "agent_id": "nova_agent:Eval:builder",
             "owner": "Eval",
-            "task_id": "ai-agent-eval:model",
+            "task_id": task_id,
             "public_prompt": "AI-native Luanti model adapter request.",
             "context": {
                 "surface_id": "builder",
                 "intent": "build_planning",
                 "player_request": prompt,
-                "candidate_summary": "platform:platform:stone:12|fire:fire:fire:1",
+                "candidate_summary": (
+                    f"{selected_option_id}:{build_kind}:{build_material_name}:{planned_node_writes}"
+                    "|fire:fire:fire:1"
+                ),
             },
             "safety": {"public_safe_request": True},
             "bounds": {"max_response_bytes": 4000},
@@ -54,7 +65,7 @@ def sidecar_entry(prompt="build a bridge"):
                     "propose_build_option",
                 ],
                 "tool_decision_source": "agents_sdk_function_tool",
-                "selected_option_id": "generated_bridge_platform",
+                "selected_option_id": selected_option_id,
                 "tool_trace": [
                     {"tool_name": "recall_build_prompt_memory"},
                     {"tool_name": "propose_build_option"},
@@ -62,12 +73,63 @@ def sidecar_entry(prompt="build a bridge"):
                 ],
                 "tool_decisions": {
                     "build_option": {
-                        "selected_option_id": "generated_bridge_platform",
+                        "selected_option_id": selected_option_id,
                         "decision_source": "agent_selected_generated_build_option",
+                    },
+                    "build_action_plan": {
+                        "status": "ready",
+                        "selected_option_id": selected_option_id,
+                        "step_count": 1,
+                        "world_mutation_authority": "luanti",
+                        "build_kind": build_kind,
+                        "build_material_name": build_material_name,
+                        "planned_node_writes": planned_node_writes,
                     },
                 },
                 "world_mutation_authority": "luanti",
             },
+        },
+    }
+
+
+def studio_review_packet():
+    return {
+        "schema_version": 1,
+        "artifact_kind": "openrealm_studio_agent_review_packet",
+        "generated_at": "2026-07-02T12:00:00Z",
+        "source": {
+            "source": "openrealm_studio",
+            "source_trace_id": "nova_trace:11",
+            "task_id": "ai-agent-build-planner:nova_trace:11",
+            "agent_id": "nova_agent:Eval:builder",
+            "selected_option_id": "fire",
+            "tool_decision_source": "agents_sdk_repair_function_tool",
+            "web_search_available": True,
+            "world_mutation_authority": "luanti",
+            "public_safe_trace_summary": True,
+        },
+        "operator_feedback_command": (
+            "/ai_agent_feedback trace=nova_trace:11; case=fire_only_strict; "
+            "build_kind=fire; material=fire; planned_writes=1; "
+            "route=agentic_build_planner; selected_candidate=fire; "
+            "danger_refusal_allowed=false; forbidden_extra_structure=true"
+        ),
+        "expected": {
+            "action": "build",
+            "build_kind": "fire",
+            "build_material_name": "fire",
+            "planned_node_writes": 1,
+            "route": "agentic_build_planner",
+            "selected_candidate_id": "fire",
+            "danger_refusal_allowed": False,
+            "forbidden_extra_structure": True,
+        },
+        "safety": {
+            "public_safe_output": True,
+            "no_world_mutation": True,
+            "no_raw_assets": True,
+            "no_provider_prompts": True,
+            "no_family_world_coordinates": True,
         },
     }
 
@@ -306,6 +368,115 @@ class AgentFeedbackPacketTests(unittest.TestCase):
             self.assertEqual(labels["labels"][0]["case_hint"], "stone_bridge_platform")
             self.assertEqual(labels["labels"][0]["expected"]["build_kind"], "platform")
             self.assertEqual(pack["summary"]["cases_total"], 1)
+
+    def test_cli_uses_studio_review_packet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            review_packet = root / "openrealm-agent-review-packet.json"
+            candidate_queue_output = root / "candidate-queue.json"
+            operator_label_output = root / "operator-labels.json"
+            case_pack_output = root / "case-pack.json"
+            sidecar_log.write_text(
+                json.dumps(
+                    sidecar_entry(
+                        "build only a fire",
+                        task_id="ai-agent-build-planner:nova_trace:11",
+                        selected_option_id="fire",
+                        build_kind="fire",
+                        build_material_name="fire",
+                        planned_node_writes=1,
+                    )
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            review_packet.write_text(json.dumps(studio_review_packet()) + "\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(FEEDBACK),
+                    "--root",
+                    str(root),
+                    "--agents-sdk-log",
+                    str(sidecar_log),
+                    "--studio-review-packet",
+                    str(review_packet),
+                    "--candidate-queue-output",
+                    str(candidate_queue_output),
+                    "--operator-label-output",
+                    str(operator_label_output),
+                    "--case-pack-output",
+                    str(case_pack_output),
+                    "--generated-at",
+                    "2026-07-02T12:30:00Z",
+                ],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            summary = json.loads(completed.stdout)
+            queue = json.loads(candidate_queue_output.read_text(encoding="utf-8"))
+            labels = json.loads(operator_label_output.read_text(encoding="utf-8"))
+            pack = json.loads(case_pack_output.read_text(encoding="utf-8"))
+
+            self.assertEqual(summary["status"], "ready")
+            self.assertTrue(summary["studio_review_packet"])
+            self.assertEqual(summary["studio_review_packet_source_trace_id"], "nova_trace:11")
+            self.assertEqual(summary["studio_review_packet_selected_option_id"], "fire")
+            self.assertEqual(summary["operator_labels_applied"], 1)
+            self.assertEqual(labels["labels"][0]["case_hint"], "fire_only_strict")
+            self.assertEqual(labels["labels"][0]["expected"]["build_kind"], "fire")
+            self.assertEqual(labels["labels"][0]["candidate_id"], queue["candidates"][0]["candidate_id"])
+            self.assertEqual(pack["cases"][0]["case_hint"], "fire_only_strict")
+
+    def test_cli_rejects_private_studio_review_packet(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = pathlib.Path(tmpdir)
+            sidecar_log = root / "agents-sdk-model-adapter.jsonl"
+            review_packet = root / "openrealm-agent-review-packet.json"
+            candidate_queue_output = root / "candidate-queue.json"
+            operator_label_output = root / "operator-labels.json"
+            case_pack_output = root / "case-pack.json"
+            packet = studio_review_packet()
+            packet["source"]["credentials"] = {"kind": "redacted"}
+            sidecar_log.write_text(json.dumps(sidecar_entry("build only a fire")) + "\n", encoding="utf-8")
+            review_packet.write_text(json.dumps(packet) + "\n", encoding="utf-8")
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(FEEDBACK),
+                    "--root",
+                    str(root),
+                    "--agents-sdk-log",
+                    str(sidecar_log),
+                    "--studio-review-packet",
+                    str(review_packet),
+                    "--candidate-queue-output",
+                    str(candidate_queue_output),
+                    "--operator-label-output",
+                    str(operator_label_output),
+                    "--case-pack-output",
+                    str(case_pack_output),
+                    "--generated-at",
+                    "2026-07-02T12:45:00Z",
+                ],
+                cwd=ROOT,
+                check=False,
+                text=True,
+                capture_output=True,
+            )
+
+            self.assertNotEqual(completed.returncode, 0, completed.stdout + completed.stderr)
+            self.assertIn("Studio review packet is not public-safe", completed.stderr)
+            self.assertFalse(candidate_queue_output.exists())
+            self.assertFalse(operator_label_output.exists())
+            self.assertFalse(case_pack_output.exists())
 
 
 if __name__ == "__main__":

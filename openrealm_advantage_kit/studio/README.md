@@ -36,6 +36,19 @@ material, planned writes, selected candidate, and safety flags. The packet is
 designed to feed the existing `util/ai_native_agent_feedback_packet.py` /
 prompt-memory refresh loop without exposing raw prompts or provider messages.
 
+To turn an exported Studio packet into reviewed eval artifacts, run:
+
+```bash
+python3 util/ai_native_agent_feedback_packet.py \
+  --agents-sdk-log local/benchmarks/agents-sdk-model-adapter.jsonl \
+  --studio-review-packet local/review-packets/openrealm_agent_review_packet.json
+```
+
+The tool resolves the selected trace to the matching candidate id, writes the
+candidate queue, operator label, and prompt-memory case pack, and rejects packets
+that include private paths, provider payloads, credentials, raw assets, or
+family-world details.
+
 This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 
 1. Prompt Nova.

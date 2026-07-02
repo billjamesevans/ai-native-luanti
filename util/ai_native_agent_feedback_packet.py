@@ -16,6 +16,9 @@ import ai_native_agent_operator_feedback as operator_feedback
 import ai_native_agent_operator_label as operator_label
 
 
+STUDIO_REVIEW_PACKET_KIND = "openrealm_studio_agent_review_packet"
+
+
 def resolve_path(root: Path, value: str | Path) -> Path:
     path = Path(value)
     if path.is_absolute():
@@ -30,6 +33,152 @@ def relative_label(root: Path, path: Path) -> str:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def text_or_none(value: Any) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def load_studio_review_packet(path: Path) -> dict[str, Any]:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError as exc:
+        raise operator_label.OperatorLabelError("Studio review packet not found") from exc
+    except json.JSONDecodeError as exc:
+        raise operator_label.OperatorLabelError("Studio review packet is not valid JSON") from exc
+    if not isinstance(payload, dict):
+        raise operator_label.OperatorLabelError("Studio review packet must be a JSON object")
+    if payload.get("artifact_kind") != STUDIO_REVIEW_PACKET_KIND:
+        raise operator_label.OperatorLabelError("Studio review packet artifact_kind is invalid")
+    safety = payload.get("safety") if isinstance(payload.get("safety"), dict) else {}
+    required_safety = (
+        "public_safe_output",
+        "no_world_mutation",
+        "no_raw_assets",
+        "no_provider_prompts",
+        "no_family_world_coordinates",
+    )
+    if any(safety.get(key) is not True for key in required_safety):
+        raise operator_label.OperatorLabelError("Studio review packet safety flags are incomplete")
+    if eval_queue.has_private_content(payload) or eval_queue.has_forbidden_key(payload):
+        raise operator_label.OperatorLabelError("Studio review packet is not public-safe")
+    return payload
+
+
+def expected_from_studio_review_packet(packet: dict[str, Any]) -> dict[str, Any]:
+    expected = eval_queue.safe_expected_from_operator_label(packet.get("expected"))
+    if expected is None:
+        raise operator_label.OperatorLabelError("Studio review packet expected build behavior is invalid")
+    return expected
+
+
+def case_hint_from_studio_review_packet(packet: dict[str, Any], expected: dict[str, Any]) -> str:
+    command = packet.get("operator_feedback_command")
+    if isinstance(command, str):
+        for piece in command.replace(";", " ").split():
+            if piece.startswith("case="):
+                return operator_label.slug(piece.split("=", 1)[1])
+    source = packet.get("source") if isinstance(packet.get("source"), dict) else {}
+    selected = text_or_none(source.get("selected_option_id"))
+    if selected:
+        return operator_label.slug(selected)
+    return operator_label.slug(f"studio_{expected['build_material_name']}_{expected['build_kind']}")
+
+
+def _candidate_selected_values(candidate: dict[str, Any]) -> set[str]:
+    observed = candidate.get("observed") if isinstance(candidate.get("observed"), dict) else {}
+    keys = (
+        "selected_option_id",
+        "selected_candidate_id",
+        "build_option_selected_option_id",
+        "build_action_plan_selected_option_id",
+        "generated_option_id",
+        "adapter_build_action_plan_selected_candidate_id",
+    )
+    values: set[str] = set()
+    for key in keys:
+        value = text_or_none(observed.get(key))
+        if value:
+            values.add(value)
+    expected = candidate.get("expected") if isinstance(candidate.get("expected"), dict) else {}
+    expected_selected = text_or_none(expected.get("selected_candidate_id"))
+    if expected_selected:
+        values.add(expected_selected)
+    return values
+
+
+def _studio_candidate_match_score(
+    candidate: dict[str, Any],
+    *,
+    source_trace_id: str | None,
+    task_id: str | None,
+    selected_option_id: str | None,
+    agent_id: str | None,
+) -> int:
+    candidate_task_id = text_or_none(candidate.get("task_id"))
+    candidate_trace_id = text_or_none(candidate.get("trace_id"))
+    score = 0
+    if task_id and candidate_task_id == task_id:
+        score += 100
+    if source_trace_id and candidate_trace_id == source_trace_id:
+        score += 90
+    if source_trace_id and candidate_task_id and source_trace_id in candidate_task_id:
+        score += 80
+    if selected_option_id and selected_option_id in _candidate_selected_values(candidate):
+        score += 20
+    if agent_id and candidate.get("agent_id") == agent_id:
+        score += 5
+    return score
+
+
+def studio_review_inputs(
+    packet: dict[str, Any],
+    candidate_queue: dict[str, Any],
+    expected: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    source = packet.get("source") if isinstance(packet.get("source"), dict) else {}
+    source_trace_id = text_or_none(source.get("source_trace_id"))
+    task_id = text_or_none(source.get("task_id"))
+    selected_option_id = text_or_none(source.get("selected_option_id"))
+    agent_id = text_or_none(source.get("agent_id"))
+    candidates = candidate_queue.get("candidates") if isinstance(candidate_queue.get("candidates"), list) else []
+    best: dict[str, Any] | None = None
+    best_score = 0
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        score = _studio_candidate_match_score(
+            candidate,
+            source_trace_id=source_trace_id,
+            task_id=task_id,
+            selected_option_id=selected_option_id,
+            agent_id=agent_id,
+        )
+        if score > best_score:
+            best = candidate
+            best_score = score
+    if best is None or best_score < 80:
+        raise operator_label.OperatorLabelError("no matching candidate found for Studio review packet")
+    inputs = {
+        "candidate_id": text_or_none(best.get("candidate_id")),
+        "prompt": text_or_none(best.get("prompt")),
+        "source_kind": text_or_none(best.get("source_kind")),
+        "case_hint": case_hint_from_studio_review_packet(packet, expected),
+        "label_id": text_or_none(packet.get("label_id")),
+    }
+    if not inputs["candidate_id"]:
+        raise operator_label.OperatorLabelError("matching Studio candidate is missing candidate_id")
+    summary = {
+        "studio_review_packet": True,
+        "studio_review_packet_source_trace_id": source_trace_id,
+        "studio_review_packet_task_id": task_id,
+        "studio_review_packet_selected_option_id": selected_option_id,
+        "studio_review_packet_matched_candidate_id": inputs["candidate_id"],
+        "studio_review_packet_match_score": best_score,
+    }
+    return inputs, summary
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -48,6 +197,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--source-kind", default=None, help="Optional source_kind match guard.")
     parser.add_argument("--case-hint", default=None, help="Prompt-memory case hint.")
     parser.add_argument("--label-id", default=None, help="Stable reviewed label id.")
+    parser.add_argument(
+        "--studio-review-packet",
+        default=None,
+        help="Public-safe OpenRealm Studio review packet JSON path.",
+    )
     parser.add_argument(
         "--from-operator-feedback",
         action="store_true",
@@ -106,6 +260,7 @@ def build_feedback_packet(
     max_candidate_queue_bytes: int,
     max_cases: int,
     max_case_pack_bytes: int,
+    studio_review_packet: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
     initial_queue = eval_queue.build_eval_candidate_queue(
         agents_sdk_logs=agents_sdk_logs,
@@ -115,6 +270,18 @@ def build_feedback_packet(
         max_candidates=max(0, max_candidates),
         max_bytes=max(1000, max_candidate_queue_bytes),
     )
+    studio_summary: dict[str, Any] = {}
+    if studio_review_packet is not None:
+        studio_inputs, studio_summary = studio_review_inputs(
+            studio_review_packet,
+            initial_queue,
+            expected,
+        )
+        candidate_id = candidate_id or studio_inputs["candidate_id"]
+        prompt = prompt or studio_inputs["prompt"]
+        source_kind = source_kind or studio_inputs["source_kind"]
+        case_hint = case_hint or studio_inputs["case_hint"]
+        label_id = label_id or studio_inputs["label_id"]
     label_artifact = operator_label.build_operator_label_artifact(
         candidate_queue=initial_queue,
         candidate_queue_path=relative_label(root, candidate_queue_output),
@@ -157,6 +324,7 @@ def build_feedback_packet(
         "manual_review_required": candidate_queue.get("source_summary", {}).get("manual_review_required", 0),
         "ready_for_prompt_eval": candidate_queue.get("source_summary", {}).get("ready_for_prompt_eval", 0),
     }
+    summary.update(studio_summary)
     return candidate_queue, label_artifact, case_pack, summary
 
 
@@ -171,7 +339,20 @@ def main(argv: list[str] | None = None) -> int:
     case_pack_output = resolve_path(root, args.case_pack_output)
     try:
         operator_feedback_summary: dict[str, Any] = {}
-        if args.from_operator_feedback:
+        studio_review_packet: dict[str, Any] | None = None
+        if args.from_operator_feedback and args.studio_review_packet:
+            raise operator_label.OperatorLabelError(
+                "--studio-review-packet cannot be combined with --from-operator-feedback"
+            )
+        if args.studio_review_packet:
+            studio_review_packet = load_studio_review_packet(resolve_path(root, args.studio_review_packet))
+            expected = expected_from_studio_review_packet(studio_review_packet)
+            candidate_id = args.candidate_id
+            prompt = args.prompt
+            source_kind = args.source_kind
+            case_hint = args.case_hint or case_hint_from_studio_review_packet(studio_review_packet, expected)
+            label_id = args.label_id
+        elif args.from_operator_feedback:
             feedback_events, read_summary = operator_feedback.read_operator_feedback_events(action_logs)
             feedback_inputs, operator_feedback_summary = operator_feedback.operator_feedback_inputs(
                 feedback_events,
@@ -223,6 +404,7 @@ def main(argv: list[str] | None = None) -> int:
             max_candidate_queue_bytes=args.max_candidate_queue_bytes,
             max_cases=args.max_cases,
             max_case_pack_bytes=args.max_case_pack_bytes,
+            studio_review_packet=studio_review_packet,
         )
         summary.update(operator_feedback_summary)
     except operator_label.OperatorLabelError as exc:
