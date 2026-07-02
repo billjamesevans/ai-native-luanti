@@ -10,6 +10,8 @@ const MATERIALS = {
   "default:mese": "#7a5cff",
   "default:mese_post_light": "#b58cff",
   "default:snowblock": "#f6f7fa",
+  "fire:basic_flame": "#ff8a3d",
+  "tnt:tnt": "#ff4f5e",
   "flowers:dandelion_yellow": "#ffe66d",
   "air": "#00000000"
 };
@@ -84,6 +86,8 @@ function featuresFor(text) {
     ["garden", ["garden", "flowers"]],
     ["water", ["lake", "river", "water"]],
     ["tower", ["tower", "lookout"]],
+    ["fire", ["fire", "campfire", "flame"]],
+    ["tnt", ["tnt", "explosive"]],
     ["lights", ["lantern", "light", "glowing"]]
   ];
   const features = [];
@@ -167,6 +171,24 @@ function tower(actions, origin, height=8) {
   add(actions, offset(origin, 1, height + 1, 1), "default:torch", "lookout beacon");
 }
 
+function singleFire(actions, origin) {
+  add(actions, origin, "fire:basic_flame", "requested fire");
+}
+
+function campfire(actions, origin) {
+  for (const [x, z] of [[-1, 0], [1, 0], [0, -1], [0, 1]]) add(actions, offset(origin, x, 0, z), "default:cobble", "fire ring");
+  add(actions, offset(origin, 0, 0, 0), "default:tree", "campfire fuel");
+  add(actions, offset(origin, 0, 1, 0), "fire:basic_flame", "campfire flame");
+}
+
+function tntWall(actions, origin, width=9, height=4) {
+  for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) {
+      add(actions, offset(origin, x, y, 0), "tnt:tnt", "tnt wall");
+    }
+  }
+}
+
 function validate(actions, origin) {
   const issues = [];
   let risk = "low";
@@ -186,29 +208,42 @@ function createPlan(prompt) {
   const text = clean.toLowerCase();
   const origin = pos(0, 16, 0);
   const actions = [];
-  add(actions, origin, "default:cobble", "realm anchor");
+  const onlyRequested = /\b(only|just)\b/.test(text);
+  const wantsFire = /\b(fire|campfire|flame)\b/.test(text);
+  const wantsTnt = /\btnt\b|\bexplosive\b/.test(text);
+  const simpleOnly = onlyRequested && (wantsFire || wantsTnt);
 
-  if (text.includes("glacier") || text.includes("mountain") || text.includes("alpine")) {
+  if (!simpleOnly) add(actions, origin, "default:cobble", "realm anchor");
+
+  if (simpleOnly && wantsFire) singleFire(actions, origin);
+  if (simpleOnly && wantsTnt) tntWall(actions, offset(origin, -4, 0, 0), 9, 4);
+
+  if (!simpleOnly && (text.includes("glacier") || text.includes("mountain") || text.includes("alpine"))) {
     lake(actions, offset(origin, -8, 0, -8), 9, 5);
     trail(actions, offset(origin, -10, 0, 0), 20, "x");
     for (let i = 0; i < 10; i++) pine(actions, offset(origin, Math.floor(rand() * 25) - 12, 0, Math.floor(rand() * 25) - 12));
     cabin(actions, offset(origin, 5, 0, 5), 5, 4);
     tower(actions, offset(origin, -8, 0, 7), 5);
   }
-  if (text.includes("village")) {
+  if (!simpleOnly && text.includes("village")) {
     [[-8,-4],[2,5],[9,-3]].forEach(([dx,dz]) => cabin(actions, offset(origin, dx, 0, dz), 5, 4));
     trail(actions, offset(origin, -10, 0, 0), 22, "x");
     trail(actions, offset(origin, 0, 0, -8), 18, "z");
     lanterns(actions, offset(origin, -8, 0, 0), 6, "x");
   }
-  if (text.includes("cabin") || text.includes("house") || text.includes("shelter")) cabin(actions, offset(origin, 2, 0, 2), 6, 5);
-  if (text.includes("bridge")) bridge(actions, offset(origin, -8, 0, 0), 17, "x");
-  if (text.includes("portal")) portal(actions, offset(origin, 0, 0, -7));
-  if (text.includes("garden")) garden(actions, offset(origin, -5, 0, 5), 8, 6);
-  if (text.includes("lake") || text.includes("river") || text.includes("water")) lake(actions, offset(origin, -6, 0, -6), 8, 5);
-  if (text.includes("tower") || text.includes("lookout")) tower(actions, offset(origin, 6, 0, -6), 8);
-  if (text.includes("lantern") || text.includes("light")) lanterns(actions, offset(origin, -5, 0, -4), 8, "x");
-  if (actions.length === 1) { cabin(actions, offset(origin, 1, 0, 1), 4, 4); lanterns(actions, offset(origin, -3, 0, 0), 4, "x"); }
+  if (!simpleOnly && (text.includes("cabin") || text.includes("house") || text.includes("shelter"))) cabin(actions, offset(origin, 2, 0, 2), 6, 5);
+  if (!simpleOnly && text.includes("bridge")) bridge(actions, offset(origin, -8, 0, 0), 17, "x");
+  if (!simpleOnly && text.includes("portal")) portal(actions, offset(origin, 0, 0, -7));
+  if (!simpleOnly && text.includes("garden")) garden(actions, offset(origin, -5, 0, 5), 8, 6);
+  if (!simpleOnly && (text.includes("lake") || text.includes("river") || text.includes("water"))) lake(actions, offset(origin, -6, 0, -6), 8, 5);
+  if (!simpleOnly && (text.includes("tower") || text.includes("lookout"))) tower(actions, offset(origin, 6, 0, -6), 8);
+  if (!simpleOnly && (text.includes("lantern") || text.includes("light"))) lanterns(actions, offset(origin, -5, 0, -4), 8, "x");
+  if (!simpleOnly && wantsFire) campfire(actions, offset(origin, -2, 0, -2));
+  if (!simpleOnly && wantsTnt) tntWall(actions, offset(origin, -4, 0, 3), 9, text.includes("wall") ? 4 : 2);
+  if (actions.length === 0 || (actions.length === 1 && actions[0].reason === "realm anchor")) {
+    cabin(actions, offset(origin, 1, 0, 1), 4, 4);
+    lanterns(actions, offset(origin, -3, 0, 0), 4, "x");
+  }
 
   const finalActions = dedupe(actions);
   const safety = validate(finalActions, origin);

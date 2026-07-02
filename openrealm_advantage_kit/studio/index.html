@@ -4,99 +4,204 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>OpenRealm Creator Studio</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230b1228'/%3E%3Cpath d='M20 48V22a12 12 0 0 1 24 0v26h-8V22a4 4 0 0 0-8 0v26z' fill='%23f6f7fa'/%3E%3Cpath d='M12 50h40l-8 8H20z' fill='%232ed4b7'/%3E%3Cpath d='M12 50 32 6l20 44-8-4-12-28-12 28z' fill='%234ea8ff' fill-opacity='.85'/%3E%3C/svg%3E" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <div class="orb orb-a"></div>
-  <div class="orb orb-b"></div>
   <main class="shell">
     <aside class="sidebar">
       <div class="brand">
-        <div class="brand-mark">OR</div>
+        <div class="brand-mark" aria-hidden="true">
+          <span></span>
+        </div>
         <div>
           <h1>OpenRealm</h1>
-          <p>Creator Studio</p>
+          <p>Build worlds together</p>
         </div>
       </div>
-      <nav>
-        <button class="nav-item active">Playground</button>
-        <button class="nav-item">World Recipes</button>
-        <button class="nav-item">Mods</button>
-        <button class="nav-item">Host</button>
+
+      <nav class="nav" aria-label="OpenRealm sections">
+        <button class="nav-item active"><span class="nav-icon play"></span>Play</button>
+        <button class="nav-item"><span class="nav-icon create"></span>Create</button>
+        <button class="nav-item"><span class="nav-icon worlds"></span>Worlds</button>
+        <button class="nav-item"><span class="nav-icon mods"></span>Mods</button>
+        <button class="nav-item"><span class="nav-icon host"></span>Host</button>
+        <button class="nav-item"><span class="nav-icon community"></span>Community</button>
       </nav>
-      <section class="principles">
-        <h2>Nova Rules</h2>
-        <p><strong>1.</strong> AI proposes. The runtime mutates.</p>
-        <p><strong>2.</strong> Every build is previewed.</p>
-        <p><strong>3.</strong> Approval is explicit.</p>
-        <p><strong>4.</strong> Rollback is always captured.</p>
+
+      <section class="sidebar-card">
+        <p class="label">Pi proving ground</p>
+        <strong>907b393b5</strong>
+        <span>Overnight evidence running</span>
       </section>
+
+      <button class="settings-button" type="button"><span class="nav-icon settings"></span>Settings</button>
     </aside>
 
     <section class="workspace">
       <header class="topbar">
-        <div>
-          <p class="eyebrow">AI-native voxel creation</p>
-          <h2>Describe a world. Preview it. Build it safely.</h2>
+        <div class="product-lockup">
+          <span>AI-native</span>
+          <span>Open source</span>
+          <span>Voxel world creator</span>
         </div>
-        <div class="status-pill"><span></span> Local planner ready</div>
+        <div class="operator">
+          <span class="bell" aria-hidden="true"></span>
+          <div class="avatar" aria-hidden="true"></div>
+          <div>
+            <strong>RealmCrafter</strong>
+            <span>Online</span>
+          </div>
+        </div>
       </header>
 
-      <section class="prompt-card glass">
-        <label for="prompt">Prompt Nova</label>
-        <textarea id="prompt" rows="3">Build a cozy lakeside village with floating lanterns</textarea>
-        <div class="prompt-actions">
-          <select id="preset">
-            <option value="Build a cozy lakeside village with floating lanterns">Cozy lakeside village</option>
-            <option value="Make this biome feel like Glacier National Park with trails and cabins">Glacier-inspired biome</option>
-            <option value="Create a glowing portal garden with pine trees">Portal garden</option>
-            <option value="Build a stone bridge across this river with lanterns">Stone bridge</option>
-            <option value="Build a lookout tower near a lake">Lookout tower</option>
-          </select>
-          <button id="generate" class="primary">Generate plan</button>
-          <button id="approve" class="success" disabled>Approve and build</button>
-          <button id="undo" disabled>Undo last build</button>
-        </div>
+      <section class="hero-grid">
+        <section class="creator-panel glass">
+          <div class="panel-title">
+            <span class="nova-star" aria-hidden="true"></span>
+            <div>
+              <h2>AI Create with Nova</h2>
+              <p>Describe the world you imagine.</p>
+            </div>
+            <span class="mode-pill">AI-native</span>
+          </div>
+
+          <label class="prompt-box" for="prompt">
+            <textarea id="prompt" rows="4">Build a cozy lakeside village with floating lanterns</textarea>
+          </label>
+
+          <div class="prompt-controls">
+            <label>
+              <span>Idea</span>
+              <select id="preset">
+                <option value="Build a cozy lakeside village with floating lanterns">Cozy lakeside village</option>
+                <option value="Build only a fire">Only a fire</option>
+                <option value="Build a wall of tnt">Wall of tnt</option>
+                <option value="Make this biome feel like Glacier National Park with trails and cabins">Glacier-inspired biome</option>
+                <option value="Create a glowing portal garden with pine trees">Portal garden</option>
+                <option value="Build a stone bridge across this river with lanterns">Stone bridge</option>
+                <option value="Build a lookout tower near a lake">Lookout tower</option>
+              </select>
+            </label>
+            <label>
+              <span>Scope</span>
+              <select id="scope">
+                <option>Focused</option>
+                <option>Large</option>
+                <option>Prototype</option>
+              </select>
+            </label>
+            <button id="generate" class="primary" type="button">Generate</button>
+          </div>
+
+          <div class="nova-footer">
+            <span class="nova-star small" aria-hidden="true"></span>
+            <div>
+              <strong>Powered by Nova</strong>
+              <span>Your AI builder assistant</span>
+            </div>
+          </div>
+        </section>
+
+        <section class="assistant-panel glass">
+          <div class="section-heading">
+            <div>
+              <p class="label">Nova Assistant</p>
+              <h3 id="plan-summary">Waiting for prompt</h3>
+            </div>
+            <span class="mode-pill">AI copilot</span>
+          </div>
+          <ol class="timeline">
+            <li>
+              <span class="step preview-step"></span>
+              <div><strong>Preview</strong><p>Generate a visible build plan.</p></div>
+            </li>
+            <li>
+              <span class="step approve-step"></span>
+              <div><strong>Approve</strong><p>Confirm exactly what will change.</p></div>
+            </li>
+            <li>
+              <span class="step build-step"></span>
+              <div><strong>Build</strong><p>Queue world mutations through runtime tools.</p></div>
+            </li>
+            <li>
+              <span class="step undo-step"></span>
+              <div><strong>Undo</strong><p>Rollback stays attached to every build.</p></div>
+            </li>
+          </ol>
+        </section>
+
+        <section class="host-panel glass">
+          <img src="../assets/openrealm_future_key_art.png" alt="OpenRealm floating voxel world" />
+          <div>
+            <p class="label">One-click private multiplayer</p>
+            <h3>Start a private world</h3>
+            <button type="button" class="wide-action">Start Private World</button>
+          </div>
+        </section>
       </section>
 
-      <section class="grid">
+      <section class="studio-grid">
         <section class="preview glass">
-          <div class="section-head">
+          <div class="section-heading">
             <div>
-              <p class="eyebrow">Preview</p>
+              <p class="label">Preview</p>
               <h3 id="preview-title">No plan yet</h3>
             </div>
-            <div id="risk" class="risk low">LOW RISK</div>
+            <div id="risk" class="risk low">LOW</div>
           </div>
           <canvas id="world" width="980" height="620"></canvas>
+          <div class="build-actions">
+            <button id="approve" class="success" type="button" disabled>Approve and build</button>
+            <button id="undo" type="button" disabled>Undo last build</button>
+          </div>
         </section>
 
         <section class="plan glass">
-          <div class="section-head">
+          <div class="section-heading">
             <div>
-              <p class="eyebrow">Nova plan</p>
-              <h3 id="plan-summary">Waiting for prompt</h3>
+              <p class="label">Plan</p>
+              <h3>World recipe</h3>
             </div>
           </div>
           <div class="metrics" id="metrics"></div>
           <ol id="plan-list" class="plan-list"></ol>
           <div class="export-row">
-            <button id="export-json" disabled>Export recipe JSON</button>
-            <button id="export-lua" disabled>Export Lua mod</button>
+            <button id="export-json" type="button" disabled>Export JSON</button>
+            <button id="export-lua" type="button" disabled>Export Lua</button>
           </div>
         </section>
       </section>
 
+      <section class="world-strip">
+        <article class="world-card glass">
+          <img src="../assets/openrealm_creator_studio_mockup.png" alt="OpenRealm creator studio mockup" />
+          <div><strong>Lakeside Village</strong><span>2h ago</span></div>
+        </article>
+        <article class="world-card glass">
+          <img src="../assets/openrealm_creator_flow.png" alt="OpenRealm creator flow" />
+          <div><strong>Skybound Ruins</strong><span>1d ago</span></div>
+        </article>
+        <article class="world-card glass">
+          <img src="../assets/how_nova_ai_works.png" alt="Nova AI architecture" />
+          <div><strong>Crystal Caverns</strong><span>2d ago</span></div>
+        </article>
+        <article class="world-card glass">
+          <img src="../assets/openrealm_roadmap_ecosystem.png" alt="OpenRealm roadmap ecosystem" />
+          <div><strong>Verdant Peaks</strong><span>3d ago</span></div>
+        </article>
+      </section>
+
       <section class="bottom-grid">
         <section class="glass">
-          <div class="section-head compact">
+          <div class="section-heading compact">
             <h3>Audit log</h3>
           </div>
           <div id="audit" class="audit"></div>
         </section>
         <section class="glass">
-          <div class="section-head compact">
-            <h3>World recipe</h3>
+          <div class="section-heading compact">
+            <h3>Runtime payload</h3>
           </div>
           <pre id="recipe" class="recipe"></pre>
         </section>
