@@ -39,18 +39,26 @@ prompt-memory refresh loop without exposing raw prompts or provider messages.
 To turn a live or saved Studio trace into reviewed eval artifacts, run:
 
 ```bash
+python3 util/ai_native_agent_live_review_gate.py \
+  --status-json local/status/openrealm-studio-status.json \
+  --agents-sdk-log local/benchmarks/agents-sdk-model-adapter.jsonl \
+  --trace-id nova_trace:11 \
+  --output-dir local/review-packets/live-review \
+  --gate-output local/review-packets/live-review/gate-result.json
+```
+
+The gate writes the review packet, candidate queue, operator label, and
+prompt-memory case pack, then verifies artifact kinds, public-safety flags,
+label matching, candidate membership, and case-pack readiness. For manual
+handoff or debugging, the same flow can still be run in smaller steps:
+
+```bash
 python3 util/ai_native_agent_live_review_loop.py \
   --status-json local/status/openrealm-studio-status.json \
   --agents-sdk-log local/benchmarks/agents-sdk-model-adapter.jsonl \
   --trace-id nova_trace:11 \
   --output-dir local/review-packets/live-review
-```
 
-The one-command loop writes the review packet, candidate queue, operator label,
-and prompt-memory case pack. For manual handoff or debugging, the same flow can
-still be run in two steps:
-
-```bash
 python3 util/ai_native_agent_studio_review_packet.py \
   --status-json local/status/openrealm-studio-status.json \
   --trace-id nova_trace:11 \

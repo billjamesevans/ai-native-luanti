@@ -27,7 +27,9 @@ def resolve_path(root: Path, value: str | Path) -> Path:
 
 
 def relative_label(root: Path, path: Path) -> str:
-    return path.relative_to(root).as_posix() if path.is_relative_to(root) else path.name
+    resolved_root = root.resolve()
+    resolved_path = path.resolve()
+    return resolved_path.relative_to(resolved_root).as_posix() if resolved_path.is_relative_to(resolved_root) else path.name
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
