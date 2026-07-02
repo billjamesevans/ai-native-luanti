@@ -51,7 +51,9 @@ const el = {
   latestPlanStatus: document.getElementById("latest-plan-status"),
   latestPlanDetail: document.getElementById("latest-plan-detail"),
   evalStatus: document.getElementById("eval-status"),
-  evalDetail: document.getElementById("eval-detail")
+  evalDetail: document.getElementById("eval-detail"),
+  runtimeProofsStatus: document.getElementById("runtime-proofs-status"),
+  runtimeProofsDetail: document.getElementById("runtime-proofs-detail")
 };
 
 function hashText(text) {
@@ -407,6 +409,7 @@ function renderLiveStatus(data) {
   const quality = data?.quality_gate || {};
   const promptEval = data?.prompt_eval || {};
   const adapter = data?.adapter_log || {};
+  const runtimeProofs = data?.runtime_proofs || {};
   const latest = adapter.latest || {};
   const allActive = data?.services_all_active === true;
   const qualityStatus = quality.status || "unknown";
@@ -464,6 +467,22 @@ function renderLiveStatus(data) {
   );
   el.evalStatus?.classList.toggle("status-ok", evalPass);
   el.evalStatus?.classList.toggle("status-warn", !evalPass);
+
+  const runtimeProofsPass = runtimeProofs.current_health === "pass";
+  const novaProof = runtimeProofs.nova_auto_apply || {};
+  const compatProof = runtimeProofs.compat_import || {};
+  setText(
+    el.runtimeProofsStatus,
+    runtimeProofs.current_health ? (runtimeProofsPass ? "Rollback pass" : "Needs proof") : "No proof"
+  );
+  setText(
+    el.runtimeProofsDetail,
+    runtimeProofs.current_health
+      ? `nova ${novaProof.cases_passed || 0}/${novaProof.cases_total || 0} · compat ${compatProof.actual_node_writes || 0} writes · rollback ${compatProof.rollback_record_count || 0}+${compatProof.rollback_execution_records || 0}`
+      : "No runtime proof summary loaded"
+  );
+  el.runtimeProofsStatus?.classList.toggle("status-ok", runtimeProofsPass);
+  el.runtimeProofsStatus?.classList.toggle("status-warn", !runtimeProofsPass);
 }
 
 function renderLiveStatusUnavailable() {
@@ -479,6 +498,8 @@ function renderLiveStatusUnavailable() {
   setText(el.latestPlanDetail, "Browser-only preview and export mode");
   setText(el.evalStatus, "Unavailable");
   setText(el.evalDetail, "No live golden prompt summary loaded");
+  setText(el.runtimeProofsStatus, "Unavailable");
+  setText(el.runtimeProofsDetail, "No rollback proof summary loaded");
 }
 
 async function loadLiveStatus() {

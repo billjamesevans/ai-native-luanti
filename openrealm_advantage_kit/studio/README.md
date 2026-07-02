@@ -17,6 +17,12 @@ historical lifetime counts so old failed probes do not obscure a passing live
 release gate. Prompt-eval summaries expose only case IDs, pass counts, golden
 prompt coverage, and safety flags.
 
+Runtime-proof summaries expose only status and counts for rollback-backed Nova
+auto-apply probes and compatibility import staging rehearsals. They prove that
+world mutation goes through Luanti runtime tasks, rollback records exist, and
+compatibility import stays in disposable/staging worlds without exposing raw
+prompts, private coordinates, provider messages, or copied assets.
+
 This prototype is dependency-free and can still run entirely offline. It demonstrates the product loop:
 
 1. Prompt Nova.

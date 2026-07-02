@@ -80,6 +80,11 @@ Current Pi gate evidence:
   golden-prompt coverage, and public-safe safety flags. The payload
   intentionally excludes raw prompts, provider messages, credentials, private
   paths, and world payloads.
+- the Pi-hosted Studio now exposes a public-safe Runtime Proofs card backed by
+  `/api/status`. It summarizes rollback-backed Nova auto-apply proof and
+  compatibility import staging proof using only counts, statuses, safety flags,
+  and rollback evidence. It does not expose raw prompts, provider messages,
+  copied assets, private coordinates, or live family-world mutation data.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,

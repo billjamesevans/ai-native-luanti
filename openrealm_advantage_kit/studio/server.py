@@ -40,6 +40,20 @@ PROMPT_EVAL_CASES = (
 )
 
 
+def count_passed_refusal_gates(refusal_gates: dict[str, Any]) -> tuple[int, int]:
+    if not isinstance(refusal_gates, dict):
+        return 0, 0
+    total = 0
+    passed = 0
+    for gate in refusal_gates.values():
+        if not isinstance(gate, dict):
+            continue
+        total += 1
+        if gate.get("passed") is True:
+            passed += 1
+    return passed, total
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
@@ -340,6 +354,87 @@ def adapter_log_status() -> dict[str, Any]:
     }
 
 
+def runtime_proofs_status() -> dict[str, Any]:
+    nova = read_json(env_path(
+        "OPENREALM_NOVA_AUTO_APPLY_PROBE",
+        "/opt/ai-native-luanti/logs/live-probes/nova-auto-apply-live-world/ai-runtime-nova-auto-apply-live-result.json",
+    )) or {}
+    compat = read_json(env_path(
+        "OPENREALM_COMPAT_IMPORT_PILOT",
+        "/opt/ai-native-luanti/memory/ai-runtime-compat-import-staging-pilot-result.json",
+    )) or {}
+
+    nova_summary = nova.get("summary") if isinstance(nova.get("summary"), dict) else {}
+    nova_safety = nova.get("safety") if isinstance(nova.get("safety"), dict) else {}
+    compat_workflow = compat.get("workflow") if isinstance(compat.get("workflow"), dict) else {}
+    compat_apply = compat_workflow.get("apply") if isinstance(compat_workflow.get("apply"), dict) else {}
+    compat_rollback = compat_workflow.get("rollback") if isinstance(compat_workflow.get("rollback"), dict) else {}
+    compat_benchmark = compat.get("benchmark_coverage") if isinstance(compat.get("benchmark_coverage"), dict) else {}
+    compat_safety = compat.get("safety") if isinstance(compat.get("safety"), dict) else {}
+    refusal_passed, refusal_total = count_passed_refusal_gates(compat.get("refusal_gates"))
+
+    nova_status = first_text(nova.get("status"))
+    nova_cases_total = first_int(nova_summary.get("cases_total"))
+    nova_cases_passed = first_int(nova_summary.get("cases_passed"))
+    nova_cases_failed = first_int(nova_summary.get("cases_failed"))
+    compat_status = first_text(compat_benchmark.get("status"))
+    compat_node_writes = first_int(compat_benchmark.get("actual_node_writes"), compat_apply.get("node_writes_actual"))
+    compat_apply_chunks = first_int(compat_benchmark.get("actual_apply_chunks"), compat_apply.get("step_count"))
+    compat_rollback_records = first_int(compat_apply.get("rollback_record_count"), compat_rollback.get("plan_record_count"))
+    compat_rollback_execution_records = first_int(compat_rollback.get("rollback_execution_records"))
+    current_health = (
+        "pass"
+        if nova_status == "pass"
+        and nova_cases_failed == 0
+        and nova_summary.get("rollback_checked") is True
+        and nova_safety.get("world_mutation_authority") == "luanti"
+        and compat_status == "pass"
+        and refusal_total > 0
+        and refusal_passed == refusal_total
+        and compat_safety.get("no_live_family_world_mutation") is True
+        and compat_safety.get("no_provider_prompts") is True
+        and compat_safety.get("no_raw_assets") is True
+        else "attention"
+    )
+
+    return {
+        "current_health": current_health,
+        "nova_auto_apply": {
+            "present": bool(nova),
+            "status": nova_status,
+            "generated_at": nova.get("generated_at"),
+            "cases_total": nova_cases_total,
+            "cases_passed": nova_cases_passed,
+            "cases_failed": nova_cases_failed,
+            "auto_apply_checked": first_bool(nova_summary.get("auto_apply_checked")),
+            "rollback_checked": first_bool(nova_summary.get("rollback_checked")),
+            "agentic_build_planner_checked": first_bool(nova_summary.get("agentic_build_planner_checked")),
+            "world_mutation_authority": first_text(nova_safety.get("world_mutation_authority")),
+            "world_mutation_scope": first_text(nova_safety.get("world_mutation_scope")),
+            "disposable_live_world_only": first_bool(nova_safety.get("disposable_live_world_only")),
+            "no_provider_prompts": first_bool(nova_safety.get("no_provider_prompts")),
+            "no_family_world_coordinates": first_bool(nova_safety.get("no_family_world_coordinates")),
+        },
+        "compat_import": {
+            "present": bool(compat),
+            "generated_at": compat.get("generated_at"),
+            "status": compat_status,
+            "actual_node_writes": compat_node_writes,
+            "actual_apply_chunks": compat_apply_chunks,
+            "actual_mapblock_churn": first_int(compat_benchmark.get("actual_mapblock_churn")),
+            "rollback_record_count": compat_rollback_records,
+            "rollback_execution_records": compat_rollback_execution_records,
+            "refusal_gates_passed": refusal_passed,
+            "refusal_gates_total": refusal_total,
+            "all_refusal_gates_passed": first_bool(compat_safety.get("all_refusal_gates_passed")),
+            "no_live_family_world_mutation": first_bool(compat_safety.get("no_live_family_world_mutation")),
+            "no_provider_prompts": first_bool(compat_safety.get("no_provider_prompts")),
+            "no_raw_assets": first_bool(compat_safety.get("no_raw_assets")),
+            "staging_target_only": first_bool(compat_safety.get("staging_target_only")),
+        },
+    }
+
+
 def build_status_payload() -> dict[str, Any]:
     services = service_status()
     return {
@@ -354,6 +449,7 @@ def build_status_payload() -> dict[str, Any]:
         "quality_gate": quality_gate_status(),
         "prompt_eval": prompt_eval_status(),
         "adapter_log": adapter_log_status(),
+        "runtime_proofs": runtime_proofs_status(),
     }
 
 
