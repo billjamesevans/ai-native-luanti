@@ -59,13 +59,19 @@ Current Pi gate evidence:
   `9/9`, with `11` model-adapter requests, `11` successes, `0` failures, and
   `0` timeouts. The current live-probe prompt-eval artifact was generated at
   `2026-07-01T23:32:41Z`.
-- promoted one-hour low-power Pi evidence passed for `907b393b5` at
-  `local/benchmarks/low-power-server/2026-07-01/907b393b5/pi-low-power-evidence.json`;
-  target `one-hour`, elapsed `4254.735` seconds, duration met, `13/13`
+- promoted overnight low-power Pi evidence passed for `907b393b5` at
+  `local/benchmarks/low-power-server/2026-07-02/907b393b5/pi-low-power-evidence.json`;
+  target `overnight`, elapsed `29649.598` seconds, duration met, `17/17`
   iterations passed, service split intact, 2/2 headless synthetic players
   connected/completed, compatibility import staging pilot `pass`, average CPU
-  max `84.261%`, max interval CPU `113.667%`, max RSS `77.781 MB`,
+  max `84.034%`, max interval CPU `113.845%`, max RSS `76.891 MB`,
   actionable warnings `0`, server log errors `0`, and failure count `0`.
+- the OpenRealm Creator Studio UI has been refreshed around the supplied
+  OpenRealm/Nova brand direction and deployed as a Pi-hosted static service on
+  port `8788`. The Studio keeps the prompt-to-plan, preview, approval, audit,
+  rollback, JSON export, and Lua export loop in one browser surface, and its
+  planner now handles strict game requests such as `Build only a fire` and
+  `Build a wall of tnt` without falling back to a generic structure.
 - the live Pi prompt gate now includes `Build a stone bridge`: Nova generated
   and selected `generated_bridge_platform`, preserved `stone` material,
   produced a bounded `6 x 2` platform preview with `12` planned node writes,

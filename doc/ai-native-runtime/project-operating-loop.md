@@ -309,9 +309,10 @@ default to their recommended cadence; use explicit `--soak-iterations` and
 Keep this ranked next-issue queue current after every milestone slice:
 
 1. #253 Promoted Pi one-hour and overnight evidence for current alpha.
-   Current one-hour proof is clean for `907b393b5`. Next gate: overnight
-   low-power evidence for `907b393b5` before any alpha promotion that depends
-   on overnight stability.
+   Current overnight proof is clean for `907b393b5`: 17/17 samples, elapsed
+   29649.598 seconds, zero fork restarts, zero actionable warnings, and zero
+   server log errors. Keep this lane for future runtime candidates; do not use
+   it as the blocker for the current productization slice.
 2. #254 First-party AI agent productization lane.
    Use for parallel local work while Pi evidence is occupied. Gate: live
    product-loop probe, streamed Agents SDK build-planning tool evidence,
